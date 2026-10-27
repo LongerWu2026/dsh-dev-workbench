@@ -146,23 +146,62 @@ function transcriptOf(session, limit) {
   return entries.slice(-(limit || 40))
 }
 
-function getAssistantSession(ctx) {
-  const sessions = hostService(ctx, 'sessions')
-  if (!sessions || typeof sessions.create !== 'function' || typeof sessions.get !== 'function') return null
-  const state = loadWorkbenchState()
-  const savedId = state.settings && state.settings.assistantSessionId
-  if (savedId) {
-    const existing = sessions.get(savedId)
-    if (existing) return { sessions: sessions, session: existing }
-  }
-  const session = sessions.create(undefined, {
-    meta: { cwd: cwdForHostCommands(ctx) },
-  })
+/** 旧版本存下来的默认计数字 id（session-1 / session-2…）：没有持久化日志，必须丢弃。 */
+function isLegacySessionId(id) {
+  return /^session-\d+$/.test(String(id || ''))
+}
+
+/**
+ * 建一个**持久化**的会话。
+ *
+ * 关键：不能用 `sessions.create()`——它只造内存对象、不写会话日志，随后
+ * `sessionController.prompt` 内部 resume 会抛 `SessionPersistenceNotFoundError`
+ * （表现为 remote 端 `resume failed for session "session-1"`）。
+ * 正确入口是 `sessionController.create`：它走 `createAgent → ctx.agents.create`，
+ * 会建立可恢复的会话记录。
+ */
+async function createPersistedSession(ctx) {
+  const controller = hostService(ctx, 'sessionController')
+  if (!controller) return null
+  const request = { cwd: cwdForHostCommands(ctx) }
+  const creator =
+    typeof controller.createSession === 'function'
+      ? controller.createSession.bind(controller)
+      : typeof controller.create === 'function'
+        ? controller.create.bind(controller)
+        : null
+  if (!creator) return null
+  const created = await creator(request)
+  // create 返回 { agent, agentPreset }；agent 上挂着 session
+  const agent = created && created.agent ? created.agent : created
+  const session = agent && agent.session ? agent.session : agent
+  if (!session || !session.id) throw new Error('会话创建失败：返回值里没有 session')
+  return session
+}
+
+function rememberAssistantSession(sessionId) {
   mutateWorkbenchState(function (current) {
-    current.settings.assistantSessionId = String(session.id)
+    current.settings.assistantSessionId = sessionId ? String(sessionId) : null
     return current
   })
-  return { sessions: sessions, session: session }
+}
+
+/** 取（或建）助手会话；陈旧 id 自动丢弃重建。 */
+async function ensureAssistantSession(ctx) {
+  const sessions = hostService(ctx, 'sessions')
+  const controller = hostService(ctx, 'sessionController')
+  if (!sessions || typeof sessions.get !== 'function' || !controller) return null
+
+  const state = loadWorkbenchState()
+  const savedId = state.settings && state.settings.assistantSessionId
+  if (savedId && !isLegacySessionId(savedId)) {
+    const existing = sessions.get(savedId)
+    if (existing) return existing
+  }
+  const session = await createPersistedSession(ctx)
+  if (!session) return null
+  rememberAssistantSession(session.id)
+  return session
 }
 
 /**
@@ -210,9 +249,8 @@ async function readAssistantTranscript(ctx, request) {
     session = sessions.get(wanted)
     if (!session) return { status: 'not_found', note: '找不到该会话', messages: [] }
   } else {
-    const resolved = getAssistantSession(ctx)
-    if (!resolved) return { status: 'unavailable', note: '没有可用的会话服务', messages: [] }
-    session = resolved.session
+    session = await ensureAssistantSession(ctx)
+    if (!session) return { status: 'unavailable', note: '没有可用的会话服务', messages: [] }
   }
   return {
     status: 'ok',
@@ -275,6 +313,42 @@ function transcriptDelta(session, fromSeq) {
   return { entries: entries, nextSeq: session.seq, turnActive: turnActive }
 }
 
+/**
+ * 提交提示，并在会话日志丢失时自愈。
+ *
+ * `prompt` 内部会对目标会话做 resume；如果该会话没有持久化日志（旧版本用
+ * `sessions.create()` 建的空会话、或会话被清理过），就会抛
+ * `resume failed for session "…": SessionPersistenceNotFoundError`。
+ * 这里捕获这一类错误，重建一个持久化会话并重试一次，同时更新记录的会话 id。
+ */
+async function submitPrompt(ctx, controller, session, text, steer) {
+  const build = function (sessionId) {
+    return {
+      requestId: 'wb-assistant-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+      sessionId: sessionId,
+      mode: steer === true ? 'steer' : 'queue',
+      content: [{ type: 'text', text: text }],
+      clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }
+  }
+  const attempt = async function (target) {
+    const fromSeq = target.seq
+    await controller.prompt(build(target.id), AbortSignal.timeout(30000))
+    return { session: target, fromSeq: fromSeq, recovered: false }
+  }
+  try {
+    return await attempt(session)
+  } catch (error) {
+    const message = String((error && error.message) || error)
+    if (!/resume failed|SessionPersistenceNotFound/i.test(message)) throw error
+    const fresh = await createPersistedSession(ctx)
+    if (!fresh) throw error
+    rememberAssistantSession(fresh.id)
+    const retried = await attempt(fresh)
+    return Object.assign({}, retried, { recovered: true })
+  }
+}
+
 /** 只提交提示并立即返回（不等待本轮结束），供侧栏渐进渲染。 */
 async function sendAssistantPrompt(ctx, request) {
   const input = request && typeof request === 'object' ? request : {}
@@ -300,12 +374,10 @@ async function sendAssistantPrompt(ctx, request) {
       return current
     })
   } else {
-    const resolved = getAssistantSession(ctx)
-    if (!resolved) return { status: 'unavailable', note: '当前宿主没有可用的 sessions 服务。' }
-    session = resolved.session
+    session = await ensureAssistantSession(ctx)
+    if (!session) return { status: 'unavailable', note: '当前宿主没有可用的 sessions / sessionController 服务。' }
   }
 
-  const fromSeq = session.seq
   const refs = Array.isArray(input.refs) ? input.refs.slice(0, 6) : []
   const lines = []
   if (refs.length > 0) {
@@ -324,20 +396,16 @@ async function sendAssistantPrompt(ctx, request) {
   lines.push('（需要落库时请直接调用 workbench_* 工具：建/改待办、登记执行记录、写回资讯摘要。）')
 
   try {
-    await controller.prompt(
-      {
-        requestId: 'wb-assistant-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
-        sessionId: session.id,
-        mode: input.steer === true ? 'steer' : 'queue',
-        content: [{ type: 'text', text: lines.join('\n') }],
-        clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
-      AbortSignal.timeout(30000),
-    )
+    const submitted = await submitPrompt(ctx, controller, session, lines.join('\n'), input.steer === true)
+    return {
+      status: 'ok',
+      sessionId: String(submitted.session.id),
+      fromSeq: submitted.fromSeq,
+      recovered: submitted.recovered === true,
+    }
   } catch (e) {
-    return { status: 'error', note: '提示提交失败：' + String((e && e.message) || e).slice(0, 200), sessionId: String(session.id) }
+    return { status: 'error', note: '提示提交失败：' + String((e && e.message) || e).slice(0, 240), sessionId: String(session.id) }
   }
-  return { status: 'ok', sessionId: String(session.id), fromSeq: fromSeq }
 }
 
 /** 增量读取端点：供侧栏渐进渲染。 */
@@ -353,9 +421,8 @@ async function readAssistantDelta(ctx, request) {
     session = sessions.get(wanted)
     if (!session) return { status: 'not_found', note: '找不到该会话', entries: [], nextSeq: 0, turnActive: false }
   } else {
-    const resolved = getAssistantSession(ctx)
-    if (!resolved) return { status: 'unavailable', note: '没有可用的会话服务', entries: [], nextSeq: 0, turnActive: false }
-    session = resolved.session
+    session = await ensureAssistantSession(ctx)
+    if (!session) return { status: 'unavailable', note: '没有可用的会话服务', entries: [], nextSeq: 0, turnActive: false }
   }
   const delta = transcriptDelta(session, Number(input.fromSeq) || 0)
   return Object.assign({ status: 'ok', sessionId: String(session.id) }, delta)
@@ -387,17 +454,16 @@ async function runAssistantAsk(ctx, request) {
       return current
     })
   } else {
-    const resolved = getAssistantSession(ctx)
-    if (!resolved) {
+    session = await ensureAssistantSession(ctx)
+    if (!session) {
       return {
         status: 'unavailable',
-        note: '当前宿主没有可用的 sessions 服务，无法创建助手会话。',
+        note: '当前宿主没有可用的 sessions / sessionController 服务，无法创建助手会话。',
         reply: '',
       }
     }
-    session = resolved.session
   }
-  const fromSeq = session.seq
+  let fromSeq = session.seq
 
   // 上下文引用拼进提示（保持可见、可回溯），Agent 可直接调用 workbench_* 工具回写
   const refs = Array.isArray(input.refs) ? input.refs.slice(0, 6) : []
@@ -418,22 +484,14 @@ async function runAssistantAsk(ctx, request) {
   lines.push('（需要落库时请直接调用 workbench_* 工具：建/改待办、登记执行记录、写回资讯摘要。）')
   const promptText = lines.join('\n')
 
-  const requestId = 'wb-assistant-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8)
   try {
-    await controller.prompt(
-      {
-        requestId: requestId,
-        sessionId: session.id,
-        mode: 'queue',
-        content: [{ type: 'text', text: promptText }],
-        clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
-      AbortSignal.timeout(ASSISTANT_TIMEOUT_MS),
-    )
+    const submitted = await submitPrompt(ctx, controller, session, promptText, false)
+    session = submitted.session
+    fromSeq = submitted.fromSeq
   } catch (e) {
     return {
       status: 'error',
-      note: '提示提交失败：' + String((e && e.message) || e).slice(0, 200),
+      note: '提示提交失败：' + String((e && e.message) || e).slice(0, 240),
       reply: '',
       sessionId: String(session.id),
     }
@@ -494,25 +552,21 @@ async function runAssistantAsk(ctx, request) {
 
 /** 侧栏历史：读助手会话最近若干条问答。 */
 async function readAssistantHistory(ctx) {
-  const resolved = getAssistantSession(ctx)
-  if (!resolved) return { status: 'unavailable', note: '没有可用的会话服务', messages: [] }
+  const session = await ensureAssistantSession(ctx)
+  if (!session) return { status: 'unavailable', note: '没有可用的会话服务', messages: [] }
   return {
     status: 'ok',
-    sessionId: String(resolved.session.id),
-    messages: assistantHistoryFrom(resolved.session, 20),
+    sessionId: String(session.id),
+    messages: assistantHistoryFrom(session, 20),
   }
 }
 
 /** 清空助手上下文（换一个新会话，旧会话仍保留在原生会话列表里）。 */
 async function resetAssistantSession(ctx) {
-  const sessions = hostService(ctx, 'sessions')
-  if (!sessions || typeof sessions.create !== 'function') {
-    return { status: 'unavailable', note: '没有可用的会话服务', sessionId: null }
+  const session = await createPersistedSession(ctx)
+  if (!session) {
+    return { status: 'unavailable', note: '没有可用的 sessionController.create', sessionId: null }
   }
-  const session = sessions.create(undefined, { meta: { cwd: cwdForHostCommands(ctx) } })
-  mutateWorkbenchState(function (current) {
-    current.settings.assistantSessionId = String(session.id)
-    return current
-  })
+  rememberAssistantSession(session.id)
   return { status: 'ok', sessionId: String(session.id) }
 }

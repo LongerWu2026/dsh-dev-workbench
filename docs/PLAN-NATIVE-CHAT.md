@@ -72,6 +72,28 @@ interface ClientConnectionRpc {
 注意：我们的手写 `src-json` 描述符目前是 unary（`result: {mode:'src-json'}`），
 要开流式需要验证 stream 描述符，见 §3.2。
 
+### 1.3.1 踩坑记录：不要用 `sessions.create()` 建助手会话
+
+首版用 `ctx.sessions.create()` 建会话，聊天报：
+
+```
+提示提交失败：resume failed for session "session-1":
+SessionPersistenceNotFoundError: session "session-1" not found
+```
+
+原因：`sessions.create()` 只造内存对象，**不写会话日志**；`sessionController.prompt`
+内部会对目标会话 `resume`，找不到持久化记录就报错。而且它给的默认 id 是
+`session-1` 这类计数 id，DSH 重启后注册表清空 → 再次拿到同名 id → 循环报错。
+
+正确做法：`sessionController.create({cwd})`，它内部走
+`createAgent → ctx.agents.create`（`session-${randomUUID()}`），会话是可恢复的。
+
+自愈策略（`src/host/46-assistant.js`）：
+1. 记录的 id 形如 `session-\d+` → 视为旧版脏 id，直接丢弃重建；
+2. `sessions.get(id)` 取不到 → 重建；
+3. `prompt` 仍报 `resume failed` / `SessionPersistenceNotFound` → 重建会话并**重试一次**，
+   同时把新 id 写回设置（`submitPrompt`）。
+
 ### 1.4 Host 侧会话接口（已验证可用）
 
 ```

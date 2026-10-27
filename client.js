@@ -2116,11 +2116,21 @@ window.__ModuleLoader__.load({
           .then(function (result) {
             if (!result || result.status !== 'ok') {
               setSending(false)
-              setError((result && result.note) || ('状态：' + (result && result.status)))
+              const note = (result && result.note) || ('状态：' + (result && result.status))
+              setError(
+                /resume failed|SessionPersistenceNotFound/i.test(note)
+                  ? '助手会话已失效且自动重建失败。点标题栏「新会话」重开一个即可继续。'
+                  : note,
+              )
               return
             }
             let cursor = Number(result.fromSeq) || 0
             const sid = result.sessionId
+            // Host 可能在会话日志丢失后重建了会话：同步到新 id，避免后续继续用旧 id
+            if (sid && activeId && String(sid) !== String(activeId)) {
+              setActiveId(String(sid))
+              WB.toast('原助手会话已失效，已自动切换到新会话', 'info')
+            }
             const startedAt = Date.now()
             // 方案 A1：每 400ms 取增量，工具调用/回复分段边跑边显示
             function tick() {

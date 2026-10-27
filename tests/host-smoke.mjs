@@ -890,68 +890,101 @@ check(
 
 // TODO 04：侧栏助手走原生会话（假 sessions + sessionController 验证链路）
 {
-  const events = []
-  const fakeSession = {
-    id: 'session-assistant-fake',
-    get seq() {
-      return events.length
-    },
-    snapshotEvents(from, to) {
-      return events.slice(from === undefined ? 0 : from, to === undefined ? events.length : to)
-    },
+  function makeFakeWorld() {
+    const events = []
+    const session = {
+      id: 'session-fake-recovered',
+      get seq() {
+        return events.length
+      },
+      snapshotEvents(from, to) {
+        return events.slice(from === undefined ? 0 : from, to === undefined ? events.length : to)
+      },
+    }
+    const registry = new Map()
+    const world = {
+      events: events,
+      session: session,
+      registry: registry,
+      createCalls: 0,
+      promptCalls: 0,
+      promptFails: new Map(), // sessionId → 需要抛 resume 错误
+    }
+    world.sessions = {
+      get: (id) => registry.get(id),
+      create: () => {
+        throw new Error('不应再使用 sessions.create（无持久化日志）')
+      },
+      list: () => Array.from(registry.values()),
+    }
+    world.controller = {
+      createSession: async () => {
+        world.createCalls += 1
+        registry.set(session.id, session)
+        return { agent: { session: session }, agentPreset: 'default' }
+      },
+      prompt: async (request) => {
+        world.promptCalls += 1
+        if (world.promptFails.has(request.sessionId)) {
+          return Promise.reject(
+            new Error(
+              'resume failed for session "' + request.sessionId + '": SessionPersistenceNotFoundError: session "' + request.sessionId + '" not found',
+            ),
+          )
+        }
+        setTimeout(() => {
+          events.push({ type: 'user/message', seq: events.length + 1, time: Date.now(), data: { content: request.content } })
+          events.push({ type: 'tool/call', seq: events.length + 1, time: Date.now(), data: { name: 'workbench_create_task', arguments: { title: '限流结论' } } })
+          events.push({ type: 'tool/result', seq: events.length + 1, time: Date.now(), data: { name: 'workbench_create_task' } })
+          events.push({
+            type: 'assistant/message',
+            seq: events.length + 1,
+            time: Date.now(),
+            data: { message: { content: [{ type: 'text', text: '助手回复：今天先处理限流结论' }] } },
+          })
+          events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
+        }, 20)
+        return { accepted: true }
+      },
+    }
+    return world
   }
-  const registry = new Map([[fakeSession.id, fakeSession]])
-  fakeSessions = {
-    get: (id) => registry.get(id),
-    create: () => fakeSession,
-    list: () => [fakeSession],
-  }
-  fakeSessionController = {
-    prompt: async (request) => {
-      setTimeout(() => {
-        // 真实事件顺序：用户消息 → 工具调用 → 工具结果 → 助手消息 → 本轮结束
-        events.push({ type: 'user/message', seq: 1, time: Date.now(), data: { content: request.content } })
-        events.push({ type: 'tool/call', seq: 2, time: Date.now(), data: { name: 'workbench_create_task', arguments: { title: '限流结论' } } })
-        events.push({ type: 'tool/result', seq: 3, time: Date.now(), data: { name: 'workbench_create_task' } })
-        events.push({
-          type: 'assistant/message',
-          seq: 4,
-          time: Date.now(),
-          data: { message: { content: [{ type: 'text', text: '助手回复：今天先处理限流结论' }] } },
-        })
-        events.push({ type: 'turn/end', seq: 5, time: Date.now(), data: {} })
-      }, 20)
-      return { accepted: true }
-    },
-  }
+
+  // --- 场景 1：正常链路 ---
+  let world = makeFakeWorld()
+  fakeSessions = world.sessions
+  fakeSessionController = world.controller
+  await api.saveSettings({ assistantSessionId: null })
 
   const asked = await api.assistantAsk({ text: '帮我看看今天要做什么', refs: [{ kind: 'task', id: 't1', title: '示例任务' }] })
   check('助手问答返回回复', asked.status === 'ok' && asked.reply.indexOf('助手回复') >= 0, JSON.stringify(asked))
   check('助手回传本轮工具调用', Array.isArray(asked.toolCalls) && asked.toolCalls.indexOf('workbench_create_task') >= 0)
-  check('助手复用同一个原生会话', asked.sessionId === 'session-assistant-fake')
+  check('助手会话经 createSession 建立', world.createCalls === 1, String(world.createCalls))
+  check('助手复用同一个原生会话', asked.sessionId === world.session.id, asked.sessionId)
 
-  // 会话列表与记录（原生会话浏览器）
   const sessionList = await api.assistantSessions({ limit: 5 })
   check('助手会话列表可读', sessionList.status === 'ok' && sessionList.sessions.length >= 1, JSON.stringify(sessionList))
   check('会话列表标记助手会话', sessionList.sessions.some((row) => row.isAssistant))
-  const transcript = await api.assistantTranscript({ sessionId: 'session-assistant-fake' })
-  check('会话记录可读（含工具调用）', transcript.status === 'ok' && transcript.messages.some((m) => m.role === 'assistant' && (m.toolCalls || []).length >= 1), JSON.stringify(transcript.messages.slice(-1)))
+  const transcript = await api.assistantTranscript({ sessionId: world.session.id })
+  check(
+    '会话记录可读（含工具调用）',
+    transcript.status === 'ok' && transcript.messages.some((m) => m.role === 'assistant' && (m.toolCalls || []).length >= 1),
+    JSON.stringify(transcript.messages.slice(-1)),
+  )
   const missing = await api.assistantTranscript({ sessionId: 'no-such-session' })
   check('读取不存在的会话如实返回', missing.status === 'not_found')
 
-  // 方案 A1：渐进渲染链路（send 立即返回 → delta 增量取条目）
+  // --- 场景 2：渐进渲染 ---
   {
-    const sent = await api.assistantSend({ text: '渐进渲染测试', sessionId: 'session-assistant-fake' })
+    const sent = await api.assistantSend({ text: '渐进渲染测试', sessionId: world.session.id })
     check('assistantSend 立即返回 fromSeq', sent.status === 'ok' && Number.isFinite(sent.fromSeq), JSON.stringify(sent))
-    // 假控制器 20ms 后写入事件；给一点时间再取增量
     await new Promise((resolve) => setTimeout(resolve, 120))
-    const delta = await api.assistantDelta({ sessionId: 'session-assistant-fake', fromSeq: sent.fromSeq })
+    const delta = await api.assistantDelta({ sessionId: world.session.id, fromSeq: sent.fromSeq })
     check('assistantDelta 返回新条目', delta.status === 'ok' && delta.entries.length >= 3, JSON.stringify(delta.entries.map((e) => e.role)))
     check('assistantDelta 含工具与助手条目', delta.entries.some((e) => e.role === 'tool') && delta.entries.some((e) => e.role === 'assistant'))
     check('assistantDelta 给出 nextSeq', Number.isFinite(delta.nextSeq) && delta.nextSeq >= sent.fromSeq)
     check('turn 结束后 turnActive 为假', delta.turnActive === false)
-    // 再取一次不应重复返回旧条目
-    const again = await api.assistantDelta({ sessionId: 'session-assistant-fake', fromSeq: delta.nextSeq })
+    const again = await api.assistantDelta({ sessionId: world.session.id, fromSeq: delta.nextSeq })
     check('增量读取不重复', again.entries.length === 0, JSON.stringify(again.entries.map((e) => e.role)))
   }
 
@@ -960,6 +993,36 @@ check(
 
   const reset = await api.assistantReset()
   check('助手可开新会话', reset.status === 'ok' && typeof reset.sessionId === 'string')
+
+  // --- 场景 3：旧版计数字 id（session-1）自动丢弃重建 ---
+  {
+    const legacy = makeFakeWorld()
+    fakeSessions = legacy.sessions
+    fakeSessionController = legacy.controller
+    await api.saveSettings({ assistantSessionId: 'session-1' })
+    // session-1 即便在注册表里也不该被复用
+    legacy.registry.set('session-1', { id: 'session-1', seq: 0, snapshotEvents: () => [] })
+    const outcome = await api.assistantAsk({ text: '旧 id 自愈' })
+    check('旧版 session-N id 被丢弃重建', outcome.status === 'ok' && legacy.createCalls === 1, JSON.stringify({ status: outcome.status, createCalls: legacy.createCalls }))
+    check('重建后记住新会话 id', String(outcome.sessionId) === legacy.session.id, String(outcome.sessionId))
+  }
+
+  // --- 场景 4：prompt 报 resume 失败 → 重建并重试一次 ---
+  {
+    const broken = makeFakeWorld()
+    fakeSessions = broken.sessions
+    fakeSessionController = broken.controller
+    const staleSession = { id: 'session-stale-live', seq: 0, snapshotEvents: () => [] }
+    broken.registry.set(staleSession.id, staleSession)
+    broken.promptFails.set(staleSession.id, true)
+    await api.saveSettings({ assistantSessionId: staleSession.id })
+    const healed = await api.assistantAsk({ text: 'resume 自愈' })
+    check('resume 失败后自愈并成功', healed.status === 'ok' && healed.reply.indexOf('助手回复') >= 0, JSON.stringify(healed))
+    check('自愈时重建了新会话', broken.createCalls === 1, String(broken.createCalls))
+    check('自愈后会话 id 已更新', String(healed.sessionId) === broken.session.id, String(healed.sessionId))
+    const sentHealed = await api.assistantSend({ text: '自愈后发送' })
+    check('自愈后继续可用', sentHealed.status === 'ok', JSON.stringify(sentHealed))
+  }
 
   fakeSessions = null
   fakeSessionController = null
