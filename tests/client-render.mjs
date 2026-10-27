@@ -486,6 +486,15 @@ const ctx = {
         if (endpoint === 'workbench/diagnostics') return Promise.resolve({ ok: true, value: diagnostics })
         if (endpoint === 'workbench/environment') return Promise.resolve({ ok: true, value: environmentFixture })
         if (endpoint === 'workbench/github') return Promise.resolve({ ok: true, value: githubFixture })
+        if (endpoint === 'workbench/assistantAsk') {
+          return Promise.resolve({
+            ok: true,
+            value: { status: 'ok', reply: '助手回复：今天先处理限流结论，已帮你排好序。', toolCalls: ['workbench_create_task'], sessionId: 'session-fake' },
+          })
+        }
+        if (endpoint === 'workbench/assistantHistory') {
+          return Promise.resolve({ ok: true, value: { status: 'ok', messages: [{ role: 'user', text: '早上好', at: iso(-1) }], sessionId: 'session-fake' } })
+        }
         if (endpoint === 'workbench/search') return Promise.resolve({ ok: true, value: searchFixture })
         return Promise.resolve({ ok: true, value: snapshotFixture() })
       },
@@ -591,7 +600,7 @@ function findButtons(entries, out) {
 function findInputs(entries, out) {
   entries.forEach((item) => {
     if (item.tag) {
-      if (item.tag === 'input' && typeof (item.props || {}).onChange === 'function') {
+      if ((item.tag === 'input' || item.tag === 'textarea') && typeof (item.props || {}).onChange === 'function') {
         out.push(item.props)
       }
       findInputs(item.children || [], out)
@@ -726,7 +735,22 @@ for (const [title, id, expected] of pageSpecs) {
     const drawer = await renderTree('助手·抽屉')
     const text = treeText(drawer).replace(/\s+/g, ' ')
     if (text.indexOf('工作台助手') < 0) problems.push('助手抽屉没有渲染标题')
-    if (text.indexOf('复制上下文并打开会话') < 0) problems.push('助手抽屉缺少「复制上下文并打开会话」')
+    if (text.indexOf('早上好') < 0) problems.push('助手抽屉没有载入历史消息')
+    const composer = findInputs(drawer, []).find((props) => /问点什么/.test(String(props.placeholder || '')))
+    if (!composer) problems.push('助手抽屉缺少输入框')
+    else {
+      composer.onChange({ target: { value: '今天还有哪些没做完？' } })
+      const typed = await renderTree('助手·已输入')
+      const sendBtn = findButtons(typed, []).find((button) => button.text.indexOf('发送') >= 0)
+      if (!sendBtn) problems.push('助手抽屉缺少「发送」按钮')
+      else {
+        sendBtn.onClick()
+        const replied = await renderTree('助手·已回复')
+        const replyText = treeText(replied).replace(/\s+/g, ' ')
+        if (replyText.indexOf('助手回复') < 0) problems.push('助手没有显示模型回复')
+        if (replyText.indexOf('workbench_create_task') < 0) problems.push('助手没有显示本轮工具调用')
+      }
+    }
     // 从待办/资讯卡片加入上下文
     const analyze = findButtons(drawer, []).find((button) => button.label.indexOf('AI 分析这条') >= 0)
     if (!analyze) problems.push('卡片上找不到「AI 分析」入口')

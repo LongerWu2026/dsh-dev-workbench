@@ -522,6 +522,19 @@ const workbenchApi = {
     return buildGithubSnapshot(workbenchContext())
   },
 
+  /** 工作台助手：向原生会话提交提示并等待本轮回复（TODO 04）。 */
+  async assistantAsk(request) {
+    return runAssistantAsk(workbenchContext(), request || {})
+  },
+
+  async assistantHistory() {
+    return readAssistantHistory(workbenchContext())
+  },
+
+  async assistantReset() {
+    return resetAssistantSession(workbenchContext())
+  },
+
   /** 立即跑一次后台自动化（TODO 07）；返回本次结果。 */
   async automationRun() {
     return runAutomationTick(workbenchContext())

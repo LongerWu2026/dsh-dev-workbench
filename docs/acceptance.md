@@ -12,7 +12,7 @@
 | Host 半语法 | `node --check index.js` | 通过 |
 | Client 半语法 | `node --check client.js` | 通过 |
 | 跨文件顶层重名 | `node scripts/build.mjs --check` | 11 host / 12 client part，无冲突 |
-| Host 业务逻辑 | `node tests/host-smoke.mjs` | **146/146 通过** |
+| Host 业务逻辑 | `node tests/host-smoke.mjs` | **152/152 通过** |
 | Client 全页面渲染 | `node tests/client-render.mjs` | **8/8 页面 + 空态 + 6 个新增工具面板**；真实驱动搜索、抓取资讯、@我 再拉一次、逐个切换工具 |
 | **描述符实参交叉校验** | 渲染测试从 `src/host/40-remote.js` 解析签名表，逐一核对每个 RPC 调用的实参键 | **22/22 一致**——正是此项挡住 `fetchRadar` 的 `unexpected "request"`（客户端对零参端点多发了 `request` 字段，网关严格校验拒绝） |
 | 插件安装 | `plugin_manager install_bundle` | `application: applied`，`warnings: []` |
@@ -135,6 +135,7 @@ node tests/client-render.mjs
 | 09 Agent 回写 | 任务上下文入会话，`workbench_record_run` 回写并挂 `runIds` | 工具执行断言 |
 | 10 引用问答 | `workbench_search` 返回分组 + 每路状态，模型据此引用作答 | 工具注册与描述 |
 | 11 备份恢复 | 损坏文件留存、每日自动备份、手动备份/恢复 UI | 3 项断言 |
+| 04 侧栏对话 | `assistantAsk` 走 `sessions.create → sessionController.prompt → snapshotEvents 轮询 turn/end`，返回回复、工具调用与会话 id；历史/新会话/清空可用 | 6 项 Host 断言（回复、工具调用、会话复用、历史、重置、缺服务降级）+ 渲染测试真实发送并断言回复气泡 |
 | 07 后台调度 | 插件侧定时器：60s 判定到期、单飞锁、启动补跑、`lastAutomation` 记录；设置页开关/间隔/立即执行（仅进程存活期间生效） | 5 项断言（默认关闭、未开启不执行、开启后执行并记录、写入资讯、刚跑完不算到期） |
 | 05 增量游标 | `im group recent` + `im message list --type new --msg-id` 按群游标取增量；`notifyType` 判据覆盖昵称 @；补充关键词兜底 | 5 项断言（昵称 @ 捕获、普通消息不误判、游标写入、只取新消息、游标推进） |
 

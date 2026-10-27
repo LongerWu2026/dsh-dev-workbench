@@ -1134,6 +1134,17 @@ window.__ModuleLoader__.load({
           })
       },
 
+      /** 侧栏助手：向原生会话提交一次问答，返回 {status, reply, toolCalls, note}。 */
+      assistantAsk(text, refs) {
+        return wbRpc('workbench/assistantAsk', { request: { text: text, refs: refs || [] } })
+      },
+      assistantHistory() {
+        return wbRpc('workbench/assistantHistory', {})
+      },
+      assistantReset() {
+        return wbRpc('workbench/assistantReset', {})
+      },
+
       automationRun() {
         return wbRpc('workbench/automationRun', {})
       },
@@ -1974,24 +1985,97 @@ window.__ModuleLoader__.load({
       search: '检索结果',
     }
 
+    /**
+     * 侧栏助手：真正可对话的聊天窗口。
+     * 走 Host 的原生会话与模型（workbench/assistantAsk），因此 Agent 能直接调用
+     * workbench_* 工具写回同一份数据；插件内不自建模型调用。
+     */
     function AssistantDrawer() {
       const state = useStore()
-      const [instruction, setInstruction] = React.useState('')
-      if (!state.assistantOpen) return null
+      const [messages, setMessages] = React.useState([])
+      const [draft, setDraft] = React.useState('')
+      const [sending, setSending] = React.useState(false)
+      const [error, setError] = React.useState(null)
+      const [loaded, setLoaded] = React.useState(false)
+      const bodyRef = React.useRef(null)
+
+      const open = !!state.assistantOpen
       const refs = Array.isArray(state.assistantRefs) ? state.assistantRefs : []
 
-      function copyAndOpen() {
-        const brief = assistantBrief(refs, instruction)
-        WB.util
-          .copy(brief)
+      // 打开时载入历史（复用同一个原生会话，跨次打开内容连续）
+      React.useEffect(
+        function () {
+          if (!open || loaded) return
+          setLoaded(true)
+          WB.actions
+            .assistantHistory()
+            .then(function (result) {
+              const history = (result && result.messages) || []
+              setMessages(function (previous) {
+                return previous.length > 0 ? previous : history
+              })
+            })
+            .catch(function () {
+              /* 历史读取失败不影响继续对话 */
+            })
+        },
+        [open, loaded],
+      )
+
+      // 新消息滚到底部
+      React.useEffect(
+        function () {
+          const node = bodyRef.current
+          if (node) node.scrollTop = node.scrollHeight
+        },
+        [messages, sending],
+      )
+
+      if (!open) return null
+
+      function send() {
+        const text = draft.trim()
+        if (!text || sending) return
+        setError(null)
+        setDraft('')
+        setSending(true)
+        setMessages(function (previous) {
+          return previous.concat([{ role: 'user', text: text }])
+        })
+        WB.actions
+          .assistantAsk(text, refs)
+          .then(function (result) {
+            setSending(false)
+            if (result && result.reply) {
+              setMessages(function (previous) {
+                return previous.concat([
+                  { role: 'assistant', text: result.reply, toolCalls: result.toolCalls || [] },
+                ])
+              })
+            }
+            if (result && result.status !== 'ok') {
+              setError(result.note || ('状态：' + result.status))
+            }
+            if (result && result.status === 'ok') {
+              // 助手可能已通过工具改过数据，立刻对齐一次
+              WB.actions.reload().catch(function () {})
+            }
+          })
+          .catch(function (failure) {
+            setSending(false)
+            setError(String((failure && failure.message) || failure))
+          })
+      }
+
+      function resetSession() {
+        WB.actions
+          .assistantReset()
           .then(function () {
-            WB.toast('上下文简报已复制，正在打开会话…', 'ok')
-            if (WB.openConversation) WB.openConversation()
-            wbStore.set({ assistantOpen: false })
+            setMessages([])
+            setError(null)
+            WB.toast('已开始新的助手会话', 'ok')
           })
-          .catch(function (error) {
-            WB.toast(String((error && error.message) || error), 'err')
-          })
+          .catch(function () {})
       }
 
       return h(
@@ -2002,11 +2086,10 @@ window.__ModuleLoader__.load({
             top: 0,
             right: 0,
             bottom: 0,
-            width: 332,
+            width: 360,
             zIndex: 40,
             display: 'flex',
             flexDirection: 'column',
-            gap: 0,
             borderLeft: '1px solid ' + T.border1,
             background: T.layer1,
             boxShadow: '-12px 0 32px rgba(0,0,0,.28)',
@@ -2020,84 +2103,136 @@ window.__ModuleLoader__.load({
             'div',
             { className: 'wb-card-titles' },
             h('h3', { className: 'wb-card-title' }, '工作台助手'),
-            h('p', { className: 'wb-card-sub' }, '把下方上下文带进原生会话，Agent 会写回同一份数据'),
+            h('p', { className: 'wb-card-sub' }, '原生会话与模型；可直接读写工作台数据'),
           ),
           h(
             'div',
             { className: 'wb-card-actions' },
+            h(IconBtn, { name: 'plus', label: '新会话', onClick: resetSession }),
             h(IconBtn, {
-              name: 'close',
-              label: '关闭助手',
+              name: 'external',
+              label: '打开完整会话',
               onClick: function () {
-                WB.assistant.close()
+                if (WB.openConversation) WB.openConversation()
               },
             }),
+            h(IconBtn, { name: 'close', label: '关闭助手', onClick: function () { WB.assistant.close() } }),
           ),
         ),
         h(
           'div',
-          { style: { flex: '1 1 auto', overflow: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 } },
-          refs.length === 0
-            ? h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.7 } },
-                '还没有上下文。在待办、资讯、知识或搜索结果上点「AI 分析」，就会把那条记录加到这里（可随时移除）。')
-            : refs.map(function (ref) {
+          {
+            ref: bodyRef,
+            style: { flex: '1 1 auto', overflow: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 },
+          },
+          messages.length === 0 && !sending
+            ? h(
+                'div',
+                { className: 'wb-tiny wb-muted', style: { lineHeight: 1.8 } },
+                h('p', { style: { margin: '0 0 6px' } }, '可以直接问我工作台里的事，例如：'),
+                h('p', { style: { margin: '0 0 4px' } }, '· 今天还有哪些没做完？帮我把逾期的排一下'),
+                h('p', { style: { margin: '0 0 4px' } }, '· 把这个消息整理成待办，截止放到明天'),
+                h('p', { style: { margin: '0 0 4px' } }, '· 这些资讯里哪条和限流有关？'),
+                h('p', { style: { margin: 0 } }, '带上下文提问时，先在上方卡片点「AI 分析」把相关记录加进来。'),
+              )
+            : messages.map(function (message, index) {
+                const mine = message.role === 'user'
                 return h(
                   'div',
-                  {
-                    key: ref.kind + ':' + ref.id,
-                    style: { display: 'flex', alignItems: 'flex-start', gap: 6, padding: '8px 10px', border: '1px solid ' + T.border1, borderRadius: 10 },
-                  },
-                  h(Badge, { tone: 'idle' }, ASSISTANT_KIND_LABEL[ref.kind] || ref.kind),
+                  { key: 'm' + index, style: { display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' } },
                   h(
                     'div',
-                    { style: { flex: '1 1 auto', minWidth: 0, fontSize: 11.5, lineHeight: 1.5 } },
-                    h('div', { style: { fontWeight: 500, overflowWrap: 'anywhere' } }, ref.title || ref.id),
-                    ref.body ? h('div', { className: 'wb-tiny wb-muted wb-clamp2' }, String(ref.body).slice(0, 120)) : null,
-                  ),
-                  h(IconBtn, {
-                    name: 'close',
-                    label: '移除该上下文',
-                    onClick: function () {
-                      WB.assistant.remove(ref.kind, ref.id)
+                    {
+                      style: {
+                        maxWidth: '92%',
+                        padding: '8px 10px',
+                        borderRadius: 10,
+                        fontSize: 12,
+                        lineHeight: 1.65,
+                        whiteSpace: 'pre-wrap',
+                        overflowWrap: 'anywhere',
+                        background: mine ? T.accent : T.layer2,
+                        color: mine ? T.bg : T.text,
+                      },
                     },
-                  }),
+                    message.text,
+                    message.toolCalls && message.toolCalls.length > 0
+                      ? h(
+                          'div',
+                          { style: { marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 } },
+                          message.toolCalls.map(function (name, toolIndex) {
+                            return h(Chip, { key: 't' + toolIndex, icon: 'command', children: name })
+                          }),
+                        )
+                      : null,
+                  ),
                 )
               }),
-          h(Field, { label: '我的要求' }, h(Textarea, {
-            value: instruction,
-            placeholder: '例如：帮我判断这条消息要不要建待办，并补全截止时间',
-            onChange: function (event) {
-              setInstruction(event.target.value)
-            },
-          })),
+          sending
+            ? h(
+                'div',
+                { className: 'wb-row wb-tiny wb-muted', style: { gap: 6 } },
+                h(Spinner, { size: 12 }),
+                h('span', null, '助手正在思考…'),
+              )
+            : null,
+          error
+            ? h('div', { role: 'alert', className: 'wb-tiny', style: { color: T.err, lineHeight: 1.6 } }, error)
+            : null,
         ),
         h(
           'div',
-          { className: 'wb-card-foot', style: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderTop: '1px solid ' + T.border1 } },
-          h(Btn, {
-            size: 'sm',
-            kind: 'subtle',
-            icon: 'refresh',
-            disabled: refs.length === 0,
-            onClick: function () {
-              WB.assistant.clear()
+          { style: { borderTop: '1px solid ' + T.border1, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 } },
+          refs.length > 0
+            ? h(
+                'div',
+                { style: { display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' } },
+                h('span', { className: 'wb-tiny wb-muted' }, '上下文 ' + refs.length + ' 条：'),
+                refs.map(function (ref) {
+                  return h(Chip, {
+                    key: ref.kind + ':' + ref.id,
+                    active: true,
+                    title: ref.title,
+                    children: WB.util.truncate(ref.title || ref.id, 16),
+                    onRemove: function () {
+                      WB.assistant.remove(ref.kind, ref.id)
+                    },
+                  })
+                }),
+              )
+            : null,
+          h(Textarea, {
+            value: draft,
+            rows: 2,
+            placeholder: '问点什么，或让我把某些信息整理成待办…（Enter 发送 / Shift+Enter 换行）',
+            onChange: function (event) {
+              setDraft(event.target.value)
             },
-            children: '清空',
+            onKeyDown: function (event) {
+              if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault()
+                send()
+              }
+            },
           }),
-          h('div', { className: 'wb-spacer' }),
-          h(Btn, {
-            size: 'sm',
-            kind: 'primary',
-            icon: 'copy',
-            disabled: refs.length === 0,
-            onClick: copyAndOpen,
-            children: '复制上下文并打开会话',
-          }),
+          h(
+            'div',
+            { className: 'wb-row', style: { gap: 6 } },
+            h('div', { className: 'wb-spacer' }),
+            h(Btn, {
+              size: 'sm',
+              kind: 'primary',
+              icon: 'arrowRight',
+              disabled: sending || !draft.trim(),
+              onClick: send,
+              children: sending ? '发送中…' : '发送',
+            }),
+          ),
         ),
       )
     }
 
-    /* --------------------------------------------------------------- error gate */
+    /* --------------------------------------------------------------- error gate *//* --------------------------------------------------------------- error gate */
     function LoadingScreen() {
       return h(
         'div',

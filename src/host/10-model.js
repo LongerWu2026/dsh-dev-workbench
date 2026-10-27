@@ -143,6 +143,8 @@ function normalizeSettings(raw) {
     feeds: feeds,
     /** 昵称/别名 @ 的补充关键词（增量游标覆盖不到时的兜底检索） */
     mentionKeywords: asTags(input.mentionKeywords, 6),
+    /** 工作台助手复用的原生会话 id（侧栏聊天） */
+    assistantSessionId: asString(input.assistantSessionId, 120) || null,
     /** 后台自动化（TODO 07）：插件侧定时执行确定性采集 */
     automation: normalizeAutomation(input.automation),
   }

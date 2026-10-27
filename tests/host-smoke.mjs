@@ -21,6 +21,8 @@ const tools = []
 let remoteContribution = null
 let webMock = null
 let yzjSpawner = null
+let fakeSessions = null
+let fakeSessionController = null
 const ctx = {
   provide(name, value) {
     services[name] = value
@@ -46,6 +48,8 @@ const ctx = {
   get(name) {
     if (name === 'web' && webMock) return webMock
     if (name === 'subprocess' && yzjSpawner) return yzjSpawner
+    if (name === 'sessions' && fakeSessions) return fakeSessions
+    if (name === 'sessionController' && fakeSessionController) return fakeSessionController
     return undefined
   },
   logger: { info() {} },
@@ -207,7 +211,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 34 个 Remote 描述符', invocations.length === 34, '实际 ' + invocations.length)
+check('注册了 37 个 Remote 描述符', invocations.length === 37, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -882,6 +886,57 @@ check(
   const off = await api.automationRun()
   check('关闭后 tick 不执行', off.ran === false)
   webMock = null
+}
+
+// TODO 04：侧栏助手走原生会话（假 sessions + sessionController 验证链路）
+{
+  const events = []
+  const fakeSession = {
+    id: 'session-assistant-fake',
+    get seq() {
+      return events.length
+    },
+    snapshotEvents(from, to) {
+      return events.slice(from === undefined ? 0 : from, to === undefined ? events.length : to)
+    },
+  }
+  const registry = new Map([[fakeSession.id, fakeSession]])
+  fakeSessions = {
+    get: (id) => registry.get(id),
+    create: () => fakeSession,
+  }
+  fakeSessionController = {
+    prompt: async (request) => {
+      setTimeout(() => {
+        events.push({ type: 'user/message', seq: 1, time: Date.now(), data: { content: request.content } })
+        events.push({
+          type: 'assistant/message',
+          seq: 2,
+          time: Date.now(),
+          data: { message: { content: [{ type: 'text', text: '助手回复：今天先处理限流结论' }] } },
+        })
+        events.push({ type: 'tool/call', seq: 3, time: Date.now(), data: { name: 'workbench_create_task' } })
+        events.push({ type: 'turn/end', seq: 4, time: Date.now(), data: {} })
+      }, 20)
+      return { accepted: true }
+    },
+  }
+
+  const asked = await api.assistantAsk({ text: '帮我看看今天要做什么', refs: [{ kind: 'task', id: 't1', title: '示例任务' }] })
+  check('助手问答返回回复', asked.status === 'ok' && asked.reply.indexOf('助手回复') >= 0, JSON.stringify(asked))
+  check('助手回传本轮工具调用', Array.isArray(asked.toolCalls) && asked.toolCalls.indexOf('workbench_create_task') >= 0)
+  check('助手复用同一个原生会话', asked.sessionId === 'session-assistant-fake')
+
+  const history = await api.assistantHistory()
+  check('助手历史可读（含用户与助手）', history.messages.filter((m) => m.role === 'assistant').length >= 1 && history.messages.filter((m) => m.role === 'user').length >= 1)
+
+  const reset = await api.assistantReset()
+  check('助手可开新会话', reset.status === 'ok' && typeof reset.sessionId === 'string')
+
+  fakeSessions = null
+  fakeSessionController = null
+  const degraded = await api.assistantAsk({ text: '在吗' })
+  check('缺会话服务时如实降级', degraded.status === 'unavailable' && !!degraded.note, JSON.stringify(degraded))
 }
 
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖

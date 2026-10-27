@@ -1109,6 +1109,17 @@ const wbActions = {
       })
   },
 
+  /** 侧栏助手：向原生会话提交一次问答，返回 {status, reply, toolCalls, note}。 */
+  assistantAsk(text, refs) {
+    return wbRpc('workbench/assistantAsk', { request: { text: text, refs: refs || [] } })
+  },
+  assistantHistory() {
+    return wbRpc('workbench/assistantHistory', {})
+  },
+  assistantReset() {
+    return wbRpc('workbench/assistantReset', {})
+  },
+
   automationRun() {
     return wbRpc('workbench/automationRun', {})
   },
