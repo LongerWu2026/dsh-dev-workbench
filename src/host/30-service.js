@@ -465,6 +465,11 @@ const workbenchApi = {
     return buildEnvironment(workbenchContext())
   },
 
+  /** GitHub 只读快照（PR / CI），走 gh CLI 白名单命令。 */
+  async github() {
+    return buildGithubSnapshot(workbenchContext())
+  },
+
   async diagnostics() {
     const state = loadWorkbenchState()
     const path = workbenchStatePath()

@@ -53,6 +53,13 @@ const ctx = {
 
 apply(ctx, {})
 
+// 提前写入本地搜索用的夹具文件：文件索引有 60s 缓存，必须早于首次搜索
+{
+  const { writeFileSync, mkdirSync } = await import('node:fs')
+  mkdirSync(join(home, 'workspace'), { recursive: true })
+  writeFileSync(join(home, 'workspace', 'rate-limit-notes.md'), '# 限流笔记\n阈值 1500 QPS 的具体推导\n', 'utf8')
+}
+
 const api = services.workbench
 
 const checks = []
@@ -153,7 +160,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 26 个 Remote 描述符', invocations.length === 26, '实际 ' + invocations.length)
+check('注册了 27 个 Remote 描述符', invocations.length === 27, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -367,6 +374,23 @@ function makeYzjSpawner(mentionJson, docJson) {
           data: { list: [{ roomId: 'r1', roomName: 'B10 会议室', roomDetail: 'B栋-10F', limitCount: 12 }] },
         })
       }
+      if (/^.*gh pr list/.test(cmdline)) {
+        return JSON.stringify([
+          { number: 12, title: 'feat: 工作台骨架', state: 'OPEN', isDraft: false, author: { login: 'wulonglong' }, updatedAt: '2026-10-27T10:00:00Z', url: 'https://github.com/o/r/pull/12' },
+        ])
+      }
+      if (/^.*gh run list/.test(cmdline)) {
+        return JSON.stringify([
+          { databaseId: 99, status: 'completed', conclusion: 'success', workflowName: 'ci', headBranch: 'main', createdAt: '2026-10-27T09:00:00Z', url: 'https://github.com/o/r/actions/runs/99' },
+        ])
+      }
+      if (/^.*ps aux/.test(cmdline)) {
+        return [
+          'USER PID %CPU %MEM VSZ RSS TT STAT STARTED TIME COMMAND',
+          'wulonglong 100 55.0 3.2 1000 200 s001 R 10:00AM 1:00 node server.js',
+          'wulonglong 200 5.0 1.0 800 100 s001 S 10:00AM 0:10 redis-server',
+        ].join('\n')
+      }
       if (/attendance\s+record\s+list/.test(cmdline)) {
         return JSON.stringify({
           success: true,
@@ -492,6 +516,74 @@ check(
 )
 
 yzjSpawner = null
+
+// GitHub PR / CI（gh CLI 只读）—— 需要一个能答应 gh/ps 的 spawner
+yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
+const ghSnap = await api.github()
+check('GitHub 快照状态 ok', ghSnap.status === 'ok', JSON.stringify(ghSnap.status))
+check('解析到 PR', ghSnap.prs.items.length === 1 && ghSnap.prs.items[0].number === 12)
+check('解析到 CI 运行', ghSnap.runs.items.length === 1 && ghSnap.runs.items[0].conclusion === 'success')
+
+// 进程探测
+const envWithProcs = await api.environment()
+check('进程探测可用', !!envWithProcs.processes && envWithProcs.processes.status === 'ok', JSON.stringify(envWithProcs.processes && envWithProcs.processes.status))
+check('进程按 CPU 排序', envWithProcs.processes.items.length === 2 && envWithProcs.processes.items[0].pid === '100', JSON.stringify(envWithProcs.processes.items.map((p) => p.pid)))
+
+// 本地项目搜索（夹具文件已在测试开始时写入）
+{
+  const fileSearch = await api.search({ query: 'rate-limit' })
+  const fileGroup = fileSearch.groups.find((g) => g.id === 'files')
+  check('本地文件搜索命中文件名', !!fileGroup && fileGroup.items.some((i) => i.kind === 'file'), JSON.stringify(fileGroup && fileGroup.status))
+  const contentSearch = await api.search({ query: '阈值 1500' })
+  const contentGroup = contentSearch.groups.find((g) => g.id === 'files')
+  check(
+    '本地文件搜索命中内容片段',
+    !!contentGroup && contentGroup.items.some((i) => String(i.snippet || '').indexOf('第') === 0),
+    JSON.stringify(contentGroup && contentGroup.items[0] && contentGroup.items[0].snippet),
+  )
+}
+
+// PR/CI 意图搜索
+const prSearch = await api.search({ query: 'CI 构建状态' })
+check('CI 意图触发 PR/CI 分组', prSearch.groups.some((g) => g.id === 'github'), prSearch.groups.map((g) => g.id).join(','))
+
+// 语义近似去重：标题相近但 URL 不同，不应重复入库
+{
+  const nearDup = {
+    success: true,
+    data: {
+      list: [
+        {
+          group: { groupId: 'g9', groupName: '群' },
+          messages: [
+            { message: { msgId: 'dup-a', content: '@测试用户 看一下网关限流阈值', fromOpenId: 'o1', sendTime: '2026-10-27 12:00:00', param: { notifyType: 1 } } },
+          ],
+        },
+      ],
+    },
+  }
+  yzjSpawner = makeYzjSpawner(nearDup, DOC_SEARCH)
+  webMock = {
+    fetch(request) {
+      const first = String(request.url).indexOf('one') >= 0
+      const rss = [
+        '<?xml version="1.0"?><rss><channel>',
+        '<item><title>' + (first ? 'Harness Slots 扩展点全面开放' : 'Harness Slots 扩展点全面开放了') + '</title>',
+        '<description>x</description><pubDate>Tue, 27 Oct 2026 06:00:00 +0000</pubDate>',
+        '<link>https://example.com/' + (first ? 'one' : 'two') + '</link></item>',
+        '</channel></rss>',
+      ].join('')
+      return Promise.resolve({ statusCode: 200, url: request.url, body: { kind: 'text', content: rss } })
+    },
+  }
+  await api.saveSettings({ feeds: [{ id: 'f1', label: '源', url: 'https://example.com/one.xml' }] })
+  const first = await api.fetchRadar()
+  await api.saveSettings({ feeds: [{ id: 'f1', label: '源', url: 'https://example.com/two.xml' }] })
+  const second = await api.fetchRadar()
+  check('语义近似去重：相似标题不重复入库', second.lastRadarFetch.added === 0, JSON.stringify(second.lastRadarFetch))
+  yzjSpawner = null
+  webMock = null
+}
 
 // 落盘后重新读取：验证持久化（对比重载前后的记录数，不写死数字）
 const preReload = await api.snapshot()

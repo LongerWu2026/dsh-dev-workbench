@@ -157,6 +157,29 @@ async function readListeningPorts(ctx) {
   return { status: 'ok', reason: null, ports: ports }
 }
 
+/** 进程 CPU/内存 Top（ps aux，只读）。 */
+async function readTopProcesses(ctx) {
+  const result = await runReadOnlyCommand(ctx, ['ps', 'aux'], cwdForHostCommands(ctx))
+  if (result.status !== 'ok') {
+    return { status: result.status === 'unavailable' ? 'unavailable' : 'error', reason: result.reason || 'ps 失败', items: [] }
+  }
+  const rows = []
+  for (const line of String(result.stdout || '').split('\n')) {
+    if (!line || /^USER\b/.test(line)) continue
+    const columns = line.trim().split(/\s+/)
+    if (columns.length < 11) continue
+    const cpu = Number(columns[2])
+    const mem = Number(columns[3])
+    if (!Number.isFinite(cpu) || !Number.isFinite(mem)) continue
+    const command = columns.slice(10).join(' ').slice(0, 90)
+    rows.push({ user: columns[0].slice(0, 24), pid: columns[1], cpu: cpu, mem: mem, command: command })
+  }
+  rows.sort(function (a, b) {
+    return b.cpu - a.cpu || b.mem - a.mem
+  })
+  return { status: 'ok', reason: null, items: rows.slice(0, 12) }
+}
+
 async function buildEnvironment(ctx) {
   if (environmentCache.value && Date.now() - environmentCache.at < ENVIRONMENT_TTL_MS) {
     return environmentCache.value
@@ -189,7 +212,8 @@ async function buildEnvironment(ctx) {
     git: repositories,
     docker: await readDockerState(ctx),
     ports: await readListeningPorts(ctx),
-    note: '全部为只读探测：git status/log、docker ps、lsof -i，不写仓库、不启动容器、不结束进程。',
+    processes: await readTopProcesses(ctx),
+    note: '全部为只读探测：git status/log、docker ps、lsof -i、ps aux，不写仓库、不启动容器、不结束进程。',
   }
   environmentCache = { at: Date.now(), value: value }
   return value

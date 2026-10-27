@@ -18,6 +18,19 @@
 const EXEC_TIMEOUT_MS = 5000
 const EXEC_MAX_BYTES = 128 * 1024
 
+/** 子命令必须按完整前缀收紧的工具（gh 的写操作如 pr merge 绝不可放行）。 */
+const READ_ONLY_ARGV_PREFIXES = [
+  'gh pr list',
+  'gh pr view',
+  'gh pr status',
+  'gh run list',
+  'gh run view',
+  'gh repo view',
+  'gh search repos',
+  'ps aux',
+  'ps -axo',
+]
+
 /** Read-only subcommands this plugin is allowed to run. */
 const READ_ONLY_ALLOWLIST = {
   git: new Set(['status', 'log', 'rev-parse', 'branch']),
@@ -28,6 +41,20 @@ const READ_ONLY_ALLOWLIST = {
 function execAllowed(argv) {
   if (!Array.isArray(argv) || argv.length < 2) return false
   const binary = String(argv[0]).split('/').pop()
+  // 候选串包含二进制 basename，白名单前缀才能写成 'gh pr list' / 'ps aux'
+  const candidate = [binary]
+    .concat(
+      argv.slice(1).map(function (token) {
+        return String(token)
+      }),
+    )
+    .join(' ')
+  // 1) 多段前缀精确匹配（gh / ps）
+  const prefixHit = READ_ONLY_ARGV_PREFIXES.some(function (prefix) {
+    return candidate === prefix || candidate.startsWith(prefix + ' ')
+  })
+  if (prefixHit) return true
+  // 2) 单命令白名单（git / docker / lsof）
   const allowed = READ_ONLY_ALLOWLIST[binary]
   if (!allowed) return false
   return argv.slice(1).some(function (token) {

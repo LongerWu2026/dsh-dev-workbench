@@ -619,3 +619,55 @@ async function searchAttendanceGroup(ctx, query) {
     note: '只查询本人当日打卡流水（attendance record list 的能力边界）。',
   }
 }
+
+
+/** 日程与会议（§3.5）：只在日程类意图下触发，查今天到未来 3 天。 */
+async function searchEventsGroup(ctx, query) {
+  if (!/日程|会议|开会|calendar|安排|纪要/.test(query)) return null
+  const pad = function (value) {
+    return value < 10 ? '0' + value : String(value)
+  }
+  const day = function (offset) {
+    const date = new Date()
+    date.setDate(date.getDate() + offset)
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
+  }
+  const result = await runYzj(ctx, ['calendar', 'event', 'list', '--start', day(0), '--end', day(3)])
+  if (result.status !== 'ok') {
+    return { id: 'events', label: '日程与会议', status: 'error', items: [], note: '日程查询失败：' + (result.note || result.status) }
+  }
+  const list = result.json && result.json.data && Array.isArray(result.json.data.list) ? result.json.data.list : []
+  const needle = String(query).replace(/日程|会议|开会|calendar|安排|纪要/g, '').trim()
+  const matched = list.filter(function (event) {
+    if (!event || typeof event !== 'object') return false
+    const title = asString(event.title || event.subject, 160)
+    if (needle.length === 0) return true
+    return title.indexOf(needle) >= 0
+  }).slice(0, 8)
+  const items = matched.map(function (event) {
+    const start = event.startTime || event.start || event.beginTime
+    const at = typeof start === 'number' ? new Date(start).toISOString() : asIso(start)
+    return {
+      id: 'yzj-event-' + (asString(event.id || event.eventId, 80) || String(Math.random()).slice(2, 8)),
+      title: asString(event.title || event.subject, 160) || '未命名日程',
+      snippet: [
+        at ? new Date(at).toLocaleString('zh-CN') : '',
+        asString(event.location || event.roomName, 80),
+        asString(event.organizer || event.creatorName, 40),
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      url: null,
+      kind: 'event',
+      extra: { at: at },
+    }
+  })
+  if (items.length === 0) return null
+  return {
+    id: 'events',
+    label: '日程与会议',
+    status: 'ok',
+    items: items,
+    note: '查的是今天起 3 天内的日程（calendar event list）；创建/取消日程属于写操作，不在插件内。',
+  }
+}

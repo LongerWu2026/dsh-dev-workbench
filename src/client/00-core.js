@@ -1014,6 +1014,11 @@ const wbActions = {
     return wbRpc('workbench/environment', {})
   },
 
+  /** GitHub 只读快照（PR / CI）。 */
+  github() {
+    return wbRpc('workbench/github', {})
+  },
+
   diagnostics() {
     return wbRpc('workbench/diagnostics', {})
   },

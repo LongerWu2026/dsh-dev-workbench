@@ -1039,6 +1039,11 @@ window.__ModuleLoader__.load({
         return wbRpc('workbench/environment', {})
       },
 
+      /** GitHub 只读快照（PR / CI）。 */
+      github() {
+        return wbRpc('workbench/github', {})
+      },
+
       diagnostics() {
         return wbRpc('workbench/diagnostics', {})
       },
@@ -3054,6 +3059,112 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /* ---------------------------------------------------------------- 番茄钟 */
+    function DashPomodoro() {
+      const FOCUS = 25 * 60
+      const [left, setLeft] = React.useState(FOCUS)
+      const [running, setRunning] = React.useState(false)
+
+      React.useEffect(
+        function () {
+          if (!running) return undefined
+          const timer = setInterval(function () {
+            setLeft(function (previous) {
+              if (previous <= 1) {
+                setRunning(false)
+                WB.toast('番茄钟结束，休息一下', 'ok')
+                return FOCUS
+              }
+              return previous - 1
+            })
+          }, 1000)
+          return function () {
+            clearInterval(timer)
+          }
+        },
+        [running],
+      )
+
+      const mm = String(Math.floor(left / 60)).padStart(2, '0')
+      const ss = String(left % 60).padStart(2, '0')
+
+      return h(
+        'div',
+        { className: 'wb-row', style: { gap: 8, padding: '9px 12px', border: '1px solid ' + T.border1, borderRadius: 10 } },
+        h(Icon, { name: 'clock', size: 14 }),
+        h('span', { className: 'wb-label', style: { margin: 0 } }, '专注'),
+        h('span', { className: 'wb-mono', style: { fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, mm + ':' + ss),
+        h('div', { className: 'wb-spacer' }),
+        h(Btn, {
+          size: 'sm',
+          kind: running ? 'ghost' : 'primary',
+          icon: running ? 'close' : 'play',
+          onClick: function () {
+            setRunning(!running)
+          },
+          children: running ? '暂停' : '开始',
+        }),
+        h(Btn, {
+          size: 'sm',
+          kind: 'subtle',
+          icon: 'refresh',
+          onClick: function () {
+            setRunning(false)
+            setLeft(FOCUS)
+          },
+          children: '重置',
+        }),
+      )
+    }
+
+    /** 今日简报 → Markdown，复制到剪贴板（不落盘、不联网）。 */
+    function dashBriefMarkdown(data) {
+      const counts = WB.taskCounts(data)
+      const lines = []
+      lines.push('# 今日简报 · ' + WB.fmt.date(new Date().toISOString()))
+      lines.push('')
+      lines.push('## 概览')
+      lines.push('- 待处理 ' + counts.open + ' · 今日到期 ' + counts.today + ' · 已逾期 ' + counts.overdue + ' · 执行中 ' + counts.running)
+      const mentions = (data.sources || []).filter(function (row) {
+        return String(row.externalId || '').indexOf('yzj:msg:') === 0
+      })
+      if (mentions.length > 0) {
+        lines.push('')
+        lines.push('## 云之家 @我（' + mentions.length + '）')
+        mentions.slice(-5).forEach(function (row) {
+          lines.push('- ' + WB.util.truncate(row.excerpt || row.title, 100) + (row.sender ? ' —— ' + row.sender : ''))
+        })
+      }
+      const tasks = WB.openTasks(data).slice(0, 8)
+      if (tasks.length > 0) {
+        lines.push('')
+        lines.push('## 待办（' + tasks.length + '）')
+        tasks.forEach(function (task) {
+          const due = task.dueAt ? '（截止 ' + WB.fmt.day(task.dueAt) + '）' : ''
+          lines.push('- [' + (WB.TASK_STATUS[task.status] || {}).label + '] ' + task.title + due)
+        })
+      }
+      const radar = (data.radar || []).slice(-5).reverse()
+      if (radar.length > 0) {
+        lines.push('')
+        lines.push('## 技术雷达（最近 ' + radar.length + ' 条）')
+        radar.forEach(function (item) {
+          lines.push('- ' + item.title + (item.url ? ' — ' + item.url : ''))
+        })
+      }
+      const pending = (data.candidates || []).filter(function (c) {
+        return c && c.status === 'pending'
+      })
+      if (pending.length > 0) {
+        lines.push('')
+        lines.push('## 待确认候选（' + pending.length + '）')
+        pending.slice(0, 5).forEach(function (c) {
+          lines.push('- ' + c.title + '（置信度 ' + Math.round((c.confidence || 0) * 100) + '%）')
+        })
+      }
+      return lines.join('\n')
+    }
+
     function DashboardPage() {
       const state = WB.useStore()
       const data = state.data
@@ -3514,6 +3625,87 @@ window.__ModuleLoader__.load({
           : null,
       )
 
+      // ---- 快捷操作：把高频入口与本地小工具收在一张卡里（§2.1 首页应有快捷操作）
+      const quickActionsPanel = h(
+        Panel,
+        {
+          icon: 'zap',
+          title: '快捷操作',
+          sub: '高频入口；番茄钟与日报都在本地完成，不联网',
+          actions: h(Btn, {
+            size: 'sm',
+            kind: 'subtle',
+            icon: 'copy',
+            onClick: function () {
+              WB.util
+                .copy(dashBriefMarkdown(data))
+                .then(function () {
+                  WB.toast('今日简报已复制为 Markdown', 'ok')
+                })
+                .catch(function (error) {
+                  WB.toast(String((error && error.message) || error), 'err')
+                })
+            },
+            children: '复制今日简报',
+          }),
+        },
+        h(
+          'div',
+          { className: 'wb-stack', style: { gap: 10 } },
+          h(
+            'div',
+            { className: 'wb-row wb-row--wrap', style: { gap: 8 } },
+            h(Btn, {
+              size: 'sm',
+              icon: 'plus',
+              onClick: function () {
+                WB.openTaskForm(null)
+              },
+              children: '新建待办',
+            }),
+            h(Btn, {
+              size: 'sm',
+              icon: 'search',
+              onClick: function () {
+                WB.go('search')
+              },
+              children: '统一搜索',
+            }),
+            h(Btn, {
+              size: 'sm',
+              icon: 'toolbox',
+              onClick: function () {
+                WB.go('toolbox')
+              },
+              children: '开发工具箱',
+            }),
+            h(Btn, {
+              size: 'sm',
+              icon: 'agent',
+              onClick: function () {
+                WB.go('agents')
+              },
+              children: 'Agent 中心',
+            }),
+            h(Btn, {
+              size: 'sm',
+              icon: 'sparkles',
+              disabled: mentionsBusy,
+              onClick: runMentionsFetch,
+              children: mentionsBusy ? '拉取中…' : '拉取 @我',
+            }),
+            h(Btn, {
+              size: 'sm',
+              icon: 'refresh',
+              disabled: radarFetching,
+              onClick: runRadarFetch,
+              children: radarFetching ? '抓取中…' : '抓取资讯',
+            }),
+          ),
+          h(DashPomodoro, null),
+        ),
+      )
+
       const connectorsPanel = h(
         Panel,
         {
@@ -3611,6 +3803,7 @@ window.__ModuleLoader__.load({
         mentionsStrip,
         h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 } }, statCards),
         h('div', { className: 'wb-split', style: { marginBottom: 16 } }, taskPanel, radarPanel),
+        h('div', { style: { marginBottom: 16 } }, quickActionsPanel),
         connectorsPanel,
         h(DashRadarModal, {
           open: radarFormOpen,
@@ -4202,6 +4395,7 @@ window.__ModuleLoader__.load({
       const [showAllTags, setShowAllTags] = React.useState(false)
       const [pendingFocusId, setPendingFocusId] = React.useState(null)
       const [candidateBusy, setCandidateBusy] = React.useState(false)
+      const [dragStatus, setDragStatus] = React.useState(null)
       const focusRowRef = React.useRef(null)
 
       const preset = state.taskPreset
@@ -4528,9 +4722,44 @@ window.__ModuleLoader__.load({
               const columnTasks = visible.filter(function (task) {
                 return task.status === key
               })
+              const dropActive = dragStatus === key
               return h(
                 'div',
-                { key: key, className: 'wb-card' },
+                {
+                  key: key,
+                  className: 'wb-card',
+                  style: dropActive
+                    ? { borderColor: T.accent, boxShadow: 'inset 0 0 0 1px ' + T.accent }
+                    : undefined,
+                  onDragOver: function (event) {
+                    event.preventDefault()
+                    if (dragStatus !== key) setDragStatus(key)
+                  },
+                  onDragLeave: function (event) {
+                    if (event.currentTarget.contains(event.relatedTarget)) return
+                    setDragStatus(function (previous) {
+                      return previous === key ? null : previous
+                    })
+                  },
+                  onDrop: function (event) {
+                    event.preventDefault()
+                    setDragStatus(null)
+                    const taskId = event.dataTransfer ? event.dataTransfer.getData('text/plain') : ''
+                    if (!taskId) return
+                    const target = visible.find(function (item) {
+                      return item.id === taskId
+                    })
+                    if (!target || target.status === key) return
+                    WB.actions
+                      .updateTask(taskId, { status: key })
+                      .then(function () {
+                        WB.toast('已移动到「' + meta.label + '」', 'ok')
+                      })
+                      .catch(function () {
+                        /* settle() 已提示 */
+                      })
+                  },
+                },
                 h(
                   'div',
                   {
@@ -4560,7 +4789,26 @@ window.__ModuleLoader__.load({
                   { style: { display: 'flex', flexDirection: 'column', gap: 7, padding: 8, minHeight: 64 } },
                   columnTasks.length > 0
                     ? columnTasks.map(function (task) {
-                        return h(TaskCenterBoardCard, { key: task.id, task: task, data: data })
+                        return h(
+                          'div',
+                          {
+                            key: task.id,
+                            draggable: true,
+                            style: { cursor: 'grab' },
+                            title: '拖动到其它列可改状态',
+                            onDragStart: function (event) {
+                              if (event.dataTransfer) {
+                                event.dataTransfer.setData('text/plain', task.id)
+                                event.dataTransfer.effectAllowed = 'move'
+                              }
+                              setDragStatus(task.status)
+                            },
+                            onDragEnd: function () {
+                              setDragStatus(null)
+                            },
+                          },
+                          h(TaskCenterBoardCard, { task: task, data: data }),
+                        )
                       })
                     : h(
                         'div',
@@ -5611,6 +5859,8 @@ window.__ModuleLoader__.load({
       { id: 'csv', name: 'CSV', desc: 'CSV ↔ JSON，含引号转义', icon: 'database' },
       { id: 'markdown', name: 'Markdown', desc: '基础语法实时预览', icon: 'book' },
       { id: 'status', name: 'HTTP 状态码', desc: '按码查含义与排查方向', icon: 'info' },
+      { id: 'shell', name: 'Shell / Docker', desc: '命令行速查（离线）', icon: 'command' },
+      { id: 'sqlexplain', name: 'SQL 计划解读', desc: '按关键字给调优提示', icon: 'database' },
     ]
 
     /* Initial input is example-shaped only; it is never presented as page data. */
@@ -5678,6 +5928,15 @@ window.__ModuleLoader__.load({
         status: {
           group: 'all',
           query: '',
+        },
+        shell: {
+          group: '全部',
+          query: '',
+        },
+        sqlexplain: {
+          input: 'EXPLAIN SELECT * FROM orders WHERE user_id = 1 ORDER BY created_at DESC;\n->  Seq Scan on orders  (cost=0.00..1834.00 rows=1 width=64)\n   Filter: (user_id = 1)\n   Sort  (cost=1834.01..1834.02 rows=1 width=64)\n   Sort Method: quicksort  Memory: 25kB',
+          output: '',
+          error: '',
         },
         sql: {
           input:
@@ -7559,6 +7818,8 @@ window.__ModuleLoader__.load({
       csv: toolCsvPane,
       markdown: toolMarkdownPane,
       status: toolStatusPane,
+      shell: toolShellPane,
+      sqlexplain: toolSqlExplainPane,
     }
 
     /* --------------------------------------------------------------------- page */
@@ -7593,7 +7854,7 @@ window.__ModuleLoader__.load({
         h(PageHead, {
           icon: 'toolbox',
           title: '开发工具箱',
-          sub: '14 个高频小工具：全部在浏览器内计算，输入不会发送到 Host 或任何远端。',
+          sub: '16 个高频小工具：全部在浏览器内计算，输入不会发送到 Host 或任何远端。',
         }),
         h(
           'div',
@@ -8424,6 +8685,182 @@ window.__ModuleLoader__.load({
       )
     }
 
+    /* ------------------------------------------------- Shell / Docker 命令速查 */
+
+    const shellCheatsheet = [
+      { group: 'Docker', cmd: 'docker ps -a', desc: '列出全部容器（含已退出）' },
+      { group: 'Docker', cmd: 'docker logs -f --tail 200 <容器>', desc: '跟踪最近 200 行日志' },
+      { group: 'Docker', cmd: 'docker exec -it <容器> sh', desc: '进入容器交互 shell' },
+      { group: 'Docker', cmd: 'docker stats --no-stream', desc: '一次性查看容器 CPU/内存' },
+      { group: 'Docker', cmd: 'docker system df', desc: '查看镜像/容器/卷占用空间' },
+      { group: 'Docker', cmd: 'docker inspect <容器> --format "{{.State.Status}}"', desc: '只看容器状态' },
+      { group: 'Compose', cmd: 'docker compose ps', desc: '查看 compose 服务状态' },
+      { group: 'Compose', cmd: 'docker compose logs -f --tail 100 <服务>', desc: '跟踪某个服务日志' },
+      { group: 'Compose', cmd: 'docker compose config', desc: '校验并展开 compose 配置' },
+      { group: 'Compose', cmd: 'docker compose up -d --build <服务>', desc: '重建并后台启动某服务' },
+      { group: 'Linux', cmd: 'ps aux | sort -nrk 3 | head -10', desc: 'CPU 占用 Top 10' },
+      { group: 'Linux', cmd: 'lsof -i -P -n -sTCP:LISTEN', desc: '列出本机监听端口' },
+      { group: 'Linux', cmd: 'du -sh * | sort -hr | head -10', desc: '当前目录各子项体积 Top 10' },
+      { group: 'Linux', cmd: 'df -h', desc: '磁盘使用率' },
+      { group: 'Linux', cmd: 'netstat -an | grep ESTABLISHED | wc -l', desc: '统计已建立连接数' },
+      { group: '日志', cmd: 'grep -n "ERROR" app.log | tail -50', desc: '定位最近错误行' },
+      { group: '日志', cmd: 'tail -f app.log | grep -v "health"', desc: '跟踪日志并过滤健康检查' },
+      { group: '日志', cmd: 'awk \'{print $1}\' access.log | sort | uniq -c | sort -nr | head', desc: '统计访问来源 Top' },
+      { group: '诊断', cmd: 'curl -o /dev/null -s -w "%{http_code} %{time_total}s\\n" <URL>', desc: '只看状态码与耗时' },
+      { group: '诊断', cmd: 'dig +short <域名>', desc: '快速解析域名' },
+      { group: '诊断', cmd: 'traceroute -n <目标>', desc: '查看网络路径' },
+      { group: '诊断', cmd: 'kill -TERM <PID>', desc: '优雅停止进程（先 TERM 再 KILL）' },
+    ]
+
+    function toolShellPane(props) {
+      const value = props.value || {}
+      const query = String(value.query || '').trim().toLowerCase()
+      const groups = ['全部', 'Docker', 'Compose', 'Linux', '日志', '诊断']
+      const active = value.group && value.group !== '全部' ? value.group : '全部'
+      const rows = shellCheatsheet.filter(function (row) {
+        if (active !== '全部' && row.group !== active) return false
+        if (!query) return true
+        return row.cmd.toLowerCase().indexOf(query) >= 0 || row.desc.indexOf(query) >= 0
+      })
+      return h(
+        'div',
+        { className: 'wb-stack', style: { gap: 12 } },
+        h(
+          'div',
+          { className: 'wb-row wb-row--wrap', style: { gap: 6 } },
+          groups.map(function (group) {
+            return h(Chip, {
+              key: group,
+              active: active === group,
+              onClick: function () {
+                props.patch({ group: group })
+              },
+              children: group,
+            })
+          }),
+          h('div', { className: 'wb-spacer' }),
+          h(Input, {
+            value: value.query || '',
+            placeholder: '按命令或说明过滤',
+            style: { maxWidth: 260 },
+            onChange: function (event) {
+              props.patch({ query: event.target.value })
+            },
+          }),
+        ),
+        rows.length === 0
+          ? h(Empty, { icon: 'search', title: '没有匹配的命令', hint: '换个关键词，或切到「全部」。' })
+          : h(
+              'table',
+              { className: 'wb-table' },
+              h('thead', null, h('tr', null, h('th', null, '分类'), h('th', null, '命令'), h('th', null, '说明'), h('th', null, ''))),
+              h(
+                'tbody',
+                null,
+                rows.map(function (row, index) {
+                  return h(
+                    'tr',
+                    { key: row.cmd + index },
+                    h('td', null, h(Badge, { tone: 'idle' }, row.group)),
+                    h('td', { className: 'wb-mono', style: { overflowWrap: 'anywhere' } }, row.cmd),
+                    h('td', { className: 'wb-muted' }, row.desc),
+                    h('td', null, h(toolCopyButton, { text: row.cmd, label: '复制', title: '复制命令' })),
+                  )
+                }),
+              ),
+            ),
+        h(
+          'p',
+          { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.7 } },
+          '离线速查表：不会执行任何命令。带 <占位> 的请替换为实际容器名/PID/URL。',
+        ),
+      )
+    }
+
+    /* ---------------------------------------------------- SQL 执行计划解读 */
+
+    const sqlPlanRules = [
+      { re: /Seq Scan|全表扫描|table scan/i, level: 'warn', tip: '全表扫描：确认过滤字段是否命中索引；小表可忽略。' },
+      { re: /type:\s*ALL/i, level: 'warn', tip: 'type=ALL：MySQL 全表扫描，优先补索引。' },
+      { re: /Using filesort|filesort/i, level: 'warn', tip: 'filesort：排序无法用索引，考虑给 ORDER BY 字段加索引。' },
+      { re: /Using temporary|temporary table/i, level: 'warn', tip: '临时表：常见于 GROUP BY / DISTINCT / UNION，评估能否用索引消除。' },
+      { re: /Nested Loop|嵌套循环/i, level: 'info', tip: '嵌套循环：小驱动表时正常；大表连接关注外层行数。' },
+      { re: /Hash Join/i, level: 'info', tip: '哈希连接：大表等值连接常见且通常可接受。' },
+      { re: /Sort\s+\(cost|Sort Method/i, level: 'info', tip: '显式排序：注意 work_mem / sort_buffer 是否触发磁盘排序。' },
+      { re: /rows=\d{5,}|cost=[\d.]+\.\.[\d.]+e\+?0?[5-9]/i, level: 'warn', tip: '预估行数/代价很大：检查统计信息是否过期（ANALYZE）。' },
+      { re: /rows=\d+\s+width=\d+/i, level: 'info', tip: '扫描行数：对比实际返回行数，差异大说明选择性差。' },
+      { re: /index scan|Index Scan|Using index/i, level: 'ok', tip: '命中索引：留意是否回表（Using index condition 表示仍需回表）。' },
+      { re: /Using index condition|Using where/i, level: 'info', tip: 'Using where 说明过滤在服务层完成；尽量让条件走索引。' },
+      { re: /Bitmap Heap Scan/i, level: 'info', tip: '位图堆扫描：多条件组合时常见，回表次数需关注。' },
+      { re: /SubPlan|Subquery|DEPENDENT SUBQUERY/i, level: 'warn', tip: '相关子查询：可能被逐行执行，考虑改写为 JOIN。' },
+      { re: /Buffers:\s*shared hit=\d+\s+read=\d{4,}/i, level: 'warn', tip: '物理读很高：数据可能不在缓存，关注冷启动与索引覆盖。' },
+    ]
+
+    function toolSqlExplainPane(props) {
+      const value = props.value || {}
+      const plan = String(value.input || '')
+      const hits = plan
+        ? sqlPlanRules.filter(function (rule) {
+            return rule.re.test(plan)
+          })
+        : []
+      return h(
+        'div',
+        { className: 'wb-stack', style: { gap: 12 } },
+        h(
+          'div',
+          { className: 'wb-split' },
+          h(Field, { label: '粘贴 EXPLAIN / 执行计划文本' }, h(Textarea, {
+            value: value.input || '',
+            style: toolMonoStyle(240),
+            placeholder: 'EXPLAIN SELECT ... 的输出，或 PostgreSQL 的 EXPLAIN (ANALYZE, BUFFERS) 结果',
+            onChange: function (event) {
+              props.patch({ input: event.target.value })
+            },
+          })),
+          h(
+            Field,
+            { label: '解读（按关键字匹配，不执行 SQL）' },
+            hits.length === 0
+              ? h(toolOutputBlock, {
+                  text: '',
+                  placeholder: plan ? '没有识别到常见的性能信号（可能计划很健康，或格式不常见）' : '粘贴执行计划后这里给出提示',
+                })
+              : h(
+                  'div',
+                  { className: 'wb-stack', style: { gap: 8 } },
+                  hits.map(function (rule, index) {
+                    const tone = rule.level === 'warn' ? 'warn' : rule.level === 'ok' ? 'ok' : 'idle'
+                    return h(
+                      'div',
+                      {
+                        key: 'p' + index,
+                        style: {
+                          display: 'flex',
+                          alignItems: 'flex-start',
+                          gap: 8,
+                          padding: '8px 10px',
+                          border: '1px solid ' + T.border1,
+                          borderRadius: 10,
+                          background: T.layer1,
+                        },
+                      },
+                      h(Badge, { tone: tone }, rule.level === 'warn' ? '注意' : rule.level === 'ok' ? '良好' : '参考'),
+                      h('span', { style: { fontSize: 12, lineHeight: 1.65, color: T.text } }, rule.tip),
+                    )
+                  }),
+                ),
+          ),
+        ),
+        h(
+          'p',
+          { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.7 } },
+          '这是**关键字规则**解读，不是数据库优化器：插件不连接任何数据库、不执行 SQL。' +
+            '真正调优请结合表结构、数据分布与实际耗时。',
+        ),
+      )
+    }
+
     // ===== 45-knowledge.js =====
     /* ============================================================================
      * dev-workbench page: Knowledge space
@@ -9135,6 +9572,7 @@ window.__ModuleLoader__.load({
     function CollabPage() {
       const state = useStore()
       const [env, setEnv] = React.useState(null)
+      const [github, setGithub] = React.useState(null)
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState(null)
 
@@ -9155,6 +9593,14 @@ window.__ModuleLoader__.load({
 
       React.useEffect(function () {
         load()
+        WB.actions
+          .github()
+          .then(function (value) {
+            setGithub(value)
+          })
+          .catch(function () {
+            setGithub({ status: 'error', note: '读取 GitHub 快照失败', prs: { items: [] }, runs: { items: [] } })
+          })
       }, [])
 
       function addRepoDir() {
@@ -9271,6 +9717,107 @@ window.__ModuleLoader__.load({
               h(
                 Panel,
                 {
+                  title: 'PR 与 CI',
+                  icon: 'git',
+                  sub: github && github.dir ? github.dir : '通过 gh CLI 只读读取',
+                  badge: github
+                    ? h(
+                        Badge,
+                        { tone: github.status === 'ok' ? 'ok' : github.status === 'unavailable' ? 'idle' : 'err' },
+                        github.status === 'ok'
+                          ? (github.prs.items.length + github.runs.items.length) + ' 条'
+                          : github.status === 'unavailable'
+                            ? '不可用'
+                            : '失败',
+                      )
+                    : null,
+                },
+                !github
+                  ? h('span', { className: 'wb-tiny wb-muted' }, '读取中…')
+                  : github.status !== 'ok'
+                    ? h(Empty, {
+                        icon: 'git',
+                        title: github.status === 'unavailable' ? 'gh CLI 不可用' : '读取失败',
+                        hint: github.note || '安装 GitHub CLI 并 gh auth login 后可读取 PR 与 CI。',
+                      })
+                    : h(
+                        'div',
+                        { className: 'wb-stack', style: { gap: 10 } },
+                        h(
+                          'div',
+                          { className: 'wb-label' },
+                          'PR（' + github.prs.items.length + '）',
+                        ),
+                        github.prs.items.length === 0
+                          ? h('span', { className: 'wb-tiny wb-muted' }, '当前仓库没有打开的 PR。')
+                          : h(
+                              'div',
+                              null,
+                              github.prs.items.slice(0, 6).map(function (pr) {
+                                return h(
+                                  'div',
+                                  { key: 'pr' + pr.number, className: 'wb-item' },
+                                  h(Badge, { tone: pr.state === 'OPEN' ? 'ok' : 'idle' }, '#' + pr.number),
+                                  h(
+                                    'div',
+                                    { className: 'wb-item-main' },
+                                    h(
+                                      'div',
+                                      { className: 'wb-item-title' },
+                                      pr.url
+                                        ? h('a', { className: 'wb-link', href: pr.url, target: '_blank', rel: 'noreferrer' }, pr.title)
+                                        : pr.title,
+                                      pr.draft ? h(Badge, { tone: 'idle' }, '草稿') : null,
+                                    ),
+                                    h(
+                                      'div',
+                                      { className: 'wb-item-sub' },
+                                      [pr.author, pr.updatedAt ? WB.fmt.relative(pr.updatedAt) : ''].filter(Boolean).join(' · '),
+                                    ),
+                                  ),
+                                )
+                              }),
+                            ),
+                        h(Divider, null),
+                        h('div', { className: 'wb-label' }, 'CI（' + github.runs.items.length + '）'),
+                        github.runs.items.length === 0
+                          ? h('span', { className: 'wb-tiny wb-muted' }, '没有 CI 运行记录（仓库未配置 Actions 或近期限无运行）。')
+                          : h(
+                              'div',
+                              null,
+                              github.runs.items.slice(0, 6).map(function (run) {
+                                const ok = run.conclusion === 'success'
+                                const bad = run.conclusion === 'failure' || run.conclusion === 'cancelled'
+                                return h(
+                                  'div',
+                                  { key: 'run' + run.id, className: 'wb-item' },
+                                  h(Badge, { tone: ok ? 'ok' : bad ? 'err' : 'warn' }, run.conclusion || run.status || '?'),
+                                  h(
+                                    'div',
+                                    { className: 'wb-item-main' },
+                                    h(
+                                      'div',
+                                      { className: 'wb-item-title' },
+                                      run.url
+                                        ? h('a', { className: 'wb-link', href: run.url, target: '_blank', rel: 'noreferrer' }, run.workflow || 'CI')
+                                        : run.workflow || 'CI',
+                                    ),
+                                    h('div', { className: 'wb-item-sub' }, [run.branch, run.createdAt ? WB.fmt.relative(run.createdAt) : ''].filter(Boolean).join(' · ')),
+                                  ),
+                                )
+                              }),
+                            ),
+                        h(
+                          'p',
+                          { className: 'wb-tiny wb-muted', style: { margin: 0, marginTop: 4 } },
+                          github.note || '只读：gh pr list / gh run list。',
+                        ),
+                      ),
+              ),
+
+              h(
+                Panel,
+                {
                   title: '端口占用',
                   icon: 'plug',
                   sub: 'lsof -i 的只读快照：本机正在监听的 TCP 端口',
@@ -9353,6 +9900,41 @@ window.__ModuleLoader__.load({
                             }),
                           ),
                         ),
+              ),
+
+              h(
+                Panel,
+                {
+                  title: '进程 CPU / 内存',
+                  icon: 'zap',
+                  sub: 'ps aux 的只读 Top 12（按 CPU 排序）',
+                  badge: env.processes
+                    ? h(Badge, { tone: env.processes.status === 'ok' ? 'idle' : 'err' }, env.processes.status === 'ok' ? env.processes.items.length + ' 个' : '不可用')
+                    : null,
+                },
+                !env.processes
+                  ? h('span', { className: 'wb-tiny wb-muted' }, '未探测')
+                  : env.processes.status !== 'ok'
+                    ? h(Empty, { icon: 'zap', title: '读取失败', hint: env.processes.reason || 'ps 不可用。' })
+                    : h(
+                        'table',
+                        { className: 'wb-table' },
+                        h('thead', null, h('tr', null, h('th', null, 'PID'), h('th', null, 'CPU'), h('th', null, 'MEM'), h('th', null, '命令'))),
+                        h(
+                          'tbody',
+                          null,
+                          env.processes.items.map(function (row) {
+                            return h(
+                              'tr',
+                              { key: row.pid + row.command },
+                              h('td', { className: 'wb-mono' }, row.pid),
+                              h('td', null, h(Badge, { tone: row.cpu >= 50 ? 'warn' : 'idle' }, row.cpu.toFixed(1) + '%')),
+                              h('td', null, h(Badge, { tone: 'idle' }, row.mem.toFixed(1) + '%')),
+                              h('td', { className: 'wb-mono wb-ellipsis', style: { maxWidth: 260 } }, row.command),
+                            )
+                          }),
+                        ),
+                      ),
               ),
 
               h(

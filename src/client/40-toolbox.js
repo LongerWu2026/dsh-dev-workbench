@@ -22,6 +22,8 @@ const toolDefs = [
   { id: 'csv', name: 'CSV', desc: 'CSV ↔ JSON，含引号转义', icon: 'database' },
   { id: 'markdown', name: 'Markdown', desc: '基础语法实时预览', icon: 'book' },
   { id: 'status', name: 'HTTP 状态码', desc: '按码查含义与排查方向', icon: 'info' },
+  { id: 'shell', name: 'Shell / Docker', desc: '命令行速查（离线）', icon: 'command' },
+  { id: 'sqlexplain', name: 'SQL 计划解读', desc: '按关键字给调优提示', icon: 'database' },
 ]
 
 /* Initial input is example-shaped only; it is never presented as page data. */
@@ -89,6 +91,15 @@ function toolInitialState() {
     status: {
       group: 'all',
       query: '',
+    },
+    shell: {
+      group: '全部',
+      query: '',
+    },
+    sqlexplain: {
+      input: 'EXPLAIN SELECT * FROM orders WHERE user_id = 1 ORDER BY created_at DESC;\n->  Seq Scan on orders  (cost=0.00..1834.00 rows=1 width=64)\n   Filter: (user_id = 1)\n   Sort  (cost=1834.01..1834.02 rows=1 width=64)\n   Sort Method: quicksort  Memory: 25kB',
+      output: '',
+      error: '',
     },
     sql: {
       input:
@@ -1970,6 +1981,8 @@ const toolPanes = {
   csv: toolCsvPane,
   markdown: toolMarkdownPane,
   status: toolStatusPane,
+  shell: toolShellPane,
+  sqlexplain: toolSqlExplainPane,
 }
 
 /* --------------------------------------------------------------------- page */
@@ -2004,7 +2017,7 @@ function toolPage() {
     h(PageHead, {
       icon: 'toolbox',
       title: '开发工具箱',
-      sub: '14 个高频小工具：全部在浏览器内计算，输入不会发送到 Host 或任何远端。',
+      sub: '16 个高频小工具：全部在浏览器内计算，输入不会发送到 Host 或任何远端。',
     }),
     h(
       'div',

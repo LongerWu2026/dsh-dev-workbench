@@ -332,6 +332,14 @@ const environmentFixture = {
     reason: null,
     containers: [{ name: 'redis', image: 'redis:7', state: 'Up 3 hours' }],
   },
+  processes: {
+    status: 'ok',
+    reason: null,
+    items: [
+      { user: 'me', pid: '100', cpu: 55, mem: 3.2, command: 'node server.js' },
+      { user: 'me', pid: '200', cpu: 5, mem: 1, command: 'redis-server' },
+    ],
+  },
   ports: {
     status: 'ok',
     reason: null,
@@ -341,6 +349,23 @@ const environmentFixture = {
     ],
   },
   note: '全部为只读探测：git status/log、docker ps、lsof -i。',
+}
+
+const githubFixture = {
+  at: iso(0),
+  dir: '/tmp/workspace',
+  status: 'ok',
+  note: '只读：gh pr list / gh run list。',
+  prs: {
+    status: 'ok',
+    note: null,
+    items: [{ number: 12, title: 'feat: 工作台骨架', state: 'OPEN', draft: false, author: 'wulonglong', updatedAt: iso(-3), url: 'https://github.com/o/r/pull/12' }],
+  },
+  runs: {
+    status: 'ok',
+    note: null,
+    items: [{ id: 99, workflow: 'ci', branch: 'main', status: 'completed', conclusion: 'success', createdAt: iso(-4), url: 'https://github.com/o/r/actions/runs/99' }],
+  },
 }
 
 const searchFixture = {
@@ -457,6 +482,7 @@ const ctx = {
         rpcCalls.push({ endpoint: endpoint, args: (payload && payload.args) || {} })
         if (endpoint === 'workbench/diagnostics') return Promise.resolve({ ok: true, value: diagnostics })
         if (endpoint === 'workbench/environment') return Promise.resolve({ ok: true, value: environmentFixture })
+        if (endpoint === 'workbench/github') return Promise.resolve({ ok: true, value: githubFixture })
         if (endpoint === 'workbench/search') return Promise.resolve({ ok: true, value: searchFixture })
         return Promise.resolve({ ok: true, value: snapshotFixture() })
       },
@@ -592,12 +618,12 @@ if (entry && entry.key !== 'dev-workbench') problems.push('main key 不是 dev-w
 if (!registrations.panellist.length) problems.push('没有注册 sidebar.panellist')
 
 const pageSpecs = [
-  ['今日简报', 'dashboard', ['技术雷达', '抓取资讯']],
+  ['今日简报', 'dashboard', ['技术雷达', '抓取资讯', '快捷操作', '专注', '复制今日简报']],
   ['任务中心', 'tasks', ['看板', '待确认', '提取候选']],
   ['统一搜索', 'search', ['按来源分组检索', '企业（云之家）']],
   ['Agent 中心', 'agents', ['执行队列']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
-  ['研发协作', 'collab', ['添加仓库目录', '端口占用']],
+  ['研发协作', 'collab', ['添加仓库目录', '端口占用', 'PR 与 CI', '进程 CPU / 内存']],
   ['知识空间', 'knowledge', ['知识空间']],
   ['连接与设置', 'settings', ['仓库目录决定', '资讯源']],
 ]
@@ -664,7 +690,7 @@ for (const [title, id, expected] of pageSpecs) {
   const toolboxIndex = pageSpecs.findIndex((item) => item[0] === '开发工具箱')
   if (nav[toolboxIndex]) nav[toolboxIndex].props.onClick()
   let tree = await renderTree('工具箱·入口')
-  const tools = ['YAML', 'CSV', 'Markdown', 'HTTP 状态码']
+  const tools = ['YAML', 'CSV', 'Markdown', 'HTTP 状态码', 'Shell / Docker', 'SQL 计划解读']
   for (const toolName of tools) {
     const button = findButtons(tree, []).find((item) => item.text.indexOf(toolName) >= 0)
     if (!button) {

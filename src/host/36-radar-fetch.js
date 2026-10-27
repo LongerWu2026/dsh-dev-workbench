@@ -21,6 +21,29 @@ const RADAR_FETCH_TIMEOUT_MS = 12000
 const RADAR_FETCH_PER_FEED_LIMIT = 10
 const RADAR_FETCH_TOTAL_LIMIT = 30
 
+/** 标题三元组集合，用于语义近似去重（不依赖模型）。 */
+function radarTrigrams(text) {
+  const clean = String(text || '')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, ' ')
+    .trim()
+  const set = new Set()
+  for (let i = 0; i < clean.length - 2; i += 1) set.add(clean.slice(i, i + 3))
+  if (set.size === 0 && clean.length > 0) set.add(clean)
+  return set
+}
+
+function radarSimilarity(left, right) {
+  const a = radarTrigrams(left)
+  const b = radarTrigrams(right)
+  if (a.size === 0 || b.size === 0) return 0
+  let shared = 0
+  a.forEach(function (gram) {
+    if (b.has(gram)) shared += 1
+  })
+  return shared / (a.size + b.size - shared)
+}
+
 function radarDecodeEntities(text) {
   return String(text)
     .replace(/&lt;/g, '<')
@@ -166,6 +189,11 @@ async function runRadarFetch(ctx) {
       })
       .filter(Boolean),
   )
+  // 语义近似去重：标题三元组相似度超过阈值视为同一事件（转载/微改写）
+  const knownTitles = ensureArray(state.radar).map(function (item) {
+    return String(item.title || '')
+  })
+  const SIMILARITY_THRESHOLD = 0.82
 
   let added = 0
   let skipped = 0
@@ -192,7 +220,15 @@ async function runRadarFetch(ctx) {
           feedSkipped += 1
           continue
         }
+        const similar = knownTitles.some(function (title) {
+          return radarSimilarity(title, entry.title) >= SIMILARITY_THRESHOLD
+        })
+        if (similar) {
+          feedSkipped += 1
+          continue
+        }
         seenInBatch.add(key)
+        knownTitles.push(entry.title)
         candidates.push(
           normalizeRadarItem(
             {

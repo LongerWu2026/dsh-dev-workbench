@@ -35,6 +35,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'deleteProject', params: ['id'] },
   { method: 'search', params: ['request'] },
   { method: 'environment', params: [] },
+  { method: 'github', params: [] },
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
   { method: 'diagnostics', params: [] },

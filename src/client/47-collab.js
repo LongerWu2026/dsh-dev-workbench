@@ -95,6 +95,7 @@ function collabRepoCard(repo, index) {
 function CollabPage() {
   const state = useStore()
   const [env, setEnv] = React.useState(null)
+  const [github, setGithub] = React.useState(null)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState(null)
 
@@ -115,6 +116,14 @@ function CollabPage() {
 
   React.useEffect(function () {
     load()
+    WB.actions
+      .github()
+      .then(function (value) {
+        setGithub(value)
+      })
+      .catch(function () {
+        setGithub({ status: 'error', note: '读取 GitHub 快照失败', prs: { items: [] }, runs: { items: [] } })
+      })
   }, [])
 
   function addRepoDir() {
@@ -231,6 +240,107 @@ function CollabPage() {
           h(
             Panel,
             {
+              title: 'PR 与 CI',
+              icon: 'git',
+              sub: github && github.dir ? github.dir : '通过 gh CLI 只读读取',
+              badge: github
+                ? h(
+                    Badge,
+                    { tone: github.status === 'ok' ? 'ok' : github.status === 'unavailable' ? 'idle' : 'err' },
+                    github.status === 'ok'
+                      ? (github.prs.items.length + github.runs.items.length) + ' 条'
+                      : github.status === 'unavailable'
+                        ? '不可用'
+                        : '失败',
+                  )
+                : null,
+            },
+            !github
+              ? h('span', { className: 'wb-tiny wb-muted' }, '读取中…')
+              : github.status !== 'ok'
+                ? h(Empty, {
+                    icon: 'git',
+                    title: github.status === 'unavailable' ? 'gh CLI 不可用' : '读取失败',
+                    hint: github.note || '安装 GitHub CLI 并 gh auth login 后可读取 PR 与 CI。',
+                  })
+                : h(
+                    'div',
+                    { className: 'wb-stack', style: { gap: 10 } },
+                    h(
+                      'div',
+                      { className: 'wb-label' },
+                      'PR（' + github.prs.items.length + '）',
+                    ),
+                    github.prs.items.length === 0
+                      ? h('span', { className: 'wb-tiny wb-muted' }, '当前仓库没有打开的 PR。')
+                      : h(
+                          'div',
+                          null,
+                          github.prs.items.slice(0, 6).map(function (pr) {
+                            return h(
+                              'div',
+                              { key: 'pr' + pr.number, className: 'wb-item' },
+                              h(Badge, { tone: pr.state === 'OPEN' ? 'ok' : 'idle' }, '#' + pr.number),
+                              h(
+                                'div',
+                                { className: 'wb-item-main' },
+                                h(
+                                  'div',
+                                  { className: 'wb-item-title' },
+                                  pr.url
+                                    ? h('a', { className: 'wb-link', href: pr.url, target: '_blank', rel: 'noreferrer' }, pr.title)
+                                    : pr.title,
+                                  pr.draft ? h(Badge, { tone: 'idle' }, '草稿') : null,
+                                ),
+                                h(
+                                  'div',
+                                  { className: 'wb-item-sub' },
+                                  [pr.author, pr.updatedAt ? WB.fmt.relative(pr.updatedAt) : ''].filter(Boolean).join(' · '),
+                                ),
+                              ),
+                            )
+                          }),
+                        ),
+                    h(Divider, null),
+                    h('div', { className: 'wb-label' }, 'CI（' + github.runs.items.length + '）'),
+                    github.runs.items.length === 0
+                      ? h('span', { className: 'wb-tiny wb-muted' }, '没有 CI 运行记录（仓库未配置 Actions 或近期限无运行）。')
+                      : h(
+                          'div',
+                          null,
+                          github.runs.items.slice(0, 6).map(function (run) {
+                            const ok = run.conclusion === 'success'
+                            const bad = run.conclusion === 'failure' || run.conclusion === 'cancelled'
+                            return h(
+                              'div',
+                              { key: 'run' + run.id, className: 'wb-item' },
+                              h(Badge, { tone: ok ? 'ok' : bad ? 'err' : 'warn' }, run.conclusion || run.status || '?'),
+                              h(
+                                'div',
+                                { className: 'wb-item-main' },
+                                h(
+                                  'div',
+                                  { className: 'wb-item-title' },
+                                  run.url
+                                    ? h('a', { className: 'wb-link', href: run.url, target: '_blank', rel: 'noreferrer' }, run.workflow || 'CI')
+                                    : run.workflow || 'CI',
+                                ),
+                                h('div', { className: 'wb-item-sub' }, [run.branch, run.createdAt ? WB.fmt.relative(run.createdAt) : ''].filter(Boolean).join(' · ')),
+                              ),
+                            )
+                          }),
+                        ),
+                    h(
+                      'p',
+                      { className: 'wb-tiny wb-muted', style: { margin: 0, marginTop: 4 } },
+                      github.note || '只读：gh pr list / gh run list。',
+                    ),
+                  ),
+          ),
+
+          h(
+            Panel,
+            {
               title: '端口占用',
               icon: 'plug',
               sub: 'lsof -i 的只读快照：本机正在监听的 TCP 端口',
@@ -313,6 +423,41 @@ function CollabPage() {
                         }),
                       ),
                     ),
+          ),
+
+          h(
+            Panel,
+            {
+              title: '进程 CPU / 内存',
+              icon: 'zap',
+              sub: 'ps aux 的只读 Top 12（按 CPU 排序）',
+              badge: env.processes
+                ? h(Badge, { tone: env.processes.status === 'ok' ? 'idle' : 'err' }, env.processes.status === 'ok' ? env.processes.items.length + ' 个' : '不可用')
+                : null,
+            },
+            !env.processes
+              ? h('span', { className: 'wb-tiny wb-muted' }, '未探测')
+              : env.processes.status !== 'ok'
+                ? h(Empty, { icon: 'zap', title: '读取失败', hint: env.processes.reason || 'ps 不可用。' })
+                : h(
+                    'table',
+                    { className: 'wb-table' },
+                    h('thead', null, h('tr', null, h('th', null, 'PID'), h('th', null, 'CPU'), h('th', null, 'MEM'), h('th', null, '命令'))),
+                    h(
+                      'tbody',
+                      null,
+                      env.processes.items.map(function (row) {
+                        return h(
+                          'tr',
+                          { key: row.pid + row.command },
+                          h('td', { className: 'wb-mono' }, row.pid),
+                          h('td', null, h(Badge, { tone: row.cpu >= 50 ? 'warn' : 'idle' }, row.cpu.toFixed(1) + '%')),
+                          h('td', null, h(Badge, { tone: 'idle' }, row.mem.toFixed(1) + '%')),
+                          h('td', { className: 'wb-mono wb-ellipsis', style: { maxWidth: 260 } }, row.command),
+                        )
+                      }),
+                    ),
+                  ),
           ),
 
           h(

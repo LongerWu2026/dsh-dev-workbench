@@ -574,6 +574,7 @@ function TaskCenterPage() {
   const [showAllTags, setShowAllTags] = React.useState(false)
   const [pendingFocusId, setPendingFocusId] = React.useState(null)
   const [candidateBusy, setCandidateBusy] = React.useState(false)
+  const [dragStatus, setDragStatus] = React.useState(null)
   const focusRowRef = React.useRef(null)
 
   const preset = state.taskPreset
@@ -900,9 +901,44 @@ function TaskCenterPage() {
           const columnTasks = visible.filter(function (task) {
             return task.status === key
           })
+          const dropActive = dragStatus === key
           return h(
             'div',
-            { key: key, className: 'wb-card' },
+            {
+              key: key,
+              className: 'wb-card',
+              style: dropActive
+                ? { borderColor: T.accent, boxShadow: 'inset 0 0 0 1px ' + T.accent }
+                : undefined,
+              onDragOver: function (event) {
+                event.preventDefault()
+                if (dragStatus !== key) setDragStatus(key)
+              },
+              onDragLeave: function (event) {
+                if (event.currentTarget.contains(event.relatedTarget)) return
+                setDragStatus(function (previous) {
+                  return previous === key ? null : previous
+                })
+              },
+              onDrop: function (event) {
+                event.preventDefault()
+                setDragStatus(null)
+                const taskId = event.dataTransfer ? event.dataTransfer.getData('text/plain') : ''
+                if (!taskId) return
+                const target = visible.find(function (item) {
+                  return item.id === taskId
+                })
+                if (!target || target.status === key) return
+                WB.actions
+                  .updateTask(taskId, { status: key })
+                  .then(function () {
+                    WB.toast('已移动到「' + meta.label + '」', 'ok')
+                  })
+                  .catch(function () {
+                    /* settle() 已提示 */
+                  })
+              },
+            },
             h(
               'div',
               {
@@ -932,7 +968,26 @@ function TaskCenterPage() {
               { style: { display: 'flex', flexDirection: 'column', gap: 7, padding: 8, minHeight: 64 } },
               columnTasks.length > 0
                 ? columnTasks.map(function (task) {
-                    return h(TaskCenterBoardCard, { key: task.id, task: task, data: data })
+                    return h(
+                      'div',
+                      {
+                        key: task.id,
+                        draggable: true,
+                        style: { cursor: 'grab' },
+                        title: '拖动到其它列可改状态',
+                        onDragStart: function (event) {
+                          if (event.dataTransfer) {
+                            event.dataTransfer.setData('text/plain', task.id)
+                            event.dataTransfer.effectAllowed = 'move'
+                          }
+                          setDragStatus(task.status)
+                        },
+                        onDragEnd: function () {
+                          setDragStatus(null)
+                        },
+                      },
+                      h(TaskCenterBoardCard, { task: task, data: data }),
+                    )
                   })
                 : h(
                     'div',

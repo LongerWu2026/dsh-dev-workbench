@@ -648,6 +648,112 @@ function DashRadarModal(props) {
   )
 }
 
+/* ---------------------------------------------------------------- 番茄钟 */
+function DashPomodoro() {
+  const FOCUS = 25 * 60
+  const [left, setLeft] = React.useState(FOCUS)
+  const [running, setRunning] = React.useState(false)
+
+  React.useEffect(
+    function () {
+      if (!running) return undefined
+      const timer = setInterval(function () {
+        setLeft(function (previous) {
+          if (previous <= 1) {
+            setRunning(false)
+            WB.toast('番茄钟结束，休息一下', 'ok')
+            return FOCUS
+          }
+          return previous - 1
+        })
+      }, 1000)
+      return function () {
+        clearInterval(timer)
+      }
+    },
+    [running],
+  )
+
+  const mm = String(Math.floor(left / 60)).padStart(2, '0')
+  const ss = String(left % 60).padStart(2, '0')
+
+  return h(
+    'div',
+    { className: 'wb-row', style: { gap: 8, padding: '9px 12px', border: '1px solid ' + T.border1, borderRadius: 10 } },
+    h(Icon, { name: 'clock', size: 14 }),
+    h('span', { className: 'wb-label', style: { margin: 0 } }, '专注'),
+    h('span', { className: 'wb-mono', style: { fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, mm + ':' + ss),
+    h('div', { className: 'wb-spacer' }),
+    h(Btn, {
+      size: 'sm',
+      kind: running ? 'ghost' : 'primary',
+      icon: running ? 'close' : 'play',
+      onClick: function () {
+        setRunning(!running)
+      },
+      children: running ? '暂停' : '开始',
+    }),
+    h(Btn, {
+      size: 'sm',
+      kind: 'subtle',
+      icon: 'refresh',
+      onClick: function () {
+        setRunning(false)
+        setLeft(FOCUS)
+      },
+      children: '重置',
+    }),
+  )
+}
+
+/** 今日简报 → Markdown，复制到剪贴板（不落盘、不联网）。 */
+function dashBriefMarkdown(data) {
+  const counts = WB.taskCounts(data)
+  const lines = []
+  lines.push('# 今日简报 · ' + WB.fmt.date(new Date().toISOString()))
+  lines.push('')
+  lines.push('## 概览')
+  lines.push('- 待处理 ' + counts.open + ' · 今日到期 ' + counts.today + ' · 已逾期 ' + counts.overdue + ' · 执行中 ' + counts.running)
+  const mentions = (data.sources || []).filter(function (row) {
+    return String(row.externalId || '').indexOf('yzj:msg:') === 0
+  })
+  if (mentions.length > 0) {
+    lines.push('')
+    lines.push('## 云之家 @我（' + mentions.length + '）')
+    mentions.slice(-5).forEach(function (row) {
+      lines.push('- ' + WB.util.truncate(row.excerpt || row.title, 100) + (row.sender ? ' —— ' + row.sender : ''))
+    })
+  }
+  const tasks = WB.openTasks(data).slice(0, 8)
+  if (tasks.length > 0) {
+    lines.push('')
+    lines.push('## 待办（' + tasks.length + '）')
+    tasks.forEach(function (task) {
+      const due = task.dueAt ? '（截止 ' + WB.fmt.day(task.dueAt) + '）' : ''
+      lines.push('- [' + (WB.TASK_STATUS[task.status] || {}).label + '] ' + task.title + due)
+    })
+  }
+  const radar = (data.radar || []).slice(-5).reverse()
+  if (radar.length > 0) {
+    lines.push('')
+    lines.push('## 技术雷达（最近 ' + radar.length + ' 条）')
+    radar.forEach(function (item) {
+      lines.push('- ' + item.title + (item.url ? ' — ' + item.url : ''))
+    })
+  }
+  const pending = (data.candidates || []).filter(function (c) {
+    return c && c.status === 'pending'
+  })
+  if (pending.length > 0) {
+    lines.push('')
+    lines.push('## 待确认候选（' + pending.length + '）')
+    pending.slice(0, 5).forEach(function (c) {
+      lines.push('- ' + c.title + '（置信度 ' + Math.round((c.confidence || 0) * 100) + '%）')
+    })
+  }
+  return lines.join('\n')
+}
+
 function DashboardPage() {
   const state = WB.useStore()
   const data = state.data
@@ -1108,6 +1214,87 @@ function DashboardPage() {
       : null,
   )
 
+  // ---- 快捷操作：把高频入口与本地小工具收在一张卡里（§2.1 首页应有快捷操作）
+  const quickActionsPanel = h(
+    Panel,
+    {
+      icon: 'zap',
+      title: '快捷操作',
+      sub: '高频入口；番茄钟与日报都在本地完成，不联网',
+      actions: h(Btn, {
+        size: 'sm',
+        kind: 'subtle',
+        icon: 'copy',
+        onClick: function () {
+          WB.util
+            .copy(dashBriefMarkdown(data))
+            .then(function () {
+              WB.toast('今日简报已复制为 Markdown', 'ok')
+            })
+            .catch(function (error) {
+              WB.toast(String((error && error.message) || error), 'err')
+            })
+        },
+        children: '复制今日简报',
+      }),
+    },
+    h(
+      'div',
+      { className: 'wb-stack', style: { gap: 10 } },
+      h(
+        'div',
+        { className: 'wb-row wb-row--wrap', style: { gap: 8 } },
+        h(Btn, {
+          size: 'sm',
+          icon: 'plus',
+          onClick: function () {
+            WB.openTaskForm(null)
+          },
+          children: '新建待办',
+        }),
+        h(Btn, {
+          size: 'sm',
+          icon: 'search',
+          onClick: function () {
+            WB.go('search')
+          },
+          children: '统一搜索',
+        }),
+        h(Btn, {
+          size: 'sm',
+          icon: 'toolbox',
+          onClick: function () {
+            WB.go('toolbox')
+          },
+          children: '开发工具箱',
+        }),
+        h(Btn, {
+          size: 'sm',
+          icon: 'agent',
+          onClick: function () {
+            WB.go('agents')
+          },
+          children: 'Agent 中心',
+        }),
+        h(Btn, {
+          size: 'sm',
+          icon: 'sparkles',
+          disabled: mentionsBusy,
+          onClick: runMentionsFetch,
+          children: mentionsBusy ? '拉取中…' : '拉取 @我',
+        }),
+        h(Btn, {
+          size: 'sm',
+          icon: 'refresh',
+          disabled: radarFetching,
+          onClick: runRadarFetch,
+          children: radarFetching ? '抓取中…' : '抓取资讯',
+        }),
+      ),
+      h(DashPomodoro, null),
+    ),
+  )
+
   const connectorsPanel = h(
     Panel,
     {
@@ -1205,6 +1392,7 @@ function DashboardPage() {
     mentionsStrip,
     h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 } }, statCards),
     h('div', { className: 'wb-split', style: { marginBottom: 16 } }, taskPanel, radarPanel),
+    h('div', { style: { marginBottom: 16 } }, quickActionsPanel),
     connectorsPanel,
     h(DashRadarModal, {
       open: radarFormOpen,

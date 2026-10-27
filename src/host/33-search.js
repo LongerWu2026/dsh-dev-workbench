@@ -193,15 +193,53 @@ async function runUnifiedSearch(ctx, request) {
   if (!query) throw new Error('搜索关键词不能为空')
   const state = loadWorkbenchState()
   const groups = searchLocalGroups(state, query)
+  // 本地项目（文件名 + 文本片段）：不受联网与凭据影响，始终可用
+  groups.push(await searchLocalFiles(ctx, query))
+
   if (!request || request.includeEnterprise !== false) {
     groups.push(await searchEnterpriseGroup(ctx, query))
     // 三路按意图触发：联系人（像人名/找人）、会议室（会议类）、考勤（考勤类）。
     // 返回 null 表示这次查询不适用，不显示空分组。
-    for (const provider of [searchContactsGroup, searchRoomsGroup, searchAttendanceGroup]) {
+    for (const provider of [searchContactsGroup, searchRoomsGroup, searchAttendanceGroup, searchEventsGroup]) {
       const group = await provider(ctx, query)
       if (group) groups.push(group)
     }
   }
+  // PR / CI：只在代码协作类意图下触发（每次都会打 gh，按需调用）
+  if (/\bpr\b|拉取请求|评审|review|合并|merge|\bci\b|构建|流水线|github/i.test(query)) {
+    const gh = await buildGithubSnapshot(ctx)
+    const items = []
+    if (gh.status === 'ok') {
+      gh.prs.items.slice(0, 5).forEach(function (pr) {
+        items.push({
+          id: 'pr-' + pr.number,
+          title: '#' + pr.number + ' ' + pr.title,
+          snippet: [pr.author, pr.state, pr.draft ? '草稿' : ''].filter(Boolean).join(' · '),
+          url: pr.url,
+          kind: 'pr',
+          extra: { at: pr.updatedAt },
+        })
+      })
+      gh.runs.items.slice(0, 5).forEach(function (run) {
+        items.push({
+          id: 'run-' + run.id,
+          title: (run.workflow || 'CI') + ' · ' + (run.conclusion || run.status || '未知'),
+          snippet: [run.branch, run.status].filter(Boolean).join(' · '),
+          url: run.url,
+          kind: 'ci',
+          extra: { at: run.createdAt },
+        })
+      })
+    }
+    groups.push({
+      id: 'github',
+      label: 'PR / CI',
+      status: gh.status === 'ok' ? (items.length ? 'ok' : 'empty') : 'unavailable',
+      items: items,
+      note: gh.status === 'ok' ? gh.note : gh.note,
+    })
+  }
+
   if (!request || request.includeWeb !== false) {
     groups.push(await searchWebGroup(ctx, query))
   }

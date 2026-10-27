@@ -10,9 +10,11 @@
  *   30-service.js
  *   33-search.js
  *   34-environment.js
+ *   36-files.js
  *   36-radar-fetch.js
  *   37-yunzhijia.js
  *   38-candidates.js
+ *   39-github.js
  *   40-remote.js
  *   50-tools.js
  *   90-apply.js
@@ -873,6 +875,19 @@ async function refreshConnectors(ctx, state) {
 const EXEC_TIMEOUT_MS = 5000
 const EXEC_MAX_BYTES = 128 * 1024
 
+/** 子命令必须按完整前缀收紧的工具（gh 的写操作如 pr merge 绝不可放行）。 */
+const READ_ONLY_ARGV_PREFIXES = [
+  'gh pr list',
+  'gh pr view',
+  'gh pr status',
+  'gh run list',
+  'gh run view',
+  'gh repo view',
+  'gh search repos',
+  'ps aux',
+  'ps -axo',
+]
+
 /** Read-only subcommands this plugin is allowed to run. */
 const READ_ONLY_ALLOWLIST = {
   git: new Set(['status', 'log', 'rev-parse', 'branch']),
@@ -883,6 +898,20 @@ const READ_ONLY_ALLOWLIST = {
 function execAllowed(argv) {
   if (!Array.isArray(argv) || argv.length < 2) return false
   const binary = String(argv[0]).split('/').pop()
+  // 候选串包含二进制 basename，白名单前缀才能写成 'gh pr list' / 'ps aux'
+  const candidate = [binary]
+    .concat(
+      argv.slice(1).map(function (token) {
+        return String(token)
+      }),
+    )
+    .join(' ')
+  // 1) 多段前缀精确匹配（gh / ps）
+  const prefixHit = READ_ONLY_ARGV_PREFIXES.some(function (prefix) {
+    return candidate === prefix || candidate.startsWith(prefix + ' ')
+  })
+  if (prefixHit) return true
+  // 2) 单命令白名单（git / docker / lsof）
   const allowed = READ_ONLY_ALLOWLIST[binary]
   if (!allowed) return false
   return argv.slice(1).some(function (token) {
@@ -1422,6 +1451,11 @@ const workbenchApi = {
     return buildEnvironment(workbenchContext())
   },
 
+  /** GitHub 只读快照（PR / CI），走 gh CLI 白名单命令。 */
+  async github() {
+    return buildGithubSnapshot(workbenchContext())
+  },
+
   async diagnostics() {
     const state = loadWorkbenchState()
     const path = workbenchStatePath()
@@ -1670,15 +1704,53 @@ async function runUnifiedSearch(ctx, request) {
   if (!query) throw new Error('搜索关键词不能为空')
   const state = loadWorkbenchState()
   const groups = searchLocalGroups(state, query)
+  // 本地项目（文件名 + 文本片段）：不受联网与凭据影响，始终可用
+  groups.push(await searchLocalFiles(ctx, query))
+
   if (!request || request.includeEnterprise !== false) {
     groups.push(await searchEnterpriseGroup(ctx, query))
     // 三路按意图触发：联系人（像人名/找人）、会议室（会议类）、考勤（考勤类）。
     // 返回 null 表示这次查询不适用，不显示空分组。
-    for (const provider of [searchContactsGroup, searchRoomsGroup, searchAttendanceGroup]) {
+    for (const provider of [searchContactsGroup, searchRoomsGroup, searchAttendanceGroup, searchEventsGroup]) {
       const group = await provider(ctx, query)
       if (group) groups.push(group)
     }
   }
+  // PR / CI：只在代码协作类意图下触发（每次都会打 gh，按需调用）
+  if (/\bpr\b|拉取请求|评审|review|合并|merge|\bci\b|构建|流水线|github/i.test(query)) {
+    const gh = await buildGithubSnapshot(ctx)
+    const items = []
+    if (gh.status === 'ok') {
+      gh.prs.items.slice(0, 5).forEach(function (pr) {
+        items.push({
+          id: 'pr-' + pr.number,
+          title: '#' + pr.number + ' ' + pr.title,
+          snippet: [pr.author, pr.state, pr.draft ? '草稿' : ''].filter(Boolean).join(' · '),
+          url: pr.url,
+          kind: 'pr',
+          extra: { at: pr.updatedAt },
+        })
+      })
+      gh.runs.items.slice(0, 5).forEach(function (run) {
+        items.push({
+          id: 'run-' + run.id,
+          title: (run.workflow || 'CI') + ' · ' + (run.conclusion || run.status || '未知'),
+          snippet: [run.branch, run.status].filter(Boolean).join(' · '),
+          url: run.url,
+          kind: 'ci',
+          extra: { at: run.createdAt },
+        })
+      })
+    }
+    groups.push({
+      id: 'github',
+      label: 'PR / CI',
+      status: gh.status === 'ok' ? (items.length ? 'ok' : 'empty') : 'unavailable',
+      items: items,
+      note: gh.status === 'ok' ? gh.note : gh.note,
+    })
+  }
+
   if (!request || request.includeWeb !== false) {
     groups.push(await searchWebGroup(ctx, query))
   }
@@ -1853,6 +1925,29 @@ async function readListeningPorts(ctx) {
   return { status: 'ok', reason: null, ports: ports }
 }
 
+/** 进程 CPU/内存 Top（ps aux，只读）。 */
+async function readTopProcesses(ctx) {
+  const result = await runReadOnlyCommand(ctx, ['ps', 'aux'], cwdForHostCommands(ctx))
+  if (result.status !== 'ok') {
+    return { status: result.status === 'unavailable' ? 'unavailable' : 'error', reason: result.reason || 'ps 失败', items: [] }
+  }
+  const rows = []
+  for (const line of String(result.stdout || '').split('\n')) {
+    if (!line || /^USER\b/.test(line)) continue
+    const columns = line.trim().split(/\s+/)
+    if (columns.length < 11) continue
+    const cpu = Number(columns[2])
+    const mem = Number(columns[3])
+    if (!Number.isFinite(cpu) || !Number.isFinite(mem)) continue
+    const command = columns.slice(10).join(' ').slice(0, 90)
+    rows.push({ user: columns[0].slice(0, 24), pid: columns[1], cpu: cpu, mem: mem, command: command })
+  }
+  rows.sort(function (a, b) {
+    return b.cpu - a.cpu || b.mem - a.mem
+  })
+  return { status: 'ok', reason: null, items: rows.slice(0, 12) }
+}
+
 async function buildEnvironment(ctx) {
   if (environmentCache.value && Date.now() - environmentCache.at < ENVIRONMENT_TTL_MS) {
     return environmentCache.value
@@ -1885,10 +1980,190 @@ async function buildEnvironment(ctx) {
     git: repositories,
     docker: await readDockerState(ctx),
     ports: await readListeningPorts(ctx),
-    note: '全部为只读探测：git status/log、docker ps、lsof -i，不写仓库、不启动容器、不结束进程。',
+    processes: await readTopProcesses(ctx),
+    note: '全部为只读探测：git status/log、docker ps、lsof -i、ps aux，不写仓库、不启动容器、不结束进程。',
   }
   environmentCache = { at: Date.now(), value: value }
   return value
+}
+
+// ===== 36-files.js =====
+/* ============================================================================
+ * dev-workbench host — 本地项目搜索（设计报告 §3.3「本地项目」Provider）
+ *
+ * 在 Host 侧只读遍历工作目录 / 项目仓库，按**文件名**与**文本内容**匹配，
+ * 返回相对路径 + 命中行片段。约束：
+ *   - 只在配置的根目录内（Host 工作目录 + 项目 repoPath），绝不越界；
+ *   - 跳过依赖/构建/版本库目录（node_modules、.git、dist 等）；
+ *   - 遍历量、读取量、返回量都有上限，避免大仓卡死；
+ *   - 只读文本白名单扩展名，二进制不读；命中行做长度截断。
+ * ========================================================================== */
+
+const FILE_SEARCH_MAX_ENTRIES = 4000
+const FILE_SEARCH_MAX_CONTENT_READS = 300
+const FILE_SEARCH_MAX_RESULTS = 12
+const FILE_SEARCH_MAX_DEPTH = 7
+const FILE_SEARCH_MAX_BYTES = 256 * 1024
+
+const FILE_SEARCH_SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.svn',
+  '.hg',
+  'dist',
+  'build',
+  'out',
+  'target',
+  'vendor',
+  'coverage',
+  '.next',
+  '.nuxt',
+  '.venv',
+  'venv',
+  '__pycache__',
+  '.idea',
+  '.vscode',
+  'Pods',
+])
+
+const FILE_SEARCH_TEXT_EXT = new Set([
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.json', '.md', '.mdx',
+  '.yml', '.yaml', '.toml', '.ini', '.conf', '.env', '.txt', '.csv',
+  '.py', '.java', '.kt', '.kts', '.go', '.rs', '.rb', '.php', '.cs',
+  '.sql', '.sh', '.bash', '.zsh', '.css', '.scss', '.less', '.html', '.htm',
+  '.vue', '.svelte', '.xml', '.gradle',
+])
+
+let fileIndexCache = new Map()
+
+function fileSearchRoots(ctx) {
+  const roots = []
+  const push = function (dir, label) {
+    if (!dir || typeof dir !== 'string') return
+    if (!existsSync(dir)) return
+    if (roots.some(function (root) { return root.dir === dir })) return
+    roots.push({ dir: dir, label: label })
+  }
+  const state = loadWorkbenchState()
+  ensureArray(state.projects).forEach(function (project) {
+    if (project.repoPath) push(project.repoPath, project.name || project.repoPath)
+  })
+  push(cwdForHostCommands(ctx), '当前工作目录')
+  return roots.slice(0, 3)
+}
+
+function fileExtOf(name) {
+  const index = name.lastIndexOf('.')
+  return index < 0 ? '' : name.slice(index).toLowerCase()
+}
+
+/** 浅层遍历得到候选文件（带 mtime 缓存，60s 内复用）。 */
+function indexRoot(root) {
+  const cached = fileIndexCache.get(root.dir)
+  if (cached && Date.now() - cached.at < 60 * 1000) return cached.files
+  const files = []
+  const queue = [{ dir: root.dir, depth: 0 }]
+  let visited = 0
+  while (queue.length > 0 && visited < FILE_SEARCH_MAX_ENTRIES) {
+    const current = queue.shift()
+    let entries
+    try {
+      entries = readdirSync(current.dir, { withFileTypes: true })
+    } catch (e) {
+      continue
+    }
+    for (const entry of entries) {
+      if (visited >= FILE_SEARCH_MAX_ENTRIES) break
+      const name = String(entry.name)
+      if (name.startsWith('.') && name !== '.env') continue
+      const full = join(current.dir, name)
+      if (entry.isDirectory()) {
+        if (FILE_SEARCH_SKIP_DIRS.has(name)) continue
+        if (current.depth + 1 > FILE_SEARCH_MAX_DEPTH) continue
+        queue.push({ dir: full, depth: current.depth + 1 })
+        continue
+      }
+      if (!entry.isFile()) continue
+      visited += 1
+      files.push({ path: full, name: name, rel: full.slice(root.dir.length + 1) })
+    }
+  }
+  fileIndexCache.set(root.dir, { at: Date.now(), files: files })
+  return files
+}
+
+function readTextSnippet(path, needle) {
+  let stat
+  try {
+    stat = statSync(path)
+  } catch (e) {
+    return null
+  }
+  if (!stat.isFile() || stat.size > FILE_SEARCH_MAX_BYTES) return null
+  let text
+  try {
+    text = readFileSync(path, 'utf8')
+  } catch (e) {
+    return null
+  }
+  const lower = text.toLowerCase()
+  const index = lower.indexOf(needle)
+  if (index < 0) return null
+  const lineStart = text.lastIndexOf('\n', index) + 1
+  const lineEnd = text.indexOf('\n', index)
+  const line = text.slice(lineStart, lineEnd < 0 ? Math.min(text.length, lineStart + 240) : lineEnd).trim()
+  const lineNo = text.slice(0, index).split('\n').length
+  return { snippet: line.slice(0, 240), line: lineNo, mtime: stat.mtime.toISOString() }
+}
+
+async function searchLocalFiles(ctx, query) {
+  const needleRaw = asString(query, 120)
+  const needle = needleRaw.toLowerCase()
+  if (!needle) return { id: 'files', label: '本地项目', status: 'empty', items: [], note: null }
+  const roots = fileSearchRoots(ctx)
+  if (roots.length === 0) {
+    return { id: 'files', label: '本地项目', status: 'unavailable', items: [], note: '没有可搜索的工作目录：在「连接与设置 → 项目」添加仓库目录。' }
+  }
+
+  const hits = []
+  let contentReads = 0
+  for (const root of roots) {
+    const files = indexRoot(root)
+    for (const file of files) {
+      if (hits.length >= FILE_SEARCH_MAX_RESULTS) break
+      const nameHit = file.name.toLowerCase().indexOf(needle) >= 0
+      const isText = FILE_SEARCH_TEXT_EXT.has(fileExtOf(file.name))
+      let contentHit = null
+      if (!nameHit && isText && contentReads < FILE_SEARCH_MAX_CONTENT_READS) {
+        contentReads += 1
+        contentHit = readTextSnippet(file.path, needle)
+      }
+      if (!nameHit && !contentHit) continue
+      hits.push({
+        id: 'file-' + file.path,
+        title: file.rel,
+        snippet: contentHit ? '第 ' + contentHit.line + ' 行：' + contentHit.snippet : '文件名匹配 · ' + root.label,
+        url: null,
+        kind: 'file',
+        extra: {
+          at: contentHit ? contentHit.mtime : null,
+          project: root.label,
+          path: file.path,
+        },
+      })
+    }
+  }
+
+  return {
+    id: 'files',
+    label: '本地项目',
+    status: hits.length ? 'ok' : 'empty',
+    items: hits,
+    note:
+      '只读遍历 ' +
+      roots.length +
+      ' 个根目录（跳过 node_modules/.git 等），命中文件与文本片段；不读取二进制、不越界。',
+  }
 }
 
 // ===== 36-radar-fetch.js =====
@@ -1914,6 +2189,29 @@ async function buildEnvironment(ctx) {
 const RADAR_FETCH_TIMEOUT_MS = 12000
 const RADAR_FETCH_PER_FEED_LIMIT = 10
 const RADAR_FETCH_TOTAL_LIMIT = 30
+
+/** 标题三元组集合，用于语义近似去重（不依赖模型）。 */
+function radarTrigrams(text) {
+  const clean = String(text || '')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, ' ')
+    .trim()
+  const set = new Set()
+  for (let i = 0; i < clean.length - 2; i += 1) set.add(clean.slice(i, i + 3))
+  if (set.size === 0 && clean.length > 0) set.add(clean)
+  return set
+}
+
+function radarSimilarity(left, right) {
+  const a = radarTrigrams(left)
+  const b = radarTrigrams(right)
+  if (a.size === 0 || b.size === 0) return 0
+  let shared = 0
+  a.forEach(function (gram) {
+    if (b.has(gram)) shared += 1
+  })
+  return shared / (a.size + b.size - shared)
+}
 
 function radarDecodeEntities(text) {
   return String(text)
@@ -2060,6 +2358,11 @@ async function runRadarFetch(ctx) {
       })
       .filter(Boolean),
   )
+  // 语义近似去重：标题三元组相似度超过阈值视为同一事件（转载/微改写）
+  const knownTitles = ensureArray(state.radar).map(function (item) {
+    return String(item.title || '')
+  })
+  const SIMILARITY_THRESHOLD = 0.82
 
   let added = 0
   let skipped = 0
@@ -2086,7 +2389,15 @@ async function runRadarFetch(ctx) {
           feedSkipped += 1
           continue
         }
+        const similar = knownTitles.some(function (title) {
+          return radarSimilarity(title, entry.title) >= SIMILARITY_THRESHOLD
+        })
+        if (similar) {
+          feedSkipped += 1
+          continue
+        }
         seenInBatch.add(key)
+        knownTitles.push(entry.title)
         candidates.push(
           normalizeRadarItem(
             {
@@ -2751,6 +3062,58 @@ async function searchAttendanceGroup(ctx, query) {
   }
 }
 
+
+/** 日程与会议（§3.5）：只在日程类意图下触发，查今天到未来 3 天。 */
+async function searchEventsGroup(ctx, query) {
+  if (!/日程|会议|开会|calendar|安排|纪要/.test(query)) return null
+  const pad = function (value) {
+    return value < 10 ? '0' + value : String(value)
+  }
+  const day = function (offset) {
+    const date = new Date()
+    date.setDate(date.getDate() + offset)
+    return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate())
+  }
+  const result = await runYzj(ctx, ['calendar', 'event', 'list', '--start', day(0), '--end', day(3)])
+  if (result.status !== 'ok') {
+    return { id: 'events', label: '日程与会议', status: 'error', items: [], note: '日程查询失败：' + (result.note || result.status) }
+  }
+  const list = result.json && result.json.data && Array.isArray(result.json.data.list) ? result.json.data.list : []
+  const needle = String(query).replace(/日程|会议|开会|calendar|安排|纪要/g, '').trim()
+  const matched = list.filter(function (event) {
+    if (!event || typeof event !== 'object') return false
+    const title = asString(event.title || event.subject, 160)
+    if (needle.length === 0) return true
+    return title.indexOf(needle) >= 0
+  }).slice(0, 8)
+  const items = matched.map(function (event) {
+    const start = event.startTime || event.start || event.beginTime
+    const at = typeof start === 'number' ? new Date(start).toISOString() : asIso(start)
+    return {
+      id: 'yzj-event-' + (asString(event.id || event.eventId, 80) || String(Math.random()).slice(2, 8)),
+      title: asString(event.title || event.subject, 160) || '未命名日程',
+      snippet: [
+        at ? new Date(at).toLocaleString('zh-CN') : '',
+        asString(event.location || event.roomName, 80),
+        asString(event.organizer || event.creatorName, 40),
+      ]
+        .filter(Boolean)
+        .join(' · '),
+      url: null,
+      kind: 'event',
+      extra: { at: at },
+    }
+  })
+  if (items.length === 0) return null
+  return {
+    id: 'events',
+    label: '日程与会议',
+    status: 'ok',
+    items: items,
+    note: '查的是今天起 3 天内的日程（calendar event list）；创建/取消日程属于写操作，不在插件内。',
+  }
+}
+
 // ===== 38-candidates.js =====
 /* ============================================================================
  * dev-workbench host — 任务候选规则提取（设计报告 §3.2 AI 任务提取 / §8）
@@ -2958,6 +3321,148 @@ function extractCandidatesInto(state) {
   return state
 }
 
+// ===== 39-github.js =====
+/* ============================================================================
+ * dev-workbench host — GitHub 只读快照（设计报告 §3.5 PR / Review / CI）
+ *
+ * 通过已认证的 `gh` CLI 读取 PR 与 CI 运行状态。命令全部走 28-exec.js 的
+ * **多段前缀白名单**（只允许 gh pr list/view/status、gh run list/view、
+ * gh repo view、gh search repos），因此 pr merge / pr close / run rerun
+ * 这类写操作在 spawn 之前就被拒绝。
+ *
+ * 没有 github 远端或未认证时如实报告状态，不伪造数据。
+ * ========================================================================== */
+
+const GITHUB_TTL_MS = 60 * 1000
+let githubCache = { at: 0, value: null }
+
+async function resolveGhPath(ctx) {
+  const subprocess = ctx && ctx.get ? ctx.get('subprocess') : null
+  if (subprocess && typeof subprocess.resolveExecutable === 'function') {
+    try {
+      const resolved = await subprocess.resolveExecutable('gh', undefined, AbortSignal.timeout(2500))
+      if (typeof resolved === 'string' && resolved.length > 0) return resolved
+    } catch (e) {
+      /* fall through */
+    }
+  }
+  for (const candidate of ['/opt/homebrew/bin/gh', '/usr/local/bin/gh', join(homedir(), 'bin', 'gh')]) {
+    if (existsSync(candidate)) return candidate
+  }
+  return null
+}
+
+function parseGhJson(result) {
+  if (result.status !== 'ok') return null
+  try {
+    return JSON.parse(result.stdout)
+  } catch (e) {
+    return null
+  }
+}
+
+async function readPullRequests(ctx, dir) {
+  const result = await runReadOnlyCommand(
+    ctx,
+    ['gh', 'pr', 'list', '--json', 'number,title,state,isDraft,author,updatedAt,url', '--limit', '10'],
+    dir,
+  )
+  if (result.status !== 'ok') {
+    return { status: result.status === 'unavailable' ? 'unavailable' : 'error', note: result.reason || result.stderr, items: [] }
+  }
+  const list = parseGhJson(result)
+  if (!Array.isArray(list)) {
+    return { status: 'error', note: 'gh 返回不是 JSON 数组（可能未认证或目录不是 GitHub 仓库）', items: [] }
+  }
+  return {
+    status: 'ok',
+    note: null,
+    items: list.map(function (pr) {
+      return {
+        number: pr.number,
+        title: pr.title,
+        state: pr.state,
+        draft: pr.isDraft === true,
+        author: pr.author && pr.author.login ? pr.author.login : null,
+        updatedAt: asIso(pr.updatedAt),
+        url: asUrl(pr.url),
+      }
+    }),
+  }
+}
+
+async function readCiRuns(ctx, dir) {
+  const result = await runReadOnlyCommand(
+    ctx,
+    ['gh', 'run', 'list', '--json', 'databaseId,status,conclusion,workflowName,headBranch,createdAt,url', '--limit', '10'],
+    dir,
+  )
+  if (result.status !== 'ok') {
+    return { status: result.status === 'unavailable' ? 'unavailable' : 'error', note: result.reason || result.stderr, items: [] }
+  }
+  const list = parseGhJson(result)
+  if (!Array.isArray(list)) {
+    return { status: 'error', note: 'gh 返回不是 JSON 数组（可能未认证或没有 Actions）', items: [] }
+  }
+  return {
+    status: 'ok',
+    note: null,
+    items: list.map(function (run) {
+      return {
+        id: run.databaseId,
+        workflow: run.workflowName,
+        branch: run.headBranch,
+        status: run.status,
+        conclusion: run.conclusion,
+        createdAt: asIso(run.createdAt),
+        url: asUrl(run.url),
+      }
+    }),
+  }
+}
+
+/** 选择探测目录：优先项目里的 git 仓库，其次 Host 工作目录。 */
+function githubTargetDir(ctx) {
+  const state = loadWorkbenchState()
+  const project = ensureArray(state.projects).find(function (row) {
+    return row.repoPath && existsSync(join(row.repoPath, '.git'))
+  })
+  if (project) return project.repoPath
+  const cwd = cwdForHostCommands(ctx)
+  if (cwd && existsSync(join(cwd, '.git'))) return cwd
+  return cwd
+}
+
+async function buildGithubSnapshot(ctx) {
+  if (githubCache.value && Date.now() - githubCache.at < GITHUB_TTL_MS) return githubCache.value
+  const dir = githubTargetDir(ctx)
+  const ghPath = await resolveGhPath(ctx)
+  if (!ghPath) {
+    const value = {
+      at: hostNowIso(),
+      dir: dir,
+      status: 'unavailable',
+      note: '未找到 gh CLI：安装 GitHub CLI 并 `gh auth login` 后才能读取 PR 与 CI。',
+      prs: { status: 'unavailable', items: [], note: null },
+      runs: { status: 'unavailable', items: [], note: null },
+    }
+    githubCache = { at: Date.now(), value: value }
+    return value
+  }
+  const prs = await readPullRequests(ctx, dir)
+  const runs = await readCiRuns(ctx, dir)
+  const value = {
+    at: hostNowIso(),
+    dir: dir,
+    status: 'ok',
+    note: '只读：gh pr list / gh run list。合并、关闭、重跑等写操作不在插件内。',
+    prs: prs,
+    runs: runs,
+  }
+  githubCache = { at: Date.now(), value: value }
+  return value
+}
+
 // ===== 40-remote.js =====
 /* ============================================================================
  * dev-workbench host — Remote endpoints
@@ -2996,6 +3501,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'deleteProject', params: ['id'] },
   { method: 'search', params: ['request'] },
   { method: 'environment', params: [] },
+  { method: 'github', params: [] },
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
   { method: 'diagnostics', params: [] },

@@ -12,8 +12,8 @@
 | Host 半语法 | `node --check index.js` | 通过 |
 | Client 半语法 | `node --check client.js` | 通过 |
 | 跨文件顶层重名 | `node scripts/build.mjs --check` | 11 host / 12 client part，无冲突 |
-| Host 业务逻辑 | `node tests/host-smoke.mjs` | **88/88 通过** |
-| Client 全页面渲染 | `node tests/client-render.mjs` | **8/8 页面 + 空态 + 4 个新工具面板**；真实驱动搜索、抓取资讯、@我 再拉一次、逐个切换 YAML/CSV/Markdown/状态码 |
+| Host 业务逻辑 | `node tests/host-smoke.mjs` | **97/97 通过** |
+| Client 全页面渲染 | `node tests/client-render.mjs` | **8/8 页面 + 空态 + 6 个新增工具面板**；真实驱动搜索、抓取资讯、@我 再拉一次、逐个切换工具 |
 | **描述符实参交叉校验** | 渲染测试从 `src/host/40-remote.js` 解析签名表，逐一核对每个 RPC 调用的实参键 | **22/22 一致**——正是此项挡住 `fetchRadar` 的 `unexpected "request"`（客户端对零参端点多发了 `request` 字段，网关严格校验拒绝） |
 | 插件安装 | `plugin_manager install_bundle` | `application: applied`，`warnings: []` |
 | Host 行激活 | 运行时写出 `state.json`；`apply` 注册工具 | 已创建 |
@@ -98,7 +98,20 @@
 | 5 | 工具箱缺 YAML/CSV/Markdown/状态码 | 新增 4 个工具，共 14 个。YAML 仅常用子集（锚点/别名/块标量明确报错）；Markdown 全程 React 元素构造、不用 innerHTML；状态码内置 34 条 | 渲染测试逐个点开 4 个面板无异常 |
 | 6 | 无 AI 任务提取 | 规则候选：行动词 + 时间线索 + 长度 + 指向性 → 可解释置信度与 reasons；任务中心「待确认」区采纳/忽略；采纳原子建任务并带来源证据，重复采纳幂等、重复提取不重复生成 | host-smoke：提取/采纳/幂等/忽略/再次提取不重复 |
 
-## 7. 复现命令
+## 7. 第三轮补齐（清空上一轮审计清单）
+
+| 原缺口 | 现状 | 验证 |
+| --- | --- | --- |
+| 统一搜索缺「本地项目」 | 新增 files 路：在 Host 工作目录与项目 repoPath 内只读遍历，文件名 + 文本片段匹配；跳过 node_modules/.git/dist 等，遍历 4000/读取 300 上限、60s 索引缓存 | host-smoke：文件名命中 + 内容片段命中（带行号） |
+| PR / Review / CI 状态 | 新增 `workbench/github` + 研发协作「PR 与 CI」面板；`gh pr list` / `gh run list` 只读，多段前缀白名单挡住 `pr merge` 等写操作 | host-smoke：解析 PR 与 CI 运行；渲染测试断言面板出现 |
+| 日程与会议 | 新增日程搜索路（`calendar event list`，今天起 3 天，按标题过滤） | —— 本机当日无日程，接口实测返回空数组 |
+| 进程 CPU / 内存 | 研发协作新增「进程 CPU/内存」表（`ps aux` Top 12，按 CPU 排序） | host-smoke：解析并按 CPU 排序 |
+| 语义近似去重 | 雷达抓取新增标题三元组 Jaccard 相似度（≥0.82 视为同一事件） | host-smoke：标题相近、URL 不同的第二条不入库 |
+| 看板不能拖拽 | 看板卡片可拖动，列容器接收 drop 改状态（拖拽时列高亮） | 渲染测试通过（拖拽为原生 DnD，需浏览器目验） |
+| 首页缺快捷操作 | 新增「快捷操作」卡：新建待办 / 统一搜索 / 工具箱 / Agent 中心 / 拉取 @我 / 抓取资讯 + **番茄钟**（25 分钟）+ **复制今日简报**（Markdown） | 渲染测试断言「快捷操作」「专注」「复制今日简报」 |
+| 工具箱缺 Shell/Docker 查询、SQL Explain | 新增「Shell / Docker 速查」（22 条，分类 + 搜索 + 复制）与「SQL 计划解读」（14 条关键字规则，不连库不执行） | 渲染测试逐个点开两个新面板 |
+
+## 8. 复现命令
 
 ```bash
 cd dsh-dev-workbench
@@ -108,7 +121,7 @@ node tests/host-smoke.mjs
 node tests/client-render.mjs
 ```
 
-## 8. 生效条件
+## 9. 生效条件
 
 - 只改 `src/client/**`：重新构建后刷新 GUI 窗口即可。
 - 改 `src/host/**`（新增 Remote 端点或工具）：必须**重启 DSH**；重新安装 bundle 不会替换已加载的
