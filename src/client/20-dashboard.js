@@ -941,7 +941,7 @@ function DashboardPage() {
   const statStrip = h(
     'div',
     {
-      className: 'wb-card',
+      className: 'wb-card wb-col-span-2',
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -1039,7 +1039,7 @@ function DashboardPage() {
             return h(DashTaskRow, { key: task.id, task: task, data: data })
           }),
         )
-      : h('div', { style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 190 } }, h(Empty, {
+      : h('div', { style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 150, padding: '10px 0' } }, h(Empty, {
           icon: tasks.length === 0 ? 'tasks' : 'checkCircle',
           title: tasks.length === 0 ? '还没有待办' : '今天没有必须处理的待办',
           hint:
@@ -1458,7 +1458,7 @@ function DashboardPage() {
       : null,
     mentionsStrip,
     statStrip,
-    h('div', { className: 'wb-split', style: { marginBottom: 16 } }, taskPanel, radarPanel),
+    h('div', { className: 'wb-split', style: { gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)', marginBottom: 16 } }, taskPanel, radarPanel),
     h('div', { style: { marginBottom: 16 } }, quickActionsPanel),
     connectorsPanel,
     h(DashRadarModal, {

@@ -312,7 +312,7 @@ function AssistantDrawer() {
         flex: '0 0 ' + width + 'px',
         width: width,
         minWidth: 240,
-        maxWidth: '62%',
+        maxWidth: '58%',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',

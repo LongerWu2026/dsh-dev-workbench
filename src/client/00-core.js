@@ -695,9 +695,10 @@ button.wb-stat:hover { border-color: var(--dsw-alias-border-l2); }
 .wb-tool span { font-size: 11px; color: var(--dsw-alias-label-secondary); }
 .wb-tool.is-active { border-color: var(--wb-accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wb-accent) 40%, transparent); }
 .wb-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+.wb-split > .wb-col-span-2 { grid-column: 1 / -1; }
 @media (max-width: 1080px) {
   .wb-nav { width: 176px; flex-basis: 176px; }
-  .wb-split { grid-template-columns: minmax(0, 1fr); }
+  .wb-split { grid-template-columns: minmax(0, 1fr) !important; }
   .wb-page { padding: 16px 14px 32px; }
 }
 @media (max-width: 860px) {

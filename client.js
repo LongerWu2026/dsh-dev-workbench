@@ -721,9 +721,10 @@ window.__ModuleLoader__.load({
     .wb-tool span { font-size: 11px; color: var(--dsw-alias-label-secondary); }
     .wb-tool.is-active { border-color: var(--wb-accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wb-accent) 40%, transparent); }
     .wb-split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: stretch; }
+    .wb-split > .wb-col-span-2 { grid-column: 1 / -1; }
     @media (max-width: 1080px) {
       .wb-nav { width: 176px; flex-basis: 176px; }
-      .wb-split { grid-template-columns: minmax(0, 1fr); }
+      .wb-split { grid-template-columns: minmax(0, 1fr) !important; }
       .wb-page { padding: 16px 14px 32px; }
     }
     @media (max-width: 860px) {
@@ -2273,7 +2274,7 @@ window.__ModuleLoader__.load({
             flex: '0 0 ' + width + 'px',
             width: width,
             minWidth: 240,
-            maxWidth: '62%',
+            maxWidth: '58%',
             display: 'flex',
             flexDirection: 'column',
             position: 'relative',
@@ -4053,7 +4054,7 @@ window.__ModuleLoader__.load({
       const statStrip = h(
         'div',
         {
-          className: 'wb-card',
+          className: 'wb-card wb-col-span-2',
           style: {
             display: 'flex',
             alignItems: 'center',
@@ -4151,7 +4152,7 @@ window.__ModuleLoader__.load({
                 return h(DashTaskRow, { key: task.id, task: task, data: data })
               }),
             )
-          : h('div', { style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 190 } }, h(Empty, {
+          : h('div', { style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 150, padding: '10px 0' } }, h(Empty, {
               icon: tasks.length === 0 ? 'tasks' : 'checkCircle',
               title: tasks.length === 0 ? '还没有待办' : '今天没有必须处理的待办',
               hint:
@@ -4570,7 +4571,7 @@ window.__ModuleLoader__.load({
           : null,
         mentionsStrip,
         statStrip,
-        h('div', { className: 'wb-split', style: { marginBottom: 16 } }, taskPanel, radarPanel),
+        h('div', { className: 'wb-split', style: { gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)', marginBottom: 16 } }, taskPanel, radarPanel),
         h('div', { style: { marginBottom: 16 } }, quickActionsPanel),
         connectorsPanel,
         h(DashRadarModal, {
