@@ -744,6 +744,8 @@ const wbStore = (function () {
     /** 工作台助手：可移除的上下文引用（task / source / radar / knowledge / search） */
     assistantOpen: false,
     assistantRefs: [],
+    /** 命令面板 → 搜索页的交接：{query, groups} */
+    searchPreset: null,
   }
   const listeners = new Set()
   return {
@@ -786,7 +788,7 @@ const WB_DICT = {
     'nav.tools': '工具',
     'nav.dashboard': '今日简报',
     'nav.tasks': '任务中心',
-    'nav.search': '统一搜索',
+    'nav.search': '搜索',
     'nav.agents': 'Agent 中心',
     'nav.collab': '研发协作',
     'nav.radar': '技术雷达',
@@ -799,7 +801,7 @@ const WB_DICT = {
     'common.cancel': '取消',
     'common.delete': '删除',
     'common.close': '关闭',
-    'common.search': '搜索或执行命令',
+    'common.search': '搜索待办、知识、资讯或命令',
     'common.loading': '加载中…',
     'common.empty': '暂无内容',
     'common.retry': '重试',
@@ -1880,6 +1882,14 @@ WB.useStore = useStore
 WB.useWorkbench = function () {
   return useStore()
 }
+/** 命令面板选中搜索结果后，把查询与分类交给搜索页。 */
+WB.setSearchPreset = function (preset) {
+  wbStore.set({ searchPreset: preset || null })
+}
+WB.clearSearchPreset = function () {
+  wbStore.set({ searchPreset: null })
+}
+
 WB.toast = toast
 WB.assistant = assistant
 WB.assistantBrief = assistantBrief

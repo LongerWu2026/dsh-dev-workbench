@@ -1,5 +1,5 @@
 /* ============================================================================
- * dev-workbench — 统一搜索 (search)
+ * dev-workbench — 搜索 (search)
  *
  * Design report §3.3: multiple providers, source-attributed results, and the
  * hard rule "无命中时不得编造企业事实". So this page renders GROUPS, never a
@@ -239,8 +239,8 @@ function SearchPage() {
     null,
     h(PageHead, {
       icon: 'search',
-      title: WB.t('nav.search', '统一搜索'),
-      sub: '按来源分组检索：待办、知识、雷达与外网各算一路，某一路失败不影响其它来源。',
+      title: WB.t('nav.search', '搜索'),
+      sub: '一个入口搜全部：本地、企业、代码与外网各算一路，某一路失败不影响其它来源。',
       actions: h(
         React.Fragment,
         null,

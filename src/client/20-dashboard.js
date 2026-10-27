@@ -1504,7 +1504,7 @@ function DashboardPage() {
               },
               [
                 { key: 'new', icon: 'plus', label: '新建待办', run: function () { WB.openTaskForm(null) } },
-                { key: 'search', icon: 'search', label: '统一搜索', run: function () { WB.go('search') } },
+                { key: 'search', icon: 'search', label: '搜索', run: function () { WB.go('search') } },
                 { key: 'toolbox', icon: 'toolbox', label: '开发工具箱', run: function () { WB.go('toolbox') } },
                 { key: 'agents', icon: 'agent', label: 'Agent 中心', run: function () { WB.go('agents') } },
                 { key: 'mentions', icon: 'sparkles', label: mentionsBusy ? '拉取 @我…' : '拉取 @我', run: runMentionsFetch, disabled: mentionsBusy },

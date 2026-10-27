@@ -16,7 +16,7 @@
 WB.PAGE_META = {
   dashboard: { title: '今日简报', icon: 'dashboard', hint: '今天要处理的事、资讯与连接状态' },
   tasks: { title: '任务中心', icon: 'tasks', hint: '统一任务模型：来源、优先级、截止与执行记录' },
-  search: { title: '统一搜索', icon: 'search', hint: '按来源分组检索，结果带引用，缺一路不影响其它来源' },
+  search: { title: '搜索', icon: 'search', hint: '一个入口搜全部：本地、企业、代码与外网，按分类过滤' },
   agents: { title: 'Agent 中心', icon: 'agent', hint: '执行队列、审批与结果回写' },
   toolbox: { title: '开发工具箱', icon: 'toolbox', hint: '本地执行、数据不出浏览器的高频工具' },
   collab: { title: '研发协作', icon: 'git', hint: '仓库分支与改动、Docker 容器，全部只读探测' },
@@ -632,7 +632,16 @@ function NavRail(props) {
           const meta = WB.PAGE_META[id]
           if (!meta) return null
           const active = props.page === id
-          const count = id === 'tasks' && counts.open > 0 ? counts.open : null
+          const runs = props.data && Array.isArray(props.data.runs) ? props.data.runs : []
+          const activeRuns = runs.filter(function (run) {
+            return run.status === 'queued' || run.status === 'running' || run.status === 'waiting_approval'
+          }).length
+          const count =
+            id === 'tasks' && counts.open > 0
+              ? counts.open
+              : id === 'agents' && activeRuns > 0
+                ? activeRuns
+                : null
           return h(
             'button',
             {
@@ -676,18 +685,6 @@ function Toolbar(props) {
   return h(
     'div',
     { className: 'wb-toolbar' },
-    h(
-      'button',
-      {
-        type: 'button',
-        className: 'wb-toolbar-search',
-        onClick: props.onOpenPalette,
-        title: '打开命令面板',
-      },
-      h(Icon, { name: 'search', size: 14 }),
-      h('span', { className: 'wb-ellipsis' }, WB.t('common.search', '搜索或执行命令')),
-      h(Kbd, null, navigator.platform && navigator.platform.indexOf('Mac') >= 0 ? '⌘K' : 'Ctrl K'),
-    ),
     h('div', { className: 'wb-spacer' }),
     counts.overdue > 0
       ? h(
@@ -819,13 +816,6 @@ function WorkbenchApp() {
         data: state.data,
         page: page,
         assistantOpen: state.assistantOpen,
-        onOpenPalette: function () {
-          setPaletteOpen(true)
-        },
-        onQuickAdd: function () {
-          WB.openTaskForm(null)
-        },
-        quickAddAvailable: true,
       }),
       h(
         'div',

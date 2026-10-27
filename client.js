@@ -770,6 +770,8 @@ window.__ModuleLoader__.load({
         /** 工作台助手：可移除的上下文引用（task / source / radar / knowledge / search） */
         assistantOpen: false,
         assistantRefs: [],
+        /** 命令面板 → 搜索页的交接：{query, groups} */
+        searchPreset: null,
       }
       const listeners = new Set()
       return {
@@ -812,7 +814,7 @@ window.__ModuleLoader__.load({
         'nav.tools': '工具',
         'nav.dashboard': '今日简报',
         'nav.tasks': '任务中心',
-        'nav.search': '统一搜索',
+        'nav.search': '搜索',
         'nav.agents': 'Agent 中心',
         'nav.collab': '研发协作',
         'nav.radar': '技术雷达',
@@ -825,7 +827,7 @@ window.__ModuleLoader__.load({
         'common.cancel': '取消',
         'common.delete': '删除',
         'common.close': '关闭',
-        'common.search': '搜索或执行命令',
+        'common.search': '搜索待办、知识、资讯或命令',
         'common.loading': '加载中…',
         'common.empty': '暂无内容',
         'common.retry': '重试',
@@ -1906,6 +1908,14 @@ window.__ModuleLoader__.load({
     WB.useWorkbench = function () {
       return useStore()
     }
+    /** 命令面板选中搜索结果后，把查询与分类交给搜索页。 */
+    WB.setSearchPreset = function (preset) {
+      wbStore.set({ searchPreset: preset || null })
+    }
+    WB.clearSearchPreset = function () {
+      wbStore.set({ searchPreset: null })
+    }
+
     WB.toast = toast
     WB.assistant = assistant
     WB.assistantBrief = assistantBrief
@@ -1999,7 +2009,7 @@ window.__ModuleLoader__.load({
     WB.PAGE_META = {
       dashboard: { title: '今日简报', icon: 'dashboard', hint: '今天要处理的事、资讯与连接状态' },
       tasks: { title: '任务中心', icon: 'tasks', hint: '统一任务模型：来源、优先级、截止与执行记录' },
-      search: { title: '统一搜索', icon: 'search', hint: '按来源分组检索，结果带引用，缺一路不影响其它来源' },
+      search: { title: '搜索', icon: 'search', hint: '一个入口搜全部：本地、企业、代码与外网，按分类过滤' },
       agents: { title: 'Agent 中心', icon: 'agent', hint: '执行队列、审批与结果回写' },
       toolbox: { title: '开发工具箱', icon: 'toolbox', hint: '本地执行、数据不出浏览器的高频工具' },
       collab: { title: '研发协作', icon: 'git', hint: '仓库分支与改动、Docker 容器，全部只读探测' },
@@ -2615,7 +2625,16 @@ window.__ModuleLoader__.load({
               const meta = WB.PAGE_META[id]
               if (!meta) return null
               const active = props.page === id
-              const count = id === 'tasks' && counts.open > 0 ? counts.open : null
+              const runs = props.data && Array.isArray(props.data.runs) ? props.data.runs : []
+              const activeRuns = runs.filter(function (run) {
+                return run.status === 'queued' || run.status === 'running' || run.status === 'waiting_approval'
+              }).length
+              const count =
+                id === 'tasks' && counts.open > 0
+                  ? counts.open
+                  : id === 'agents' && activeRuns > 0
+                    ? activeRuns
+                    : null
               return h(
                 'button',
                 {
@@ -2659,18 +2678,6 @@ window.__ModuleLoader__.load({
       return h(
         'div',
         { className: 'wb-toolbar' },
-        h(
-          'button',
-          {
-            type: 'button',
-            className: 'wb-toolbar-search',
-            onClick: props.onOpenPalette,
-            title: '打开命令面板',
-          },
-          h(Icon, { name: 'search', size: 14 }),
-          h('span', { className: 'wb-ellipsis' }, WB.t('common.search', '搜索或执行命令')),
-          h(Kbd, null, navigator.platform && navigator.platform.indexOf('Mac') >= 0 ? '⌘K' : 'Ctrl K'),
-        ),
         h('div', { className: 'wb-spacer' }),
         counts.overdue > 0
           ? h(
@@ -2802,13 +2809,6 @@ window.__ModuleLoader__.load({
             data: state.data,
             page: page,
             assistantOpen: state.assistantOpen,
-            onOpenPalette: function () {
-              setPaletteOpen(true)
-            },
-            onQuickAdd: function () {
-              WB.openTaskForm(null)
-            },
-            quickAddAvailable: true,
           }),
           h(
             'div',
@@ -4649,7 +4649,7 @@ window.__ModuleLoader__.load({
                   },
                   [
                     { key: 'new', icon: 'plus', label: '新建待办', run: function () { WB.openTaskForm(null) } },
-                    { key: 'search', icon: 'search', label: '统一搜索', run: function () { WB.go('search') } },
+                    { key: 'search', icon: 'search', label: '搜索', run: function () { WB.go('search') } },
                     { key: 'toolbox', icon: 'toolbox', label: '开发工具箱', run: function () { WB.go('toolbox') } },
                     { key: 'agents', icon: 'agent', label: 'Agent 中心', run: function () { WB.go('agents') } },
                     { key: 'mentions', icon: 'sparkles', label: mentionsBusy ? '拉取 @我…' : '拉取 @我', run: runMentionsFetch, disabled: mentionsBusy },
@@ -6429,10 +6429,12 @@ window.__ModuleLoader__.load({
         return { taskId: '', status: 'completed', profile: '', summary: '', sessionId: '', startedAt: '' }
       })
 
-      const counts = { running: 0, waiting: 0, completed: 0, failed: 0 }
+      const counts = { running: 0, waiting: 0, completed: 0, failed: 0, queued: 0, executing: 0 }
       runs.forEach(function (run) {
         if (!run) return
-        if (run.status === 'running') counts.running += 1
+        if (run.status === 'running' || run.status === 'queued') counts.running += 1
+        if (run.status === 'queued') counts.queued = (counts.queued || 0) + 1
+        if (run.status === 'running') counts.executing = (counts.executing || 0) + 1
         else if (run.status === 'waiting_approval') counts.waiting += 1
         else if (run.status === 'completed') counts.completed += 1
         else if (run.status === 'failed') counts.failed += 1
@@ -6815,9 +6817,12 @@ window.__ModuleLoader__.load({
             key: 'running',
             label: '执行中',
             value: counts.running,
-            sub: 'status running',
+            sub: (counts.queued || 0) + ' 排队 · ' + (counts.executing || 0) + ' 执行',
             tone: 'warn',
             icon: 'play',
+            onClick: function () {
+              setFilter('active')
+            },
           }),
           h(Stat, {
             key: 'waiting',
@@ -10558,7 +10563,21 @@ window.__ModuleLoader__.load({
       return 'err'
     }
 
+    /** 末尾斜杠/重复斜杠归一化后再比较路径。 */
+    function collabNormalizePath(value) {
+      return String(value || '').replace(/\/{2,}/g, '/').replace(/\/+$/, '')
+    }
+
     function collabRepoCard(repo, index, projects) {
+      const projectList = Array.isArray(projects) ? projects : []
+      const repoDir = collabNormalizePath(repo.dir)
+      const matchedProject =
+        projectList.find(function (row) {
+          return collabNormalizePath(row.repoPath) === repoDir && repoDir
+        }) ||
+        projectList.find(function (row) {
+          return row.name && row.name === repo.label
+        }) || null
       const tone = collabGitTone(repo)
       const changes = repo.changed || 0
       return h(
@@ -10573,22 +10592,20 @@ window.__ModuleLoader__.load({
             'div',
             { className: 'wb-row', style: { gap: 6 } },
             repo.status === 'ok' ? h(Chip, { icon: 'git', children: repo.branch || '(detached)' }) : null,
-            h(IconBtn, {
-              name: 'trash',
-              label: '从工作台移除这个仓库目录',
-              onClick: function () {
-                if (!window.confirm('从工作台移除仓库「' + (repo.label || repo.dir) + '」？只解绑项目记录，不会删除磁盘上的目录。')) return
-                const list = Array.isArray(projects) ? projects : []
-                const project = list.find(function (row) {
-                  return (row.repoPath && row.repoPath === repo.dir) || row.name === repo.label
+            // 只有来自「项目」的仓库才可移除；Host 工作目录不是项目记录，不显示删除按钮
+            matchedProject
+              ? h(IconBtn, {
+                  name: 'trash',
+                  label: '从工作台移除这个仓库目录',
+                  onClick: function () {
+                    if (!window.confirm('从工作台移除仓库「' + (repo.label || repo.dir) + '」？只解绑项目记录，不会删除磁盘上的目录。')) return
+                    WB.actions.deleteProject(matchedProject.id).catch(function () {})
+                  },
                 })
-                if (!project) {
-                  WB.toast('找不到对应的项目记录，请到「连接与设置 → 项目」删除', 'err')
-                  return
-                }
-                WB.actions.deleteProject(project.id).catch(function () {})
-              },
-            }),
+              : h('span', {
+                  className: 'wb-tiny wb-muted',
+                  title: '该条目来自 Host 工作目录，不是项目记录；到「连接与设置 → 项目」添加/删除项目',
+                }, '工作目录'),
           ),
         },
         repo.status !== 'ok'
@@ -12428,6 +12445,39 @@ window.__ModuleLoader__.load({
         })
       }
 
+      // 搜索页结果（命令面板内联检索，只走本地路）
+      const searchGroups = (context && context.searchResults && context.searchResults.groups) || []
+      const SEARCH_ICON = {
+        tasks: 'tasks',
+        knowledge: 'book',
+        radar: 'sparkles',
+        sources: 'layers',
+        files: 'folder',
+        enterprise: 'building',
+        contacts: 'users',
+        rooms: 'users',
+        attendance: 'clock',
+        events: 'calendar',
+        github: 'git',
+        web: 'globe',
+      }
+      searchGroups.forEach(function (group) {
+        if (group.status !== 'ok') return
+        group.items.slice(0, 5).forEach(function (item, index) {
+          commands.push({
+            id: 'search:' + group.id + ':' + (item.id || index) + ':' + index,
+            label: item.title,
+            hint: group.label + (item.snippet ? ' · ' + WB.util.truncate(String(item.snippet), 56) : ''),
+            icon: SEARCH_ICON[group.id] || 'search',
+            group: '搜索 · ' + group.label,
+            run: function () {
+              WB.setSearchPreset({ query: context.searchQuery, groups: [group.id] })
+              WB.go('search')
+            },
+          })
+        })
+      })
+
       const tasks = (context && context.tasks) || []
       tasks.slice(0, 40).forEach(function (task) {
         commands.push({
@@ -12461,13 +12511,43 @@ window.__ModuleLoader__.load({
       const state = useStore()
       const [query, setQuery] = React.useState('')
       const [active, setActive] = React.useState(0)
+      const [searchResults, setSearchResults] = React.useState(null)
       const inputRef = React.useRef(null)
 
       const data = state.data || {}
+
+      // 内联检索：输入 ≥2 字时防抖查本地路（不联网），结果并入命令列表
+      React.useEffect(
+        function () {
+          if (!props.open) return undefined
+          const text = query.trim()
+          if (text.length < 2) {
+            setSearchResults(null)
+            return undefined
+          }
+          const timer = setTimeout(function () {
+            WB.actions
+              .search(text, { includeWeb: false })
+              .then(function (result) {
+                setSearchResults(result)
+              })
+              .catch(function () {
+                setSearchResults(null)
+              })
+          }, 260)
+          return function () {
+            clearTimeout(timer)
+          }
+        },
+        [query, props.open],
+      )
+
       const commands = paletteCommands({
         tasks: data.tasks,
         runs: data.runs,
         counts: WB.taskCounts(data),
+        searchResults: searchResults,
+        searchQuery: query.trim(),
       })
       const results = commands.filter(function (command) {
         return paletteMatch(command, query)
@@ -12560,7 +12640,7 @@ window.__ModuleLoader__.load({
             h('input', {
               ref: inputRef,
               value: query,
-              placeholder: '搜索页面、待办，或输入命令…',
+              placeholder: '搜索待办、知识、资讯，或输入命令…',
               onChange: function (event) {
                 setQuery(event.target.value)
               },
@@ -12655,6 +12735,7 @@ window.__ModuleLoader__.load({
             },
             h('span', { className: 'wb-row', style: { gap: 4 } }, h(Kbd, null, '↑'), h(Kbd, null, '↓'), '选择'),
             h('span', { className: 'wb-row', style: { gap: 4 } }, h(Kbd, null, '↵'), '执行'),
+            query.trim().length >= 2 ? h('span', { className: 'wb-muted' }, '本地检索 · 不联网') : null,
             h('span', { className: 'wb-spacer' }),
             h('span', null, shown.length + ' 项结果'),
           ),
@@ -12666,7 +12747,7 @@ window.__ModuleLoader__.load({
 
     // ===== 70-search.js =====
     /* ============================================================================
-     * dev-workbench — 统一搜索 (search)
+     * dev-workbench — 搜索 (search)
      *
      * Design report §3.3: multiple providers, source-attributed results, and the
      * hard rule "无命中时不得编造企业事实". So this page renders GROUPS, never a
@@ -12906,8 +12987,8 @@ window.__ModuleLoader__.load({
         null,
         h(PageHead, {
           icon: 'search',
-          title: WB.t('nav.search', '统一搜索'),
-          sub: '按来源分组检索：待办、知识、雷达与外网各算一路，某一路失败不影响其它来源。',
+          title: WB.t('nav.search', '搜索'),
+          sub: '一个入口搜全部：本地、企业、代码与外网各算一路，某一路失败不影响其它来源。',
           actions: h(
             React.Fragment,
             null,

@@ -339,10 +339,12 @@ function agentPage() {
     return { taskId: '', status: 'completed', profile: '', summary: '', sessionId: '', startedAt: '' }
   })
 
-  const counts = { running: 0, waiting: 0, completed: 0, failed: 0 }
+  const counts = { running: 0, waiting: 0, completed: 0, failed: 0, queued: 0, executing: 0 }
   runs.forEach(function (run) {
     if (!run) return
-    if (run.status === 'running') counts.running += 1
+    if (run.status === 'running' || run.status === 'queued') counts.running += 1
+    if (run.status === 'queued') counts.queued = (counts.queued || 0) + 1
+    if (run.status === 'running') counts.executing = (counts.executing || 0) + 1
     else if (run.status === 'waiting_approval') counts.waiting += 1
     else if (run.status === 'completed') counts.completed += 1
     else if (run.status === 'failed') counts.failed += 1
@@ -725,9 +727,12 @@ function agentPage() {
         key: 'running',
         label: '执行中',
         value: counts.running,
-        sub: 'status running',
+        sub: (counts.queued || 0) + ' 排队 · ' + (counts.executing || 0) + ' 执行',
         tone: 'warn',
         icon: 'play',
+        onClick: function () {
+          setFilter('active')
+        },
       }),
       h(Stat, {
         key: 'waiting',

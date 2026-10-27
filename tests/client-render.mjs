@@ -710,7 +710,7 @@ if (!registrations.panellist.length) problems.push('没有注册 sidebar.panelli
 const pageSpecs = [
   ['今日简报', 'dashboard', ['技术雷达', '抓取资讯', '快捷操作', '专注', '复制今日简报']],
   ['任务中心', 'tasks', ['看板', '待确认', '提取候选']],
-  ['统一搜索', 'search', ['按来源分组检索', '企业（云之家）']],
+  ['搜索', 'search', ['一个入口搜全部', '企业（云之家）']],
   ['Agent 中心', 'agents', ['执行队列']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
   ['研发协作', 'collab', ['添加仓库目录', '端口占用', 'PR 与 CI', '进程 CPU / 内存']],

@@ -73,6 +73,39 @@ function paletteCommands(context) {
     })
   }
 
+  // 搜索页结果（命令面板内联检索，只走本地路）
+  const searchGroups = (context && context.searchResults && context.searchResults.groups) || []
+  const SEARCH_ICON = {
+    tasks: 'tasks',
+    knowledge: 'book',
+    radar: 'sparkles',
+    sources: 'layers',
+    files: 'folder',
+    enterprise: 'building',
+    contacts: 'users',
+    rooms: 'users',
+    attendance: 'clock',
+    events: 'calendar',
+    github: 'git',
+    web: 'globe',
+  }
+  searchGroups.forEach(function (group) {
+    if (group.status !== 'ok') return
+    group.items.slice(0, 5).forEach(function (item, index) {
+      commands.push({
+        id: 'search:' + group.id + ':' + (item.id || index) + ':' + index,
+        label: item.title,
+        hint: group.label + (item.snippet ? ' · ' + WB.util.truncate(String(item.snippet), 56) : ''),
+        icon: SEARCH_ICON[group.id] || 'search',
+        group: '搜索 · ' + group.label,
+        run: function () {
+          WB.setSearchPreset({ query: context.searchQuery, groups: [group.id] })
+          WB.go('search')
+        },
+      })
+    })
+  })
+
   const tasks = (context && context.tasks) || []
   tasks.slice(0, 40).forEach(function (task) {
     commands.push({
@@ -106,13 +139,43 @@ function Palette(props) {
   const state = useStore()
   const [query, setQuery] = React.useState('')
   const [active, setActive] = React.useState(0)
+  const [searchResults, setSearchResults] = React.useState(null)
   const inputRef = React.useRef(null)
 
   const data = state.data || {}
+
+  // 内联检索：输入 ≥2 字时防抖查本地路（不联网），结果并入命令列表
+  React.useEffect(
+    function () {
+      if (!props.open) return undefined
+      const text = query.trim()
+      if (text.length < 2) {
+        setSearchResults(null)
+        return undefined
+      }
+      const timer = setTimeout(function () {
+        WB.actions
+          .search(text, { includeWeb: false })
+          .then(function (result) {
+            setSearchResults(result)
+          })
+          .catch(function () {
+            setSearchResults(null)
+          })
+      }, 260)
+      return function () {
+        clearTimeout(timer)
+      }
+    },
+    [query, props.open],
+  )
+
   const commands = paletteCommands({
     tasks: data.tasks,
     runs: data.runs,
     counts: WB.taskCounts(data),
+    searchResults: searchResults,
+    searchQuery: query.trim(),
   })
   const results = commands.filter(function (command) {
     return paletteMatch(command, query)
@@ -205,7 +268,7 @@ function Palette(props) {
         h('input', {
           ref: inputRef,
           value: query,
-          placeholder: '搜索页面、待办，或输入命令…',
+          placeholder: '搜索待办、知识、资讯，或输入命令…',
           onChange: function (event) {
             setQuery(event.target.value)
           },
@@ -300,6 +363,7 @@ function Palette(props) {
         },
         h('span', { className: 'wb-row', style: { gap: 4 } }, h(Kbd, null, '↑'), h(Kbd, null, '↓'), '选择'),
         h('span', { className: 'wb-row', style: { gap: 4 } }, h(Kbd, null, '↵'), '执行'),
+        query.trim().length >= 2 ? h('span', { className: 'wb-muted' }, '本地检索 · 不联网') : null,
         h('span', { className: 'wb-spacer' }),
         h('span', null, shown.length + ' 项结果'),
       ),

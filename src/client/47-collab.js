@@ -18,7 +18,21 @@ function collabGitTone(repo) {
   return 'err'
 }
 
+/** 末尾斜杠/重复斜杠归一化后再比较路径。 */
+function collabNormalizePath(value) {
+  return String(value || '').replace(/\/{2,}/g, '/').replace(/\/+$/, '')
+}
+
 function collabRepoCard(repo, index, projects) {
+  const projectList = Array.isArray(projects) ? projects : []
+  const repoDir = collabNormalizePath(repo.dir)
+  const matchedProject =
+    projectList.find(function (row) {
+      return collabNormalizePath(row.repoPath) === repoDir && repoDir
+    }) ||
+    projectList.find(function (row) {
+      return row.name && row.name === repo.label
+    }) || null
   const tone = collabGitTone(repo)
   const changes = repo.changed || 0
   return h(
@@ -33,22 +47,20 @@ function collabRepoCard(repo, index, projects) {
         'div',
         { className: 'wb-row', style: { gap: 6 } },
         repo.status === 'ok' ? h(Chip, { icon: 'git', children: repo.branch || '(detached)' }) : null,
-        h(IconBtn, {
-          name: 'trash',
-          label: '从工作台移除这个仓库目录',
-          onClick: function () {
-            if (!window.confirm('从工作台移除仓库「' + (repo.label || repo.dir) + '」？只解绑项目记录，不会删除磁盘上的目录。')) return
-            const list = Array.isArray(projects) ? projects : []
-            const project = list.find(function (row) {
-              return (row.repoPath && row.repoPath === repo.dir) || row.name === repo.label
+        // 只有来自「项目」的仓库才可移除；Host 工作目录不是项目记录，不显示删除按钮
+        matchedProject
+          ? h(IconBtn, {
+              name: 'trash',
+              label: '从工作台移除这个仓库目录',
+              onClick: function () {
+                if (!window.confirm('从工作台移除仓库「' + (repo.label || repo.dir) + '」？只解绑项目记录，不会删除磁盘上的目录。')) return
+                WB.actions.deleteProject(matchedProject.id).catch(function () {})
+              },
             })
-            if (!project) {
-              WB.toast('找不到对应的项目记录，请到「连接与设置 → 项目」删除', 'err')
-              return
-            }
-            WB.actions.deleteProject(project.id).catch(function () {})
-          },
-        }),
+          : h('span', {
+              className: 'wb-tiny wb-muted',
+              title: '该条目来自 Host 工作目录，不是项目记录；到「连接与设置 → 项目」添加/删除项目',
+            }, '工作目录'),
       ),
     },
     repo.status !== 'ok'
