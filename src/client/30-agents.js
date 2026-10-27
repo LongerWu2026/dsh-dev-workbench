@@ -303,6 +303,21 @@ function agentRunRow(props) {
           },
           children: '失败',
         }),
+        h(IconBtn, {
+          name: 'edit',
+          label: '编辑这条执行记录',
+          onClick: function () {
+            openEditRun(run)
+          },
+        }),
+        h(IconBtn, {
+          name: 'trash',
+          label: '删除这条执行记录',
+          onClick: function () {
+            if (!window.confirm('删除这条执行记录？任务本身保留，只是解除关联。')) return
+            WB.actions.deleteRun(run.id).catch(function () {})
+          },
+        }),
       ),
     ),
     detail,
@@ -319,6 +334,7 @@ function agentPage() {
   const [filter, setFilter] = React.useState('all')
   const [expanded, setExpanded] = React.useState({})
   const [recordOpen, setRecordOpen] = React.useState(false)
+  const [editingRunId, setEditingRunId] = React.useState(null)
   const [draft, setDraft] = React.useState(function () {
     return { taskId: '', status: 'completed', profile: '', summary: '', sessionId: '', startedAt: '' }
   })
@@ -385,6 +401,26 @@ function agentPage() {
       })
   }
 
+  function openEditRun(run) {
+    if (!run || !run.id) return
+    setEditingRunId(run.id)
+    setDraft({
+      taskId: run.taskId || '',
+      status: run.status || 'completed',
+      profile: run.profile || '',
+      summary: run.summary || '',
+      sessionId: run.sessionId || '',
+      startedAt: WB.fmt.toLocalInput(run.startedAt),
+    })
+    setRecordOpen(true)
+  }
+
+  function closeRecord() {
+    setRecordOpen(false)
+    setEditingRunId(null)
+    setDraft({ taskId: '', status: 'completed', profile: '', summary: '', sessionId: '', startedAt: '' })
+  }
+
   function submitRecord() {
     const input = { status: draft.status }
     if (draft.taskId) input.taskId = draft.taskId
@@ -396,10 +432,13 @@ function agentPage() {
     if (sessionId) input.sessionId = sessionId
     const startedAt = WB.fmt.fromLocalInput(draft.startedAt)
     if (startedAt) input.startedAt = startedAt
-    WB.actions.recordRun(input)
+    const action = editingRunId
+      ? WB.actions.updateRun(editingRunId, input)
+      : WB.actions.recordRun(input)
+    action
       .then(function () {
-        setRecordOpen(false)
-        setDraft({ taskId: '', status: 'completed', profile: '', summary: '', sessionId: '', startedAt: '' })
+        if (editingRunId) WB.toast('执行记录已更新', 'ok')
+        closeRecord()
       })
       .catch(function () {
         /* Host error is already toasted */
@@ -546,17 +585,15 @@ function agentPage() {
     Modal,
     {
       open: recordOpen,
-      title: '登记执行记录',
-      sub: '只登记事实：真正的执行发生在会话里',
+      title: editingRunId ? '编辑执行记录' : '登记执行记录',
+      sub: editingRunId ? '修改摘要、状态或关联任务（会话里真正的执行过程不变）' : '只登记事实：真正的执行发生在会话里',
       onClose: function () {
         setRecordOpen(false)
       },
       footer: [
         h(Btn, {
           key: 'cancel',
-          onClick: function () {
-            setRecordOpen(false)
-          },
+          onClick: closeRecord,
           children: '取消',
         }),
         h(Btn, {
@@ -565,7 +602,7 @@ function agentPage() {
           icon: 'save',
           disabled: !!wbState.busy,
           onClick: submitRecord,
-          children: '保存记录',
+          children: editingRunId ? '保存修改' : '保存记录',
         }),
       ],
     },

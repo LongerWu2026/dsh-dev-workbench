@@ -835,6 +835,13 @@ WB.apply = function apply(ctx) {
         return ctx.slots.register({ name: 'main', key: WB.PANEL_KEY }, WorkbenchApp)
       }),
     )
+    if (typeof WB.registerChatEmbed === 'function') {
+      try {
+        disposers.push(WB.registerChatEmbed(ctx))
+      } catch (e) {
+        /* 原生聊天内嵌是增强项，失败不影响工作台 */
+      }
+    }
     disposers.push(
       ctx.slots.inject('sidebar.panellist', function () {
         return ctx.slots.register(

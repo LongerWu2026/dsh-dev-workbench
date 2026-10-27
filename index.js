@@ -1701,6 +1701,70 @@ const workbenchApi = {
     return buildGithubSnapshot(workbenchContext())
   },
 
+  /** 按消息 id 取助手回复正文（原生聊天内嵌动作使用）。 */
+  async assistantMessage(request) {
+    return readAssistantMessage(workbenchContext(), request || {})
+  },
+
+  /** 删除来源证据：同时清理派生候选，并把引用它的待办解除来源关联。 */
+  async deleteSource(id) {
+    return mutateWorkbenchState(function (state) {
+      const sourceId = String(id)
+      const exists = ensureArray(state.sources).some(function (row) {
+        return row.id === sourceId
+      })
+      if (!exists) throw new Error('找不到该来源：' + sourceId)
+      state.sources = ensureArray(state.sources).filter(function (row) {
+        return row.id !== sourceId
+      })
+      state.candidates = ensureArray(state.candidates).filter(function (candidate) {
+        return candidate.sourceRefId !== sourceId
+      })
+      state.tasks = ensureArray(state.tasks).map(function (task) {
+        if (task.sourceRefId !== sourceId) return task
+        return Object.assign({}, task, { sourceRefId: null, updatedAt: hostNowIso() })
+      })
+      auditEntry(state, 'source.deleted', '删除来源 ' + sourceId)
+      return state
+    })
+  },
+
+  /** 删除执行记录：同步从关联任务的 runIds 中移除。 */
+  async deleteRun(id) {
+    return mutateWorkbenchState(function (state) {
+      const runId = String(id)
+      const exists = ensureArray(state.runs).some(function (row) {
+        return row.id === runId
+      })
+      if (!exists) throw new Error('找不到该执行记录：' + runId)
+      state.runs = ensureArray(state.runs).filter(function (row) {
+        return row.id !== runId
+      })
+      state.tasks = ensureArray(state.tasks).map(function (task) {
+        if (ensureArray(task.runIds).indexOf(runId) < 0) return task
+        return Object.assign({}, task, { runIds: ensureArray(task.runIds).filter(function (item) { return item !== runId }), updatedAt: hostNowIso() })
+      })
+      auditEntry(state, 'run.deleted', '删除执行记录 ' + runId)
+      return state
+    })
+  },
+
+  /** 删除候选（彻底移除，区别于 reject）。 */
+  async deleteCandidate(id) {
+    return mutateWorkbenchState(function (state) {
+      const candidateId = String(id)
+      const exists = ensureArray(state.candidates).some(function (row) {
+        return row.id === candidateId
+      })
+      if (!exists) throw new Error('找不到该候选：' + candidateId)
+      state.candidates = ensureArray(state.candidates).filter(function (row) {
+        return row.id !== candidateId
+      })
+      auditEntry(state, 'candidate.deleted', '删除候选 ' + candidateId)
+      return state
+    })
+  },
+
   /** 工作台助手：向原生会话提交提示并等待本轮回复（TODO 04）。 */
   async assistantAsk(request) {
     return runAssistantAsk(workbenchContext(), request || {})
@@ -4174,6 +4238,10 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'github', params: [] },
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
+  { method: 'assistantMessage', params: ['request'] },
+  { method: 'deleteSource', params: ['id'] },
+  { method: 'deleteRun', params: ['id'] },
+  { method: 'deleteCandidate', params: ['id'] },
   { method: 'assistantAsk', params: ['request'] },
   { method: 'assistantSend', params: ['request'] },
   { method: 'assistantDelta', params: ['request'] },
@@ -4915,6 +4983,64 @@ async function resetAssistantSession(ctx) {
   }
   rememberAssistantSession(session.id)
   return { status: 'ok', sessionId: String(session.id) }
+}
+
+
+/**
+ * 按「持久化消息 id」取一条助手回复的正文，供原生聊天的内嵌动作使用
+ * （conversation.chat.assistant-actions 只下发 messageId）。
+ * 事件形状不完全一致，按 id → data.messageId → seq 三种顺序兜底匹配。
+ */
+async function readAssistantMessage(ctx, request) {
+  const input = request && typeof request === 'object' ? request : {}
+  const sessions = hostService(ctx, 'sessions')
+  if (!sessions || typeof sessions.get !== 'function') {
+    return { status: 'unavailable', note: '没有可用的会话服务', text: '' }
+  }
+  const wantedSession = asString(input.sessionId, 120)
+  let session = wantedSession ? sessions.get(wantedSession) : await ensureAssistantSession(ctx)
+  if (!session) return { status: 'not_found', note: '找不到该会话', text: '' }
+
+  const wanted = asString(input.messageId, 120)
+  let events = []
+  try {
+    events = session.snapshotEvents()
+  } catch (e) {
+    return { status: 'error', note: '读取会话事件失败：' + String((e && e.message) || e).slice(0, 160), text: '' }
+  }
+
+  const assistantEvents = events.filter(function (event) {
+    return event.type === 'assistant/message'
+  })
+  let hit = null
+  if (wanted) {
+    hit =
+      assistantEvents.find(function (event) {
+        const message = event.data && event.data.message ? event.data.message : null
+        return String((message && message.id) || (event.data && event.data.messageId) || '') === wanted
+      }) || null
+    if (!hit && /^\d+$/.test(wanted)) {
+      hit =
+        events.find(function (event) {
+          return Number(event.seq) === Number(wanted)
+        }) || null
+    }
+  }
+  if (!hit) {
+    // 兜底：取最后一条助手消息（动作按钮总是挂在已定稿消息上）
+    hit = assistantEvents.length > 0 ? assistantEvents[assistantEvents.length - 1] : null
+  }
+  if (!hit) return { status: 'not_found', note: '该会话还没有助手回复', text: '', sessionId: String(session.id) }
+
+  const message = hit.data && hit.data.message ? hit.data.message : null
+  return {
+    status: 'ok',
+    sessionId: String(session.id),
+    messageId: String((message && message.id) || wanted || hit.seq),
+    text: assistantTextOf(message),
+    at: hit.time || null,
+    seq: hit.seq,
+  }
 }
 
 // ===== 50-tools.js =====

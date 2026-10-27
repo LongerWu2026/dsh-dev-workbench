@@ -868,6 +868,19 @@ function toast(text, kind) {
   return id
 }
 
+/** 我们注册的 Agent 工具名：原生聊天的工具卡片按这些 key 注册。 */
+WB.WORKBENCH_TOOL_NAMES = [
+  'workbench_create_task',
+  'workbench_update_task',
+  'workbench_list_tasks',
+  'workbench_task_brief',
+  'workbench_record_run',
+  'workbench_fetch_radar',
+  'workbench_fetch_mentions',
+  'workbench_update_radar',
+  'workbench_search',
+]
+
 /* --------------------------------------------------------------- 助手上下文 */
 /**
  * 工作台助手：把「当前在看的东西」作为**可见、可移除**的上下文引用收集起来，
@@ -1126,6 +1139,21 @@ const wbActions = {
     return wbRpc('workbench/assistantDelta', {
       request: { sessionId: sessionId || null, fromSeq: fromSeq || 0 },
     })
+  },
+  /** 按消息 id 取助手回复正文（原生聊天内嵌动作）。 */
+  assistantMessage(sessionId, messageId) {
+    return wbRpc('workbench/assistantMessage', {
+      request: { sessionId: sessionId || null, messageId: messageId || null },
+    })
+  },
+  deleteSource(id) {
+    return settle(wbRpc('workbench/deleteSource', { id: id }), '来源已删除')
+  },
+  deleteRun(id) {
+    return settle(wbRpc('workbench/deleteRun', { id: id }), '执行记录已删除')
+  },
+  deleteCandidate(id) {
+    return settle(wbRpc('workbench/deleteCandidate', { id: id }), '候选已删除')
   },
   assistantSessions(limit) {
     return wbRpc('workbench/assistantSessions', { request: { limit: limit || 12 } })

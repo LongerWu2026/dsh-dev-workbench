@@ -113,6 +113,12 @@ Host 用 `ctx.provide('workbench', api)` 暴露服务，并用 `ctx.typert.regis
 5. **SQLite**：当前为原子写入的单文件 JSON，schema 版本已预留。
 6. **定时同步**：未使用 Schedule；`updatedAt` 与 `settings.staleHours` 只用于提示数据陈旧。
 
+## 原生聊天内嵌（把工作台放进 DSH 会话）
+
+- **助手回复下方的动作**：原生会话里每条助手消息下方有「生成待办 / 存为知识 / 记执行记录」，一键把结论落成工作台对象（`conversation.chat.assistant-actions`，纯追加，不覆盖原生动作）。
+- **工作台工具卡片**：Agent 调用 `workbench_*` 时，原生聊天里显示成带「工作台」标识与参数摘要的卡片，而不是通用工具行（`tool.call.toolview`，只注册自有工具名）。
+- 两个插槽都在会话作用域，能拿到原生 hook；动作正文通过 `workbench/assistantMessage` 按消息 id 读取。
+
 ## 可靠性与自动化（2026-10-27 补齐）
 
 - **写入原子性**：工具调用与 Remote 共用同一组写入原语，重试走持久化操作账本（`idempotencyKey`），不会重复创建。

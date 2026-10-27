@@ -172,7 +172,7 @@ session.seq / session.header / session.deriveMessages()
 
 ---
 
-## 4. 方案 C：把工作台内容注入原生会话（反向内嵌，可立即做）
+## 4. 方案 C：把工作台内容注入原生会话（反向内嵌，**已实现**）
 
 `conversation.chat.node` 是 keyed 插槽，`keyDomain` 里已有 `user/assistant-step/tool-call/turn-tail` 等。
 插件可以注册**自己的 key**，在原生会话里渲染工作台专属卡片（例如「这条消息已建成待办 #123」）。
@@ -223,7 +223,7 @@ ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
 第 1 步（已完成）  方案 A 基座：会话列表 + 记录 + 续聊 + 跳转
 第 2 步（已完成）  A1 渐进渲染：assistantSend + assistantDelta(400ms) + turnActive 停机
 第 3 步（已完成）  A2/A3 工具行/结果行/错误行渲染 + 「排队 / 打断」开关（mode: queue|steer）
-第 4 步（约 0.5h） C 补充：助手消息动作 → 「存为知识 / 生成待办」
+第 4 步（已完成）  C 反向内嵌：助手消息动作（生成待办/存为知识/记执行记录）+ workbench_* 工具卡片
 第 5 步（可选 2h） B 流式验证；失败即回退 A1（已可回退）
 第 6 步（并行）    D 向上游提需求，拿到后再替换渲染层
 ```
@@ -253,6 +253,7 @@ ctx.slots.inject('conversation.chat.node', () => ctx.slots.register(
 | `workbench/assistantAsk` | 向指定会话提交提示并等待本轮结束（一次性返回） |
 | `workbench/assistantSend` | 只提交提示，立即返回 `{sessionId, fromSeq}`（配合 delta 渐进渲染） |
 | `workbench/assistantDelta` | `fromSeq` 之后的增量条目 + `nextSeq` + `turnActive` |
+| `workbench/assistantMessage` | 按持久化 messageId 取助手回复正文（原生聊天动作使用） |
 | `workbench/assistantHistory` | 助手会话的简版历史 |
 | `workbench/assistantReset` | 新开一个助手会话 |
 

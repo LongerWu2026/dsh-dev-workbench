@@ -570,3 +570,61 @@ async function resetAssistantSession(ctx) {
   rememberAssistantSession(session.id)
   return { status: 'ok', sessionId: String(session.id) }
 }
+
+
+/**
+ * 按「持久化消息 id」取一条助手回复的正文，供原生聊天的内嵌动作使用
+ * （conversation.chat.assistant-actions 只下发 messageId）。
+ * 事件形状不完全一致，按 id → data.messageId → seq 三种顺序兜底匹配。
+ */
+async function readAssistantMessage(ctx, request) {
+  const input = request && typeof request === 'object' ? request : {}
+  const sessions = hostService(ctx, 'sessions')
+  if (!sessions || typeof sessions.get !== 'function') {
+    return { status: 'unavailable', note: '没有可用的会话服务', text: '' }
+  }
+  const wantedSession = asString(input.sessionId, 120)
+  let session = wantedSession ? sessions.get(wantedSession) : await ensureAssistantSession(ctx)
+  if (!session) return { status: 'not_found', note: '找不到该会话', text: '' }
+
+  const wanted = asString(input.messageId, 120)
+  let events = []
+  try {
+    events = session.snapshotEvents()
+  } catch (e) {
+    return { status: 'error', note: '读取会话事件失败：' + String((e && e.message) || e).slice(0, 160), text: '' }
+  }
+
+  const assistantEvents = events.filter(function (event) {
+    return event.type === 'assistant/message'
+  })
+  let hit = null
+  if (wanted) {
+    hit =
+      assistantEvents.find(function (event) {
+        const message = event.data && event.data.message ? event.data.message : null
+        return String((message && message.id) || (event.data && event.data.messageId) || '') === wanted
+      }) || null
+    if (!hit && /^\d+$/.test(wanted)) {
+      hit =
+        events.find(function (event) {
+          return Number(event.seq) === Number(wanted)
+        }) || null
+    }
+  }
+  if (!hit) {
+    // 兜底：取最后一条助手消息（动作按钮总是挂在已定稿消息上）
+    hit = assistantEvents.length > 0 ? assistantEvents[assistantEvents.length - 1] : null
+  }
+  if (!hit) return { status: 'not_found', note: '该会话还没有助手回复', text: '', sessionId: String(session.id) }
+
+  const message = hit.data && hit.data.message ? hit.data.message : null
+  return {
+    status: 'ok',
+    sessionId: String(session.id),
+    messageId: String((message && message.id) || wanted || hit.seq),
+    text: assistantTextOf(message),
+    at: hit.time || null,
+    seq: hit.seq,
+  }
+}

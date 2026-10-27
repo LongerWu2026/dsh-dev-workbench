@@ -13,6 +13,7 @@
  *   45-knowledge.js
  *   47-collab.js
  *   50-settings.js
+ *   55-chat-embed.js
  *   60-palette.js
  *   70-search.js
  */
@@ -893,6 +894,19 @@ window.__ModuleLoader__.load({
       return id
     }
 
+    /** 我们注册的 Agent 工具名：原生聊天的工具卡片按这些 key 注册。 */
+    WB.WORKBENCH_TOOL_NAMES = [
+      'workbench_create_task',
+      'workbench_update_task',
+      'workbench_list_tasks',
+      'workbench_task_brief',
+      'workbench_record_run',
+      'workbench_fetch_radar',
+      'workbench_fetch_mentions',
+      'workbench_update_radar',
+      'workbench_search',
+    ]
+
     /* --------------------------------------------------------------- 助手上下文 */
     /**
      * 工作台助手：把「当前在看的东西」作为**可见、可移除**的上下文引用收集起来，
@@ -1151,6 +1165,21 @@ window.__ModuleLoader__.load({
         return wbRpc('workbench/assistantDelta', {
           request: { sessionId: sessionId || null, fromSeq: fromSeq || 0 },
         })
+      },
+      /** 按消息 id 取助手回复正文（原生聊天内嵌动作）。 */
+      assistantMessage(sessionId, messageId) {
+        return wbRpc('workbench/assistantMessage', {
+          request: { sessionId: sessionId || null, messageId: messageId || null },
+        })
+      },
+      deleteSource(id) {
+        return settle(wbRpc('workbench/deleteSource', { id: id }), '来源已删除')
+      },
+      deleteRun(id) {
+        return settle(wbRpc('workbench/deleteRun', { id: id }), '执行记录已删除')
+      },
+      deleteCandidate(id) {
+        return settle(wbRpc('workbench/deleteCandidate', { id: id }), '候选已删除')
       },
       assistantSessions(limit) {
         return wbRpc('workbench/assistantSessions', { request: { limit: limit || 12 } })
@@ -2766,6 +2795,13 @@ window.__ModuleLoader__.load({
             return ctx.slots.register({ name: 'main', key: WB.PANEL_KEY }, WorkbenchApp)
           }),
         )
+        if (typeof WB.registerChatEmbed === 'function') {
+          try {
+            disposers.push(WB.registerChatEmbed(ctx))
+          } catch (e) {
+            /* 原生聊天内嵌是增强项，失败不影响工作台 */
+          }
+        }
         disposers.push(
           ctx.slots.inject('sidebar.panellist', function () {
             return ctx.slots.register(
@@ -3388,6 +3424,14 @@ window.__ModuleLoader__.load({
               name: 'edit',
               label: '编辑资讯与四段摘要',
               onClick: props.onEdit,
+            }),
+            h(IconBtn, {
+              name: 'trash',
+              label: '删除这条资讯',
+              onClick: function () {
+                if (!window.confirm('删除这条资讯？')) return
+                WB.actions.deleteRadarItem(item.id).catch(function () {})
+              },
             }),
             h(IconBtn, {
               name: 'sparkles',
@@ -4689,6 +4733,14 @@ window.__ModuleLoader__.load({
                   : null,
                 h('div', { className: 'wb-spacer' }),
                 h('span', { className: 'wb-tiny wb-muted' }, '同步于 ' + WB.fmt.datetime(source.fetchedAt)),
+                h(IconBtn, {
+                  name: 'trash',
+                  label: '删除这条来源证据',
+                  onClick: function () {
+                    if (!window.confirm('删除这条来源证据？引用它的候选会一并移除，待办只解除来源关联。')) return
+                    WB.actions.deleteSource(source.id).catch(function () {})
+                  },
+                }),
               ),
               source.excerpt ? h('div', { className: 'wb-code' }, source.excerpt) : null,
               h(
@@ -5662,6 +5714,14 @@ window.__ModuleLoader__.load({
                       },
                       children: '忽略',
                     }),
+                    h(IconBtn, {
+                      name: 'trash',
+                      label: '彻底删除这条候选',
+                      onClick: function () {
+                        if (!window.confirm('彻底删除这条候选记录？')) return
+                        WB.actions.deleteCandidate(candidate.id).catch(function () {})
+                      },
+                    }),
                   ),
                 )
               }),
@@ -6019,6 +6079,21 @@ window.__ModuleLoader__.load({
               },
               children: '失败',
             }),
+            h(IconBtn, {
+              name: 'edit',
+              label: '编辑这条执行记录',
+              onClick: function () {
+                openEditRun(run)
+              },
+            }),
+            h(IconBtn, {
+              name: 'trash',
+              label: '删除这条执行记录',
+              onClick: function () {
+                if (!window.confirm('删除这条执行记录？任务本身保留，只是解除关联。')) return
+                WB.actions.deleteRun(run.id).catch(function () {})
+              },
+            }),
           ),
         ),
         detail,
@@ -6035,6 +6110,7 @@ window.__ModuleLoader__.load({
       const [filter, setFilter] = React.useState('all')
       const [expanded, setExpanded] = React.useState({})
       const [recordOpen, setRecordOpen] = React.useState(false)
+      const [editingRunId, setEditingRunId] = React.useState(null)
       const [draft, setDraft] = React.useState(function () {
         return { taskId: '', status: 'completed', profile: '', summary: '', sessionId: '', startedAt: '' }
       })
@@ -6101,6 +6177,26 @@ window.__ModuleLoader__.load({
           })
       }
 
+      function openEditRun(run) {
+        if (!run || !run.id) return
+        setEditingRunId(run.id)
+        setDraft({
+          taskId: run.taskId || '',
+          status: run.status || 'completed',
+          profile: run.profile || '',
+          summary: run.summary || '',
+          sessionId: run.sessionId || '',
+          startedAt: WB.fmt.toLocalInput(run.startedAt),
+        })
+        setRecordOpen(true)
+      }
+
+      function closeRecord() {
+        setRecordOpen(false)
+        setEditingRunId(null)
+        setDraft({ taskId: '', status: 'completed', profile: '', summary: '', sessionId: '', startedAt: '' })
+      }
+
       function submitRecord() {
         const input = { status: draft.status }
         if (draft.taskId) input.taskId = draft.taskId
@@ -6112,10 +6208,13 @@ window.__ModuleLoader__.load({
         if (sessionId) input.sessionId = sessionId
         const startedAt = WB.fmt.fromLocalInput(draft.startedAt)
         if (startedAt) input.startedAt = startedAt
-        WB.actions.recordRun(input)
+        const action = editingRunId
+          ? WB.actions.updateRun(editingRunId, input)
+          : WB.actions.recordRun(input)
+        action
           .then(function () {
-            setRecordOpen(false)
-            setDraft({ taskId: '', status: 'completed', profile: '', summary: '', sessionId: '', startedAt: '' })
+            if (editingRunId) WB.toast('执行记录已更新', 'ok')
+            closeRecord()
           })
           .catch(function () {
             /* Host error is already toasted */
@@ -6262,17 +6361,15 @@ window.__ModuleLoader__.load({
         Modal,
         {
           open: recordOpen,
-          title: '登记执行记录',
-          sub: '只登记事实：真正的执行发生在会话里',
+          title: editingRunId ? '编辑执行记录' : '登记执行记录',
+          sub: editingRunId ? '修改摘要、状态或关联任务（会话里真正的执行过程不变）' : '只登记事实：真正的执行发生在会话里',
           onClose: function () {
             setRecordOpen(false)
           },
           footer: [
             h(Btn, {
               key: 'cancel',
-              onClick: function () {
-                setRecordOpen(false)
-              },
+              onClick: closeRecord,
               children: '取消',
             }),
             h(Btn, {
@@ -6281,7 +6378,7 @@ window.__ModuleLoader__.load({
               icon: 'save',
               disabled: !!wbState.busy,
               onClick: submitRecord,
-              children: '保存记录',
+              children: editingRunId ? '保存修改' : '保存记录',
             }),
           ],
         },
@@ -10147,7 +10244,7 @@ window.__ModuleLoader__.load({
       return 'err'
     }
 
-    function collabRepoCard(repo, index) {
+    function collabRepoCard(repo, index, projects) {
       const tone = collabGitTone(repo)
       const changes = repo.changed || 0
       return h(
@@ -10158,14 +10255,27 @@ window.__ModuleLoader__.load({
           title: repo.label || '仓库',
           sub: repo.dir || '',
           badge: h(Badge, { tone: tone }, repo.status === 'ok' ? (changes > 0 ? changes + ' 处改动' : '干净') : repo.status === 'unavailable' ? '不可用' : '异常'),
-          actions:
-            repo.status === 'ok'
-              ? h(
-                  'div',
-                  { className: 'wb-row', style: { gap: 6 } },
-                  h(Chip, { icon: 'git', children: repo.branch || '(detached)' }),
-                )
-              : null,
+          actions: h(
+            'div',
+            { className: 'wb-row', style: { gap: 6 } },
+            repo.status === 'ok' ? h(Chip, { icon: 'git', children: repo.branch || '(detached)' }) : null,
+            h(IconBtn, {
+              name: 'trash',
+              label: '从工作台移除这个仓库目录',
+              onClick: function () {
+                if (!window.confirm('从工作台移除仓库「' + (repo.label || repo.dir) + '」？只解绑项目记录，不会删除磁盘上的目录。')) return
+                const list = Array.isArray(projects) ? projects : []
+                const project = list.find(function (row) {
+                  return (row.repoPath && row.repoPath === repo.dir) || row.name === repo.label
+                })
+                if (!project) {
+                  WB.toast('找不到对应的项目记录，请到「连接与设置 → 项目」删除', 'err')
+                  return
+                }
+                WB.actions.deleteProject(project.id).catch(function () {})
+              },
+            }),
+          ),
         },
         repo.status !== 'ok'
           ? h(Empty, {
@@ -10362,7 +10472,9 @@ window.__ModuleLoader__.load({
                   : h(
                       'div',
                       { className: 'wb-stack', style: { gap: 10 } },
-                      repos.map(collabRepoCard),
+                      repos.map(function (repo, index) {
+                        return collabRepoCard(repo, index, projects)
+                      }),
                     ),
               ),
 
@@ -11594,6 +11706,260 @@ window.__ModuleLoader__.load({
 
     WB.pages.settings = SettingsPage
 
+    // ===== 55-chat-embed.js =====
+    /* ============================================================================
+     * dev-workbench client — 把工作台嵌进 DSH 原生聊天
+     *
+     * 方向与「工作台助手侧栏」相反：不改原生会话的渲染，只在两个官方插槽上挂东西。
+     *
+     *   1. conversation.chat.assistant-actions（list，replaceRisk: none）
+     *      每条定稿的助手回复下面加一排动作：生成待办 / 存为知识 / 记执行记录。
+     *      ownerProps 只给 { messageId }，消息正文通过 workbench/assistantMessage 取。
+     *
+     *   2. tool.call.toolview（keyed by 工具名，replaceRisk: shadows-shipped-ui）
+     *      只接管我们自己的 workbench_* 工具，把它们渲染成工作台卡片。
+     *      未占用的 key 走通用行，所以我们注册自己的名字不会影响其它工具。
+     *
+     * 两个插槽都在 session scope，standardProps 带 useChat/useConversation/useSession
+     * 等原生会话 hook；这里只用 messageId + 我们的 RPC，避免依赖未公开的 hook 形状。
+     * ========================================================================== */
+
+    const CHAT_EMBED_ACTIONS = [
+      {
+        id: 'workbench-task',
+        label: '生成待办',
+        icon: 'plus',
+        run: function (text, meta) {
+          return WB.actions.createTask({
+            title: chatEmbedTitle(text),
+            description: text.slice(0, 2000),
+            priority: 'normal',
+            tags: ['来自会话'],
+          }).then(function () {
+            WB.toast('已生成待办（可在工作台查看）', 'ok')
+          })
+        },
+      },
+      {
+        id: 'workbench-knowledge',
+        label: '存为知识',
+        icon: 'book',
+        run: function (text) {
+          return WB.actions.createKnowledge({
+            title: chatEmbedTitle(text),
+            body: text.slice(0, 4000),
+            tags: ['来自会话'],
+            url: null,
+          }).then(function () {
+            WB.toast('已存入知识库', 'ok')
+          })
+        },
+      },
+      {
+        id: 'workbench-run',
+        label: '记执行记录',
+        icon: 'agent',
+        run: function (text) {
+          return WB.actions.recordRun({
+            status: 'completed',
+            summary: text.slice(0, 300),
+            steps: [{ text: '来源：原生会话中的助手回复' }],
+          }).then(function () {
+            WB.toast('已登记执行记录', 'ok')
+          })
+        },
+      },
+    ]
+
+    /** 取第一行/第一句当标题，去掉 Markdown 记号，控制长度。 */
+    function chatEmbedTitle(text) {
+      const line = String(text || '')
+        .replace(/^#+\s*/gm, '')
+        .replace(/[*_`>]/g, '')
+        .split('\n')
+        .map(function (part) {
+          return part.trim()
+        })
+        .filter(Boolean)[0]
+      const title = (line || '会话记录').slice(0, 60)
+      return title || '会话记录'
+    }
+
+    /**
+     * 原生聊天里每条助手回复下方的动作排。
+     * 只在消息正文可用时启用，失败就静默降级（不打断原生聊天）。
+     */
+    function ChatAssistantActions(props) {
+      const [busy, setBusy] = React.useState(false)
+      const [error, setError] = React.useState(null)
+      const messageId = props && props.messageId ? String(props.messageId) : ''
+      const sessionId = props && props.sessionId ? String(props.sessionId) : null
+      if (!messageId) return null
+
+      function trigger(action) {
+        if (busy) return
+        setBusy(true)
+        setError(null)
+        WB.actions
+          .assistantMessage(sessionId, messageId)
+          .then(function (result) {
+            if (!result || result.status !== 'ok' || !result.text) {
+              throw new Error((result && result.note) || '没有取到该条回复的内容')
+            }
+            return action.run(result.text, result)
+          })
+          .catch(function (failure) {
+            setError(String((failure && failure.message) || failure))
+          })
+          .then(function () {
+            setBusy(false)
+          })
+      }
+
+      return h(
+        'div',
+        {
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            flexWrap: 'wrap',
+            marginTop: 4,
+            fontSize: 11,
+            opacity: busy ? 0.6 : 1,
+          },
+        },
+        h('span', { style: { opacity: 0.65 } }, '工作台'),
+        CHAT_EMBED_ACTIONS.map(function (action) {
+          return h(
+            'button',
+            {
+              key: action.id,
+              type: 'button',
+              disabled: busy,
+              onClick: function () {
+                trigger(action)
+              },
+              title: '基于这条回复' + action.label,
+              style: {
+                appearance: 'none',
+                border: '1px solid currentColor',
+                borderRadius: 999,
+                background: 'transparent',
+                color: 'inherit',
+                fontSize: 11,
+                lineHeight: 1.5,
+                padding: '1px 8px',
+                cursor: busy ? 'default' : 'pointer',
+                opacity: 0.8,
+              },
+            },
+            action.label,
+          )
+        }),
+        error ? h('span', { style: { color: 'var(--dsh-color-danger, #d14343)' } }, error) : null,
+      )
+    }
+
+    /** 从工具调用的分阶段 block 里尽力取出参数/结果摘要。 */
+    function chatEmbedBlockSummary(block) {
+      if (!block || typeof block !== 'object') return ''
+      const candidates = [block.args, block.arguments, block.input, block.result, block.output, block.content, block.text]
+      for (const value of candidates) {
+        if (value === undefined || value === null) continue
+        if (typeof value === 'string') return value.slice(0, 200)
+        try {
+          return JSON.stringify(value).slice(0, 200)
+        } catch (e) {
+          /* 继续找下一个候选 */
+        }
+      }
+      return ''
+    }
+
+    /** workbench_* 工具调用的卡片（原生聊天里替代通用行）。 */
+    function WorkbenchToolView(props) {
+      const toolName = String((props && props.toolName) || 'workbench')
+      const phase = props && props.phase ? String(props.phase) : 'start'
+      const summary = chatEmbedBlockSummary(props && props.block)
+      const failed = !!(props && props.block && (props.block.isError === true || props.block.error))
+      return h(
+        'div',
+        {
+          style: {
+            border: '1px solid currentColor',
+            borderRadius: 8,
+            padding: '6px 9px',
+            fontSize: 11.5,
+            lineHeight: 1.6,
+            opacity: 0.92,
+            maxWidth: 620,
+          },
+        },
+        h(
+          'div',
+          { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          h('span', { style: { fontWeight: 600 } }, '工作台'),
+          h('span', { style: { opacity: 0.75 } }, toolName.replace(/^workbench_/, '')),
+          h(
+            'span',
+            { style: { marginLeft: 'auto', opacity: 0.6 } },
+            failed ? '失败' : phase === 'result' ? '完成' : phase === 'start' ? '执行中' : '准备中',
+          ),
+        ),
+        summary ? h('div', { style: { marginTop: 3, opacity: 0.8, overflowWrap: 'anywhere' } }, summary) : null,
+      )
+    }
+
+    /** 注册两个原生聊天插槽；宿主没提供插槽时静默跳过。 */
+    WB.registerChatEmbed = function (ctx) {
+      if (!ctx || !ctx.slots || typeof ctx.slots.inject !== 'function') return function () {}
+      const disposers = []
+
+      try {
+        disposers.push(
+          ctx.slots.inject('conversation.chat.assistant-actions', function () {
+            const registrations = CHAT_EMBED_ACTIONS.map(function (action, index) {
+              return ctx.slots.register(
+                {
+                  name: 'conversation.chat.assistant-actions',
+                  id: action.id,
+                  order: 30 + index,
+                  label: action.label,
+                },
+                ChatAssistantActions,
+              )
+            })
+            return registrations
+          }),
+        )
+      } catch (e) {
+        /* 插槽不存在或版本不同：不影响工作台本体 */
+      }
+
+      try {
+        disposers.push(
+          ctx.slots.inject('tool.call.toolview', function () {
+            return WB.WORKBENCH_TOOL_NAMES.map(function (name) {
+              return ctx.slots.register({ name: 'tool.call.toolview', key: name }, WorkbenchToolView)
+            })
+          }),
+        )
+      } catch (e) {
+        /* 同上 */
+      }
+
+      return function () {
+        disposers.forEach(function (dispose) {
+          try {
+            dispose()
+          } catch (e) {
+            /* already gone */
+          }
+        })
+      }
+    }
+
     // ===== 60-palette.js =====
     /* ============================================================================
      * dev-workbench command palette
@@ -12036,6 +12402,20 @@ window.__ModuleLoader__.load({
             icon: 'book',
             children: '收藏',
             onClick: collect,
+          }),
+          h(Btn, {
+            size: 'sm',
+            kind: 'subtle',
+            icon: 'plus',
+            children: '建待办',
+            onClick: function () {
+              WB.openTaskForm({
+                title: WB.util.truncate(item.title || '来自检索结果', 80),
+                description: String((item.snippet || '') + (item.url ? '\n来源：' + item.url : '')).slice(0, 2000),
+                projectId: null,
+                taskId: null,
+              })
+            },
           }),
           h(Btn, {
             size: 'sm',

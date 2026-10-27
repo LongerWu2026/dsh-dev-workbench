@@ -365,6 +365,14 @@ function DashRadarRow(props) {
           onClick: props.onEdit,
         }),
         h(IconBtn, {
+          name: 'trash',
+          label: '删除这条资讯',
+          onClick: function () {
+            if (!window.confirm('删除这条资讯？')) return
+            WB.actions.deleteRadarItem(item.id).catch(function () {})
+          },
+        }),
+        h(IconBtn, {
           name: 'sparkles',
           label: 'AI 分析这条资讯（带上下文进入会话）',
           onClick: function () {

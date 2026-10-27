@@ -449,7 +449,7 @@ function snapshotFixture() {
 }
 
 /* ------------------------------------------------------- mount the plugin */
-const registrations = { main: [], panellist: [] }
+const registrations = { main: [], panellist: [], chatActions: [], toolViews: [] }
 const rpcCalls = []
 
 const ctx = {
@@ -476,6 +476,12 @@ const ctx = {
     register(options, Component) {
       if (options.name === 'main') registrations.main.push({ key: options.key, Component: Component })
       if (options.name === 'sidebar.panellist') registrations.panellist.push({ id: options.id, Component: Component })
+      if (options.name === 'conversation.chat.assistant-actions') {
+        registrations.chatActions.push({ id: options.id, order: options.order, Component: Component })
+      }
+      if (options.name === 'tool.call.toolview') {
+        registrations.toolViews.push({ key: options.key, Component: Component })
+      }
       return () => {}
     },
   },
@@ -486,6 +492,12 @@ const ctx = {
         if (endpoint === 'workbench/diagnostics') return Promise.resolve({ ok: true, value: diagnostics })
         if (endpoint === 'workbench/environment') return Promise.resolve({ ok: true, value: environmentFixture })
         if (endpoint === 'workbench/github') return Promise.resolve({ ok: true, value: githubFixture })
+        if (endpoint === 'workbench/assistantMessage') {
+          return Promise.resolve({
+            ok: true,
+            value: { status: 'ok', messageId: 'm-1', text: '限流方案要点\n1. 阈值降到 1200\n2. 先灰度', sessionId: 'session-fake' },
+          })
+        }
         if (endpoint === 'workbench/assistantSend') {
           return Promise.resolve({ ok: true, value: { status: 'ok', sessionId: 'session-fake', fromSeq: 0 } })
         }
@@ -655,6 +667,21 @@ function findInputs(entries, out) {
   return out
 }
 
+/** 直接渲染任意组件（含 ownerProps），用于验证插槽组件本身。 */
+async function renderComponent(Component, props) {
+  let entries = []
+  for (let pass = 0; pass < 6; pass += 1) {
+    dirty = false
+    hookSlots = []
+    hookIndex = 0
+    entries = expand({ type: Component, props: props || {}, children: [] }, [])
+    await tick()
+    await tick()
+    if (!dirty) break
+  }
+  return entries
+}
+
 async function renderTree(label) {
   const Component = registrations.main[0] && registrations.main[0].Component
   if (!Component) {
@@ -768,6 +795,66 @@ for (const [title, id, expected] of pageSpecs) {
   }
 }
 
+/* ------------------------------------- 逐页核对：实体维护入口是否真的在 */
+{
+  const labelsOf = (entries) => {
+    const out = []
+    const walk = (list) => {
+      list.forEach((item) => {
+        if (!item.tag) return
+        const props = item.props || {}
+        const label = String(props['aria-label'] || props.title || '')
+        if (label) out.push(label)
+        const text = treeText(item.children || []).trim()
+        if (item.tag === 'button' && text) out.push(text)
+        walk(item.children || [])
+      })
+    }
+    walk(entries)
+    return out.join(' | ')
+  }
+  const goPage = async (title) => {
+    const tree = await renderTree('核对·' + title)
+    const nav = findNavButtons(tree, []).find((item) => treeText(item.children).indexOf(title) >= 0)
+    if (!nav) {
+      problems.push('导航找不到：' + title)
+      return []
+    }
+    nav.props.onClick()
+    return renderTree('核对·' + title + '·已进入')
+  }
+
+  // 首页：资讯删除入口（页面上真实可点）
+  const dashEntries = await goPage('今日简报')
+  const dashLabels = labelsOf(dashEntries)
+  if (dashLabels.indexOf('删除这条资讯') < 0) problems.push('首页缺少「删除资讯」入口')
+  if (dashLabels.indexOf('AI 分析这条资讯') < 0) problems.push('首页缺少「AI 分析资讯」入口')
+
+  // 任务中心：候选维护入口
+  const tasksEntries = await goPage('任务中心')
+  const tasksLabels = labelsOf(tasksEntries)
+  if (tasksLabels.indexOf('彻底删除这条候选') < 0) problems.push('任务中心缺少「删除候选」入口')
+  if (tasksLabels.indexOf('提取候选') < 0) problems.push('任务中心缺少「提取候选」入口')
+  // 来源证据的删除按钮在展开行里；本环境多次切页后 hook 状态会漂移，
+  // 因此这里核对产物里确实带该入口与 Host 动作（行为由 host-smoke 覆盖）。
+  if (source.indexOf('删除这条来源证据') < 0) problems.push('产物里缺少「删除来源证据」入口')
+  if (source.indexOf('workbench/deleteSource') < 0) problems.push('产物里缺少 deleteSource 调用')
+
+  // Agent 中心：执行记录编辑 + 删除
+  const agentsEntries = await goPage('Agent 中心')
+  const agentsLabels = labelsOf(agentsEntries)
+  if (agentsLabels.indexOf('编辑这条执行记录') < 0) problems.push('Agent 中心缺少「编辑执行记录」入口')
+  if (agentsLabels.indexOf('删除这条执行记录') < 0) problems.push('Agent 中心缺少「删除执行记录」入口')
+
+  // 研发协作：仓库移除入口
+  const collabEntries = await goPage('研发协作')
+  const collabLabels = labelsOf(collabEntries)
+  if (collabLabels.indexOf('从工作台移除这个仓库目录') < 0) problems.push('研发协作缺少「移除仓库」入口')
+
+  // 搜索结果：建待办入口（产物核对，页面需真实检索后才会出现结果行）
+  if (source.indexOf('建待办') < 0) problems.push('产物里缺少「搜索建待办」入口')
+}
+
 /* ------------------------------------------------- 助手抽屉（TODO 04） */
 {
   const navTree = await renderTree('助手·导航')
@@ -808,6 +895,50 @@ for (const [title, id, expected] of pageSpecs) {
       const refText = treeText(withRef).replace(/\s+/g, ' ')
       if (!/待办|资讯|知识|来源消息/.test(refText)) problems.push('上下文引用没有显示出来')
     }
+  }
+}
+
+/* ------------------------------------- 原生聊天内嵌（方案 C，TODO 04） */
+{
+  const actionIds = registrations.chatActions.map((item) => item.id)
+  if (registrations.chatActions.length !== 3) problems.push('原生聊天动作排应注册 3 个，实际 ' + registrations.chatActions.length)
+  if (actionIds.indexOf('workbench-task') < 0) problems.push('缺少「生成待办」动作注册')
+  if (actionIds.indexOf('workbench-knowledge') < 0) problems.push('缺少「存为知识」动作注册')
+  if (actionIds.indexOf('workbench-run') < 0) problems.push('缺少「记执行记录」动作注册')
+
+  const keys = registrations.toolViews.map((item) => item.key)
+  if (keys.length !== 9) problems.push('工具卡片应注册 9 个 key，实际 ' + keys.length)
+  if (keys.some((key) => String(key).indexOf('workbench_') !== 0)) problems.push('工具卡片注册了非工作台工具：' + keys.join(','))
+
+  // 动作排组件真实渲染 + 点击「生成待办」
+  const ActionComp = registrations.chatActions[0] && registrations.chatActions[0].Component
+  if (ActionComp) {
+    const tree = await renderComponent(ActionComp, { messageId: 'm-1', sessionId: 'session-fake' })
+    const text = treeText(tree).replace(/\s+/g, ' ')
+    for (const label of ['生成待办', '存为知识', '记执行记录']) {
+      if (text.indexOf(label) < 0) problems.push('动作排缺少按钮：' + label)
+    }
+    const createBtn = findButtons(tree, []).find((button) => button.text.indexOf('生成待办') >= 0)
+    if (!createBtn) problems.push('动作排找不到「生成待办」按钮')
+    else {
+      const before = rpcCalls.length
+      createBtn.onClick()
+      await new Promise((resolve) => setTimeout(resolve, 60))
+      const called = rpcCalls.slice(before).map((call) => call.endpoint)
+      if (called.indexOf('workbench/assistantMessage') < 0) problems.push('生成待办没有先取消息正文')
+      if (called.indexOf('workbench/createTask') < 0) problems.push('生成待办没有调用 createTask')
+    }
+  } else {
+    problems.push('没有注册原生聊天动作排组件')
+  }
+
+  // 工具卡片组件渲染
+  const ToolComp = registrations.toolViews[0] && registrations.toolViews[0].Component
+  if (ToolComp) {
+    const tree = await renderComponent(ToolComp, { toolName: 'workbench_create_task', phase: 'result', block: { result: { title: '限流结论' } }, callId: 'c1' })
+    const text = treeText(tree).replace(/\s+/g, ' ')
+    if (text.indexOf('工作台') < 0) problems.push('工具卡片没有渲染工作台标识')
+    if (text.indexOf('create_task') < 0) problems.push('工具卡片没有渲染工具名')
   }
 }
 

@@ -18,7 +18,7 @@ function collabGitTone(repo) {
   return 'err'
 }
 
-function collabRepoCard(repo, index) {
+function collabRepoCard(repo, index, projects) {
   const tone = collabGitTone(repo)
   const changes = repo.changed || 0
   return h(
@@ -29,14 +29,27 @@ function collabRepoCard(repo, index) {
       title: repo.label || '仓库',
       sub: repo.dir || '',
       badge: h(Badge, { tone: tone }, repo.status === 'ok' ? (changes > 0 ? changes + ' 处改动' : '干净') : repo.status === 'unavailable' ? '不可用' : '异常'),
-      actions:
-        repo.status === 'ok'
-          ? h(
-              'div',
-              { className: 'wb-row', style: { gap: 6 } },
-              h(Chip, { icon: 'git', children: repo.branch || '(detached)' }),
-            )
-          : null,
+      actions: h(
+        'div',
+        { className: 'wb-row', style: { gap: 6 } },
+        repo.status === 'ok' ? h(Chip, { icon: 'git', children: repo.branch || '(detached)' }) : null,
+        h(IconBtn, {
+          name: 'trash',
+          label: '从工作台移除这个仓库目录',
+          onClick: function () {
+            if (!window.confirm('从工作台移除仓库「' + (repo.label || repo.dir) + '」？只解绑项目记录，不会删除磁盘上的目录。')) return
+            const list = Array.isArray(projects) ? projects : []
+            const project = list.find(function (row) {
+              return (row.repoPath && row.repoPath === repo.dir) || row.name === repo.label
+            })
+            if (!project) {
+              WB.toast('找不到对应的项目记录，请到「连接与设置 → 项目」删除', 'err')
+              return
+            }
+            WB.actions.deleteProject(project.id).catch(function () {})
+          },
+        }),
+      ),
     },
     repo.status !== 'ok'
       ? h(Empty, {
@@ -233,7 +246,9 @@ function CollabPage() {
               : h(
                   'div',
                   { className: 'wb-stack', style: { gap: 10 } },
-                  repos.map(collabRepoCard),
+                  repos.map(function (repo, index) {
+                    return collabRepoCard(repo, index, projects)
+                  }),
                 ),
           ),
 

@@ -211,7 +211,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 41 个 Remote 描述符', invocations.length === 41, '实际 ' + invocations.length)
+check('注册了 45 个 Remote 描述符', invocations.length === 45, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -940,7 +940,7 @@ check(
             type: 'assistant/message',
             seq: events.length + 1,
             time: Date.now(),
-            data: { message: { content: [{ type: 'text', text: '助手回复：今天先处理限流结论' }] } },
+            data: { message: { id: 'msg-' + events.length, content: [{ type: 'text', text: '助手回复：今天先处理限流结论' }] } },
           })
           events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
         }, 20)
@@ -973,6 +973,12 @@ check(
   )
   const missing = await api.assistantTranscript({ sessionId: 'no-such-session' })
   check('读取不存在的会话如实返回', missing.status === 'not_found')
+
+  // 原生聊天内嵌动作：按 messageId 取回复正文
+  const liveMessage = await api.assistantMessage({ sessionId: world.session.id, messageId: 'no-such-message' })
+  check('按未知消息 id 兜底取最后一条助手回复', liveMessage.status === 'ok' && String(liveMessage.text || '').length > 0, JSON.stringify(liveMessage).slice(0, 120))
+  const byMessageId = await api.assistantMessage({ sessionId: world.session.id, messageId: liveMessage.messageId })
+  check('按消息 id 可取正文', byMessageId.status === 'ok' && byMessageId.text.indexOf('助手回复') >= 0, String(byMessageId.text || '').slice(0, 40))
 
   // --- 场景 2：渐进渲染 ---
   {
@@ -1028,6 +1034,52 @@ check(
   fakeSessionController = null
   const degraded = await api.assistantAsk({ text: '在吗' })
   check('缺会话服务时如实降级', degraded.status === 'unavailable' && !!degraded.note, JSON.stringify(degraded))
+}
+
+// 实体删除能力（逐个核对后补齐的三处）
+{
+  const srcState = await api.addSource({ provider: 'test', title: '待删来源', excerpt: '这个要被删掉' })
+  const srcId = srcState.sources.slice(-1)[0].id
+  const candBefore = await api.extractCandidates()
+  const candOfSource = candBefore.candidates.filter((c) => c.sourceRefId === srcId)
+  const taskState = await api.createTask({ title: '引用来源的任务', sourceRefId: srcId })
+  const taskId = taskState.tasks.slice(-1)[0].id
+
+  const afterDelete = await api.deleteSource(srcId)
+  check('来源可删除', !afterDelete.sources.some((row) => row.id === srcId))
+  check('删除来源时清理派生候选', !afterDelete.candidates.some((c) => c.sourceRefId === srcId), String(candOfSource.length) + ' 条')
+  check('删除来源时解除待办关联', afterDelete.tasks.find((row) => row.id === taskId).sourceRefId === null)
+  let sourceGone = false
+  try {
+    await api.deleteSource(srcId)
+  } catch (e) {
+    sourceGone = /找不到该来源/.test(e.message)
+  }
+  check('重复删除来源如实报错', sourceGone)
+
+  const runState = await api.recordRun({ taskId: taskId, status: 'completed', summary: '待删执行' })
+  const runId = runState.runs.slice(-1)[0].id
+  check('执行记录已挂到任务', runState.tasks.find((row) => row.id === taskId).runIds.indexOf(runId) >= 0)
+  const afterRunDelete = await api.deleteRun(runId)
+  check('执行记录可删除', !afterRunDelete.runs.some((row) => row.id === runId))
+  check('删除执行记录时解除任务关联', afterRunDelete.tasks.find((row) => row.id === taskId).runIds.indexOf(runId) < 0)
+
+  const candState = await api.extractCandidates()
+  const anyCandidate = candState.candidates.filter((c) => c.status === 'pending')[0]
+  if (anyCandidate) {
+    const afterCandDelete = await api.deleteCandidate(anyCandidate.id)
+    check('候选可彻底删除', !afterCandDelete.candidates.some((c) => c.id === anyCandidate.id))
+    let candidateGone = false
+    try {
+      await api.deleteCandidate(anyCandidate.id)
+    } catch (e) {
+      candidateGone = /找不到该候选/.test(e.message)
+    }
+    check('重复删除候选如实报错', candidateGone)
+  } else {
+    check('候选可彻底删除', false, '没有可删除的候选样本')
+    check('重复删除候选如实报错', false, '没有可删除的候选样本')
+  }
 }
 
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖

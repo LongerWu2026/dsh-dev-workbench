@@ -522,6 +522,70 @@ const workbenchApi = {
     return buildGithubSnapshot(workbenchContext())
   },
 
+  /** 按消息 id 取助手回复正文（原生聊天内嵌动作使用）。 */
+  async assistantMessage(request) {
+    return readAssistantMessage(workbenchContext(), request || {})
+  },
+
+  /** 删除来源证据：同时清理派生候选，并把引用它的待办解除来源关联。 */
+  async deleteSource(id) {
+    return mutateWorkbenchState(function (state) {
+      const sourceId = String(id)
+      const exists = ensureArray(state.sources).some(function (row) {
+        return row.id === sourceId
+      })
+      if (!exists) throw new Error('找不到该来源：' + sourceId)
+      state.sources = ensureArray(state.sources).filter(function (row) {
+        return row.id !== sourceId
+      })
+      state.candidates = ensureArray(state.candidates).filter(function (candidate) {
+        return candidate.sourceRefId !== sourceId
+      })
+      state.tasks = ensureArray(state.tasks).map(function (task) {
+        if (task.sourceRefId !== sourceId) return task
+        return Object.assign({}, task, { sourceRefId: null, updatedAt: hostNowIso() })
+      })
+      auditEntry(state, 'source.deleted', '删除来源 ' + sourceId)
+      return state
+    })
+  },
+
+  /** 删除执行记录：同步从关联任务的 runIds 中移除。 */
+  async deleteRun(id) {
+    return mutateWorkbenchState(function (state) {
+      const runId = String(id)
+      const exists = ensureArray(state.runs).some(function (row) {
+        return row.id === runId
+      })
+      if (!exists) throw new Error('找不到该执行记录：' + runId)
+      state.runs = ensureArray(state.runs).filter(function (row) {
+        return row.id !== runId
+      })
+      state.tasks = ensureArray(state.tasks).map(function (task) {
+        if (ensureArray(task.runIds).indexOf(runId) < 0) return task
+        return Object.assign({}, task, { runIds: ensureArray(task.runIds).filter(function (item) { return item !== runId }), updatedAt: hostNowIso() })
+      })
+      auditEntry(state, 'run.deleted', '删除执行记录 ' + runId)
+      return state
+    })
+  },
+
+  /** 删除候选（彻底移除，区别于 reject）。 */
+  async deleteCandidate(id) {
+    return mutateWorkbenchState(function (state) {
+      const candidateId = String(id)
+      const exists = ensureArray(state.candidates).some(function (row) {
+        return row.id === candidateId
+      })
+      if (!exists) throw new Error('找不到该候选：' + candidateId)
+      state.candidates = ensureArray(state.candidates).filter(function (row) {
+        return row.id !== candidateId
+      })
+      auditEntry(state, 'candidate.deleted', '删除候选 ' + candidateId)
+      return state
+    })
+  },
+
   /** 工作台助手：向原生会话提交提示并等待本轮回复（TODO 04）。 */
   async assistantAsk(request) {
     return runAssistantAsk(workbenchContext(), request || {})

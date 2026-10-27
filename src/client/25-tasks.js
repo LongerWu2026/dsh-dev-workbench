@@ -229,6 +229,14 @@ function TaskCenterEvidence(props) {
               : null,
             h('div', { className: 'wb-spacer' }),
             h('span', { className: 'wb-tiny wb-muted' }, '同步于 ' + WB.fmt.datetime(source.fetchedAt)),
+            h(IconBtn, {
+              name: 'trash',
+              label: '删除这条来源证据',
+              onClick: function () {
+                if (!window.confirm('删除这条来源证据？引用它的候选会一并移除，待办只解除来源关联。')) return
+                WB.actions.deleteSource(source.id).catch(function () {})
+              },
+            }),
           ),
           source.excerpt ? h('div', { className: 'wb-code' }, source.excerpt) : null,
           h(
@@ -1201,6 +1209,14 @@ function TaskCenterPage() {
                     rejectCandidateItem(candidate)
                   },
                   children: '忽略',
+                }),
+                h(IconBtn, {
+                  name: 'trash',
+                  label: '彻底删除这条候选',
+                  onClick: function () {
+                    if (!window.confirm('彻底删除这条候选记录？')) return
+                    WB.actions.deleteCandidate(candidate.id).catch(function () {})
+                  },
                 }),
               ),
             )

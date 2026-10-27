@@ -131,6 +131,20 @@ function SearchResultRow(props) {
       h(Btn, {
         size: 'sm',
         kind: 'subtle',
+        icon: 'plus',
+        children: '建待办',
+        onClick: function () {
+          WB.openTaskForm({
+            title: WB.util.truncate(item.title || '来自检索结果', 80),
+            description: String((item.snippet || '') + (item.url ? '\n来源：' + item.url : '')).slice(0, 2000),
+            projectId: null,
+            taskId: null,
+          })
+        },
+      }),
+      h(Btn, {
+        size: 'sm',
+        kind: 'subtle',
         icon: 'sparkles',
         children: 'AI 分析',
         onClick: function () {
