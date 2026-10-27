@@ -415,26 +415,62 @@ function AssistantDrawer() {
               }),
             ),
           )
-        : messages.map(function (message, index) {
-            if (message.role === 'tool' || message.role === 'toolResult' || message.role === 'error') {
-              const isTool = message.role === 'tool'
-              const isError = message.role === 'error'
-              return h(
-                'div',
-                {
-                  key: 'm' + index,
-                  style: { display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: isError ? T.err : T.text2, padding: '0 2px' },
-                },
-                h(Icon, { name: isError ? 'alert' : isTool ? 'play' : 'check', size: 11 }),
-                h(
+        : (function () {
+            // 把连续的工具调用/结果/错误事件折叠成一条「调用了 N 个工具」，避免中间出现大量白块
+            const groups = []
+            messages.forEach(function (message) {
+              const isService = message.role === 'tool' || message.role === 'toolResult' || message.role === 'error'
+              const last = groups[groups.length - 1]
+              if (isService) {
+                if (last && last.kind === 'service') {
+                  last.items.push(message)
+                } else {
+                  groups.push({ kind: 'service', items: [message] })
+                }
+                return
+              }
+              groups.push({ kind: 'message', item: message })
+            })
+            return groups.map(function (group, groupIndex) {
+              if (group.kind === 'service') {
+                const toolNames = []
+                group.items.forEach(function (item) {
+                  if (item.role === 'tool' && toolNames.indexOf(item.text) < 0) toolNames.push(item.text)
+                })
+                const failed = group.items.some(function (item) {
+                  return item.role === 'error' || (item.role === 'toolResult' && item.ok === false)
+                })
+                const detail = group.items
+                  .map(function (item) {
+                    const label = item.role === 'tool' ? item.text : item.role === 'toolResult' ? item.text + ' → ' + (item.ok === false ? '失败' : '完成') : String(item.text || '')
+                    return label + (item.summary ? '(' + String(item.summary) + ')' : '')
+                  })
+                  .join('\n')
+                return h(
                   'div',
-                  { style: { minWidth: 0, overflowWrap: 'anywhere' } },
-                  h('span', { className: 'wb-mono' }, message.text),
-                  message.summary ? h('span', { className: 'wb-muted' }, '  ' + WB.util.truncate(String(message.summary), 120)) : null,
-                ),
-              )
-            }
-            const mine = message.role === 'user'
+                  {
+                    key: 'g' + groupIndex,
+                    title: detail,
+                    style: {
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      fontSize: 11,
+                      color: T.text2,
+                      padding: '4px 10px',
+                      border: '1px dashed ' + T.border2,
+                      borderRadius: 9,
+                      opacity: 0.85,
+                    },
+                  },
+                  h(Icon, { name: 'command', size: 11 }),
+                  h('span', null, failed ? '调用了 ' + toolNames.length + ' 个工具（含失败）' : '调用了 ' + toolNames.length + ' 个工具'),
+                  h('span', { className: 'wb-mono wb-ellipsis', style: { opacity: 0.8, flex: '1 1 auto', minWidth: 0 } }, WB.util.truncate(toolNames.join(' · '), 60)),
+                )
+              }
+              const message = group.item
+              const index = messages.indexOf(message)
+              const mine = message.role === 'user'
             const markdown = !mine
             return h(
               'div',
@@ -492,9 +528,10 @@ function AssistantDrawer() {
                       }),
                     )
                   : null,
-              ),
-            )
-          }),
+              )
+              )
+            })
+          })(),
       sending ? h('div', { className: 'wb-row wb-tiny wb-muted', style: { gap: 6 } }, h(Spinner, { size: 12 }), h('span', null, '思考中…')) : null,
       error ? h('div', { role: 'alert', className: 'wb-tiny', style: { color: T.err, lineHeight: 1.6 } }, error) : null,
     ),
