@@ -2655,19 +2655,16 @@ window.__ModuleLoader__.load({
           )
         }),
         h('div', { className: 'wb-spacer' }),
+        // 底部只保留一行更新时间，不再放固定说明文案
         h(
           'div',
           {
-            className: 'wb-nav-label',
-            style: { paddingBottom: 0, display: 'flex', alignItems: 'center', gap: 4 },
+            className: 'wb-row wb-tiny wb-muted',
+            style: { padding: '2px 9px 12px', gap: 4 },
+            title: '工作台数据存储在宿主本地，自动持久化',
           },
           h(Icon, { name: 'database', size: 10 }),
-          '工作台状态',
-        ),
-        h(
-          'div',
-          { className: 'wb-tiny wb-muted', style: { padding: '2px 9px 0', lineHeight: 1.5 } },
-          '本地持久化 · ' + (data && data.updatedAt ? '最近写入 ' + WB.fmt.relative(data.updatedAt) : '尚未写入'),
+          h('span', null, data && data.updatedAt ? '更新于 ' + WB.fmt.relative(data.updatedAt) : '尚未写入'),
         ),
       )
     }
