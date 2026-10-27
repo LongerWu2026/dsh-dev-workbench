@@ -176,6 +176,26 @@ function SearchPage() {
   const [history, setHistory] = React.useState([])
   const [dateFilter, setDateFilter] = React.useState('all')
   const [projectFilter, setProjectFilter] = React.useState('')
+  /** 分类筛选（本地 / 企业 / 代码 / 互联网），与逐路开关叠加 */
+  const [category, setCategory] = React.useState('all')
+
+  // 命令面板选「去搜索页」时通过 searchPreset 交接查询词
+  const preset = state.searchPreset
+  const presetConsumed = React.useRef(null)
+  React.useEffect(
+    function () {
+      if (!preset || presetConsumed.current === preset) return
+      presetConsumed.current = preset
+      const text = String(preset.query || '').trim()
+      if (text) {
+        setDraft(text)
+        run(text)
+      }
+      if (preset.category) setCategory(preset.category)
+      WB.clearSearchPreset()
+    },
+    [preset],
+  )
 
   const SEARCH_DATE_WINDOWS = { all: 0, day: 24 * 3600 * 1000, week: 7 * 24 * 3600 * 1000, month: 30 * 24 * 3600 * 1000 }
 
@@ -221,10 +241,29 @@ function SearchPage() {
       })
   }
 
+  const SEARCH_CATEGORIES = [
+    { id: 'all', label: '全部', groups: null },
+    { id: 'local', label: '本地', groups: ['tasks', 'knowledge', 'radar', 'sources', 'files'] },
+    { id: 'enterprise', label: '企业', groups: ['enterprise', 'contacts', 'rooms', 'attendance', 'events'] },
+    { id: 'code', label: '代码', groups: ['github', 'files'] },
+    { id: 'web', label: '互联网', groups: ['web'] },
+  ]
+  const activeCategory = preset && preset.category && SEARCH_CATEGORIES.some(function (item) { return item.id === preset.category })
+    ? preset.category
+    : category
+  const categoryGroups = (function () {
+    const found = SEARCH_CATEGORIES.find(function (item) {
+      return item.id === activeCategory
+    })
+    return found && found.groups ? found.groups : null
+  })()
+
   const groups = (result && result.groups) || []
   const visible = groups
     .filter(function (group) {
-      return hidden.indexOf(group.id) < 0
+      if (hidden.indexOf(group.id) >= 0) return false
+      if (!categoryGroups) return true
+      return categoryGroups.indexOf(group.id) >= 0
     })
     .map(function (group) {
       if (group.status !== 'ok' && group.items.length === 0) return group
@@ -410,6 +449,23 @@ function SearchPage() {
               },
             }),
             h('span', { className: 'wb-tiny wb-muted' }, '仅作用于「我的待办」一路'),
+          ),
+          h(
+            'div',
+            { className: 'wb-row wb-row--wrap', style: { marginBottom: 8, gap: 6 } },
+            h('span', { className: 'wb-tiny wb-muted' }, '分类：'),
+            SEARCH_CATEGORIES.map(function (option) {
+              return h(Chip, {
+                key: option.id,
+                active: activeCategory === option.id,
+                onClick: function () {
+                  setCategory(option.id)
+                },
+                children: option.label,
+                title: option.groups ? '只看：' + option.groups.join(' / ') : '显示所有来源分组',
+              })
+            }),
+            h('span', { className: 'wb-tiny wb-muted', style: { marginLeft: 8 } }, '分类叠加来源筛选'),
           ),
           h(
             'div',
