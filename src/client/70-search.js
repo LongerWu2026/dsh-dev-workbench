@@ -18,6 +18,9 @@ function searchKindMeta(kind) {
   if (kind === 'radar') return { label: '雷达', icon: 'radar', tone: 'idle' }
   if (kind === 'source') return { label: '来源', icon: 'link', tone: 'idle' }
   if (kind === 'web') return { label: '外网', icon: 'external', tone: 'warn' }
+  if (kind === 'contact') return { label: '联系人', icon: 'agent', tone: 'accent' }
+  if (kind === 'room') return { label: '会议室', icon: 'calendar', tone: 'ok' }
+  if (kind === 'attendance') return { label: '考勤', icon: 'clock', tone: 'idle' }
   return { label: kind, icon: 'layers', tone: 'idle' }
 }
 
@@ -440,13 +443,19 @@ function SearchPage() {
                     ? 'external'
                     : group.id === 'enterprise'
                       ? 'lock'
-                      : group.id === 'tasks'
-                        ? 'tasks'
-                        : group.id === 'knowledge'
-                          ? 'book'
-                          : group.id === 'radar'
-                            ? 'radar'
-                            : 'link',
+                      : group.id === 'contacts'
+                        ? 'agent'
+                        : group.id === 'rooms'
+                          ? 'calendar'
+                          : group.id === 'attendance'
+                            ? 'clock'
+                            : group.id === 'tasks'
+                              ? 'tasks'
+                              : group.id === 'knowledge'
+                                ? 'book'
+                                : group.id === 'radar'
+                                  ? 'radar'
+                                  : 'link',
                   badge: h(Badge, { tone: meta.tone }, meta.label),
                   sub: group.note || undefined,
                   actions: h('span', { className: 'wb-tiny wb-muted' }, group.items.length + ' 条'),

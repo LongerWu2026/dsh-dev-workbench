@@ -264,6 +264,32 @@ function yzjMentionTargetsMe(message, myOpenId) {
   return false
 }
 
+/** 批量解析 openId → 姓名（一次 CLI 调用，最多 6 个）。 */
+async function resolveSenderNames(ctx, openIds) {
+  const unique = Array.from(
+    new Set(
+      (openIds || []).filter(function (id) {
+        return typeof id === 'string' && id.length > 0
+      }),
+    ),
+  ).slice(0, 6)
+  if (unique.length === 0) return new Map()
+  const args = ['contact', 'user', 'get']
+  unique.forEach(function (id) {
+    args.push('--open-id', id)
+  })
+  const result = await runYzj(ctx, args)
+  const map = new Map()
+  if (result.status !== 'ok' || !result.json || !result.json.data) return map
+  const list = Array.isArray(result.json.data.list) ? result.json.data.list : [result.json.data]
+  list.forEach(function (user) {
+    if (user && typeof user.openId === 'string') {
+      map.set(user.openId, asString(user.name || user.userName, 80) || null)
+    }
+  })
+  return map
+}
+
 function yzjParseMentionSearch(json, myOpenId) {
   const out = []
   const groups = json && json.data && Array.isArray(json.data.list) ? json.data.list : []
@@ -324,6 +350,13 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
   }
 
   const mentions = yzjParseMentionSearch(result.json, probe.openId).slice(0, MENTIONS_FETCH_LIMIT)
+  // 发送人姓名：一次批量查询，失败不影响主流程（回退为 openId 短标识）
+  const senderNames = await resolveSenderNames(
+    ctx,
+    mentions.map(function (mention) {
+      return mention.fromOpenId
+    }),
+  )
   const existing = new Set(
     ensureArray(state.sources)
       .filter(function (row) {
@@ -346,6 +379,14 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
         title: '@我 · ' + mention.groupName,
         excerpt: mention.content,
         fetchedAt: mention.sendTime || at,
+        sender:
+          (mention.fromOpenId && senderNames.get(mention.fromOpenId)) ||
+          (mention.fromOpenId ? mention.fromOpenId.slice(0, 8) + '…' : null),
+        locator: {
+          groupId: mention.groupId,
+          msgId: mention.msgId,
+          groupName: mention.groupName,
+        },
       }),
     ])
     added += 1
@@ -439,5 +480,142 @@ async function searchEnterpriseGroup(ctx, query) {
     status: status,
     items: items.slice(0, SEARCH_GROUP_LIMIT),
     note: notes.length > 0 ? notes.join('；') : '来自云之家消息与知识库；文档链接以 openWebUrl 为准，为空时不构造地址。',
+  }
+}
+
+
+/* --------------------------------------------------- §3.3 其余企业 Provider */
+
+/**
+ * 联系人：只在「像人名的查询」或明确的找人意图下触发，避免每次搜索都多打
+ * 一次企业通讯录（也对隐私更克制）。
+ */
+async function searchContactsGroup(ctx, query) {
+  const looksLikeName = /^[\u4e00-\u9fa5]{2,4}$/.test(query)
+  const explicitIntent = /找人|联系|同事|部门|谁是|联系人|通讯录/.test(query)
+  if (!looksLikeName && !explicitIntent) return null
+
+  const result = await runYzj(ctx, ['contact', 'user', 'search', '--keyword', query])
+  if (result.status !== 'ok') {
+    return {
+      id: 'contacts',
+      label: '企业联系人',
+      status: 'error',
+      items: [],
+      note: '通讯录查询失败：' + (result.note || result.status),
+    }
+  }
+  const list = (result.json && result.json.data && Array.isArray(result.json.data.list) ? result.json.data.list : []).slice(0, 6)
+  const items = list.map(function (user) {
+    if (!user || typeof user !== 'object') return null
+    const name = asString(user.name || user.userName, 80)
+    if (!name) return null
+    return {
+      id: 'yzj-user-' + (asString(user.openId, 80) || name),
+      title: name,
+      snippet: [asString(user.department || user.orgName, 80), asString(user.jobTitle, 60)]
+        .filter(Boolean)
+        .join(' · '),
+      url: null,
+      kind: 'contact',
+      extra: { openId: asString(user.openId, 80), department: asString(user.department || user.orgName, 80) },
+    }
+  }).filter(Boolean)
+  if (items.length === 0) return null
+  return {
+    id: 'contacts',
+    label: '企业联系人',
+    status: 'ok',
+    items: items,
+    note: '按姓名/关键词匹配企业通讯录，仅返回展示所需字段（姓名、部门、职位）。',
+  }
+}
+
+/** 会议室：只在会议/场地类查询下触发，按当天可用会议室过滤名称。 */
+async function searchRoomsGroup(ctx, query) {
+  if (!/会议室|会议|场地|room|预定|有空/.test(query)) return null
+
+  const today = new Date()
+  const pad = function (value) {
+    return value < 10 ? '0' + value : String(value)
+  }
+  const day = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate())
+  const result = await runYzj(ctx, ['calendar', 'room', 'find', '--start', day, '--end', day])
+  if (result.status !== 'ok') {
+    return {
+      id: 'rooms',
+      label: '会议室',
+      status: 'error',
+      items: [],
+      note: '会议室查询失败：' + (result.note || result.status),
+    }
+  }
+  const rooms = result.json && result.json.data && Array.isArray(result.json.data.list) ? result.json.data.list : []
+  const needle = String(query)
+    .replace(/会议室|会议|场地|room|预定|有空/g, '')
+    .trim()
+  const matched = rooms.filter(function (room) {
+    if (!room || typeof room.roomName !== 'string') return false
+    return needle.length === 0 ? true : room.roomName.indexOf(needle) >= 0
+  }).slice(0, 8)
+  const items = matched.map(function (room) {
+    return {
+      id: 'yzj-room-' + (asString(room.roomId, 80) || room.roomName),
+      title: asString(room.roomName, 120),
+      snippet: [asString(room.roomDetail, 80), room.limitCount ? '可容纳 ' + room.limitCount + ' 人' : '']
+        .filter(Boolean)
+        .join(' · '),
+      url: null,
+      kind: 'room',
+      extra: { roomId: asString(room.roomId, 80), at: null },
+    }
+  })
+  if (items.length === 0) return null
+  return {
+    id: 'rooms',
+    label: '会议室',
+    status: 'ok',
+    items: items,
+    note: '查的是今天可预约的会议室（calendar room find）；会议室预订属于写操作，不在插件内。',
+  }
+}
+
+/** 考勤：只在考勤意图下触发，只返回本人打卡流水。 */
+async function searchAttendanceGroup(ctx, query) {
+  if (!/打卡|考勤|出勤|clock|迟到|早退/.test(query)) return null
+
+  const result = await runYzj(ctx, ['attendance', 'record', 'list'])
+  if (result.status !== 'ok') {
+    return {
+      id: 'attendance',
+      label: '考勤',
+      status: 'error',
+      items: [],
+      note: '考勤查询失败：' + (result.note || result.status),
+    }
+  }
+  const list = (result.json && result.json.data && Array.isArray(result.json.data.list) ? result.json.data.list : []).slice(0, 6)
+  const items = list.map(function (record, index) {
+    if (!record || typeof record !== 'object') return null
+    const stamp = Number(record.clockInTime || record.clockTime)
+    const at = Number.isFinite(stamp) && stamp > 0 ? new Date(stamp).toISOString() : null
+    return {
+      id: 'yzj-att-' + index,
+      title: (record.clockInType ? record.clockInType + '·' : '') + (record.clockInStatus || '打卡记录'),
+      snippet: [asString(record.clockInPosition, 80), at ? new Date(stamp).toLocaleString('zh-CN') : '']
+        .filter(Boolean)
+        .join(' · '),
+      url: null,
+      kind: 'attendance',
+      extra: { at: at },
+    }
+  }).filter(Boolean)
+  if (items.length === 0) return null
+  return {
+    id: 'attendance',
+    label: '考勤',
+    status: 'ok',
+    items: items,
+    note: '只查询本人当日打卡流水（attendance record list 的能力边界）。',
   }
 }

@@ -18,6 +18,10 @@ const toolDefs = [
   { id: 'diff', name: '文本 Diff', desc: '逐行 LCS 对比', icon: 'git' },
   { id: 'cron', name: 'Cron', desc: '5 段表达式逐段解释', icon: 'calendar' },
   { id: 'sql', name: 'SQL', desc: '关键字大写与缩进', icon: 'database' },
+  { id: 'yaml', name: 'YAML', desc: 'YAML ↔ JSON（常用子集）', icon: 'layers' },
+  { id: 'csv', name: 'CSV', desc: 'CSV ↔ JSON，含引号转义', icon: 'database' },
+  { id: 'markdown', name: 'Markdown', desc: '基础语法实时预览', icon: 'book' },
+  { id: 'status', name: 'HTTP 状态码', desc: '按码查含义与排查方向', icon: 'info' },
 ]
 
 /* Initial input is example-shaped only; it is never presented as page data. */
@@ -65,6 +69,27 @@ function toolInitialState() {
       ran: false,
     },
     cron: { expr: '*/15 9-18 * * 1-5', rows: [], times: [], error: '', ran: false },
+    yaml: {
+      input: 'name: dev-workbench\ntags:\n  - offline\n  - browser\nlocal: true',
+      output: '',
+      error: '',
+    },
+    csv: {
+      input: 'name,qps\n网关,2000\n报表,800',
+      output: '',
+      error: '',
+      note: '',
+      header: true,
+    },
+    markdown: {
+      input: '# 标题\n\n**加粗**、*斜体* 与 `行内代码`\n\n- 列表项一\n- 列表项二\n\n> 引用\n\n```js\nconst a = 1\n```',
+      output: '',
+      error: '',
+    },
+    status: {
+      group: 'all',
+      query: '',
+    },
     sql: {
       input:
         'select id, name, count(*) as total from users left join orders on orders.user_id = users.id where users.active = 1 and orders.total > 100 group by id, name order by total desc limit 20',
@@ -1941,6 +1966,10 @@ const toolPanes = {
   diff: toolDiffPane,
   cron: toolCronPane,
   sql: toolSqlPane,
+  yaml: toolYamlPane,
+  csv: toolCsvPane,
+  markdown: toolMarkdownPane,
+  status: toolStatusPane,
 }
 
 /* --------------------------------------------------------------------- page */
@@ -1975,7 +2004,7 @@ function toolPage() {
     h(PageHead, {
       icon: 'toolbox',
       title: '开发工具箱',
-      sub: '10 个高频小工具：全部在浏览器内计算，输入不会发送到 Host 或任何远端。',
+      sub: '14 个高频小工具：全部在浏览器内计算，输入不会发送到 Host 或任何远端。',
     }),
     h(
       'div',

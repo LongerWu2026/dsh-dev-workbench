@@ -195,6 +195,12 @@ async function runUnifiedSearch(ctx, request) {
   const groups = searchLocalGroups(state, query)
   if (!request || request.includeEnterprise !== false) {
     groups.push(await searchEnterpriseGroup(ctx, query))
+    // 三路按意图触发：联系人（像人名/找人）、会议室（会议类）、考勤（考勤类）。
+    // 返回 null 表示这次查询不适用，不显示空分组。
+    for (const provider of [searchContactsGroup, searchRoomsGroup, searchAttendanceGroup]) {
+      const group = await provider(ctx, query)
+      if (group) groups.push(group)
+    }
   }
   if (!request || request.includeWeb !== false) {
     groups.push(await searchWebGroup(ctx, query))

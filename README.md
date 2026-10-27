@@ -8,10 +8,10 @@ DeepSeek Harness 的原生 Cordis 插件（Host + Client 双半），把「今�
 ┌ 侧边栏 ▸ 工作台图标（order 30）
 └ 主面板 ▸ key = dev-workbench
          ├ 今日简报   统计 / 云之家 @我 横条 / 今日待办 / 技术雷达（RSS 抓取 + 生成实践任务）/ 连接状态
-         ├ 任务中心   列表 + 看板，筛选、来源证据、执行记录
-         ├ 统一搜索   待办/知识/雷达/来源/企业（云之家消息+文档）/互联网分组检索，日期与项目过滤，逐路报告状态
+         ├ 任务中心   待确认（规则候选→人工采纳）/ 列表 + 看板、筛选、来源证据、执行记录
+         ├ 统一搜索   待办/知识/雷达/来源/企业（消息+文档，按意图加联系人/会议室/考勤）/互联网，日期与项目过滤
          ├ Agent 中心 执行队列、审批空态、指标、任务简报
-         ├ 开发工具箱 JSON / 时间戳 / Base64 / URL / UUID / JWT / 正则 / Diff / Cron / SQL
+         ├ 开发工具箱 14 个：JSON / 时间戳 / Base64 / URL / UUID / JWT / 正则 / Diff / Cron / SQL / YAML / CSV / Markdown / HTTP 状态码
          ├ 研发协作   Git 分支与改动、Docker 容器、监听端口（只读探测，allowlist 命令）
          ├ 知识空间   收藏、笔记、代码片段
          └ 连接与设置 连接器、关注主题、权限分级、运行时诊断、数据管理
@@ -83,11 +83,12 @@ Host 用 `ctx.provide('workbench', api)` 暴露服务，并用 `ctx.typert.regis
 | §1 一级导航 8 个模块 | **8/8 全部落地**：首页、任务、统一搜索、Agent、工具箱、研发协作、知识、设置；另有全局命令面板（⌘K）与 ⌘1–⌘8 直达 |
 | §2 UI 设计系统 | 深色/浅色自适应：容器与文字全部走 `--dsw-alias-*` token，仅语义色沿用报告的蓝青/成功/警告/危险语汇 |
 | §2.2 任务字段 | 全部字段落库；`aiExtracted` + `confidence` 与人工字段区分展示 |
-| §3.1 技术雷达 | 列表 + 主题过滤 + 四段摘要 + 收藏到知识空间 + **RSS/Atom 抓取**（逐源降级、按 URL 去重、抓取报告与陈旧标记落库）+ **生成实践任务**（原子建来源证据 + 任务，重复生成幂等）。智能摘要刻意不做：抓取条目只保留原文摘录，四段留空待 Agent 归纳 |
+| §3.1 技术雷达 | 列表 + 主题过滤 + **四段摘要可编辑**（「编辑资讯」弹窗填技术变化/应用场景/采用风险/推荐实践）+ 收藏到知识空间 + **RSS/Atom 抓取**（逐源降级、按 URL 去重、抓取报告与陈旧标记落库）+ **生成实践任务**（原子建来源证据 + 任务，重复生成幂等）。抓取条目只保留原文摘录，四段留空待填 |
 | §3.2 手动待办 | 增删改查、优先级、截止、标签、项目，离线可用、重启不丢 |
-| §3.2 企业消息 | **云之家 @我 拉取已接入**（真实 yzj-cli）：whoami 验证身份 → `im message search "@姓名"` → 按 `param.notifyType===1` / `desc[].type==='at'` 判定真 @ → 存为来源证据（原文/群名/时间），按 msgId 去重；首页横条可一键预填建待办。只读；发送/审批等写操作留在会话里 |
-| §3.3 统一搜索 | 六路分组检索：待办 / 知识 / 雷达 / 来源证据 / **企业（云之家消息 + 知识库文档，真实 yzj-cli）** / 互联网（经 Host 的 `web.search`）。日期（24h/7天/30天）与项目过滤；每路独立状态与失败原因，缺一路不影响其它；**不做无引用 AI 归纳** |
-| §3.4 开发工具箱 | 10 个工具，全部浏览器内计算（L0），数据不出客户端 |
+| §3.2 企业消息 | **云之家 @我 拉取已接入**（真实 yzj-cli）：whoami 验证身份 → `im message search "@姓名"` → 按 `param.notifyType===1` / `desc[].type==='at'` 判定真 @ → 存为来源证据（原文/群名/时间/**发送人姓名**/**msgId+groupId 定位**），按 msgId 去重；首页横条可一键预填建待办。只读；发送/审批等写操作留在会话里 |
+| §3.2 AI 任务提取 | **规则候选 + 人工确认**：行动词 / 时间线索 / 长度 / 指向性算出可解释置信度（reasons 逐条可查），进任务中心「待确认」区；采纳才建任务（带来源证据与 aiExtracted 标记），忽略即丢弃；插件内无模型，故明确标注为规则候选而非 LLM 结论 |
+| §3.3 统一搜索 | 九路：待办 / 知识 / 雷达 / 来源证据 / **企业（消息 + 知识库文档）** / **联系人 / 会议室 / 考勤（按查询意图触发，无命中不生成空分组）** / 互联网。日期（24h/7天/30天）与项目过滤；每路独立状态与失败原因；**不做无引用 AI 归纳** |
+| §3.4 开发工具箱 | **14 个工具**，全部浏览器内计算（L0）：新增 YAML（常用子集，锚点/块标量明确报错）、CSV（引号转义 + 类型推断）、Markdown 预览（React 元素构造，不用 innerHTML）、HTTP 状态码速查（34 条 + 分组过滤） |
 | §3.5 研发协作 | Git 分支 / 改动数 / 最近提交，Docker 容器列表，**监听端口**（`lsof -i`）；探测目录来自「项目」的 `repoPath`（可用系统目录选择器添加，增删后自动失效缓存）。只读：命令走 argv allowlist（`git status|log|rev-parse|branch`、`docker ps|version|info`、`lsof -i`），无 shell 拼接；PR / CI / 进程指标未接入 |
 | §4.2 逻辑 Agent 角色 | 未建常驻角色；以 5 个工具 + 会话执行替代，避免与 DSH 原生 Session 冲突 |
 | §4.5 Task 状态机 | `draft → ready → running/waiting_approval → completed/failed/cancelled` 完整落库 |
@@ -117,8 +118,8 @@ cd dsh-dev-workbench
 node scripts/build.mjs            # 生成 index.js 与 client.js
 node scripts/build.mjs --check    # 只做跨文件重名检查
 node --check index.js && node --check client.js
-node tests/host-smoke.mjs         # Host 半自测（69 项，含重启后持久化、Remote 契约、项目 CRUD、RSS 抓取与去重、实践任务幂等、云之家 @我 判定/去重/分路降级）
-node tests/client-render.mjs      # Client 全页面渲染（8 页；真实驱动一次搜索查询）
+node tests/host-smoke.mjs         # Host 半自测（88 项：持久化、Remote 契约、项目/知识 CRUD、RSS 抓取、实践任务、@我 判定与发送人、规则候选采纳/忽略、三路意图搜索）
+node tests/client-render.mjs      # Client 全页面渲染（8 页 + 空态 + 4 个新工具面板；真实驱动搜索/抓取/@我 按钮）
 ```
 
 `tests/client-render.mjs` 不是 mock 预览：它加载**真实的** `client.js`，用最小 React 渲染器

@@ -194,6 +194,8 @@ const fixture = {
       excerpt: '@测试用户 帮我看下限流阈值',
       fetchedAt: iso(-0.2),
       payloadHash: 'def2',
+      sender: '张三',
+      locator: { groupId: 'g1', msgId: 'm9', groupName: '网关组' },
     },
     {
       id: 'src-1',
@@ -267,6 +269,24 @@ const fixture = {
     { id: 'local-storage', type: 'storage', label: '本地持久化', capabilities: ['快照'], authState: 'ok', updatedAt: iso(0), note: '/tmp/state.json' },
     { id: 'yunzhijia', type: 'enterprise-im', label: '云之家', capabilities: [], authState: 'unconfigured', updatedAt: iso(0), note: '未完成能力发现' },
   ],
+  candidates: [
+    {
+      id: 'cand-1',
+      sourceRefId: 'src-2',
+      sourceTitle: '@我 · 网关组',
+      title: '帮我看下限流阈值',
+      excerpt: '@测试用户 帮我看下限流阈值',
+      dueAt: iso(6),
+      assignee: null,
+      confidence: 0.7,
+      reasons: ['命中行动词：帮看', '时间线索：今天 → 18:00'],
+      status: 'pending',
+      taskId: null,
+      createdAt: iso(-1),
+      updatedAt: iso(-1),
+    },
+  ],
+  lastExtract: { at: iso(-1), scanned: 1, added: 1, skipped: 0, note: null },
   lastMentionsFetch: {
     at: iso(-0.2),
     status: 'ok',
@@ -573,7 +593,7 @@ if (!registrations.panellist.length) problems.push('没有注册 sidebar.panelli
 
 const pageSpecs = [
   ['今日简报', 'dashboard', ['技术雷达', '抓取资讯']],
-  ['任务中心', 'tasks', ['看板']],
+  ['任务中心', 'tasks', ['看板', '待确认', '提取候选']],
   ['统一搜索', 'search', ['按来源分组检索', '企业（云之家）']],
   ['Agent 中心', 'agents', ['执行队列']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
@@ -635,6 +655,28 @@ for (const [title, id, expected] of pageSpecs) {
     if (text.indexOf(marker) < 0) problems.push(title + ' 缺少预期内容「' + marker + '」')
   })
   if (!seenPages.includes(id)) problems.push('page 状态从未进入 ' + id)
+}
+
+/* ------------------------------------------- toolbox: 新工具逐个渲染 */
+{
+  const navTree = await renderTree('工具箱·导航')
+  const nav = findNavButtons(navTree, [])
+  const toolboxIndex = pageSpecs.findIndex((item) => item[0] === '开发工具箱')
+  if (nav[toolboxIndex]) nav[toolboxIndex].props.onClick()
+  let tree = await renderTree('工具箱·入口')
+  const tools = ['YAML', 'CSV', 'Markdown', 'HTTP 状态码']
+  for (const toolName of tools) {
+    const button = findButtons(tree, []).find((item) => item.text.indexOf(toolName) >= 0)
+    if (!button) {
+      problems.push('工具箱里找不到工具：' + toolName)
+      continue
+    }
+    button.onClick()
+    tree = await renderTree('工具箱·' + toolName)
+    const text = treeText(tree).replace(/\s+/g, ' ')
+    if (text.indexOf(toolName) < 0) problems.push('工具「' + toolName + '」面板没有渲染')
+    if (countNodes(tree) < 80) problems.push('工具「' + toolName + '」渲染节点过少')
+  }
 }
 
 /* ------------------------------------------------ empty-state rendering */

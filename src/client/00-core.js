@@ -909,6 +909,9 @@ const wbActions = {
       return snapshot
     })
   },
+  updateKnowledge(id, patch) {
+    return settle(wbRpc('workbench/updateKnowledge', { id: id, patch: patch }), '知识条目已更新')
+  },
   deleteKnowledge(id) {
     return settle(wbRpc('workbench/deleteKnowledge', { id: id }), '已删除')
   },
@@ -986,6 +989,17 @@ const wbActions = {
       return feed.id !== id
     })
     return settle(wbRpc('workbench/saveSettings', { patch: { feeds: next } }), '资讯源已移除')
+  },
+
+  /** 规则候选：为尚未提取的 @我 来源生成待确认候选（确定性，无模型）。 */
+  extractCandidates() {
+    return settle(wbRpc('workbench/extractCandidates', {}), '已生成待确认候选')
+  },
+  acceptCandidate(id, patch) {
+    return settle(wbRpc('workbench/acceptCandidate', { id: id, patch: patch || {} }), '已采纳为待办')
+  },
+  rejectCandidate(id) {
+    return settle(wbRpc('workbench/rejectCandidate', { id: id }), '已忽略该候选')
   },
 
   /** Unified search. Returns {query, at, total, groups[]} — NOT a snapshot. */

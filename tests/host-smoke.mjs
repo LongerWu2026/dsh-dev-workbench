@@ -153,13 +153,15 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 22 个 Remote 描述符', invocations.length === 22, '实际 ' + invocations.length)
+check('注册了 26 个 Remote 描述符', invocations.length === 26, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
 check(
-  'search / environment / fetchRadar / fetchMentions / createTaskFromRadar 已暴露',
-  ['search', 'environment', 'fetchRadar', 'fetchMentions', 'createTaskFromRadar'].every((name) => invocations.some((e) => e.method === name)),
+  'search / environment / fetchRadar / fetchMentions / createTaskFromRadar / 候选三件套 已暴露',
+  ['search', 'environment', 'fetchRadar', 'fetchMentions', 'createTaskFromRadar', 'extractCandidates', 'acceptCandidate', 'rejectCandidate', 'updateKnowledge'].every(
+    (name) => invocations.some((e) => e.method === name),
+  ),
 )
 
 // 统一搜索：本地分组命中，web 缺席时降级为 unavailable
@@ -341,6 +343,36 @@ function makeYzjSpawner(mentionJson, docJson) {
       if (/whoami/.test(cmdline)) return JSON.stringify(WHOAMI)
       if (/im\s+message\s+search/.test(cmdline)) return JSON.stringify(mentionJson)
       if (/doc\s+search/.test(cmdline)) return JSON.stringify(docJson)
+      if (/contact\s+user\s+search/.test(cmdline)) {
+        // 只对姓名关键词返回命中，贴近真实接口行为
+        const hit = /田鹏飞|田|鹏|飞/.test(cmdline)
+        return JSON.stringify({
+          success: true,
+          data: {
+            list: hit
+              ? [{ name: '田鹏飞', openId: 'other-1', department: '质量与工程', jobTitle: '后端开发' }]
+              : [],
+          },
+        })
+      }
+      if (/contact\s+user\s+get/.test(cmdline)) {
+        return JSON.stringify({
+          success: true,
+          data: { list: [{ name: '张三', openId: 'other-1', department: '质量与工程', jobTitle: '后端开发' }] },
+        })
+      }
+      if (/calendar\s+room\s+find/.test(cmdline)) {
+        return JSON.stringify({
+          success: true,
+          data: { list: [{ roomId: 'r1', roomName: 'B10 会议室', roomDetail: 'B栋-10F', limitCount: 12 }] },
+        })
+      }
+      if (/attendance\s+record\s+list/.test(cmdline)) {
+        return JSON.stringify({
+          success: true,
+          data: { list: [{ clockInType: '内勤', clockInStatus: '正式卡', clockInPosition: '深圳金蝶软件园', clockInTime: 1793095646456 }] },
+        })
+      }
       return JSON.stringify({ success: true, data: {} })
     }
     const text = stdoutOf()
@@ -371,8 +403,54 @@ const yzjSources = state.sources.filter((row) => String(row.externalId || '').in
 check('@我 拉取只采真@消息', yzjSources.length === 1 && yzjSources[0].externalId === 'yzj:msg:m1', JSON.stringify(yzjSources.map((r) => r.externalId)))
 check('@我 来源带原文与群名', yzjSources[0].excerpt.indexOf('限流') >= 0 && yzjSources[0].title.indexOf('网关组') >= 0)
 check('@我 报告记录用户与数量', state.lastMentionsFetch.user === '测试用户' && state.lastMentionsFetch.added === 1)
+check('@我 来源带发送人姓名', yzjSources[0].sender === '张三', String(yzjSources[0].sender))
+check(
+  '@我 来源带消息定位信息',
+  !!yzjSources[0].locator && yzjSources[0].locator.msgId === 'm1' && yzjSources[0].locator.groupName === '网关组',
+  JSON.stringify(yzjSources[0].locator),
+)
 state = await api.fetchMentions()
 check('@我 重复拉取去重', state.lastMentionsFetch.added === 0 && state.sources.filter((r) => String(r.externalId || '').indexOf('yzj:msg:') === 0).length === 1)
+
+// 规则候选：提取 → 人工确认 → 采纳建任务 / 忽略
+let candState = await api.extractCandidates()
+const pending = candState.candidates.filter((c) => c.status === 'pending')
+check('规则提取生成候选', pending.length >= 1, '实际 ' + pending.length)
+const cand = pending[0]
+check('候选带可解释置信度', typeof cand.confidence === 'number' && cand.confidence > 0 && cand.confidence <= 0.9, String(cand.confidence))
+check('候选带命中原因', Array.isArray(cand.reasons) && cand.reasons.length >= 1)
+check('候选绑定来源证据', !!cand.sourceRefId)
+check('候选不改动任务', !candState.tasks.some((t) => t.title === cand.title))
+const tasksBeforeAccept = candState.tasks.length
+candState = await api.acceptCandidate(cand.id, {})
+const acceptedTask = candState.tasks.find((t) => t.title === cand.title)
+check('采纳候选创建任务', !!acceptedTask && candState.tasks.length === tasksBeforeAccept + 1)
+check('采纳任务带来源与置信度', !!acceptedTask && !!acceptedTask.sourceRefId && acceptedTask.aiExtracted === true)
+check('采纳后候选状态为 accepted', candState.candidates.find((c) => c.id === cand.id).status === 'accepted')
+candState = await api.acceptCandidate(cand.id, {})
+check('重复采纳幂等', candState.tasks.length === tasksBeforeAccept + 1)
+const rejectTarget = candState.candidates.filter((c) => c.status === 'pending')[0]
+if (rejectTarget) {
+  candState = await api.rejectCandidate(rejectTarget.id)
+  check('忽略候选', candState.candidates.find((c) => c.id === rejectTarget.id).status === 'rejected')
+} else {
+  check('忽略候选（无第二条候选，跳过）', true)
+}
+candState = await api.extractCandidates()
+check('再次提取不重复生成', candState.candidates.filter((c) => c.status === 'pending').length === 0)
+
+// 知识编辑
+let kbState = await api.createKnowledge({ kind: 'note', title: '编辑前', body: '正文 A', tags: ['x'] })
+const kbItem = kbState.knowledge[kbState.knowledge.length - 1]
+kbState = await api.updateKnowledge(kbItem.id, { title: '编辑后', body: '正文 B', tags: ['x', 'y'] })
+const kbUpdated = kbState.knowledge.find((k) => k.id === kbItem.id)
+check('知识条目可编辑', kbUpdated.title === '编辑后' && kbUpdated.body === '正文 B' && kbUpdated.tags.length === 2)
+try {
+  await api.updateKnowledge('missing-kb', { title: 'x' })
+  check('编辑不存在的知识被拒绝', false)
+} catch (e) {
+  check('编辑不存在的知识被拒绝', /找不到该知识条目/.test(e.message))
+}
 
 // 企业搜索：消息+文档两路
 const entResult = await api.search({ query: '限流' })
@@ -380,6 +458,25 @@ const entGroup = entResult.groups.find((group) => group.id === 'enterprise')
 check('企业搜索路存在且可用', !!entGroup && entGroup.status === 'ok', JSON.stringify(entGroup && entGroup.status))
 check('企业搜索含文档结果', entGroup.items.some((item) => item.id === 'yzj-doc-d1'))
 check('企业搜索不构造空 URL', entGroup.items.every((item) => item.kind !== 'knowledge' || item.url !== null || item.id === 'yzj-doc-d1'))
+
+// 三路意图搜索：联系人 / 会议室 / 考勤
+const nameSearch = await api.search({ query: '田鹏飞' })
+const contactGroup = nameSearch.groups.find((g) => g.id === 'contacts')
+check('人名查询触发联系人路', !!contactGroup && contactGroup.items.length >= 1, JSON.stringify(contactGroup && contactGroup.status))
+
+const roomSearch = await api.search({ query: '会议室' })
+const roomGroup = roomSearch.groups.find((g) => g.id === 'rooms')
+check('会议查询触发会议室路', !!roomGroup && roomGroup.items.some((i) => i.kind === 'room'), JSON.stringify(roomGroup && roomGroup.status))
+
+const attSearch = await api.search({ query: '打卡' })
+const attGroup = attSearch.groups.find((g) => g.id === 'attendance')
+check('考勤查询触发考勤路', !!attGroup && attGroup.items.some((i) => i.kind === 'attendance'), JSON.stringify(attGroup && attGroup.status))
+
+const plainSearch = await api.search({ query: '限流' })
+check(
+  '普通查询不触发三路额外分组',
+  !plainSearch.groups.some((g) => ['contacts', 'rooms', 'attendance'].indexOf(g.id) >= 0),
+)
 
 // CLI 未认证：企业路如实降级
 yzjSpawner = makeYzjSpawner({ success: false, errorCode: 10000400 }, DOC_SEARCH)

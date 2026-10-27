@@ -347,6 +347,11 @@ function DashRadarRow(props) {
           onClick: makePracticeTask,
           disabled: makingTask,
         }),
+        h(IconBtn, {
+          name: 'edit',
+          label: '编辑资讯与四段摘要',
+          onClick: props.onEdit,
+        }),
         summaryParts.length > 0
           ? h(IconBtn, {
               name: props.expanded ? 'chevronDown' : 'chevronRight',
@@ -440,28 +445,37 @@ function DashConnectorCard(props) {
 }
 
 function DashRadarModal(props) {
+  const editing = props.item || null
   const [title, setTitle] = React.useState('')
   const [source, setSource] = React.useState('')
   const [url, setUrl] = React.useState('')
   const [publishedAt, setPublishedAt] = React.useState('')
   const [topics, setTopics] = React.useState('')
-  const [summary, setSummary] = React.useState('')
+  const [change, setChange] = React.useState('')
+  const [usage, setUsage] = React.useState('')
+  const [risk, setRisk] = React.useState('')
+  const [practice, setPractice] = React.useState('')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState(null)
 
   React.useEffect(
     function () {
       if (!props.open) return
-      setTitle('')
-      setSource('')
-      setUrl('')
-      setPublishedAt('')
-      setTopics('')
-      setSummary('')
+      const item = props.item || null
+      const summary = (item && item.summary) || {}
+      setTitle(item ? item.title || '' : '')
+      setSource(item ? item.source || '' : '')
+      setUrl(item ? item.url || '' : '')
+      setPublishedAt(item && item.publishedAt ? String(item.publishedAt).slice(0, 10) : '')
+      setTopics(item && Array.isArray(item.topics) ? item.topics.join(', ') : '')
+      setChange(summary.change || '')
+      setUsage(summary.usage || '')
+      setRisk(summary.risk || '')
+      setPractice(summary.practice || '')
       setBusy(false)
       setError(null)
     },
-    [props.open],
+    [props.open, props.item],
   )
 
   if (!props.open) return null
@@ -486,23 +500,30 @@ function DashRadarModal(props) {
     }
     setBusy(true)
     setError(null)
+    const payload = {
+      title: trimmedTitle,
+      source: source.trim() || (editing ? editing.source : 'manual'),
+      url: trimmedUrl || null,
+      publishedAt: publishedIso,
+      topics: topics
+        .split(/[,，\s]+/)
+        .map(function (topic) {
+          return topic.trim()
+        })
+        .filter(Boolean),
+      summary: {
+        change: change.trim(),
+        usage: usage.trim(),
+        risk: risk.trim(),
+        practice: practice.trim(),
+      },
+    }
+    if (editing) payload.id = editing.id
     WB.actions
-      .saveRadarItem({
-        title: trimmedTitle,
-        source: source.trim() || 'manual',
-        url: trimmedUrl || null,
-        publishedAt: publishedIso,
-        topics: topics
-          .split(/[,，\s]+/)
-          .map(function (topic) {
-            return topic.trim()
-          })
-          .filter(Boolean),
-        summary: { change: summary.trim(), usage: '', risk: '', practice: '' },
-      })
+      .saveRadarItem(payload)
       .then(function () {
         setBusy(false)
-        WB.toast('资讯已添加到技术雷达', 'ok')
+        WB.toast(editing ? '资讯已更新' : '资讯已添加到技术雷达', 'ok')
         props.onClose()
       })
       .catch(function (e) {
@@ -515,16 +536,24 @@ function DashRadarModal(props) {
     Modal,
     {
       open: true,
-      title: '手动添加资讯',
-      sub: '登记的资讯会和采集来源一起进入技术雷达',
+      title: editing ? '编辑资讯' : '手动添加资讯',
+      sub: editing
+        ? '补全四段摘要后，雷达卡片会展示结构化结论；摘要内容仍由你或 Agent 负责事实准确性'
+        : '登记的资讯会和采集来源一起进入技术雷达',
       onClose: props.onClose,
-      width: 560,
+      width: 580,
       footer: h(
         React.Fragment,
         null,
         h(Btn, { onClick: props.onClose, disabled: busy, children: '取消' }),
         h('div', { className: 'wb-spacer' }),
-        h(Btn, { kind: 'primary', icon: 'check', disabled: busy, onClick: submit, children: busy ? '保存中…' : '添加资讯' }),
+        h(Btn, {
+          kind: 'primary',
+          icon: 'check',
+          disabled: busy,
+          onClick: submit,
+          children: busy ? '保存中…' : editing ? '保存修改' : '添加资讯',
+        }),
       ),
     },
     h(
@@ -556,7 +585,7 @@ function DashRadarModal(props) {
           },
         })),
       ),
-      h(Field, { label: '链接', hint: '可选；保存后标题可直接打开原文' }, h(Input, {
+      h(Field, { label: '链接' }, h(Input, {
         type: 'url',
         value: url,
         placeholder: 'https://',
@@ -571,13 +600,48 @@ function DashRadarModal(props) {
           setTopics(event.target.value)
         },
       })),
-      h(Field, { label: '摘要（技术变化）', hint: '其余三段（应用场景 / 风险 / 实践）可在雷达卡片里补充' }, h(Textarea, {
-        value: summary,
-        placeholder: '这次变化的关键事实是什么？',
-        onChange: function (event) {
-          setSummary(event.target.value)
-        },
-      })),
+      h(Divider),
+      h(
+        'div',
+        { className: 'wb-label', style: { marginBottom: -2 } },
+        '四段摘要（可留空；抓取来的资讯只有原文摘录）',
+      ),
+      h(
+        'div',
+        { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+        h(Field, { label: '技术变化' }, h(Textarea, {
+          value: change,
+          rows: 2,
+          placeholder: '这次变化的关键事实是什么？',
+          onChange: function (event) {
+            setChange(event.target.value)
+          },
+        })),
+        h(Field, { label: '应用场景' }, h(Textarea, {
+          value: usage,
+          rows: 2,
+          placeholder: '适合在什么场景使用？',
+          onChange: function (event) {
+            setUsage(event.target.value)
+          },
+        })),
+        h(Field, { label: '采用风险' }, h(Textarea, {
+          value: risk,
+          rows: 2,
+          placeholder: '引入后可能踩什么坑？',
+          onChange: function (event) {
+            setRisk(event.target.value)
+          },
+        })),
+        h(Field, { label: '推荐实践' }, h(Textarea, {
+          value: practice,
+          rows: 2,
+          placeholder: '建议怎么落地？',
+          onChange: function (event) {
+            setPractice(event.target.value)
+          },
+        })),
+      ),
       error ? h('div', { role: 'alert', style: { color: T.err, fontSize: 12 } }, error) : null,
       h('button', { type: 'submit', style: { display: 'none' } }),
     ),
@@ -591,6 +655,7 @@ function DashboardPage() {
   const [radarShowAll, setRadarShowAll] = React.useState(false)
   const [radarExpanded, setRadarExpanded] = React.useState(null)
   const [radarFormOpen, setRadarFormOpen] = React.useState(false)
+  const [radarEditItem, setRadarEditItem] = React.useState(null)
   const [radarFetching, setRadarFetching] = React.useState(false)
   const [mentionsBusy, setMentionsBusy] = React.useState(false)
 
@@ -932,6 +997,7 @@ function DashboardPage() {
           kind: 'subtle',
           icon: 'plus',
           onClick: function () {
+            setRadarEditItem(null)
             setRadarFormOpen(true)
           },
           children: '添加资讯',
@@ -968,6 +1034,9 @@ function DashboardPage() {
               onToggle: function () {
                 setRadarExpanded(radarExpanded === item.id ? null : item.id)
               },
+              onEdit: function () {
+                setRadarEditItem(item)
+              },
             })
           }),
         )
@@ -1002,6 +1071,7 @@ function DashboardPage() {
               size: 'sm',
               icon: 'plus',
               onClick: function () {
+                setRadarEditItem(null)
                 setRadarFormOpen(true)
               },
               children: '手动添加资讯',
@@ -1138,8 +1208,10 @@ function DashboardPage() {
     connectorsPanel,
     h(DashRadarModal, {
       open: radarFormOpen,
+      item: radarEditItem,
       onClose: function () {
         setRadarFormOpen(false)
+        setRadarEditItem(null)
       },
     }),
   )

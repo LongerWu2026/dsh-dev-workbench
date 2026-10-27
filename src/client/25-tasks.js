@@ -573,6 +573,7 @@ function TaskCenterPage() {
   const [expandedId, setExpandedId] = React.useState(null)
   const [showAllTags, setShowAllTags] = React.useState(false)
   const [pendingFocusId, setPendingFocusId] = React.useState(null)
+  const [candidateBusy, setCandidateBusy] = React.useState(false)
   const focusRowRef = React.useRef(null)
 
   const preset = state.taskPreset
@@ -1014,6 +1015,144 @@ function TaskCenterPage() {
     )
   }
 
+  // ---- AI 任务提取的「待确认」区（设计报告 §3.2：低置信度只做候选，人工确认后才建任务）
+  const allCandidates = Array.isArray(data && data.candidates) ? data.candidates : []
+  const pendingCandidates = allCandidates.filter(function (candidate) {
+    return candidate && candidate.status === 'pending'
+  })
+  const lastExtract = data && data.lastExtract ? data.lastExtract : null
+
+  function runExtract() {
+    if (candidateBusy) return
+    setCandidateBusy(true)
+    WB.actions
+      .extractCandidates()
+      .then(function () {
+        setCandidateBusy(false)
+      })
+      .catch(function () {
+        setCandidateBusy(false)
+      })
+  }
+
+  function acceptCandidateItem(candidate) {
+    if (candidateBusy) return
+    setCandidateBusy(true)
+    WB.actions
+      .acceptCandidate(candidate.id, {})
+      .then(function () {
+        setCandidateBusy(false)
+      })
+      .catch(function () {
+        setCandidateBusy(false)
+      })
+  }
+
+  function rejectCandidateItem(candidate) {
+    if (candidateBusy) return
+    setCandidateBusy(true)
+    WB.actions
+      .rejectCandidate(candidate.id)
+      .then(function () {
+        setCandidateBusy(false)
+      })
+      .catch(function () {
+        setCandidateBusy(false)
+      })
+  }
+
+  const candidatesPanel = h(
+    Panel,
+    {
+      icon: 'sparkles',
+      title: '待确认',
+      sub:
+        pendingCandidates.length > 0
+          ? '规则从 @我 消息里提取的候选，共 ' + pendingCandidates.length + ' 条；采纳后才变成待办'
+          : lastExtract && lastExtract.at
+            ? '上次提取 ' + WB.fmt.relative(lastExtract.at) + ' · 新增 ' + (lastExtract.added || 0) + ' 条'
+            : '从云之家 @我 消息里提取候选，人工确认后才建待办',
+      badge: pendingCandidates.length > 0 ? h(Badge, { tone: 'warn' }, String(pendingCandidates.length)) : null,
+      actions: h(Btn, {
+        size: 'sm',
+        kind: 'subtle',
+        icon: 'sparkles',
+        disabled: candidateBusy,
+        onClick: runExtract,
+        children: candidateBusy ? '处理中…' : '提取候选',
+      }),
+    },
+    pendingCandidates.length === 0
+      ? h(Empty, {
+          style: { padding: '16px 12px 14px' },
+          icon: 'checkCircle',
+          title: '没有待确认的候选',
+          hint:
+            '先在首页「云之家 @我」拉取消息，再点右上角「提取候选」。规则只做确定性判断（行动词 / 时间线索 / 长度 / 指向性），置信度可解释；采纳前请人工核对。',
+        })
+      : h(
+          'div',
+          { className: 'wb-list' },
+          pendingCandidates.slice(0, 8).map(function (candidate) {
+            const due = candidate.dueAt ? WB.fmt.due(candidate.dueAt) : null
+            return h(
+              'div',
+              { key: candidate.id, className: 'wb-item', style: { alignItems: 'flex-start' } },
+              h(
+                'div',
+                { className: 'wb-item-main' },
+                h(
+                  'div',
+                  { className: 'wb-item-title', style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
+                  candidate.title,
+                  candidate.confidence !== null && candidate.confidence !== undefined
+                    ? h(
+                        Badge,
+                        { tone: candidate.confidence >= 0.7 ? 'ok' : candidate.confidence >= 0.5 ? 'warn' : 'idle' },
+                        '置信度 ' + Math.round(candidate.confidence * 100) + '%',
+                      )
+                    : null,
+                  due ? h(Badge, { tone: due.tone }, due.text) : null,
+                ),
+                h('div', { className: 'wb-item-sub wb-clamp2' }, candidate.excerpt || ''),
+                h(
+                  'div',
+                  { className: 'wb-item-sub' },
+                  candidate.sourceTitle ? h('span', null, candidate.sourceTitle) : null,
+                  (candidate.reasons || []).slice(0, 2).map(function (reason, index) {
+                    return h(Chip, { key: 'r' + index, children: reason })
+                  }),
+                ),
+              ),
+              h(
+                'div',
+                { className: 'wb-item-actions', style: { opacity: 1 } },
+                h(Btn, {
+                  size: 'sm',
+                  kind: 'primary',
+                  icon: 'check',
+                  disabled: candidateBusy,
+                  onClick: function () {
+                    acceptCandidateItem(candidate)
+                  },
+                  children: '采纳',
+                }),
+                h(Btn, {
+                  size: 'sm',
+                  kind: 'subtle',
+                  icon: 'close',
+                  disabled: candidateBusy,
+                  onClick: function () {
+                    rejectCandidateItem(candidate)
+                  },
+                  children: '忽略',
+                }),
+              ),
+            )
+          }),
+        ),
+  )
+
   return h(
     'div',
     null,
@@ -1051,6 +1190,7 @@ function TaskCenterPage() {
         }),
       ),
     }),
+    candidatesPanel,
     tasks.length > 0 ? filterBar : null,
     content,
   )

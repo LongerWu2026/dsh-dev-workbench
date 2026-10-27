@@ -12,6 +12,7 @@
  *   34-environment.js
  *   36-radar-fetch.js
  *   37-yunzhijia.js
+ *   38-candidates.js
  *   40-remote.js
  *   50-tools.js
  *   90-apply.js
@@ -166,6 +167,9 @@ const TASK_PRIORITIES = ['urgent', 'high', 'normal', 'low']
 const RUN_STATUSES = ['queued', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled']
 const KNOWLEDGE_KINDS = ['bookmark', 'note', 'snippet']
 const AUDIT_LIMIT = 200
+const CANDIDATE_LIMIT = 200
+
+const CANDIDATE_STATUSES = ['pending', 'accepted', 'rejected']
 
 const DEFAULT_TOPICS = ['Agent', 'LLM', 'RAG', 'Java', 'Python', '数据库']
 
@@ -186,6 +190,7 @@ function emptyWorkbenchState() {
     knowledge: [],
     radar: [],
     connectors: [],
+    candidates: [],
     audit: [],
   }
 }
@@ -331,21 +336,58 @@ function normalizeSource(raw) {
     excerpt: excerpt,
     fetchedAt: asIso(input.fetchedAt) || hostNowIso(),
     payloadHash: hashText([url || '', title, excerpt].join('|')),
+    // 消息类来源的可回溯信息：发送人与原始定位（IM 无文档化深链，故只存 ID）
+    sender: asString(input.sender, 80) || null,
+    locator: input.locator && typeof input.locator === 'object'
+      ? {
+          groupId: asString(input.locator.groupId, 80) || null,
+          msgId: asString(input.locator.msgId, 80) || null,
+          groupName: asString(input.locator.groupName, 120) || null,
+        }
+      : null,
   }
 }
 
-function normalizeKnowledge(raw) {
+function normalizeKnowledge(raw, existing) {
   const input = raw && typeof raw === 'object' ? raw : {}
-  const kind = KNOWLEDGE_KINDS.indexOf(input.kind) >= 0 ? input.kind : 'note'
-  const body = asString(input.body, 20000)
+  const base = existing || {}
+  const kind = KNOWLEDGE_KINDS.indexOf(input.kind) >= 0 ? input.kind : base.kind || 'note'
+  const body = asString(input.body === undefined ? base.body : input.body, 20000)
+  const url = input.url === undefined ? base.url || null : asUrl(input.url)
   return {
-    id: newId('kb'),
+    id: base.id || newId('kb'),
     kind: kind,
-    title: asString(input.title, 200) || (kind === 'bookmark' ? asUrl(input.url) || '未命名收藏' : '未命名笔记'),
-    url: asUrl(input.url),
+    title:
+      asString(input.title === undefined ? base.title : input.title, 200) ||
+      (kind === 'bookmark' ? url || '未命名收藏' : '未命名笔记'),
+    url: url,
     body: body,
-    tags: asTags(input.tags),
-    createdAt: hostNowIso(),
+    tags: input.tags === undefined ? asTags(base.tags) : asTags(input.tags),
+    createdAt: base.createdAt || hostNowIso(),
+    updatedAt: hostNowIso(),
+  }
+}
+
+function normalizeCandidate(raw, existing) {
+  const input = raw && typeof raw === 'object' ? raw : {}
+  const base = existing || {}
+  const status = CANDIDATE_STATUSES.indexOf(input.status) >= 0 ? input.status : base.status || 'pending'
+  const confidenceRaw = input.confidence === undefined ? base.confidence : input.confidence
+  return {
+    id: base.id || newId('cand'),
+    sourceRefId: input.sourceRefId === undefined ? base.sourceRefId || null : input.sourceRefId || null,
+    sourceTitle: asString(input.sourceTitle === undefined ? base.sourceTitle : input.sourceTitle, 200),
+    title: asString(input.title === undefined ? base.title : input.title, 200) || '待确认事项',
+    excerpt: asString(input.excerpt === undefined ? base.excerpt : input.excerpt, 2000),
+    dueAt: input.dueAt === undefined ? base.dueAt || null : asIso(input.dueAt),
+    assignee: input.assignee === undefined ? base.assignee || null : asString(input.assignee, 80) || null,
+    confidence:
+      typeof confidenceRaw === 'number' && confidenceRaw >= 0 && confidenceRaw <= 1 ? confidenceRaw : null,
+    reasons: input.reasons === undefined ? ensureArray(base.reasons) : asTags(input.reasons, 8),
+    status: status,
+    taskId: input.taskId === undefined ? base.taskId || null : input.taskId || null,
+    createdAt: base.createdAt || hostNowIso(),
+    updatedAt: hostNowIso(),
   }
 }
 
@@ -424,6 +466,11 @@ function normalizeState(raw) {
     knowledge: ensureArray(raw.knowledge).slice(0, 2000),
     radar: ensureArray(raw.radar).slice(0, 500),
     connectors: ensureArray(raw.connectors).slice(0, 40),
+    candidates: ensureArray(raw.candidates)
+      .slice(-CANDIDATE_LIMIT)
+      .map(function (candidate) {
+        return normalizeCandidate(candidate, null)
+      }),
     lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),
     lastMentionsFetch: normalizeMentionsReport(raw.lastMentionsFetch),
     audit: ensureArray(raw.audit).slice(-AUDIT_LIMIT),
@@ -1025,6 +1072,22 @@ const workbenchApi = {
     })
   },
 
+  async updateKnowledge(id, patch) {
+    return mutateWorkbenchState(function (state) {
+      const existing = ensureArray(state.knowledge).find(function (item) {
+        return item.id === id
+      })
+      if (!existing) throw new Error('找不到该知识条目：' + String(id))
+      const next = normalizeKnowledge(patch || {}, existing)
+      next.id = existing.id
+      state.knowledge = ensureArray(state.knowledge).map(function (item) {
+        return item.id === id ? next : item
+      })
+      auditEntry(state, 'knowledge.updated', next.title)
+      return state
+    })
+  },
+
   async deleteKnowledge(id) {
     return mutateWorkbenchState(function (state) {
       state.knowledge = ensureArray(state.knowledge).filter(function (item) {
@@ -1214,6 +1277,73 @@ const workbenchApi = {
    * real yzj-cli. Deterministic collection only — turning a mention into a task
    * stays an agent decision, so nothing is auto-created here.
    */
+  /** 规则候选提取（确定性，无模型）：为尚未提取的 @我 来源生成待确认候选。 */
+  async extractCandidates() {
+    return mutateWorkbenchState(function (state) {
+      return extractCandidatesInto(state)
+    })
+  },
+
+  /** 采纳候选：原子地建任务（带来源证据）并把候选标记为已采纳。 */
+  async acceptCandidate(id, patch) {
+    const input = patch && typeof patch === 'object' ? patch : {}
+    return mutateWorkbenchState(function (state) {
+      const candidate = ensureArray(state.candidates).find(function (row) {
+        return row.id === id
+      })
+      if (!candidate) throw new Error('找不到该候选：' + String(id))
+      if (candidate.status === 'accepted' && candidate.taskId) {
+        return state
+      }
+      const task = normalizeTask(
+        {
+          title: input.title || candidate.title,
+          description:
+            input.description ||
+            [candidate.excerpt, candidate.sourceTitle ? '来源：' + candidate.sourceTitle : '']
+              .filter(Boolean)
+              .join('\n'),
+          status: input.status || 'ready',
+          priority: input.priority || 'normal',
+          dueAt: input.dueAt === undefined ? candidate.dueAt : input.dueAt,
+          tags: input.tags || [],
+          sourceRefId: candidate.sourceRefId,
+          projectId: state.settings ? state.settings.defaultProjectId : null,
+          aiExtracted: true,
+          confidence: candidate.confidence,
+        },
+        null,
+      )
+      state.tasks = ensureArray(state.tasks).concat([task])
+      const index = state.candidates.indexOf(candidate)
+      const next = normalizeCandidate(
+        Object.assign({}, candidate, { status: 'accepted', taskId: task.id }),
+        candidate,
+      )
+      next.status = 'accepted'
+      next.taskId = task.id
+      state.candidates = state.candidates.slice()
+      state.candidates[index] = next
+      auditEntry(state, 'candidate.accepted', task.title)
+      return state
+    })
+  },
+
+  async rejectCandidate(id) {
+    return mutateWorkbenchState(function (state) {
+      const candidate = ensureArray(state.candidates).find(function (row) {
+        return row.id === id
+      })
+      if (!candidate) throw new Error('找不到该候选：' + String(id))
+      const index = state.candidates.indexOf(candidate)
+      state.candidates = state.candidates.slice()
+      state.candidates[index] = normalizeCandidate(Object.assign({}, candidate, { status: 'rejected' }), candidate)
+      state.candidates[index].status = 'rejected'
+      auditEntry(state, 'candidate.rejected', candidate.title)
+      return state
+    })
+  },
+
   async fetchMentions() {
     return mutateWorkbenchState(function (state) {
       return fetchYunzhijiaMentionsInto(workbenchContext(), state)
@@ -1542,6 +1672,12 @@ async function runUnifiedSearch(ctx, request) {
   const groups = searchLocalGroups(state, query)
   if (!request || request.includeEnterprise !== false) {
     groups.push(await searchEnterpriseGroup(ctx, query))
+    // 三路按意图触发：联系人（像人名/找人）、会议室（会议类）、考勤（考勤类）。
+    // 返回 null 表示这次查询不适用，不显示空分组。
+    for (const provider of [searchContactsGroup, searchRoomsGroup, searchAttendanceGroup]) {
+      const group = await provider(ctx, query)
+      if (group) groups.push(group)
+    }
   }
   if (!request || request.includeWeb !== false) {
     groups.push(await searchWebGroup(ctx, query))
@@ -2259,6 +2395,32 @@ function yzjMentionTargetsMe(message, myOpenId) {
   return false
 }
 
+/** 批量解析 openId → 姓名（一次 CLI 调用，最多 6 个）。 */
+async function resolveSenderNames(ctx, openIds) {
+  const unique = Array.from(
+    new Set(
+      (openIds || []).filter(function (id) {
+        return typeof id === 'string' && id.length > 0
+      }),
+    ),
+  ).slice(0, 6)
+  if (unique.length === 0) return new Map()
+  const args = ['contact', 'user', 'get']
+  unique.forEach(function (id) {
+    args.push('--open-id', id)
+  })
+  const result = await runYzj(ctx, args)
+  const map = new Map()
+  if (result.status !== 'ok' || !result.json || !result.json.data) return map
+  const list = Array.isArray(result.json.data.list) ? result.json.data.list : [result.json.data]
+  list.forEach(function (user) {
+    if (user && typeof user.openId === 'string') {
+      map.set(user.openId, asString(user.name || user.userName, 80) || null)
+    }
+  })
+  return map
+}
+
 function yzjParseMentionSearch(json, myOpenId) {
   const out = []
   const groups = json && json.data && Array.isArray(json.data.list) ? json.data.list : []
@@ -2319,6 +2481,13 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
   }
 
   const mentions = yzjParseMentionSearch(result.json, probe.openId).slice(0, MENTIONS_FETCH_LIMIT)
+  // 发送人姓名：一次批量查询，失败不影响主流程（回退为 openId 短标识）
+  const senderNames = await resolveSenderNames(
+    ctx,
+    mentions.map(function (mention) {
+      return mention.fromOpenId
+    }),
+  )
   const existing = new Set(
     ensureArray(state.sources)
       .filter(function (row) {
@@ -2341,6 +2510,14 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
         title: '@我 · ' + mention.groupName,
         excerpt: mention.content,
         fetchedAt: mention.sendTime || at,
+        sender:
+          (mention.fromOpenId && senderNames.get(mention.fromOpenId)) ||
+          (mention.fromOpenId ? mention.fromOpenId.slice(0, 8) + '…' : null),
+        locator: {
+          groupId: mention.groupId,
+          msgId: mention.msgId,
+          groupName: mention.groupName,
+        },
       }),
     ])
     added += 1
@@ -2437,6 +2614,350 @@ async function searchEnterpriseGroup(ctx, query) {
   }
 }
 
+
+/* --------------------------------------------------- §3.3 其余企业 Provider */
+
+/**
+ * 联系人：只在「像人名的查询」或明确的找人意图下触发，避免每次搜索都多打
+ * 一次企业通讯录（也对隐私更克制）。
+ */
+async function searchContactsGroup(ctx, query) {
+  const looksLikeName = /^[\u4e00-\u9fa5]{2,4}$/.test(query)
+  const explicitIntent = /找人|联系|同事|部门|谁是|联系人|通讯录/.test(query)
+  if (!looksLikeName && !explicitIntent) return null
+
+  const result = await runYzj(ctx, ['contact', 'user', 'search', '--keyword', query])
+  if (result.status !== 'ok') {
+    return {
+      id: 'contacts',
+      label: '企业联系人',
+      status: 'error',
+      items: [],
+      note: '通讯录查询失败：' + (result.note || result.status),
+    }
+  }
+  const list = (result.json && result.json.data && Array.isArray(result.json.data.list) ? result.json.data.list : []).slice(0, 6)
+  const items = list.map(function (user) {
+    if (!user || typeof user !== 'object') return null
+    const name = asString(user.name || user.userName, 80)
+    if (!name) return null
+    return {
+      id: 'yzj-user-' + (asString(user.openId, 80) || name),
+      title: name,
+      snippet: [asString(user.department || user.orgName, 80), asString(user.jobTitle, 60)]
+        .filter(Boolean)
+        .join(' · '),
+      url: null,
+      kind: 'contact',
+      extra: { openId: asString(user.openId, 80), department: asString(user.department || user.orgName, 80) },
+    }
+  }).filter(Boolean)
+  if (items.length === 0) return null
+  return {
+    id: 'contacts',
+    label: '企业联系人',
+    status: 'ok',
+    items: items,
+    note: '按姓名/关键词匹配企业通讯录，仅返回展示所需字段（姓名、部门、职位）。',
+  }
+}
+
+/** 会议室：只在会议/场地类查询下触发，按当天可用会议室过滤名称。 */
+async function searchRoomsGroup(ctx, query) {
+  if (!/会议室|会议|场地|room|预定|有空/.test(query)) return null
+
+  const today = new Date()
+  const pad = function (value) {
+    return value < 10 ? '0' + value : String(value)
+  }
+  const day = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate())
+  const result = await runYzj(ctx, ['calendar', 'room', 'find', '--start', day, '--end', day])
+  if (result.status !== 'ok') {
+    return {
+      id: 'rooms',
+      label: '会议室',
+      status: 'error',
+      items: [],
+      note: '会议室查询失败：' + (result.note || result.status),
+    }
+  }
+  const rooms = result.json && result.json.data && Array.isArray(result.json.data.list) ? result.json.data.list : []
+  const needle = String(query)
+    .replace(/会议室|会议|场地|room|预定|有空/g, '')
+    .trim()
+  const matched = rooms.filter(function (room) {
+    if (!room || typeof room.roomName !== 'string') return false
+    return needle.length === 0 ? true : room.roomName.indexOf(needle) >= 0
+  }).slice(0, 8)
+  const items = matched.map(function (room) {
+    return {
+      id: 'yzj-room-' + (asString(room.roomId, 80) || room.roomName),
+      title: asString(room.roomName, 120),
+      snippet: [asString(room.roomDetail, 80), room.limitCount ? '可容纳 ' + room.limitCount + ' 人' : '']
+        .filter(Boolean)
+        .join(' · '),
+      url: null,
+      kind: 'room',
+      extra: { roomId: asString(room.roomId, 80), at: null },
+    }
+  })
+  if (items.length === 0) return null
+  return {
+    id: 'rooms',
+    label: '会议室',
+    status: 'ok',
+    items: items,
+    note: '查的是今天可预约的会议室（calendar room find）；会议室预订属于写操作，不在插件内。',
+  }
+}
+
+/** 考勤：只在考勤意图下触发，只返回本人打卡流水。 */
+async function searchAttendanceGroup(ctx, query) {
+  if (!/打卡|考勤|出勤|clock|迟到|早退/.test(query)) return null
+
+  const result = await runYzj(ctx, ['attendance', 'record', 'list'])
+  if (result.status !== 'ok') {
+    return {
+      id: 'attendance',
+      label: '考勤',
+      status: 'error',
+      items: [],
+      note: '考勤查询失败：' + (result.note || result.status),
+    }
+  }
+  const list = (result.json && result.json.data && Array.isArray(result.json.data.list) ? result.json.data.list : []).slice(0, 6)
+  const items = list.map(function (record, index) {
+    if (!record || typeof record !== 'object') return null
+    const stamp = Number(record.clockInTime || record.clockTime)
+    const at = Number.isFinite(stamp) && stamp > 0 ? new Date(stamp).toISOString() : null
+    return {
+      id: 'yzj-att-' + index,
+      title: (record.clockInType ? record.clockInType + '·' : '') + (record.clockInStatus || '打卡记录'),
+      snippet: [asString(record.clockInPosition, 80), at ? new Date(stamp).toLocaleString('zh-CN') : '']
+        .filter(Boolean)
+        .join(' · '),
+      url: null,
+      kind: 'attendance',
+      extra: { at: at },
+    }
+  }).filter(Boolean)
+  if (items.length === 0) return null
+  return {
+    id: 'attendance',
+    label: '考勤',
+    status: 'ok',
+    items: items,
+    note: '只查询本人当日打卡流水（attendance record list 的能力边界）。',
+  }
+}
+
+// ===== 38-candidates.js =====
+/* ============================================================================
+ * dev-workbench host — 任务候选规则提取（设计报告 §3.2 AI 任务提取 / §8）
+ *
+ * 报告要的是「规则候选 → LLM 提取 → 结构校验 → 人工确认」。插件内没有模型，
+ * 所以这一层只做**确定性规则候选**：行动词、时间线索、长度与指向性给出一个
+ * 可解释的置信度，并把命中的规则逐条写进 reasons。低置信度同样进待确认区，
+ * 由用户决定采纳或忽略——不自动建任务，也不假装这是 LLM 的结论。
+ *
+ * 每条候选都绑定 sourceRefId，采纳后任务仍可回溯到原消息（来源证据）。
+ * ========================================================================== */
+
+const CANDIDATE_ACTION_WORDS = [
+  '请',
+  '麻烦',
+  '帮忙',
+  '帮看',
+  '看下',
+  '看一下',
+  '确认',
+  '跟进',
+  '处理',
+  '提供',
+  '安排',
+  '给出',
+  '回复',
+  '支持',
+  '排查',
+  '修复',
+  '评审',
+  '同步',
+  '整理',
+  '输出',
+  '评估',
+  '补充',
+  '对齐',
+  '落地',
+]
+
+function candidateStartOfDay(offsetDays) {
+  const date = new Date()
+  date.setDate(date.getDate() + (offsetDays || 0))
+  date.setHours(18, 0, 0, 0)
+  return date
+}
+
+function candidateEndOfMonth() {
+  const date = new Date()
+  date.setMonth(date.getMonth() + 1, 0)
+  date.setHours(18, 0, 0, 0)
+  return date
+}
+
+/** 下一个周 X（周一=1），18:00。 */
+function candidateNextWeekday(target) {
+  const date = new Date()
+  const current = date.getDay() === 0 ? 7 : date.getDay()
+  let delta = target - current
+  if (delta <= 0) delta += 7
+  date.setDate(date.getDate() + delta)
+  date.setHours(18, 0, 0, 0)
+  return date
+}
+
+/**
+ * 时间线索 → ISO。只映射**明确表达**的日期；「尽快」「尽早」不算日期，
+ * 只记一条 reason（不编造截止时间）。
+ */
+function candidateDueFromText(text) {
+  const source = String(text || '')
+  const hits = []
+  const put = function (label, date) {
+    hits.push(label + ' → ' + date.toISOString().slice(0, 16).replace('T', ' '))
+    return date.toISOString()
+  }
+  if (/今天|今日|下班前/.test(source)) return { dueAt: put('今天/下班前', candidateStartOfDay(0)), hits: hits }
+  if (/明天|明日/.test(source)) return { dueAt: put('明天', candidateStartOfDay(1)), hits: hits }
+  if (/后天/.test(source)) return { dueAt: put('后天', candidateStartOfDay(2)), hits: hits }
+  const weekday = /(?:下)?周([一二三四五六日天])/.exec(source)
+  if (weekday) {
+    const map = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7, 天: 7 }
+    const target = map[weekday[1]]
+    if (target) return { dueAt: put('周' + weekday[1], candidateNextWeekday(target)), hits: hits }
+  }
+  if (/本周|这周|周内/.test(source)) return { dueAt: put('本周内', candidateNextWeekday(5)), hits: hits }
+  if (/下周/.test(source)) return { dueAt: put('下周', candidateNextWeekday(5)), hits: hits }
+  if (/月底|本月末/.test(source)) return { dueAt: put('月底', candidateEndOfMonth()), hits: hits }
+  if (/尽快|尽早|越快越好/.test(source)) {
+    return { dueAt: null, hits: ['提到「尽快」但没有明确日期，未编造截止时间'] }
+  }
+  return { dueAt: null, hits: [] }
+}
+
+/** 从消息正文里切出一句可读的任务标题。 */
+function candidateTitleFromText(text) {
+  const source = String(text || '')
+    .replace(/@\S+\s*/g, '')
+    .replace(/\[图片\]|\[文件\]|\[链接\]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!source) return ''
+  const sentence = source.split(/[。!?！？\n]/).map(function (part) {
+    return part.trim()
+  }).filter(Boolean)[0]
+  const picked = sentence || source
+  return picked.length > 60 ? picked.slice(0, 58) + '…' : picked
+}
+
+/**
+ * 对一条来源做规则提取。返回候选草稿或 null（无法提取）。
+ * confidence 是**规则置信度**，不是模型概率，reasons 里逐条可查。
+ */
+function candidateFromSource(source) {
+  const text = String((source && source.excerpt) || '').trim()
+  if (!text) return null
+  const title = candidateTitleFromText(text)
+  if (!title) return null
+
+  const reasons = []
+  let confidence = 0.35
+
+  const actionHit = CANDIDATE_ACTION_WORDS.filter(function (word) {
+    return text.indexOf(word) >= 0
+  })
+  if (actionHit.length > 0) {
+    confidence += 0.25
+    reasons.push('命中行动词：' + actionHit.slice(0, 3).join(' / '))
+  }
+
+  const due = candidateDueFromText(text)
+  if (due.dueAt) {
+    confidence += 0.2
+    reasons.push('时间线索：' + due.hits[0])
+  } else if (due.hits.length > 0) {
+    reasons.push(due.hits[0])
+  }
+
+  if (text.length <= 80) {
+    confidence += 0.1
+    reasons.push('正文较短，指向明确')
+  } else {
+    reasons.push('正文较长（' + text.length + ' 字），可能需要拆分')
+  }
+
+  if (/我|您|你/.test(text)) {
+    confidence += 0.1
+    reasons.push('正文直接指向收件人')
+  }
+
+  confidence = Math.min(0.9, Math.round(confidence * 100) / 100)
+  if (reasons.length === 0) reasons.push('仅按正文长度给出基础置信度')
+
+  return {
+    sourceRefId: source.id,
+    sourceTitle: source.title,
+    title: title,
+    excerpt: text.slice(0, 500),
+    dueAt: due.dueAt,
+    assignee: null,
+    confidence: confidence,
+    reasons: reasons,
+    status: 'pending',
+  }
+}
+
+/** 为所有「还没有候选」的云之家来源生成候选。返回新快照。 */
+function extractCandidatesInto(state) {
+  const sources = ensureArray(state.sources).filter(function (source) {
+    return source.provider === 'yunzhijia'
+  })
+  const seen = new Set(
+    ensureArray(state.candidates)
+      .map(function (candidate) {
+        return candidate.sourceRefId
+      })
+      .filter(Boolean),
+  )
+  let added = 0
+  let skipped = 0
+  for (const source of sources) {
+    if (seen.has(source.id)) {
+      skipped += 1
+      continue
+    }
+    const draft = candidateFromSource(source)
+    if (!draft) {
+      skipped += 1
+      continue
+    }
+    seen.add(source.id)
+    state.candidates = ensureArray(state.candidates).concat([normalizeCandidate(draft, null)]).slice(-CANDIDATE_LIMIT)
+    added += 1
+  }
+  state.lastExtract = {
+    at: hostNowIso(),
+    scanned: sources.length,
+    added: added,
+    skipped: skipped,
+    note:
+      sources.length === 0
+        ? '还没有云之家 @我 来源：先在首页拉取 @我 消息，或在会话里让 Agent 调 workbench_fetch_mentions。'
+        : '规则候选 = 行动词 + 时间线索 + 长度/指向性计算的置信度，不是模型结论；采纳前请人工核对。',
+  }
+  auditEntry(state, 'candidates.extract', '扫描 ' + sources.length + ' 条来源，新增候选 ' + added + ' 条')
+  return state
+}
+
 // ===== 40-remote.js =====
 /* ============================================================================
  * dev-workbench host — Remote endpoints
@@ -2459,6 +2980,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'deleteTask', params: ['id'] },
   { method: 'addSource', params: ['input'] },
   { method: 'createKnowledge', params: ['input'] },
+  { method: 'updateKnowledge', params: ['id', 'patch'] },
   { method: 'deleteKnowledge', params: ['id'] },
   { method: 'saveRadarItem', params: ['input'] },
   { method: 'deleteRadarItem', params: ['id'] },
@@ -2467,6 +2989,9 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'saveProject', params: ['input'] },
   { method: 'fetchRadar', params: [] },
   { method: 'fetchMentions', params: [] },
+  { method: 'extractCandidates', params: [] },
+  { method: 'acceptCandidate', params: ['id', 'patch'] },
+  { method: 'rejectCandidate', params: ['id'] },
   { method: 'createTaskFromRadar', params: ['id'] },
   { method: 'deleteProject', params: ['id'] },
   { method: 'search', params: ['request'] },

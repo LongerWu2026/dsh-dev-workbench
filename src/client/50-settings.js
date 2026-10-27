@@ -36,6 +36,7 @@ function SettingsPage() {
   const [projectName, setProjectName] = React.useState('')
   const [projectPath, setProjectPath] = React.useState('')
   const [picking, setPicking] = React.useState(false)
+  const [projectEdit, setProjectEdit] = React.useState(null)
   const [feedLabel, setFeedLabel] = React.useState('')
   const [feedUrl, setFeedUrl] = React.useState('')
   const [feedTopics, setFeedTopics] = React.useState('')
@@ -381,6 +382,13 @@ function SettingsPage() {
                       h('div', { className: 'wb-item-sub' }, count + ' 项待办'),
                     ),
                     h(IconBtn, {
+                      name: 'edit',
+                      label: '编辑项目名称与目录',
+                      onClick: function () {
+                        setProjectEdit({ id: project.id, name: project.name, repoPath: project.repoPath || '' })
+                      },
+                    }),
+                    h(IconBtn, {
                       name: 'trash',
                       label: '删除项目',
                       onClick: function () {
@@ -683,6 +691,62 @@ function SettingsPage() {
       ),
     ),
 
+    h(Modal, {
+      open: !!projectEdit,
+      title: '编辑项目',
+      sub: projectEdit ? projectEdit.name : '',
+      onClose: function () {
+        setProjectEdit(null)
+      },
+      footer: h(
+        React.Fragment,
+        null,
+        h(Btn, {
+          onClick: function () {
+            setProjectEdit(null)
+          },
+          children: '取消',
+        }),
+        h('div', { className: 'wb-spacer' }),
+        h(Btn, {
+          kind: 'primary',
+          icon: 'save',
+          disabled: !projectEdit || !String(projectEdit.name || '').trim(),
+          onClick: function () {
+            if (!projectEdit) return
+            const name = String(projectEdit.name || '').trim()
+            if (!name) return
+            WB.actions
+              .saveProject({ id: projectEdit.id, name: name, repoPath: String(projectEdit.repoPath || '').trim() })
+              .then(function () {
+                setProjectEdit(null)
+              })
+              .catch(function () {})
+          },
+          children: '保存',
+        }),
+      ),
+    },
+    projectEdit
+      ? h(
+          'div',
+          { className: 'wb-stack', style: { gap: 10 } },
+          h(Field, { label: '项目名称' }, h(Input, {
+            value: projectEdit.name,
+            autoFocus: true,
+            onChange: function (event) {
+              setProjectEdit(Object.assign({}, projectEdit, { name: event.target.value }))
+            },
+          })),
+          h(Field, { label: '仓库目录', hint: '留空表示不关联仓库；改动后研发协作会重新探测' }, h(Input, {
+            value: projectEdit.repoPath,
+            placeholder: '/Users/me/code/项目',
+            onChange: function (event) {
+              setProjectEdit(Object.assign({}, projectEdit, { repoPath: event.target.value }))
+            },
+          })),
+        )
+      : null),
     h(Modal, {
       open: !!confirmReset,
       title: '重置确认',

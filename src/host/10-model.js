@@ -12,6 +12,9 @@ const TASK_PRIORITIES = ['urgent', 'high', 'normal', 'low']
 const RUN_STATUSES = ['queued', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled']
 const KNOWLEDGE_KINDS = ['bookmark', 'note', 'snippet']
 const AUDIT_LIMIT = 200
+const CANDIDATE_LIMIT = 200
+
+const CANDIDATE_STATUSES = ['pending', 'accepted', 'rejected']
 
 const DEFAULT_TOPICS = ['Agent', 'LLM', 'RAG', 'Java', 'Python', '数据库']
 
@@ -32,6 +35,7 @@ function emptyWorkbenchState() {
     knowledge: [],
     radar: [],
     connectors: [],
+    candidates: [],
     audit: [],
   }
 }
@@ -177,21 +181,58 @@ function normalizeSource(raw) {
     excerpt: excerpt,
     fetchedAt: asIso(input.fetchedAt) || hostNowIso(),
     payloadHash: hashText([url || '', title, excerpt].join('|')),
+    // 消息类来源的可回溯信息：发送人与原始定位（IM 无文档化深链，故只存 ID）
+    sender: asString(input.sender, 80) || null,
+    locator: input.locator && typeof input.locator === 'object'
+      ? {
+          groupId: asString(input.locator.groupId, 80) || null,
+          msgId: asString(input.locator.msgId, 80) || null,
+          groupName: asString(input.locator.groupName, 120) || null,
+        }
+      : null,
   }
 }
 
-function normalizeKnowledge(raw) {
+function normalizeKnowledge(raw, existing) {
   const input = raw && typeof raw === 'object' ? raw : {}
-  const kind = KNOWLEDGE_KINDS.indexOf(input.kind) >= 0 ? input.kind : 'note'
-  const body = asString(input.body, 20000)
+  const base = existing || {}
+  const kind = KNOWLEDGE_KINDS.indexOf(input.kind) >= 0 ? input.kind : base.kind || 'note'
+  const body = asString(input.body === undefined ? base.body : input.body, 20000)
+  const url = input.url === undefined ? base.url || null : asUrl(input.url)
   return {
-    id: newId('kb'),
+    id: base.id || newId('kb'),
     kind: kind,
-    title: asString(input.title, 200) || (kind === 'bookmark' ? asUrl(input.url) || '未命名收藏' : '未命名笔记'),
-    url: asUrl(input.url),
+    title:
+      asString(input.title === undefined ? base.title : input.title, 200) ||
+      (kind === 'bookmark' ? url || '未命名收藏' : '未命名笔记'),
+    url: url,
     body: body,
-    tags: asTags(input.tags),
-    createdAt: hostNowIso(),
+    tags: input.tags === undefined ? asTags(base.tags) : asTags(input.tags),
+    createdAt: base.createdAt || hostNowIso(),
+    updatedAt: hostNowIso(),
+  }
+}
+
+function normalizeCandidate(raw, existing) {
+  const input = raw && typeof raw === 'object' ? raw : {}
+  const base = existing || {}
+  const status = CANDIDATE_STATUSES.indexOf(input.status) >= 0 ? input.status : base.status || 'pending'
+  const confidenceRaw = input.confidence === undefined ? base.confidence : input.confidence
+  return {
+    id: base.id || newId('cand'),
+    sourceRefId: input.sourceRefId === undefined ? base.sourceRefId || null : input.sourceRefId || null,
+    sourceTitle: asString(input.sourceTitle === undefined ? base.sourceTitle : input.sourceTitle, 200),
+    title: asString(input.title === undefined ? base.title : input.title, 200) || '待确认事项',
+    excerpt: asString(input.excerpt === undefined ? base.excerpt : input.excerpt, 2000),
+    dueAt: input.dueAt === undefined ? base.dueAt || null : asIso(input.dueAt),
+    assignee: input.assignee === undefined ? base.assignee || null : asString(input.assignee, 80) || null,
+    confidence:
+      typeof confidenceRaw === 'number' && confidenceRaw >= 0 && confidenceRaw <= 1 ? confidenceRaw : null,
+    reasons: input.reasons === undefined ? ensureArray(base.reasons) : asTags(input.reasons, 8),
+    status: status,
+    taskId: input.taskId === undefined ? base.taskId || null : input.taskId || null,
+    createdAt: base.createdAt || hostNowIso(),
+    updatedAt: hostNowIso(),
   }
 }
 
@@ -270,6 +311,11 @@ function normalizeState(raw) {
     knowledge: ensureArray(raw.knowledge).slice(0, 2000),
     radar: ensureArray(raw.radar).slice(0, 500),
     connectors: ensureArray(raw.connectors).slice(0, 40),
+    candidates: ensureArray(raw.candidates)
+      .slice(-CANDIDATE_LIMIT)
+      .map(function (candidate) {
+        return normalizeCandidate(candidate, null)
+      }),
     lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),
     lastMentionsFetch: normalizeMentionsReport(raw.lastMentionsFetch),
     audit: ensureArray(raw.audit).slice(-AUDIT_LIMIT),

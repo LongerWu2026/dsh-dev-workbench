@@ -12,8 +12,8 @@
 | Host 半语法 | `node --check index.js` | 通过 |
 | Client 半语法 | `node --check client.js` | 通过 |
 | 跨文件顶层重名 | `node scripts/build.mjs --check` | 11 host / 12 client part，无冲突 |
-| Host 业务逻辑 | `node tests/host-smoke.mjs` | **69/69 通过** |
-| Client 全页面渲染 | `node tests/client-render.mjs` | **8/8 页面渲染通过**（260–598 节点/页；真实驱动搜索查询、抓取资讯、@我 再拉一次） |
+| Host 业务逻辑 | `node tests/host-smoke.mjs` | **88/88 通过** |
+| Client 全页面渲染 | `node tests/client-render.mjs` | **8/8 页面 + 空态 + 4 个新工具面板**；真实驱动搜索、抓取资讯、@我 再拉一次、逐个切换 YAML/CSV/Markdown/状态码 |
 | **描述符实参交叉校验** | 渲染测试从 `src/host/40-remote.js` 解析签名表，逐一核对每个 RPC 调用的实参键 | **22/22 一致**——正是此项挡住 `fetchRadar` 的 `unexpected "request"`（客户端对零参端点多发了 `request` 字段，网关严格校验拒绝） |
 | 插件安装 | `plugin_manager install_bundle` | `application: applied`，`warnings: []` |
 | Host 行激活 | 运行时写出 `state.json`；`apply` 注册工具 | 已创建 |
@@ -87,7 +87,18 @@
 | 英文残留 | 品牌区「DEV WORKBENCH」副标题移除；「关于」面板中文化 | — |
 | 命名约定 | 目录与包名统一为 ASCII `dsh-dev-workbench`（技术标识，便于终端 / git / CI）；插件页显示名与全部界面文案统一为中文 | `install_bundle` `application: applied`；链接指向 `dsh-dev-workbench` |
 
-## 6. 复现命令
+## 6. 本轮补齐（用户要求 1–6 全部完成）
+
+| # | 原缺口 | 现状 | 验证 |
+| --- | --- | --- | --- |
+| 1 | 雷达四段摘要「提示可补充但无入口」 | 首页雷达条目新增「编辑资讯」：标题/来源/日期/链接/主题 + 技术变化/应用场景/采用风险/推荐实践四段全部可编辑 | 渲染测试首页含编辑按钮；`saveRadarItem` 按 id 幂等更新 |
+| 2 | 知识不能编辑、项目不能改名 | `updateKnowledge` 端点 + 知识页编辑弹窗；设置页项目行新增编辑（名称 + 仓库目录，改动后自动失效环境缓存） | host-smoke：知识编辑成功 + 不存在条目被拒绝；渲染测试设置页含编辑入口 |
+| 3 | @我 无发送人、无原始定位 | 批量 `contact user get` 解析 openId→姓名（最多 6 个，失败回退短 ID）；来源新增 `sender` 与 `locator{groupId,msgId,groupName}`。IM 无文档化深链，**不伪造 URL**，只存定位 ID | host-smoke：来源 sender==='张三'、locator.msgId==='m1' |
+| 4 | 企业搜索只有消息+文档 | 新增联系人 / 会议室 / 考勤三路，按查询意图触发（人名形状或找人意图 / 会议类 / 考勤类），**无命中不生成空分组**避免噪音 | host-smoke：三路各自命中 + 普通查询不触发 |
+| 5 | 工具箱缺 YAML/CSV/Markdown/状态码 | 新增 4 个工具，共 14 个。YAML 仅常用子集（锚点/别名/块标量明确报错）；Markdown 全程 React 元素构造、不用 innerHTML；状态码内置 34 条 | 渲染测试逐个点开 4 个面板无异常 |
+| 6 | 无 AI 任务提取 | 规则候选：行动词 + 时间线索 + 长度 + 指向性 → 可解释置信度与 reasons；任务中心「待确认」区采纳/忽略；采纳原子建任务并带来源证据，重复采纳幂等、重复提取不重复生成 | host-smoke：提取/采纳/幂等/忽略/再次提取不重复 |
+
+## 7. 复现命令
 
 ```bash
 cd dsh-dev-workbench
@@ -97,7 +108,7 @@ node tests/host-smoke.mjs
 node tests/client-render.mjs
 ```
 
-## 7. 生效条件
+## 8. 生效条件
 
 - 只改 `src/client/**`：重新构建后刷新 GUI 窗口即可。
 - 改 `src/host/**`（新增 Remote 端点或工具）：必须**重启 DSH**；重新安装 bundle 不会替换已加载的

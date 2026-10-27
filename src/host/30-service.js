@@ -115,6 +115,22 @@ const workbenchApi = {
     })
   },
 
+  async updateKnowledge(id, patch) {
+    return mutateWorkbenchState(function (state) {
+      const existing = ensureArray(state.knowledge).find(function (item) {
+        return item.id === id
+      })
+      if (!existing) throw new Error('找不到该知识条目：' + String(id))
+      const next = normalizeKnowledge(patch || {}, existing)
+      next.id = existing.id
+      state.knowledge = ensureArray(state.knowledge).map(function (item) {
+        return item.id === id ? next : item
+      })
+      auditEntry(state, 'knowledge.updated', next.title)
+      return state
+    })
+  },
+
   async deleteKnowledge(id) {
     return mutateWorkbenchState(function (state) {
       state.knowledge = ensureArray(state.knowledge).filter(function (item) {
@@ -304,6 +320,73 @@ const workbenchApi = {
    * real yzj-cli. Deterministic collection only — turning a mention into a task
    * stays an agent decision, so nothing is auto-created here.
    */
+  /** 规则候选提取（确定性，无模型）：为尚未提取的 @我 来源生成待确认候选。 */
+  async extractCandidates() {
+    return mutateWorkbenchState(function (state) {
+      return extractCandidatesInto(state)
+    })
+  },
+
+  /** 采纳候选：原子地建任务（带来源证据）并把候选标记为已采纳。 */
+  async acceptCandidate(id, patch) {
+    const input = patch && typeof patch === 'object' ? patch : {}
+    return mutateWorkbenchState(function (state) {
+      const candidate = ensureArray(state.candidates).find(function (row) {
+        return row.id === id
+      })
+      if (!candidate) throw new Error('找不到该候选：' + String(id))
+      if (candidate.status === 'accepted' && candidate.taskId) {
+        return state
+      }
+      const task = normalizeTask(
+        {
+          title: input.title || candidate.title,
+          description:
+            input.description ||
+            [candidate.excerpt, candidate.sourceTitle ? '来源：' + candidate.sourceTitle : '']
+              .filter(Boolean)
+              .join('\n'),
+          status: input.status || 'ready',
+          priority: input.priority || 'normal',
+          dueAt: input.dueAt === undefined ? candidate.dueAt : input.dueAt,
+          tags: input.tags || [],
+          sourceRefId: candidate.sourceRefId,
+          projectId: state.settings ? state.settings.defaultProjectId : null,
+          aiExtracted: true,
+          confidence: candidate.confidence,
+        },
+        null,
+      )
+      state.tasks = ensureArray(state.tasks).concat([task])
+      const index = state.candidates.indexOf(candidate)
+      const next = normalizeCandidate(
+        Object.assign({}, candidate, { status: 'accepted', taskId: task.id }),
+        candidate,
+      )
+      next.status = 'accepted'
+      next.taskId = task.id
+      state.candidates = state.candidates.slice()
+      state.candidates[index] = next
+      auditEntry(state, 'candidate.accepted', task.title)
+      return state
+    })
+  },
+
+  async rejectCandidate(id) {
+    return mutateWorkbenchState(function (state) {
+      const candidate = ensureArray(state.candidates).find(function (row) {
+        return row.id === id
+      })
+      if (!candidate) throw new Error('找不到该候选：' + String(id))
+      const index = state.candidates.indexOf(candidate)
+      state.candidates = state.candidates.slice()
+      state.candidates[index] = normalizeCandidate(Object.assign({}, candidate, { status: 'rejected' }), candidate)
+      state.candidates[index].status = 'rejected'
+      auditEntry(state, 'candidate.rejected', candidate.title)
+      return state
+    })
+  },
+
   async fetchMentions() {
     return mutateWorkbenchState(function (state) {
       return fetchYunzhijiaMentionsInto(workbenchContext(), state)

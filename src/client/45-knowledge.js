@@ -88,6 +88,7 @@ function knowPage() {
     return { kind: 'note', title: '', url: '', body: '', tags: '' }
   })
   const [confirmItem, setConfirmItem] = React.useState(null)
+  const [editItem, setEditItem] = React.useState(null)
 
   const counts = { all: items.length, bookmark: 0, note: 0, snippet: 0 }
   items.forEach(function (item) {
@@ -119,13 +120,29 @@ function knowPage() {
   }
 
   function openCreate() {
+    setEditItem(null)
     setForm({ kind: 'note', title: '', url: '', body: '', tags: '' })
+    setFormError('')
+    setCreateOpen(true)
+  }
+
+  function openEdit(item) {
+    if (!item) return
+    setEditItem(item)
+    setForm({
+      kind: item.kind || 'note',
+      title: item.title || '',
+      url: item.url || '',
+      body: item.body || '',
+      tags: Array.isArray(item.tags) ? item.tags.join(', ') : '',
+    })
     setFormError('')
     setCreateOpen(true)
   }
 
   function closeCreate() {
     setCreateOpen(false)
+    setEditItem(null)
     setFormError('')
   }
 
@@ -160,9 +177,13 @@ function knowPage() {
     }
     const url = String(form.url || '').trim()
     if (url) input.url = url
-    WB.actions.createKnowledge(input)
+    const operation = editItem && editItem.id
+      ? WB.actions.updateKnowledge(editItem.id, input)
+      : WB.actions.createKnowledge(input)
+    operation
       .then(function () {
         setCreateOpen(false)
+        setEditItem(null)
         setFormError('')
         setForm({ kind: 'note', title: '', url: '', body: '', tags: '' })
       })
@@ -234,6 +255,13 @@ function knowPage() {
           },
           item.createdAt ? WB.fmt.relative(item.createdAt) : '—',
         ),
+        h(IconBtn, {
+          name: 'edit',
+          label: '编辑条目',
+          onClick: function () {
+            openEdit(item)
+          },
+        }),
         h(IconBtn, {
           name: 'copy',
           label: '复制条目',
@@ -340,8 +368,8 @@ function knowPage() {
     Modal,
     {
       open: createOpen,
-      title: '新建知识条目',
-      sub: '标题必填；其余字段可选',
+      title: editItem ? '编辑知识条目' : '新建知识条目',
+      sub: editItem ? '修改后立即写回 Host 持久化' : '标题必填；其余字段可选',
       onClose: closeCreate,
       footer: [
         h(Btn, { key: 'cancel', onClick: closeCreate, children: '取消' }),
@@ -351,7 +379,7 @@ function knowPage() {
           icon: 'save',
           disabled: !!wbState.busy,
           onClick: submitCreate,
-          children: '保存',
+          children: editItem ? '保存修改' : '保存',
         }),
       ],
     },
