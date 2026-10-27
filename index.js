@@ -4456,6 +4456,22 @@ function hostService(ctx, key) {
   return ctx[key] || null
 }
 
+/**
+ * 过滤宿主注入的系统消息：这些不是用户输入，展示出来只会干扰阅读。
+ * 命中任一特征即视为系统文本（<system-reminder>、运行时上下文、turn 元信息）。
+ */
+function isSystemInjectedText(text) {
+  const source = String(text || '')
+  if (source.indexOf('<system-reminder>') >= 0) return true
+  if (source.indexOf('</system-reminder>') >= 0) return true
+  if (/Time sampled while preparing turn/i.test(source)) return true
+  if (/Browser time zone for this request/i.test(source)) return true
+  if (/Elapsed since the preceding/i.test(source)) return true
+  if (/model-visible message/i.test(source)) return true
+  if (/^\[system\]/i.test(source.trim())) return true
+  return false
+}
+
 /** 从 assistant/message 事件里抽出纯文本（content 是 ContentBlock[]）。 */
 function assistantTextOf(message) {
   if (!message || !Array.isArray(message.content)) return ''
@@ -4486,7 +4502,7 @@ function assistantHistoryFrom(session, limit) {
         .filter(Boolean)
         .join('\n')
         .trim()
-      if (text) out.push({ role: 'user', text: text, at: event.time })
+      if (text && !isSystemInjectedText(text)) out.push({ role: 'user', text: text, at: event.time })
     } else if (event.type === 'assistant/message') {
       const text = assistantTextOf(event.data.message)
       if (text) out.push({ role: 'assistant', text: text, at: event.time })
@@ -4510,7 +4526,7 @@ function sessionTitleOf(session) {
         .join(' ')
         .replace(/\s+/g, ' ')
         .trim()
-      if (text) return text.slice(0, 40)
+      if (text && !isSystemInjectedText(text)) return text.slice(0, 40)
     }
   } catch (e) {
     /* 读不到就给短 id */
@@ -4730,7 +4746,7 @@ function transcriptDelta(session, fromSeq) {
         .filter(Boolean)
         .join('\n')
         .trim()
-      if (text) entries.push({ role: 'user', text: text, at: event.time, seq: event.seq })
+      if (text && !isSystemInjectedText(text)) entries.push({ role: 'user', text: text, at: event.time, seq: event.seq })
     } else if (event.type === 'assistant/message') {
       const text = assistantTextOf(event.data.message)
       if (text) entries.push({ role: 'assistant', text: text, at: event.time, seq: event.seq })
@@ -5076,6 +5092,11 @@ async function readAssistantMessage(ctx, request) {
   if (!hit) {
     // 兜底：取最后一条助手消息（动作按钮总是挂在已定稿消息上）
     hit = assistantEvents.length > 0 ? assistantEvents[assistantEvents.length - 1] : null
+  }
+  // 命中但内容是系统注入文本时，继续往前找真实消息
+  while (hit && isSystemInjectedText(assistantTextOf(hit.data && hit.data.message ? hit.data.message : null))) {
+    const index = assistantEvents.indexOf(hit)
+    hit = index > 0 ? assistantEvents[index - 1] : null
   }
   if (!hit) return { status: 'not_found', note: '该会话还没有助手回复', text: '', sessionId: String(session.id) }
 

@@ -826,9 +826,17 @@ for (const [title, id, expected] of pageSpecs) {
 
   // 首页：资讯删除入口（页面上真实可点）
   const dashEntries = await goPage('今日简报')
-  const dashLabels = labelsOf(dashEntries)
+  let dashLabels = labelsOf(dashEntries)
+  // 操作收进「⋯」菜单：先确认菜单按钮存在，再展开核对条目
+  if (dashLabels.indexOf('这条资讯的操作') < 0) problems.push('首页缺少资讯操作菜单按钮')
+  const radarMenu = findButtons(dashEntries, []).find((button) => button.label === '这条资讯的操作')
+  if (radarMenu) {
+    radarMenu.onClick()
+    const openedDash = await renderTree('核对·今日简报·资讯菜单展开')
+    dashLabels += ' | ' + labelsOf(openedDash)
+  }
   if (dashLabels.indexOf('删除这条资讯') < 0) problems.push('首页缺少「删除资讯」入口')
-  if (dashLabels.indexOf('AI 分析这条资讯') < 0) problems.push('首页缺少「AI 分析资讯」入口')
+  if (dashLabels.indexOf('AI 分析（带上下文）') < 0) problems.push('首页缺少「AI 分析资讯」入口')
 
   // 任务中心：候选维护入口
   const tasksEntries = await goPage('任务中心')

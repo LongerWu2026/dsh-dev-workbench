@@ -347,44 +347,14 @@ function DashRadarRow(props) {
       h(
         'div',
         { className: 'wb-item-actions', style: { opacity: 1 } },
-        h(IconBtn, {
-          name: 'book',
-          label: '收藏到知识空间',
-          onClick: saveToKnowledge,
-          disabled: saving,
-        }),
-        h(IconBtn, {
-          name: 'play',
-          label: '生成实践任务（保留来源证据）',
-          onClick: makePracticeTask,
-          disabled: makingTask,
-        }),
-        h(IconBtn, {
-          name: 'edit',
-          label: '编辑资讯与四段摘要',
-          onClick: props.onEdit,
-        }),
-        h(IconBtn, {
-          name: 'trash',
-          label: '删除这条资讯',
-          onClick: function () {
-            if (!window.confirm('删除这条资讯？')) return
-            WB.actions.deleteRadarItem(item.id).catch(function () {})
-          },
-        }),
-        h(IconBtn, {
-          name: 'sparkles',
-          label: 'AI 分析这条资讯（带上下文进入会话）',
-          onClick: function () {
-            WB.assistant.add({
-              kind: 'radar',
-              id: item.id,
-              title: item.title,
-              url: item.url || null,
-              body: item.excerpt || [summaryParts.map(function (part) { return part.label + '：' + part.text }).join('；')].join(''),
-            })
-          },
-        }),
+        h(DashRadarMenu, {
+        item: item,
+        saving: saving,
+        makingTask: makingTask,
+        onSave: saveToKnowledge,
+        onMakeTask: makePracticeTask,
+        onEdit: props.onEdit,
+      }),
         summaryParts.length > 0
           ? h(IconBtn, {
               name: props.expanded ? 'chevronDown' : 'chevronRight',
@@ -474,6 +444,120 @@ function DashConnectorCard(props) {
       h('span', { className: 'wb-spacer' }),
       h('span', { className: 'wb-mono' }, String(connector.type || 'connector')),
     ),
+  )
+}
+
+/** 雷达行的操作收进单个「⋯」向上菜单，窄列里不再把标题挤成竖字。 */
+function DashRadarMenu(props) {
+  const item = props.item
+  const [open, setOpen] = React.useState(false)
+  const entries = [
+    {
+      key: 'save',
+      icon: 'book',
+      label: props.saving ? '收藏中…' : '收藏到知识空间',
+      disabled: props.saving,
+      run: props.onSave,
+    },
+    {
+      key: 'task',
+      icon: 'play',
+      label: props.makingTask ? '生成中…' : '生成实践任务',
+      disabled: props.makingTask,
+      run: props.onMakeTask,
+    },
+    { key: 'edit', icon: 'edit', label: '编辑四段摘要', run: props.onEdit },
+    {
+      key: 'delete',
+      icon: 'trash',
+      label: '删除这条资讯',
+      run: function () {
+        if (!window.confirm('删除这条资讯？')) return
+        WB.actions.deleteRadarItem(item.id).catch(function () {})
+      },
+    },
+    {
+      key: 'ai',
+      icon: 'sparkles',
+      label: 'AI 分析（带上下文）',
+      run: function () {
+        WB.assistant.add({
+          kind: 'radar',
+          id: item.id,
+          title: item.title,
+          url: item.url || null,
+          body: item.excerpt || '',
+        })
+      },
+    },
+  ]
+  return h(
+    'div',
+    { style: { position: 'relative', flex: 'none', zIndex: open ? 30 : undefined } },
+    open
+      ? h(
+          'div',
+          {
+            style: {
+              position: 'absolute',
+              bottom: '100%',
+              right: 0,
+              marginBottom: 4,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+              minWidth: 152,
+              padding: 4,
+              border: '1px solid ' + T.border1,
+              borderRadius: 9,
+              background: T.layer1,
+              boxShadow: '0 8px 22px rgba(0,0,0,.32)',
+            },
+          },
+          entries.map(function (entry) {
+            return h(
+              'button',
+              {
+                key: entry.key,
+                type: 'button',
+                disabled: !!entry.disabled,
+                onClick: function () {
+                  setOpen(false)
+                  entry.run()
+                },
+                style: {
+                  appearance: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 7,
+                  width: '100%',
+                  textAlign: 'left',
+                  border: 0,
+                  borderRadius: 6,
+                  background: 'transparent',
+                  color: T.text,
+                  font: 'inherit',
+                  fontSize: 11.5,
+                  lineHeight: 1.7,
+                  padding: '3px 7px',
+                  cursor: entry.disabled ? 'default' : 'pointer',
+                  opacity: entry.disabled ? 0.55 : 1,
+                },
+              },
+              h(Icon, { name: entry.icon, size: 11 }),
+              entry.label,
+            )
+          }),
+        )
+      : null,
+    h(IconBtn, {
+      name: 'more',
+      label: '这条资讯的操作',
+      active: open,
+      onClick: function () {
+        setOpen(!open)
+      },
+    }),
   )
 }
 
