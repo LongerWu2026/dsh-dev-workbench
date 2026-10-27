@@ -37,6 +37,7 @@ function SettingsPage() {
   const [projectPath, setProjectPath] = React.useState('')
   const [picking, setPicking] = React.useState(false)
   const [projectEdit, setProjectEdit] = React.useState(null)
+  const [backups, setBackups] = React.useState([])
   const [feedLabel, setFeedLabel] = React.useState('')
   const [feedUrl, setFeedUrl] = React.useState('')
   const [feedTopics, setFeedTopics] = React.useState('')
@@ -63,6 +64,11 @@ function SettingsPage() {
 
   React.useEffect(function () {
     runDiagnostics()
+    WB.actions.backups()
+      .then(function (result) {
+        setBackups(result.backups || [])
+      })
+      .catch(function () {})
   }, [])
 
   function patchSettings(patch) {
@@ -635,6 +641,17 @@ function SettingsPage() {
               'div',
               { className: 'wb-row wb-row--wrap' },
               h(Btn, { icon: 'download', size: 'sm', onClick: exportJson, children: '导出 JSON' }),
+            h(Btn, {
+              icon: 'save',
+              size: 'sm',
+              onClick: function () {
+                WB.actions.backup().then(function (result) {
+                  setBackups(result.backups || [])
+                  WB.toast('已创建备份', 'ok')
+                }).catch(function () {})
+              },
+              children: '立即备份',
+            }),
               h(Btn, {
                 icon: 'sparkles',
                 size: 'sm',
@@ -649,6 +666,37 @@ function SettingsPage() {
               { className: 'wb-hint', style: { margin: '2px 0 0' } },
               '“载入示例数据”会写入若干标注为示例的待办与资讯，用来快速看清布局；随时可重置清空。',
             ),
+            backups.length > 0
+              ? h(
+                  'div',
+                  { className: 'wb-stack', style: { gap: 4 } },
+                  h('div', { className: 'wb-label' }, '可用备份（每天首次写入自动留一份，保留 5 份）'),
+                  backups.slice(0, 5).map(function (item) {
+                    return h(
+                      'div',
+                      { key: item.id, className: 'wb-row', style: { gap: 8 } },
+                      h('span', { className: 'wb-mono wb-tiny wb-ellipsis', style: { flex: '1 1 auto' } }, item.id),
+                      h('span', { className: 'wb-tiny wb-muted' }, WB.fmt.bytes(item.bytes)),
+                      h(Btn, {
+                        size: 'sm',
+                        kind: 'subtle',
+                        icon: 'refresh',
+                        onClick: function () {
+                          if (!window.confirm('用这份备份覆盖当前数据？当前文件会先自动备份。')) return
+                          WB.actions
+                            .restoreBackup(item.id)
+                            .then(function () {
+                              WB.toast('已从备份恢复', 'ok')
+                              WB.actions.reload().catch(function () {})
+                            })
+                            .catch(function () {})
+                        },
+                        children: '恢复',
+                      }),
+                    )
+                  }),
+                )
+              : null,
             h(Divider, null),
             h(
               'div',

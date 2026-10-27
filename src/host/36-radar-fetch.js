@@ -269,3 +269,154 @@ async function runRadarFetch(ctx) {
     return current
   })
 }
+
+
+/* ---------------------------------------------------------------- 联网发现 */
+/*
+ * 设计报告 §3.1 / TODO 06：未配置 RSS 时，用宿主已有的联网能力按关注主题
+ * 发现资讯。查询词由主题确定性拼装（不调模型），原文标题/时间/摘要来自
+ * 搜索结果本身；四段摘要留空，由 Agent 读原文后写回（见 workbench_update_radar）。
+ */
+const NEWS_QUERY_SUFFIX = ' release OR blog OR announcement'
+
+async function discoverRadarByTopics(ctx) {
+  const state = loadWorkbenchState()
+  const web = ctx && ctx.get ? ctx.get('web') : null
+  const topics = ensureArray(state.settings && state.settings.topics).slice(0, 3)
+  const at = hostNowIso()
+
+  if (!web || typeof web.search !== 'function') {
+    return mutateWorkbenchState(function (current) {
+      current.lastRadarFetch = {
+        at: at,
+        added: 0,
+        skipped: 0,
+        perFeed: [],
+        note: '未配置 RSS 且当前 profile 没有 web 搜索服务：无法自动发现资讯。',
+      }
+      auditEntry(current, 'radar.discover', '没有可用的联网能力')
+      return current
+    })
+  }
+  if (topics.length === 0) {
+    return mutateWorkbenchState(function (current) {
+      current.lastRadarFetch = {
+        at: at,
+        added: 0,
+        skipped: 0,
+        perFeed: [],
+        note: '没有关注主题：先到「连接与设置 → 关注主题」添加主题，才能按主题发现资讯。',
+      }
+      auditEntry(current, 'radar.discover', '没有关注主题')
+      return current
+    })
+  }
+
+  const perFeed = []
+  const candidates = []
+  const knownUrls = new Set(
+    ensureArray(state.radar)
+      .map(function (item) {
+        return item.url ? String(item.url).toLowerCase() : null
+      })
+      .filter(Boolean),
+  )
+  const knownTitles = ensureArray(state.radar).map(function (item) {
+    return String(item.title || '')
+  })
+  let added = 0
+  let skipped = 0
+
+  for (const topic of topics) {
+    const query = topic + NEWS_QUERY_SUFFIX
+    let result
+    try {
+      result = await web.search({ query: query, maxResults: 5 }, AbortSignal.timeout(12000))
+    } catch (e) {
+      perFeed.push({
+        id: 'topic:' + topic,
+        label: '话题 ' + topic,
+        status: 'error',
+        added: 0,
+        skipped: 0,
+        note: String((e && e.message) || e).slice(0, 160),
+      })
+      continue
+    }
+    let topicAdded = 0
+    let topicSkipped = 0
+    for (const source of (result && result.sources) || []) {
+      const url = asUrl(source.url)
+      if (!url) {
+        topicSkipped += 1
+        continue
+      }
+      const key = String(url).toLowerCase()
+      if (knownUrls.has(key)) {
+        topicSkipped += 1
+        continue
+      }
+      const title = asString(source.title, 300) || url
+      const similar = knownTitles.some(function (existing) {
+        return radarSimilarity(existing, title) >= 0.82
+      })
+      if (similar) {
+        topicSkipped += 1
+        continue
+      }
+      knownUrls.add(key)
+      knownTitles.push(title)
+      candidates.push(
+        normalizeRadarItem(
+          {
+            title: title,
+            source: '联网检索 · ' + topic,
+            url: url,
+            publishedAt: asIso(source.publishedAt) || null,
+            topics: [topic],
+            summary: { change: '', usage: '', risk: '', practice: '' },
+            excerpt: asString(source.snippet, 800),
+          },
+          null,
+        ),
+      )
+      topicAdded += 1
+    }
+    added += topicAdded
+    skipped += topicSkipped
+    perFeed.push({
+      id: 'topic:' + topic,
+      label: '话题 ' + topic,
+      status: topicAdded > 0 ? 'ok' : 'empty',
+      added: topicAdded,
+      skipped: topicSkipped,
+      note: '查询词：' + query,
+    })
+    if (candidates.length >= RADAR_FETCH_TOTAL_LIMIT) break
+  }
+
+  return mutateWorkbenchState(function (current) {
+    if (candidates.length > 0) {
+      current.radar = ensureArray(current.radar).concat(candidates).slice(-500)
+    }
+    current.lastRadarFetch = {
+      at: at,
+      added: added,
+      skipped: skipped,
+      perFeed: perFeed,
+      note:
+        '按关注主题联网发现（未配置 RSS 时的默认路径）。四段摘要留空：' +
+        '请让 Agent 读原文后用 workbench_update_radar 写回，保证结论可追溯。',
+    }
+    auditEntry(current, 'radar.discover', '联网发现新增 ' + added + ' 条')
+    return current
+  })
+}
+
+/** fetchRadar：优先抓取已配置的 RSS；没有配置时改走联网发现。 */
+async function runRadarFetchOrDiscover(ctx) {
+  const state = loadWorkbenchState()
+  const feeds = ensureArray(state.settings && state.settings.feeds)
+  if (feeds.length > 0) return runRadarFetch(ctx)
+  return discoverRadarByTopics(ctx)
+}

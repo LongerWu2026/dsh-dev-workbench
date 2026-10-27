@@ -7,7 +7,7 @@ DeepSeek Harness 的原生 Cordis 插件（Host + Client 双半），把「今�
 ```
 ┌ 侧边栏 ▸ 工作台图标（order 30）
 └ 主面板 ▸ key = dev-workbench
-         ├ 今日简报   统计 / 云之家 @我 横条 / 今日待办 / 技术雷达（RSS 抓取 + 生成实践任务）/ 快捷操作（含番茄钟、复制今日简报）/ 连接状态
+         ├ 今日简报   统计 / 云之家 @我 横条 / 今日待办 / 技术雷达（RSS 或按主题联网发现）/ 快捷操作（含番茄钟、复制今日简报）/ 连接状态 / 工作台助手抽屉
          ├ 任务中心   待确认（规则候选→人工采纳）/ 列表 + 看板、筛选、来源证据、执行记录
          ├ 统一搜索   待办/知识/雷达/来源/本地项目（文件名+文本片段）/企业（消息+文档+联系人/会议室/考勤/日程）/PR·CI/互联网
          ├ Agent 中心 执行队列、审批空态、指标、任务简报
@@ -73,7 +73,9 @@ Host 用 `ctx.provide('workbench', api)` 暴露服务，并用 `ctx.typert.regis
 | `workbench_update_task` | 改状态 / 优先级 / 截止 / 标题 |
 | `workbench_record_run` | 把一次执行登记进 Agent 中心并写回任务 |
 | `workbench_task_brief` | 把任务 + 来源证据渲染成可直接使用的提示词 |
-| `workbench_fetch_radar` | 抓取已配置的 RSS/Atom 资讯源；配合 DSH Schedule 的每日提醒即可闭环「定时简报」（提醒投递 → Agent 调本工具 → 首页展示） |
+| `workbench_fetch_radar` | 抓取已配置的 RSS/Atom；**未配置 RSS 时按关注主题联网发现**。配合 DSH Schedule 的每日提醒即可闭环「定时简报」 |
+| `workbench_update_radar` | 把四段摘要写回指定资讯（只改摘要，保留来源与时间） |
+| `workbench_search` | 多路统一检索，返回分组结果与每路状态，供带引用的问答 |
 | `workbench_fetch_mentions` | 通过 yzj-cli 拉取 @我 消息存为来源证据；只做确定性采集，是否转待办由会话里的 Agent 或用户决定 |
 
 ## 与设计报告的对应
@@ -111,6 +113,15 @@ Host 用 `ctx.provide('workbench', api)` 暴露服务，并用 `ctx.typert.regis
 5. **SQLite**：当前为原子写入的单文件 JSON，schema 版本已预留。
 6. **定时同步**：未使用 Schedule；`updatedAt` 与 `settings.staleHours` 只用于提示数据陈旧。
 
+## 可靠性与自动化（2026-10-27 补齐）
+
+- **写入原子性**：工具调用与 Remote 共用同一组写入原语，重试走持久化操作账本（`idempotencyKey`），不会重复创建。
+- **重载不丢关联**：状态恢复保留全部 ID，`projectId / taskId / runIds / sourceRefId` 与候选关联在重启后仍然成立。
+- **规则提取语义**：相对日期以原消息时间为基准；「已解决 / 不用处理 / 取消」不建候选（「是否取消」这类询问除外）；一条消息可拆多事项；规则分数不会自动入库。
+- **页面同步**：业务修订号 `revision` + 12s 轻量轮询，只有变新才重取快照，且编辑表单期间跳过。
+- **备份与损坏保护**：每天首次写入自动备份（保留 5 份），损坏文件先改名留存再从空状态启动；设置页可手动备份/恢复。
+- **工作台助手**：卡片「AI 分析」把记录加入可移除的上下文引用，一键把上下文简报送进原生会话，Agent 用 `workbench_*` 工具写回同一份数据。
+
 ## 开发
 
 ```bash
@@ -118,7 +129,7 @@ cd dsh-dev-workbench
 node scripts/build.mjs            # 生成 index.js 与 client.js
 node scripts/build.mjs --check    # 只做跨文件重名检查
 node --check index.js && node --check client.js
-node tests/host-smoke.mjs         # Host 半自测（97 项：含 PR/CI、进程、本地文件搜索、语义去重、候选采纳/忽略、三路意图搜索）
+node tests/host-smoke.mjs         # Host 半自测（133 项：含 PR/CI、进程、本地文件搜索、语义去重、候选采纳/忽略、三路意图搜索）
 node tests/client-render.mjs      # Client 全页面渲染（8 页 + 空态 + 6 个新增工具面板；真实驱动搜索/抓取/@我 按钮）
 ```
 

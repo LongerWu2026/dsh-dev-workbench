@@ -231,6 +231,18 @@ function DashTaskRow(props) {
           WB.focusTask(task.id)
         },
       }),
+      h(IconBtn, {
+        name: 'sparkles',
+        label: 'AI 分析这条待办（带上下文进入会话）',
+        onClick: function () {
+          WB.assistant.add({
+            kind: 'task',
+            id: task.id,
+            title: task.title,
+            body: [task.description, '状态：' + task.status + ' · 优先级：' + task.priority].filter(Boolean).join('\n'),
+          })
+        },
+      }),
     ),
   )
 }
@@ -351,6 +363,19 @@ function DashRadarRow(props) {
           name: 'edit',
           label: '编辑资讯与四段摘要',
           onClick: props.onEdit,
+        }),
+        h(IconBtn, {
+          name: 'sparkles',
+          label: 'AI 分析这条资讯（带上下文进入会话）',
+          onClick: function () {
+            WB.assistant.add({
+              kind: 'radar',
+              id: item.id,
+              title: item.title,
+              url: item.url || null,
+              body: item.excerpt || [summaryParts.map(function (part) { return part.label + '：' + part.text }).join('；')].join(''),
+            })
+          },
         }),
         summaryParts.length > 0
           ? h(IconBtn, {

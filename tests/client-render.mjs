@@ -87,6 +87,9 @@ Object.defineProperty(globalThis, 'navigator', {
   value: { platform: 'MacIntel', clipboard: { writeText: () => Promise.resolve() } },
 })
 globalThis.document = { createElement: () => ({ click() {}, style: {} }) }
+// 组件里会有轮询定时器（TODO 08）；测试不需要真实计时，禁用以免进程挂住
+globalThis.setInterval = () => 0
+globalThis.clearInterval = () => {}
 
 /* --------------------------------------------------- load the real bundle */
 let factory = null
@@ -571,7 +574,12 @@ function findButtons(entries, out) {
   entries.forEach((item) => {
     if (item.tag) {
       if (item.tag === 'button' && typeof (item.props || {}).onClick === 'function') {
-        out.push({ text: treeText(item.children).trim(), onClick: item.props.onClick, disabled: item.props.disabled })
+        out.push({
+          text: treeText(item.children).trim(),
+          label: String(item.props['aria-label'] || item.props.title || ''),
+          onClick: item.props.onClick,
+          disabled: item.props.disabled,
+        })
       }
       findButtons(item.children || [], out)
     }
@@ -702,6 +710,32 @@ for (const [title, id, expected] of pageSpecs) {
     const text = treeText(tree).replace(/\s+/g, ' ')
     if (text.indexOf(toolName) < 0) problems.push('工具「' + toolName + '」面板没有渲染')
     if (countNodes(tree) < 80) problems.push('工具「' + toolName + '」渲染节点过少')
+  }
+}
+
+/* ------------------------------------------------- 助手抽屉（TODO 04） */
+{
+  const navTree = await renderTree('助手·导航')
+  const nav = findNavButtons(navTree, [])
+  if (nav[0]) nav[0].props.onClick()
+  const tree = await renderTree('助手·首页')
+  const openBtn = findButtons(tree, []).find((button) => button.label.indexOf('工作台助手') >= 0)
+  if (!openBtn) problems.push('工具栏找不到「工作台助手」按钮')
+  else {
+    openBtn.onClick()
+    const drawer = await renderTree('助手·抽屉')
+    const text = treeText(drawer).replace(/\s+/g, ' ')
+    if (text.indexOf('工作台助手') < 0) problems.push('助手抽屉没有渲染标题')
+    if (text.indexOf('复制上下文并打开会话') < 0) problems.push('助手抽屉缺少「复制上下文并打开会话」')
+    // 从待办/资讯卡片加入上下文
+    const analyze = findButtons(drawer, []).find((button) => button.label.indexOf('AI 分析这条') >= 0)
+    if (!analyze) problems.push('卡片上找不到「AI 分析」入口')
+    else {
+      analyze.onClick()
+      const withRef = await renderTree('助手·已加入上下文')
+      const refText = treeText(withRef).replace(/\s+/g, ' ')
+      if (!/待办|资讯|知识|来源消息/.test(refText)) problems.push('上下文引用没有显示出来')
+    }
   }
 }
 

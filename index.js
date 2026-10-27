@@ -172,12 +172,14 @@ const AUDIT_LIMIT = 200
 const CANDIDATE_LIMIT = 200
 
 const CANDIDATE_STATUSES = ['pending', 'accepted', 'rejected']
+const OPERATION_LIMIT = 200
 
 const DEFAULT_TOPICS = ['Agent', 'LLM', 'RAG', 'Java', 'Python', '数据库']
 
 function emptyWorkbenchState() {
   return {
     version: HOST_STATE_VERSION,
+    revision: 0,
     updatedAt: hostNowIso(),
     settings: {
       topics: DEFAULT_TOPICS.slice(),
@@ -386,6 +388,8 @@ function normalizeCandidate(raw, existing) {
     confidence:
       typeof confidenceRaw === 'number' && confidenceRaw >= 0 && confidenceRaw <= 1 ? confidenceRaw : null,
     reasons: input.reasons === undefined ? ensureArray(base.reasons) : asTags(input.reasons, 8),
+    /** 提取方式：'rule' = 确定性规则候选（非模型判断），供 UI 与审计区分 */
+    extractor: asString(input.extractor === undefined ? base.extractor : input.extractor, 20) || 'rule',
     status: status,
     taskId: input.taskId === undefined ? base.taskId || null : input.taskId || null,
     createdAt: base.createdAt || hostNowIso(),
@@ -447,31 +451,56 @@ function normalizeState(raw) {
   }
   const state = {
     version: HOST_STATE_VERSION,
+    revision: Number.isFinite(Number(raw.revision)) ? Number(raw.revision) : 0,
     updatedAt: asIso(raw.updatedAt) || hostNowIso(),
     settings: normalizeSettings(raw.settings),
+    // 恢复时必须把「已存的记录自身」当作 base 传入：normalizeX(raw, null) 会把
+    // base 当成空对象，从而为每条记录重新生成 ID，导致 projectId / taskId /
+    // runIds / sourceRefId 等关联在每次加载后全部失效。
     projects: ensureArray(raw.projects)
       .slice(0, 40)
       .map(function (project) {
-        return normalizeProject(project, null)
+        return normalizeProject(project, project)
       }),
     tasks: ensureArray(raw.tasks)
       .slice(0, 2000)
       .map(function (task) {
-        return normalizeTask(task, null)
+        return normalizeTask(task, task)
       }),
     sources: ensureArray(raw.sources).slice(0, 2000),
     runs: ensureArray(raw.runs)
       .slice(0, 2000)
       .map(function (run) {
-        return normalizeRun(run, null)
+        return normalizeRun(run, run)
       }),
-    knowledge: ensureArray(raw.knowledge).slice(0, 2000),
+    knowledge: ensureArray(raw.knowledge)
+      .slice(0, 2000)
+      .map(function (item) {
+        return normalizeKnowledge(item, item)
+      }),
     radar: ensureArray(raw.radar).slice(0, 500),
     connectors: ensureArray(raw.connectors).slice(0, 40),
     candidates: ensureArray(raw.candidates)
       .slice(-CANDIDATE_LIMIT)
       .map(function (candidate) {
-        return normalizeCandidate(candidate, null)
+        return normalizeCandidate(candidate, candidate)
+      }),
+    operations: ensureArray(raw.operations)
+      .slice(-OPERATION_LIMIT)
+      .map(function (operation) {
+        const item = operation && typeof operation === 'object' ? operation : {}
+        return {
+          key: asString(item.key, 160),
+          tool: asString(item.tool, 60),
+          at: asIso(item.at) || hostNowIso(),
+          entityIds: ensureArray(item.entityIds).slice(0, 10).map(function (id) {
+            return asString(id, 80)
+          }),
+          status: asString(item.status, 20) || 'succeeded',
+        }
+      })
+      .filter(function (operation) {
+        return operation.key.length > 0
       }),
     lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),
     lastMentionsFetch: normalizeMentionsReport(raw.lastMentionsFetch),
@@ -661,9 +690,18 @@ function loadWorkbenchState() {
   const raw = readJsonFile(path)
   const result = normalizeState(raw)
   if (result.corrupt) {
-    workbenchLoadNote = 'state.json 无法解析，已回退为空状态：' + result.corrupt
+    // 损坏保护（TODO 11）：先把原文件原样改名留存，**绝不**用空状态直接覆盖它。
+    // 内存里从空状态起步；只有在用户后续真正写入时才落新文件，原损坏文件仍可人工恢复。
+    let preserved = null
+    try {
+      preserved = path + '.corrupt-' + hostNowIso().replace(/[:.]/g, '-') + '.json'
+      renameSync(path, preserved)
+    } catch (e) {
+      preserved = null
+    }
+    workbenchLoadNote =
+      'state.json 无法解析，已从空状态启动' + (preserved ? '；原文件已保留为 ' + preserved : '') + '：' + result.corrupt
     workbenchCachedState = result.state
-    saveWorkbenchState(workbenchCachedState)
     return workbenchCachedState
   }
   if (!raw) {
@@ -676,9 +714,89 @@ function loadWorkbenchState() {
   return workbenchCachedState
 }
 
-function saveWorkbenchState(state) {
+/* ---------------------------------------------------------------------------
+ * 备份与恢复（TODO 11）：每天首次写入前留一份快照，保留最近 5 份；
+ * 支持手动备份/列出/恢复。恢复后清空内存缓存，下一次读取重新从文件加载。
+ * ------------------------------------------------------------------------- */
+const BACKUP_KEEP = 5
+
+function backupDir() {
+  return join(workbenchDir(), 'backups')
+}
+
+function listBackups() {
+  const dir = backupDir()
+  try {
+    return readdirSync(dir)
+      .filter(function (name) {
+        return name.endsWith('.json')
+      })
+      .sort()
+      .reverse()
+      .map(function (name) {
+        return { id: name, path: join(dir, name), bytes: fileSizeOf(join(dir, name)) }
+      })
+  } catch (e) {
+    return []
+  }
+}
+
+function createBackup(reason) {
+  const source = workbenchStatePath()
+  if (!existsSync(source)) return null
+  const stamp = hostNowIso().replace(/[:.]/g, '-')
+  const target = join(backupDir(), 'state-' + stamp + (reason ? '-' + reason : '') + '.json')
+  try {
+    mkdirSync(backupDir(), { recursive: true })
+    writeFileSync(target, readFileSync(source), 'utf8')
+  } catch (e) {
+    return null
+  }
+  // 只保留最近 N 份
+  const all = listBackups()
+  all.slice(BACKUP_KEEP).forEach(function (item) {
+    try {
+      renameSync(item.path, item.path + '.trash')
+    } catch (e) {
+      /* 尽力而为 */
+    }
+  })
+  listBackups().forEach(function (item) {
+    if (item.id.endsWith('.trash')) return
+  })
+  return target
+}
+
+/** 恢复某份备份：先备份当前文件，再用备份覆盖，最后清空缓存。 */
+function restoreBackup(id) {
+  const safeId = asString(id, 120)
+  const candidate = listBackups().find(function (item) {
+    return item.id === safeId
+  })
+  if (!candidate) throw new Error('找不到该备份：' + safeId)
+  createBackup('pre-restore')
+  writeFileSync(workbenchStatePath(), readFileSync(candidate.path), 'utf8')
+  workbenchCachedState = null
+  workbenchLoadNote = '已从备份恢复：' + safeId
+  return loadWorkbenchState()
+}
+
+let lastAutoBackupDay = null
+
+function saveWorkbenchState(state, options) {
+  const opts = options || {}
+  if (!opts.skipBackup && existsSync(workbenchStatePath())) {
+    const today = hostNowIso().slice(0, 10)
+    if (lastAutoBackupDay !== today) {
+      lastAutoBackupDay = today
+      createBackup('auto-' + today)
+    }
+  }
   state.version = HOST_STATE_VERSION
   state.updatedAt = hostNowIso()
+  // 业务修订号（与 schema version 区分）：单调递增，Client 用它判断快照新旧，
+  // 避免旧快照覆盖新数据（AI-COMMAND-EXECUTION §4）。schema 版本不能当并发号用。
+  state.revision = (Number(state.revision) || 0) + 1
   writeJsonAtomic(workbenchStatePath(), state)
   workbenchCachedState = state
   return state
@@ -689,6 +807,30 @@ async function mutateWorkbenchState(mutator) {
   const replacement = await mutator(state)
   const next = replacement && typeof replacement === 'object' && replacement.version ? replacement : state
   return saveWorkbenchState(next)
+}
+
+/** 查幂等键对应的历史操作（工具重试时直接返回原结果）。 */
+function findOperation(state, key) {
+  if (!key) return null
+  return ensureArray(state.operations).find(function (operation) {
+    return operation.key === key
+  }) || null
+}
+
+/** 记一条操作账本（cap 200，按时间淘汰）。 */
+function recordOperation(state, entry) {
+  state.operations = ensureArray(state.operations)
+    .concat([
+      {
+        key: asString(entry.key, 160),
+        tool: asString(entry.tool, 60),
+        at: hostNowIso(),
+        entityIds: ensureArray(entry.entityIds).slice(0, 10),
+        status: asString(entry.status, 20) || 'succeeded',
+      },
+    ])
+    .slice(-OPERATION_LIMIT)
+  return state
 }
 
 function workbenchAudit(event, summary) {
@@ -1018,6 +1160,57 @@ function requireTask(state, id) {
   return task
 }
 
+/* ---------------------------------------------------------------------------
+ * 统一写入原语：返回 { state, entity }，由 workbenchApi 与 Agent 工具共用。
+ * 工具此前各自复制一份写入逻辑，容易与 Remote 路径行为分叉（TODO 04）。
+ * ------------------------------------------------------------------------- */
+function applyCreateTask(state, payload) {
+  if (payload.projectId === undefined && state.settings.defaultProjectId) {
+    payload.projectId = state.settings.defaultProjectId
+  }
+  const task = normalizeTask(payload, null)
+  state.tasks = ensureArray(state.tasks).concat([task])
+  auditEntry(state, 'task.created', task.title)
+  return { state: state, entity: task }
+}
+
+function applyUpdateTask(state, id, patch) {
+  const index = ensureArray(state.tasks).findIndex(function (task) {
+    return task.id === id
+  })
+  if (index < 0) throw new Error('找不到该待办：' + String(id))
+  const next = normalizeTask(patch || {}, state.tasks[index])
+  next.id = state.tasks[index].id
+  next.createdAt = state.tasks[index].createdAt
+  state.tasks = state.tasks.slice()
+  state.tasks[index] = next
+  auditEntry(state, 'task.updated', next.title + ' → ' + next.status)
+  return { state: state, entity: next }
+}
+
+function applyRecordRun(state, payload) {
+  const run = normalizeRun(payload || {}, null)
+  if (run.taskId && !ensureArray(state.tasks).some(function (task) {
+    return task.id === run.taskId
+  })) {
+    throw new Error('关联的待办不存在：' + run.taskId)
+  }
+  state.runs = ensureArray(state.runs).concat([run])
+  if (run.taskId) {
+    state.tasks = ensureArray(state.tasks).map(function (task) {
+      if (task.id !== run.taskId) return task
+      const next = Object.assign({}, task)
+      next.runIds = ensureArray(task.runIds).concat([run.id])
+      next.updatedAt = hostNowIso()
+      if (run.status === 'failed') next.status = 'failed'
+      else if (run.status === 'running' && (task.status === 'ready' || task.status === 'draft')) next.status = 'running'
+      return next
+    })
+  }
+  auditEntry(state, 'agent.run.created', run.summary || run.id)
+  return { state: state, entity: run }
+}
+
 const workbenchApi = {
   async snapshot() {
     return workbenchServiceState()
@@ -1032,30 +1225,16 @@ const workbenchApi = {
   },
 
   async createTask(input) {
-    const payload = input && typeof input === 'object' ? input : {}
+    const payload = input && typeof input === 'object' ? Object.assign({}, input) : {}
     if (!asString(payload.title, 200)) throw new Error('待办标题不能为空')
     return mutateWorkbenchState(function (state) {
-      if (payload.projectId === undefined && state.settings.defaultProjectId) {
-        payload.projectId = state.settings.defaultProjectId
-      }
-      const task = normalizeTask(payload, null)
-      state.tasks = ensureArray(state.tasks).concat([task])
-      auditEntry(state, 'task.created', task.title)
-      return state
+      return applyCreateTask(state, payload).state
     })
   },
 
   async updateTask(id, patch) {
     return mutateWorkbenchState(function (state) {
-      const task = requireTask(state, id)
-      const next = normalizeTask(patch || {}, task)
-      next.id = task.id
-      next.createdAt = task.createdAt
-      const index = state.tasks.indexOf(task)
-      state.tasks = state.tasks.slice()
-      state.tasks[index] = next
-      auditEntry(state, 'task.updated', next.title + ' → ' + next.status)
-      return state
+      return applyUpdateTask(state, id, patch).state
     })
   },
 
@@ -1163,26 +1342,7 @@ const workbenchApi = {
 
   async recordRun(input) {
     return mutateWorkbenchState(function (state) {
-      const run = normalizeRun(input || {}, null)
-      if (run.taskId && !ensureArray(state.tasks).some(function (task) {
-        return task.id === run.taskId
-      })) {
-        throw new Error('关联的待办不存在：' + run.taskId)
-      }
-      state.runs = ensureArray(state.runs).concat([run])
-      if (run.taskId) {
-        state.tasks = ensureArray(state.tasks).map(function (task) {
-          if (task.id !== run.taskId) return task
-          const next = Object.assign({}, task)
-          next.runIds = ensureArray(task.runIds).concat([run.id])
-          next.updatedAt = hostNowIso()
-          if (run.status === 'failed') next.status = 'failed'
-          else if (run.status === 'running' && (task.status === 'ready' || task.status === 'draft')) next.status = 'running'
-          return next
-        })
-      }
-      auditEntry(state, 'agent.run.created', run.summary || run.id)
-      return state
+      return applyRecordRun(state, input).state
     })
   },
 
@@ -1298,7 +1458,41 @@ const workbenchApi = {
   },
 
   async fetchRadar() {
-    return runRadarFetch(workbenchContext())
+    // 未配置 RSS 时按关注主题走联网发现（TODO 06 的默认路径）
+    return runRadarFetchOrDiscover(workbenchContext())
+  },
+
+  /** 写回四段摘要（Agent 读原文后调用）；只改摘要字段，不动来源与时间。 */
+  async updateRadar(id, patch) {
+    return mutateWorkbenchState(function (state) {
+      const item = ensureArray(state.radar).find(function (row) {
+        return row.id === id
+      })
+      if (!item) throw new Error('找不到该资讯：' + String(id))
+      const summary = patch && patch.summary && typeof patch.summary === 'object' ? patch.summary : null
+      const index = state.radar.indexOf(item)
+      const next = normalizeRadarItem(
+        {
+          title: patch && patch.title !== undefined ? patch.title : item.title,
+          topics: patch && patch.topics !== undefined ? patch.topics : item.topics,
+          summary: summary
+            ? {
+                change: asString(summary.change, 800),
+                usage: asString(summary.usage, 800),
+                risk: asString(summary.risk, 800),
+                practice: asString(summary.practice, 800),
+              }
+            : item.summary,
+        },
+        item,
+      )
+      next.id = item.id
+      next.createdAt = item.createdAt
+      state.radar = state.radar.slice()
+      state.radar[index] = next
+      auditEntry(state, 'radar.summary', next.title)
+      return state
+    })
   },
 
   /**
@@ -1454,6 +1648,30 @@ const workbenchApi = {
   /** GitHub 只读快照（PR / CI），走 gh CLI 白名单命令。 */
   async github() {
     return buildGithubSnapshot(workbenchContext())
+  },
+
+  /** 手动备份 + 列出 + 恢复（TODO 11）。 */
+  async backup() {
+    const path = createBackup('manual')
+    return {
+      created: path,
+      backups: listBackups().slice(0, BACKUP_KEEP),
+    }
+  },
+
+  async backups() {
+    return { backups: listBackups().slice(0, BACKUP_KEEP) }
+  },
+
+  async restoreBackup(id) {
+    const state = restoreBackup(id)
+    return state
+  },
+
+  /** 轻量版本探测：Client 轮询这个端点，只有 revision 变新才重取整份快照。 */
+  async revision() {
+    const state = loadWorkbenchState()
+    return { revision: Number(state.revision) || 0, updatedAt: state.updatedAt }
   },
 
   async diagnostics() {
@@ -2439,6 +2657,157 @@ async function runRadarFetch(ctx) {
   })
 }
 
+
+/* ---------------------------------------------------------------- 联网发现 */
+/*
+ * 设计报告 §3.1 / TODO 06：未配置 RSS 时，用宿主已有的联网能力按关注主题
+ * 发现资讯。查询词由主题确定性拼装（不调模型），原文标题/时间/摘要来自
+ * 搜索结果本身；四段摘要留空，由 Agent 读原文后写回（见 workbench_update_radar）。
+ */
+const NEWS_QUERY_SUFFIX = ' release OR blog OR announcement'
+
+async function discoverRadarByTopics(ctx) {
+  const state = loadWorkbenchState()
+  const web = ctx && ctx.get ? ctx.get('web') : null
+  const topics = ensureArray(state.settings && state.settings.topics).slice(0, 3)
+  const at = hostNowIso()
+
+  if (!web || typeof web.search !== 'function') {
+    return mutateWorkbenchState(function (current) {
+      current.lastRadarFetch = {
+        at: at,
+        added: 0,
+        skipped: 0,
+        perFeed: [],
+        note: '未配置 RSS 且当前 profile 没有 web 搜索服务：无法自动发现资讯。',
+      }
+      auditEntry(current, 'radar.discover', '没有可用的联网能力')
+      return current
+    })
+  }
+  if (topics.length === 0) {
+    return mutateWorkbenchState(function (current) {
+      current.lastRadarFetch = {
+        at: at,
+        added: 0,
+        skipped: 0,
+        perFeed: [],
+        note: '没有关注主题：先到「连接与设置 → 关注主题」添加主题，才能按主题发现资讯。',
+      }
+      auditEntry(current, 'radar.discover', '没有关注主题')
+      return current
+    })
+  }
+
+  const perFeed = []
+  const candidates = []
+  const knownUrls = new Set(
+    ensureArray(state.radar)
+      .map(function (item) {
+        return item.url ? String(item.url).toLowerCase() : null
+      })
+      .filter(Boolean),
+  )
+  const knownTitles = ensureArray(state.radar).map(function (item) {
+    return String(item.title || '')
+  })
+  let added = 0
+  let skipped = 0
+
+  for (const topic of topics) {
+    const query = topic + NEWS_QUERY_SUFFIX
+    let result
+    try {
+      result = await web.search({ query: query, maxResults: 5 }, AbortSignal.timeout(12000))
+    } catch (e) {
+      perFeed.push({
+        id: 'topic:' + topic,
+        label: '话题 ' + topic,
+        status: 'error',
+        added: 0,
+        skipped: 0,
+        note: String((e && e.message) || e).slice(0, 160),
+      })
+      continue
+    }
+    let topicAdded = 0
+    let topicSkipped = 0
+    for (const source of (result && result.sources) || []) {
+      const url = asUrl(source.url)
+      if (!url) {
+        topicSkipped += 1
+        continue
+      }
+      const key = String(url).toLowerCase()
+      if (knownUrls.has(key)) {
+        topicSkipped += 1
+        continue
+      }
+      const title = asString(source.title, 300) || url
+      const similar = knownTitles.some(function (existing) {
+        return radarSimilarity(existing, title) >= 0.82
+      })
+      if (similar) {
+        topicSkipped += 1
+        continue
+      }
+      knownUrls.add(key)
+      knownTitles.push(title)
+      candidates.push(
+        normalizeRadarItem(
+          {
+            title: title,
+            source: '联网检索 · ' + topic,
+            url: url,
+            publishedAt: asIso(source.publishedAt) || null,
+            topics: [topic],
+            summary: { change: '', usage: '', risk: '', practice: '' },
+            excerpt: asString(source.snippet, 800),
+          },
+          null,
+        ),
+      )
+      topicAdded += 1
+    }
+    added += topicAdded
+    skipped += topicSkipped
+    perFeed.push({
+      id: 'topic:' + topic,
+      label: '话题 ' + topic,
+      status: topicAdded > 0 ? 'ok' : 'empty',
+      added: topicAdded,
+      skipped: topicSkipped,
+      note: '查询词：' + query,
+    })
+    if (candidates.length >= RADAR_FETCH_TOTAL_LIMIT) break
+  }
+
+  return mutateWorkbenchState(function (current) {
+    if (candidates.length > 0) {
+      current.radar = ensureArray(current.radar).concat(candidates).slice(-500)
+    }
+    current.lastRadarFetch = {
+      at: at,
+      added: added,
+      skipped: skipped,
+      perFeed: perFeed,
+      note:
+        '按关注主题联网发现（未配置 RSS 时的默认路径）。四段摘要留空：' +
+        '请让 Agent 读原文后用 workbench_update_radar 写回，保证结论可追溯。',
+    }
+    auditEntry(current, 'radar.discover', '联网发现新增 ' + added + ' 条')
+    return current
+  })
+}
+
+/** fetchRadar：优先抓取已配置的 RSS；没有配置时改走联网发现。 */
+async function runRadarFetchOrDiscover(ctx) {
+  const state = loadWorkbenchState()
+  const feeds = ensureArray(state.settings && state.settings.feeds)
+  if (feeds.length > 0) return runRadarFetch(ctx)
+  return discoverRadarByTopics(ctx)
+}
+
 // ===== 37-yunzhijia.js =====
 /* ============================================================================
  * dev-workbench host — 云之家 yzj-cli integration (design report §3.2, §6.3)
@@ -3153,23 +3522,24 @@ const CANDIDATE_ACTION_WORDS = [
   '落地',
 ]
 
-function candidateStartOfDay(offsetDays) {
-  const date = new Date()
+/** 以基准时间（原消息时间）算偏移天数的 18:00。 */
+function candidateStartOfDay(base, offsetDays) {
+  const date = new Date(base.getTime())
   date.setDate(date.getDate() + (offsetDays || 0))
   date.setHours(18, 0, 0, 0)
   return date
 }
 
-function candidateEndOfMonth() {
-  const date = new Date()
+function candidateEndOfMonth(base) {
+  const date = new Date(base.getTime())
   date.setMonth(date.getMonth() + 1, 0)
   date.setHours(18, 0, 0, 0)
   return date
 }
 
-/** 下一个周 X（周一=1），18:00。 */
-function candidateNextWeekday(target) {
-  const date = new Date()
+/** 基准时间之后的第 N 个周 X（周一=1），18:00。 */
+function candidateNextWeekday(base, target) {
+  const date = new Date(base.getTime())
   const current = date.getDay() === 0 ? 7 : date.getDay()
   let delta = target - current
   if (delta <= 0) delta += 7
@@ -3178,29 +3548,47 @@ function candidateNextWeekday(target) {
   return date
 }
 
+/** 下周同一工作日（下周一 + target-1 天），18:00。 */
+function candidateNextWeek(base, target) {
+  const date = new Date(base.getTime())
+  const current = date.getDay() === 0 ? 7 : date.getDay()
+  let delta = 8 - current
+  if (delta <= 0) delta += 7
+  date.setDate(date.getDate() + delta + ((target || 5) - 1))
+  date.setHours(18, 0, 0, 0)
+  return date
+}
+
 /**
  * 时间线索 → ISO。只映射**明确表达**的日期；「尽快」「尽早」不算日期，
  * 只记一条 reason（不编造截止时间）。
  */
-function candidateDueFromText(text) {
+function candidateDueFromText(text, baseTime) {
   const source = String(text || '')
+  const base = baseTime instanceof Date && !Number.isNaN(baseTime.getTime()) ? baseTime : new Date()
   const hits = []
   const put = function (label, date) {
     hits.push(label + ' → ' + date.toISOString().slice(0, 16).replace('T', ' '))
     return date.toISOString()
   }
-  if (/今天|今日|下班前/.test(source)) return { dueAt: put('今天/下班前', candidateStartOfDay(0)), hits: hits }
-  if (/明天|明日/.test(source)) return { dueAt: put('明天', candidateStartOfDay(1)), hits: hits }
-  if (/后天/.test(source)) return { dueAt: put('后天', candidateStartOfDay(2)), hits: hits }
-  const weekday = /(?:下)?周([一二三四五六日天])/.exec(source)
+  // 顺序很重要：「明天下班前」应先命中「明天」，不能被「下班前」抢走
+  if (/后天/.test(source)) return { dueAt: put('后天', candidateStartOfDay(base, 2)), hits: hits }
+  if (/明天|明日/.test(source)) return { dueAt: put('明天', candidateStartOfDay(base, 1)), hits: hits }
+  const nextWeek = /下周([一二三四五六日天])?/.exec(source)
+  if (nextWeek) {
+    const map = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7, 天: 7 }
+    const target = nextWeek[1] ? map[nextWeek[1]] : 5
+    return { dueAt: put('下周' + (nextWeek[1] || '五'), candidateNextWeek(base, target)), hits: hits }
+  }
+  const weekday = /周([一二三四五六日天])/.exec(source)
   if (weekday) {
     const map = { 一: 1, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 日: 7, 天: 7 }
     const target = map[weekday[1]]
-    if (target) return { dueAt: put('周' + weekday[1], candidateNextWeekday(target)), hits: hits }
+    if (target) return { dueAt: put('周' + weekday[1], candidateNextWeekday(base, target)), hits: hits }
   }
-  if (/本周|这周|周内/.test(source)) return { dueAt: put('本周内', candidateNextWeekday(5)), hits: hits }
-  if (/下周/.test(source)) return { dueAt: put('下周', candidateNextWeekday(5)), hits: hits }
-  if (/月底|本月末/.test(source)) return { dueAt: put('月底', candidateEndOfMonth()), hits: hits }
+  if (/本周|这周|周内/.test(source)) return { dueAt: put('本周内', candidateNextWeekday(base, 5)), hits: hits }
+  if (/月底|本月末/.test(source)) return { dueAt: put('月底', candidateEndOfMonth(base)), hits: hits }
+  if (/今天|今日|下班前/.test(source)) return { dueAt: put('今天/下班前', candidateStartOfDay(base, 0)), hits: hits }
   if (/尽快|尽早|越快越好/.test(source)) {
     return { dueAt: null, hits: ['提到「尽快」但没有明确日期，未编造截止时间'] }
   }
@@ -3208,6 +3596,30 @@ function candidateDueFromText(text) {
 }
 
 /** 从消息正文里切出一句可读的任务标题。 */
+/**
+ * 取消、已完成与否定表达：这类消息不该生成待办候选。
+ * 只匹配明确的收尾语义，避免把「请确认是否取消」误判为取消。
+ */
+const CANDIDATE_CLOSED_PATTERNS = [
+  /已(?:经)?(?:解决|修复|完成|处理完|上线|发布|关闭|搞定)/,
+  /不用(?:再)?(?:处理|管|跟进|看了?)/,
+  /无需(?:处理|跟进)/,
+  /不必(?:处理|跟进)/,
+  /(?:问题|这个|此事)(?:已)?(?:解决|关闭|完结)/,
+  /取消(?:该|这个|此)?(?:任务|事项|需求)/,
+  /作废/,
+  /(?:搞定了|已搞定|OK ?了|ok ?了)/,
+]
+
+function candidateIsClosed(text) {
+  const source = String(text || '')
+  // 「请确认是否取消」这类是询问，不是取消本身
+  if (/是否|需不需要|要不要|吗\?|吗？/.test(source) && /取消|关闭|作废/.test(source)) return false
+  return CANDIDATE_CLOSED_PATTERNS.some(function (pattern) {
+    return pattern.test(source)
+  })
+}
+
 function candidateTitleFromText(text) {
   const source = String(text || '')
     .replace(/@\S+\s*/g, '')
@@ -3226,24 +3638,42 @@ function candidateTitleFromText(text) {
  * 对一条来源做规则提取。返回候选草稿或 null（无法提取）。
  * confidence 是**规则置信度**，不是模型概率，reasons 里逐条可查。
  */
-function candidateFromSource(source) {
-  const text = String((source && source.excerpt) || '').trim()
-  if (!text) return null
-  const title = candidateTitleFromText(text)
+/**
+ * 把一条消息切成若干「可提事项」句子。一条消息里常有多个交办，
+ * 逐句判断能避免只取第一句而漏掉后面的要求。
+ */
+function candidateSentences(text) {
+  return String(text || '')
+    .replace(/@\S+\s*/g, '')
+    .replace(/\[图片\]|\[文件\]|\[链接\]/g, '')
+    .split(/[。!?！？\n]+/)
+    .map(function (part) {
+      return part.trim()
+    })
+    .filter(function (part) {
+      return part.length >= 6
+    })
+    .slice(0, 4)
+}
+
+function candidateFromSentence(source, sentence, wholeText, baseTime) {
+  if (candidateIsClosed(sentence) || candidateIsClosed(wholeText)) return null
+  const title = candidateTitleFromText(sentence)
   if (!title) return null
 
   const reasons = []
   let confidence = 0.35
 
   const actionHit = CANDIDATE_ACTION_WORDS.filter(function (word) {
-    return text.indexOf(word) >= 0
+    return sentence.indexOf(word) >= 0
   })
   if (actionHit.length > 0) {
     confidence += 0.25
     reasons.push('命中行动词：' + actionHit.slice(0, 3).join(' / '))
   }
 
-  const due = candidateDueFromText(text)
+  // 相对日期以**原消息时间**为基准（历史消息里的「明天」指消息发出后的明天）
+  const due = candidateDueFromText(sentence, baseTime)
   if (due.dueAt) {
     confidence += 0.2
     reasons.push('时间线索：' + due.hits[0])
@@ -3251,14 +3681,14 @@ function candidateFromSource(source) {
     reasons.push(due.hits[0])
   }
 
-  if (text.length <= 80) {
+  if (sentence.length <= 80) {
     confidence += 0.1
     reasons.push('正文较短，指向明确')
   } else {
-    reasons.push('正文较长（' + text.length + ' 字），可能需要拆分')
+    reasons.push('正文较长（' + sentence.length + ' 字），可能需要拆分')
   }
 
-  if (/我|您|你/.test(text)) {
+  if (/我|您|你/.test(sentence)) {
     confidence += 0.1
     reasons.push('正文直接指向收件人')
   }
@@ -3270,13 +3700,31 @@ function candidateFromSource(source) {
     sourceRefId: source.id,
     sourceTitle: source.title,
     title: title,
-    excerpt: text.slice(0, 500),
+    excerpt: sentence.slice(0, 500),
     dueAt: due.dueAt,
     assignee: null,
     confidence: confidence,
     reasons: reasons,
     status: 'pending',
+    /** 明确标记来源：规则提取，不是模型判断 */
+    extractor: 'rule',
   }
+}
+
+/** 一条来源 → 若干候选（一消息多事项）。取消/已完成语义整体跳过。 */
+function candidatesFromSource(source) {
+  const text = String((source && source.excerpt) || '').trim()
+  if (!text) return []
+  if (candidateIsClosed(text)) return []
+  const baseTime = new Date(source.fetchedAt || source.createdAt || Date.now())
+  const sentences = candidateSentences(text)
+  const pool = sentences.length > 0 ? sentences : [text]
+  const out = []
+  for (const sentence of pool) {
+    const candidate = candidateFromSentence(source, sentence, text, baseTime)
+    if (candidate) out.push(candidate)
+  }
+  return out.slice(0, 3)
 }
 
 /** 为所有「还没有候选」的云之家来源生成候选。返回新快照。 */
@@ -3293,29 +3741,42 @@ function extractCandidatesInto(state) {
   )
   let added = 0
   let skipped = 0
+  let closed = 0
   for (const source of sources) {
     if (seen.has(source.id)) {
       skipped += 1
       continue
     }
-    const draft = candidateFromSource(source)
-    if (!draft) {
+    if (candidateIsClosed(source.excerpt)) {
+      // 已解决 / 不用处理 / 取消：不生成候选，但记一次跳过，便于核对
+      closed += 1
+      seen.add(source.id)
+      continue
+    }
+    const drafts = candidatesFromSource(source)
+    if (drafts.length === 0) {
       skipped += 1
       continue
     }
     seen.add(source.id)
-    state.candidates = ensureArray(state.candidates).concat([normalizeCandidate(draft, null)]).slice(-CANDIDATE_LIMIT)
-    added += 1
+    for (const draft of drafts) {
+      state.candidates = ensureArray(state.candidates).concat([normalizeCandidate(draft, null)]).slice(-CANDIDATE_LIMIT)
+      added += 1
+    }
   }
   state.lastExtract = {
     at: hostNowIso(),
     scanned: sources.length,
     added: added,
     skipped: skipped,
+    closed: closed,
     note:
       sources.length === 0
         ? '还没有云之家 @我 来源：先在首页拉取 @我 消息，或在会话里让 Agent 调 workbench_fetch_mentions。'
-        : '规则候选 = 行动词 + 时间线索 + 长度/指向性计算的置信度，不是模型结论；采纳前请人工核对。',
+        : '规则候选 = 行动词 + 时间线索（以原消息时间为基准）+ 长度/指向性，不是模型结论；' +
+          '已解决/不用处理类消息会自动跳过（本次 ' +
+          closed +
+          ' 条）；采纳前请人工核对。',
   }
   auditEntry(state, 'candidates.extract', '扫描 ' + sources.length + ' 条来源，新增候选 ' + added + ' 条')
   return state
@@ -3488,6 +3949,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'updateKnowledge', params: ['id', 'patch'] },
   { method: 'deleteKnowledge', params: ['id'] },
   { method: 'saveRadarItem', params: ['input'] },
+  { method: 'updateRadar', params: ['id', 'patch'] },
   { method: 'deleteRadarItem', params: ['id'] },
   { method: 'recordRun', params: ['input'] },
   { method: 'updateRun', params: ['id', 'patch'] },
@@ -3504,6 +3966,10 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'github', params: [] },
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
+  { method: 'backup', params: [] },
+  { method: 'backups', params: [] },
+  { method: 'restoreBackup', params: ['id'] },
+  { method: 'revision', params: [] },
   { method: 'diagnostics', params: [] },
 ]
 
@@ -3646,6 +4112,12 @@ function workbenchToolDefinitions() {
           dueAt: { type: 'string', description: 'ISO 8601 时间；用户没有明确期限时不要填。' },
           tags: { type: 'array', items: { type: 'string' }, description: '最多 12 个短标签。' },
           projectId: { type: 'string', description: '已存在的项目 id；不确定就省略。' },
+          idempotencyKey: {
+            type: 'string',
+            description:
+              '可选幂等键：同一个键重复调用只会创建一次（用于网络重试或模型重复调用）。' +
+              '建议用「意图 + 目标」的稳定字符串，例如 "create-task:压测结论"（不要用随机值）。',
+          },
         },
         required: ['title'],
         additionalProperties: false,
@@ -3654,13 +4126,24 @@ function workbenchToolDefinitions() {
       async execute(args) {
         const input = args && typeof args === 'object' ? args : {}
         if (!asString(input.title, 200)) throw new Error('title 不能为空')
-        const state = mutateWorkbenchState(function (current) {
-          const task = normalizeTask(input, null)
-          current.tasks = ensureArray(current.tasks).concat([task])
-          auditEntry(current, 'task.created', task.title + '（来自 Agent 工具）')
+        const key = asString(input.idempotencyKey, 160)
+        if (key) {
+          const previous = findOperation(loadWorkbenchState(), key)
+          if (previous && previous.entityIds.length > 0) {
+            return {
+              text: '幂等命中：' + key + ' 之前已创建（taskId=' + previous.entityIds[0] + '），本次未重复创建。',
+              taskId: previous.entityIds[0],
+              idempotent: true,
+            }
+          }
+        }
+        const result = await mutateWorkbenchState(function (current) {
+          const applied = applyCreateTask(current, Object.assign({}, input))
+          if (key) recordOperation(current, { key: key, tool: 'workbench_create_task', entityIds: [applied.entity.id] })
+          auditEntry(current, 'task.created', applied.entity.title + '（来自 Agent 工具）')
           return current
         })
-        const created = state.tasks[state.tasks.length - 1]
+        const created = result.tasks[result.tasks.length - 1]
         return {
           text: '已创建待办：' + created.title + ' (id=' + created.id + '，状态 ' + created.status + ')',
           taskId: created.id,
@@ -3694,17 +4177,9 @@ function workbenchToolDefinitions() {
         const patch = Object.assign({}, input)
         delete patch.id
         if (patch.dueAt === '') patch.dueAt = null
-        const state = mutateWorkbenchState(function (current) {
-          const index = ensureArray(current.tasks).findIndex(function (task) {
-            return task.id === input.id
-          })
-          if (index < 0) throw new Error('找不到该待办：' + input.id)
-          const next = normalizeTask(patch, current.tasks[index])
-          next.id = current.tasks[index].id
-          next.createdAt = current.tasks[index].createdAt
-          current.tasks = current.tasks.slice()
-          current.tasks[index] = next
-          auditEntry(current, 'task.updated', next.title + ' → ' + next.status + '（来自 Agent 工具）')
+        const state = await mutateWorkbenchState(function (current) {
+          const applied = applyUpdateTask(current, input.id, patch)
+          auditEntry(current, 'task.updated', applied.entity.title + ' → ' + applied.entity.status + '（来自 Agent 工具）')
           return current
         })
         const updated = state.tasks.find(function (task) {
@@ -3730,6 +4205,7 @@ function workbenchToolDefinitions() {
             description: '本次执行的最终状态，通常是 completed 或 failed。',
           },
           summary: { type: 'string', description: '一到三句话说明做了什么、结论是什么。' },
+          idempotencyKey: { type: 'string', description: '可选幂等键：同一个键重复调用只登记一次。' },
           profile: { type: 'string', description: '逻辑 Agent 角色，如 Coding Agent / Research Agent。' },
           sessionId: { type: 'string', description: '关联会话 id，便于回跳。' },
           evidence: {
@@ -3756,28 +4232,24 @@ function workbenchToolDefinitions() {
       async execute(args, exec) {
         const input = args && typeof args === 'object' ? args : {}
         const payload = Object.assign({}, input)
+        const runKey = asString(input.idempotencyKey, 160)
+        if (runKey) {
+          const previous = findOperation(loadWorkbenchState(), runKey)
+          if (previous && previous.entityIds.length > 0) {
+            return {
+              text: '幂等命中：' + runKey + ' 之前已登记（runId=' + previous.entityIds[0] + '），本次未重复登记。',
+              runId: previous.entityIds[0],
+              idempotent: true,
+            }
+          }
+        }
         if (!payload.sessionId && exec && exec.agent && exec.agent.session && exec.agent.session.id) {
           payload.sessionId = String(exec.agent.session.id)
         }
-        const state = mutateWorkbenchState(function (current) {
-          const run = normalizeRun(payload, null)
-          if (run.taskId && !ensureArray(current.tasks).some(function (task) {
-            return task.id === run.taskId
-          })) {
-            throw new Error('关联的待办不存在：' + run.taskId)
-          }
-          current.runs = ensureArray(current.runs).concat([run])
-          if (run.taskId) {
-            current.tasks = ensureArray(current.tasks).map(function (task) {
-              if (task.id !== run.taskId) return task
-              const next = Object.assign({}, task)
-              next.runIds = ensureArray(task.runIds).concat([run.id])
-              next.updatedAt = hostNowIso()
-              if (run.status === 'failed') next.status = 'failed'
-              return next
-            })
-          }
-          auditEntry(current, 'agent.run.created', run.summary || run.id)
+        const state = await mutateWorkbenchState(function (current) {
+          const applied = applyRecordRun(current, payload)
+          if (runKey) recordOperation(current, { key: runKey, tool: 'workbench_record_run', entityIds: [applied.entity.id] })
+          auditEntry(current, 'agent.run.created', applied.entity.summary || applied.entity.id)
           return current
         })
         const run = state.runs[state.runs.length - 1]
@@ -3858,6 +4330,97 @@ function workbenchToolDefinitions() {
             (lines.length > 0 ? '\n新增：\n' + lines.join('\n') : '\n没有新增（此前已采集过）。') +
             '\n要分析这些消息时，用 workbench_task_brief 或直接读来源证据。',
         }
+      },
+    },
+
+    {
+      name: 'workbench_update_radar',
+      description:
+        '把四段摘要写回一条技术雷达资讯：技术变化 / 应用场景 / 采用风险 / 推荐实践。' +
+        '先用 workbench_fetch_radar 抓取（或联网发现）拿到条目 id，读原文后再归纳并调用本工具。' +
+        '每条结论都应来自原文，不要凭标题猜测；无法确认的段落留空。',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '资讯 id（来自抓取报告或快照）。' },
+          change: { type: 'string', description: '技术变化：这次变化的关键事实。' },
+          usage: { type: 'string', description: '应用场景：适合用在哪里。' },
+          risk: { type: 'string', description: '采用风险：可能踩的坑。' },
+          practice: { type: 'string', description: '推荐实践：怎么落地。' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      output: { schema: toolOutputSchema(), render: renderToolText },
+      async execute(args) {
+        const input = args && typeof args === 'object' ? args : {}
+        if (!asString(input.id, 100)) throw new Error('id 不能为空')
+        if (!input.change && !input.usage && !input.risk && !input.practice) {
+          throw new Error('至少填写一段摘要（change / usage / risk / practice）')
+        }
+        const state = await mutateWorkbenchState(function (current) {
+          const item = ensureArray(current.radar).find(function (row) {
+            return row.id === input.id
+          })
+          if (!item) throw new Error('找不到该资讯：' + input.id)
+          const index = current.radar.indexOf(item)
+          const next = normalizeRadarItem(
+            {
+              summary: {
+                change: asString(input.change, 800),
+                usage: asString(input.usage, 800),
+                risk: asString(input.risk, 800),
+                practice: asString(input.practice, 800),
+              },
+            },
+            item,
+          )
+          next.id = item.id
+          next.createdAt = item.createdAt
+          current.radar = current.radar.slice()
+          current.radar[index] = next
+          auditEntry(current, 'radar.summary', next.title + '（来自 Agent 工具）')
+          return current
+        })
+        const updated = ensureArray(state.radar).find(function (row) {
+          return row.id === input.id
+        })
+        return { text: '已写回摘要：' + updated.title + '（' + updated.url + '）', radarId: updated.id }
+      },
+    },
+
+    {
+      name: 'workbench_search',
+      description:
+        '统一检索工作台的多路来源（待办 / 知识 / 雷达 / 来源证据 / 本地项目 / 企业云之家 / PR·CI / 互联网），' +
+        '返回按来源分组的结果与每路状态。回答用户问题时先用它取证据，再在回答里给出处；' +
+        '某一路 status 不是 ok 时要如实说明该路不可用，不要把「没查到」说成「不存在」。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '检索词。' },
+          includeWeb: { type: 'boolean', description: '是否查互联网（默认 true）。' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+      output: { schema: toolOutputSchema(), render: renderToolText },
+      async execute(args) {
+        const input = args && typeof args === 'object' ? args : {}
+        const result = await runUnifiedSearch(workbenchCtx, {
+          query: input.query,
+          includeWeb: input.includeWeb !== false,
+        })
+        const lines = []
+        for (const group of result.groups) {
+          lines.push('## ' + group.label + '（' + group.status + '，' + group.items.length + ' 条）')
+          if (group.note) lines.push('说明：' + group.note)
+          for (const item of group.items.slice(0, 6)) {
+            const ref = item.url ? ' — ' + item.url : ''
+            lines.push('- ' + item.title + (item.snippet ? '｜' + item.snippet.slice(0, 80) : '') + ref)
+          }
+        }
+        return { text: '检索「' + input.query + '」共 ' + result.total + ' 条：\n' + lines.join('\n') }
       },
     },
 

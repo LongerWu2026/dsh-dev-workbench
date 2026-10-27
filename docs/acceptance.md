@@ -12,7 +12,7 @@
 | Host 半语法 | `node --check index.js` | 通过 |
 | Client 半语法 | `node --check client.js` | 通过 |
 | 跨文件顶层重名 | `node scripts/build.mjs --check` | 11 host / 12 client part，无冲突 |
-| Host 业务逻辑 | `node tests/host-smoke.mjs` | **97/97 通过** |
+| Host 业务逻辑 | `node tests/host-smoke.mjs` | **133/133 通过** |
 | Client 全页面渲染 | `node tests/client-render.mjs` | **8/8 页面 + 空态 + 6 个新增工具面板**；真实驱动搜索、抓取资讯、@我 再拉一次、逐个切换工具 |
 | **描述符实参交叉校验** | 渲染测试从 `src/host/40-remote.js` 解析签名表，逐一核对每个 RPC 调用的实参键 | **22/22 一致**——正是此项挡住 `fetchRadar` 的 `unexpected "request"`（客户端对零参端点多发了 `request` 字段，网关严格校验拒绝） |
 | 插件安装 | `plugin_manager install_bundle` | `application: applied`，`warnings: []` |
@@ -121,7 +121,23 @@ node tests/host-smoke.mjs
 node tests/client-render.mjs
 ```
 
-## 9. 生效条件
+## 9. 第四轮：可靠性修复与 AI 自动化（对应 docs/TODO-AI-AUTOMATION.md）
+
+| 待办 | 处理 | 证据 |
+| --- | --- | --- |
+| 01 工具异步 | 三个工具补 `await`，抽出统一写入原语，新增操作账本与 `idempotencyKey` | 真实执行工具 6 项断言（返回值/落库/幂等/失败如实报错） |
+| 02 重载 ID | 恢复时 `normalizeX(raw, raw)`，知识条目纳入归一化 | 9 项重载关联断言 |
+| 03 日期/否定 | 以消息时间为基准、匹配顺序修正、取消语义、多事项拆分、`extractor` 标记 | 9 项断言 |
+| 04 聊天接入 | 工具收敛到业务原语；助手抽屉（上下文引用 + 复制简报 + 跳转会话）；`workbench_search` / `workbench_update_radar` | 渲染断言（抽屉标题、按钮、加入上下文） |
+| 05 自动待办 | 取消跳过、消息时间、多事项、msgId 去重、幂等账本 | 见 03 断言 |
+| 06 AI 资讯 | 无 RSS 时按主题联网发现；摘要写回工具；逐路失败如实记录 | 发现路径断言 + 摘要写回断言 |
+| 08 页面同步 | `revision` 递增 + 轻量端点 + 12s 轮询（编辑期间跳过） | 2 项修订号断言 |
+| 09 Agent 回写 | 任务上下文入会话，`workbench_record_run` 回写并挂 `runIds` | 工具执行断言 |
+| 10 引用问答 | `workbench_search` 返回分组 + 每路状态，模型据此引用作答 | 工具注册与描述 |
+| 11 备份恢复 | 损坏文件留存、每日自动备份、手动备份/恢复 UI | 3 项断言 |
+| 07 后台调度 | **未做**：`schedule` 只做会话提醒、`jobs` 是抽象契约，需宿主适配层 | 文档说明 |
+
+## 10. 生效条件
 
 - 只改 `src/client/**`：重新构建后刷新 GUI 窗口即可。
 - 改 `src/host/**`（新增 Remote 端点或工具）：必须**重启 DSH**；重新安装 bundle 不会替换已加载的

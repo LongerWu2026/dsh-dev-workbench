@@ -718,6 +718,9 @@ const wbStore = (function () {
     /** Transient hand-off from the dashboard to the task center
      *  ({status?|dueFilter?}); the task page consumes it and clears it. */
     taskPreset: null,
+    /** 工作台助手：可移除的上下文引用（task / source / radar / knowledge / search） */
+    assistantOpen: false,
+    assistantRefs: [],
   }
   const listeners = new Set()
   return {
@@ -808,6 +811,7 @@ WB.t = function (key, fallback) {
 /* --------------------------------------------------------------------- RPC */
 let wbConnection = null
 let wbUiWorkspace = null
+let wbLayout = null
 
 /**
  * Open the harness directory picker. Resolves null when the profile has no
@@ -862,6 +866,70 @@ function toast(text, kind) {
     })
   }, kind === 'err' ? 6000 : 3200)
   return id
+}
+
+/* --------------------------------------------------------------- 助手上下文 */
+/**
+ * 工作台助手：把「当前在看的东西」作为**可见、可移除**的上下文引用收集起来，
+ * 交给原生会话里的 Agent（它有 workbench_* 工具，结果会写回同一份数据）。
+ * 插件内不嵌模型；这里只负责组装上下文与跳转（TODO 04 的备选路径）。
+ */
+const assistant = {
+  open() {
+    wbStore.set({ assistantOpen: true })
+  },
+  close() {
+    wbStore.set({ assistantOpen: false })
+  },
+  toggle() {
+    wbStore.set(function (state) {
+      return { assistantOpen: !state.assistantOpen }
+    })
+  },
+  add(ref) {
+    if (!ref || !ref.kind) return
+    wbStore.set(function (state) {
+      const exists = state.assistantRefs.some(function (item) {
+        return item.kind === ref.kind && item.id === ref.id
+      })
+      return {
+        assistantOpen: true,
+        assistantRefs: exists ? state.assistantRefs : state.assistantRefs.concat([ref]).slice(-8),
+      }
+    })
+  },
+  remove(kind, id) {
+    wbStore.set(function (state) {
+      return {
+        assistantRefs: state.assistantRefs.filter(function (item) {
+          return !(item.kind === kind && item.id === id)
+        }),
+      }
+    })
+  },
+  clear() {
+    wbStore.set({ assistantRefs: [] })
+  },
+}
+
+/** 把上下文引用渲染成可直接粘贴给会话的 Markdown 简报。 */
+function assistantBrief(refs, instruction) {
+  const lines = []
+  lines.push('请基于下面的工作台上下文协助我，并在有结论时用 workbench_* 工具写回（创建/更新待办、登记执行记录、写回资讯摘要）。')
+  lines.push('')
+  refs.forEach(function (ref, index) {
+    lines.push('### 上下文 ' + (index + 1) + '：' + (ref.label || ref.kind) + ' · ' + (ref.title || ref.id))
+    if (ref.url) lines.push('- 链接：' + ref.url)
+    if (ref.meta) lines.push('- 信息：' + ref.meta)
+    if (ref.body) {
+      lines.push('- 内容：')
+      lines.push(String(ref.body).slice(0, 1200))
+    }
+    lines.push('')
+  })
+  lines.push('### 我的要求')
+  lines.push(String(instruction || '').trim() || '（在这里补充要求）')
+  return lines.join('\n')
 }
 
 /* ----------------------------------------------------------------- actions */
@@ -1019,6 +1087,37 @@ const wbActions = {
     return wbRpc('workbench/github', {})
   },
 
+  /**
+   * 自动同步：只比对业务修订号，变新才重取快照；正在编辑表单时跳过，
+   * 避免后台刷新打断输入（TODO 08）。
+   */
+  syncCheck() {
+    const store = wbStore.get()
+    const current = store.data
+    if (!current) return Promise.resolve(false)
+    if (store.taskForm) return Promise.resolve(false)
+    return wbRpc('workbench/revision', {})
+      .then(function (info) {
+        if (!info || Number(info.revision) <= Number(current.revision || 0)) return false
+        return wbRpc('workbench/snapshot', {}).then(function (snapshot) {
+          wbStore.set({ status: 'ready', data: snapshot, error: null })
+          return true
+        })
+      })
+      .catch(function () {
+        return false
+      })
+  },
+
+  backup() {
+    return wbRpc('workbench/backup', {})
+  },
+  backups() {
+    return wbRpc('workbench/backups', {})
+  },
+  restoreBackup(id) {
+    return settle(wbRpc('workbench/restoreBackup', { id: id }), '已从备份恢复')
+  },
   diagnostics() {
     return wbRpc('workbench/diagnostics', {})
   },
@@ -1692,9 +1791,24 @@ WB.useWorkbench = function () {
   return useStore()
 }
 WB.toast = toast
+WB.assistant = assistant
+WB.assistantBrief = assistantBrief
 WB.pickDirectory = pickDirectory
 WB.setUiWorkspace = function (value) {
   wbUiWorkspace = value || null
+}
+WB.setLayout = function (value) {
+  wbLayout = value || null
+}
+/** 回到原生会话面板（助手把上下文复制到剪贴板后调用）。 */
+WB.openConversation = function () {
+  if (!wbLayout || typeof wbLayout.selectPanel !== 'function') return false
+  try {
+    wbLayout.selectPanel(null)
+    return true
+  } catch (e) {
+    return false
+  }
 }
 WB.rpc = wbRpc
 WB.fmt = fmt

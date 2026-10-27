@@ -154,13 +154,60 @@ check('示例数据不重复叠加', state.tasks.length === 3, '实际 ' + state
 const diag = await api.diagnostics()
 check('诊断返回数据路径', typeof diag.dataPath === 'string' && diag.dataPath.indexOf('dev-workbench') >= 0)
 check('诊断统计到任务', diag.counts.tasks === 3)
-check('注册了 7 个 Agent 工具', tools.length === 7, '实际 ' + tools.length)
+check('注册了 9 个 Agent 工具', tools.length === 9, '实际 ' + tools.length)
+
+/* ---------------------------------------------------------------------------
+ * P0-01：真实执行工具（不是只数注册数量）
+ * 之前 mutateWorkbenchState 变成 async 后工具没有 await，导致「工具报错但
+ * 数据已写入」。这里直接调用 execute，断言返回值与落库结果一致。
+ * ------------------------------------------------------------------------- */
+{
+  const tool = (name) => tools.find((entry) => entry.name === name)
+  const createTool = tool('workbench_create_task')
+  const updateTool = tool('workbench_update_task')
+  const runTool = tool('workbench_record_run')
+
+  const created = await createTool.execute({ title: '工具执行验证', priority: 'high' }, {})
+  check('工具 create_task 返回 taskId', typeof created.taskId === 'string' && created.taskId.length > 0, JSON.stringify(created))
+  const afterCreate = await api.snapshot()
+  check('工具 create_task 真实落库', afterCreate.tasks.some((task) => task.id === created.taskId))
+
+  // 幂等：同 key 再调一次不重复创建
+  const first = await createTool.execute({ title: '幂等任务', idempotencyKey: 'test:idem-1' }, {})
+  const second = await createTool.execute({ title: '幂等任务', idempotencyKey: 'test:idem-1' }, {})
+  check('幂等键命中不重复创建', second.idempotent === true && second.taskId === first.taskId, JSON.stringify(second))
+  const afterIdem = await api.snapshot()
+  check(
+    '幂等后只存在一条',
+    afterIdem.tasks.filter((task) => task.title === '幂等任务').length === 1,
+    String(afterIdem.tasks.filter((task) => task.title === '幂等任务').length),
+  )
+
+  const updated = await updateTool.execute({ id: created.taskId, status: 'completed' }, {})
+  check('工具 update_task 返回结果', /已更新/.test(updated.text), updated.text)
+  const afterUpdate = await api.snapshot()
+  check('工具 update_task 真实落库', afterUpdate.tasks.find((task) => task.id === created.taskId).status === 'completed')
+
+  const runCreated = await runTool.execute({ taskId: created.taskId, status: 'completed', summary: '工具登记验证' }, {})
+  check('工具 record_run 返回 runId', typeof runCreated.runId === 'string', JSON.stringify(runCreated))
+  const afterRun = await api.snapshot()
+  check('工具 record_run 真实落库', afterRun.runs.some((run) => run.id === runCreated.runId))
+
+  // 写入失败要如实抛出（不吞掉）
+  let failed = false
+  try {
+    await updateTool.execute({ id: 'no-such-task', status: 'completed' }, {})
+  } catch (e) {
+    failed = /找不到该待办/.test(e.message)
+  }
+  check('工具写入失败如实返回错误', failed)
+}
 check('包含 workbench_fetch_radar 工具', tools.some((tool) => tool.name === 'workbench_fetch_radar'))
 check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name === 'workbench_fetch_mentions'))
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 27 个 Remote 描述符', invocations.length === 27, '实际 ' + invocations.length)
+check('注册了 32 个 Remote 描述符', invocations.length === 32, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -236,6 +283,15 @@ webMock = {
     }
     return Promise.resolve({ statusCode: 200, url: request.url, body: { kind: 'text', content: FAKE_RSS } })
   },
+  search(request) {
+    return Promise.resolve({
+      sources: [
+        { url: 'https://example.org/news/' + encodeURIComponent(String(request.query)).slice(0, 20), title: 'Agent 框架发布新版本 · ' + String(request.query).slice(0, 12), snippet: '新版本支持工具编排', publishedAt: '2026-10-26T08:00:00Z' },
+        { url: 'https://example.org/news/dup', title: '同一事件的转载', snippet: '转载内容', publishedAt: '2026-10-26T09:00:00Z' },
+      ],
+      truncated: false,
+    })
+  },
 }
 
 await api.saveSettings({
@@ -279,10 +335,31 @@ try {
   check('不存在的资讯被拒绝', /找不到该资讯/.test(e.message))
 }
 
-// 空资讯源：如实报告而不是假抓取
-await api.saveSettings({ feeds: [] })
+// 无 RSS 时：有联网能力 → 按关注主题发现；没有联网能力 → 如实说明
+await api.saveSettings({ feeds: [], topics: ['Agent'] })
 state = await api.fetchRadar()
-check('空资讯源如实报告', !!(state.lastRadarFetch && state.lastRadarFetch.note && state.lastRadarFetch.note.indexOf('资讯源') >= 0))
+check(
+  '无 RSS 时按主题联网发现',
+  !!state.lastRadarFetch && state.lastRadarFetch.perFeed.some((row) => String(row.id).indexOf('topic:') === 0),
+  JSON.stringify(state.lastRadarFetch && state.lastRadarFetch.perFeed.map((r) => r.id)),
+)
+webMock = null
+state = await api.fetchRadar()
+check(
+  '无联网能力时如实说明',
+  !!state.lastRadarFetch && /web|联网/i.test(state.lastRadarFetch.note || ''),
+  state.lastRadarFetch && state.lastRadarFetch.note,
+)
+webMock = {
+  fetch(request) {
+    if (String(request.url).indexOf('bad') >= 0) return Promise.reject(new Error('connection refused'))
+    if (String(request.url).indexOf('blocked') >= 0) return Promise.resolve({ statusCode: 403, url: request.url, body: { kind: 'text', content: '' } })
+    return Promise.resolve({ statusCode: 200, url: request.url, body: { kind: 'text', content: FAKE_RSS } })
+  },
+  search() {
+    return Promise.resolve({ sources: [{ url: 'https://example.org/again', title: '再次发现', snippet: 's', publishedAt: null }], truncated: false })
+  },
+}
 
 // ---- 云之家 @我 拉取：模拟 whoami + im message search ----
 const WHOAMI = {
@@ -463,6 +540,89 @@ if (rejectTarget) {
 candState = await api.extractCandidates()
 check('再次提取不重复生成', candState.candidates.filter((c) => c.status === 'pending').length === 0)
 
+// P0-03：相对日期以「原消息时间」为基准；取消/已完成不生成候选；一条消息可拆多事项
+{
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 3600 * 1000)
+  threeDaysAgo.setHours(9, 30, 0, 0)
+  const expectedTomorrow = new Date(threeDaysAgo.getTime())
+  expectedTomorrow.setDate(expectedTomorrow.getDate() + 1)
+  expectedTomorrow.setHours(18, 0, 0, 0)
+
+  await api.addSource({
+    provider: 'yunzhijia',
+    externalId: 'yzj:msg:p0-date',
+    title: '@我 · 日期测试群',
+    excerpt: '明天下班前给出限流结论',
+    fetchedAt: threeDaysAgo.toISOString(),
+  })
+  await api.addSource({
+    provider: 'yunzhijia',
+    externalId: 'yzj:msg:p0-closed',
+    title: '@我 · 收尾群',
+    excerpt: '不用处理，问题已解决',
+    fetchedAt: threeDaysAgo.toISOString(),
+  })
+  await api.addSource({
+    provider: 'yunzhijia',
+    externalId: 'yzj:msg:p0-question',
+    title: '@我 · 询问群',
+    excerpt: '请确认是否取消该任务',
+    fetchedAt: threeDaysAgo.toISOString(),
+  })
+  await api.addSource({
+    provider: 'yunzhijia',
+    externalId: 'yzj:msg:p0-multi',
+    title: '@我 · 多事项群',
+    excerpt: '请补充压测报告。另外麻烦确认阈值是否合理。',
+    fetchedAt: threeDaysAgo.toISOString(),
+  })
+  await api.addSource({
+    provider: 'yunzhijia',
+    externalId: 'yzj:msg:p0-nextweek',
+    title: '@我 · 下周群',
+    excerpt: '下周一把方案发我',
+    fetchedAt: threeDaysAgo.toISOString(),
+  })
+
+  const dateState = await api.extractCandidates()
+  const bySource = (sourceId) => dateState.candidates.filter((item) => item.sourceRefId === sourceId)
+  const allSources = (await api.snapshot()).sources
+  const idOf = (externalId) => allSources.find((item) => item.externalId === externalId).id
+
+  const dateCand = bySource(idOf('yzj:msg:p0-date'))
+  check('P0-03 明天下班前解析为消息次日', dateCand.length === 1 && dateCand[0].dueAt === expectedTomorrow.toISOString(), dateCand[0] && dateCand[0].dueAt)
+  check('P0-03 相对日期不是今天（未用提取时刻）', dateCand.length === 1 && new Date(dateCand[0].dueAt).getTime() < Date.now() - 24 * 3600 * 1000)
+
+  check('P0-03 已解决消息不生成候选', bySource(idOf('yzj:msg:p0-closed')).length === 0)
+  check('P0-03 询问是否取消仍生成候选', bySource(idOf('yzj:msg:p0-question')).length >= 1)
+  check('P0-03 一条消息拆成多条候选', bySource(idOf('yzj:msg:p0-multi')).length === 2, String(bySource(idOf('yzj:msg:p0-multi')).length))
+  const nextWeekCand = bySource(idOf('yzj:msg:p0-nextweek'))
+  check('P0-03 下周一解析到 7 天内', nextWeekCand.length === 1 && new Date(nextWeekCand[0].dueAt).getTime() > Date.now() - 8 * 24 * 3600 * 1000)
+
+  // 规则候选必须标注来源为 rule，且不自动入库（状态 pending）
+  check('P0-03 候选标记为规则提取', dateCand.length === 1 && dateCand[0].extractor === 'rule', dateCand[0] && dateCand[0].extractor)
+  check('P0-03 规则候选不自动建任务', dateCand.length === 1 && dateCand[0].status === 'pending')
+}
+
+// 06：摘要写回（Agent 读原文后回填四段）
+{
+  const radarState = await api.snapshot()
+  const target = radarState.radar.find((item) => item.url && item.url.indexOf('example.com') >= 0)
+  const written = await api.updateRadar(target.id, {
+    summary: { change: '阈值与实现变化', usage: '适合网关', risk: '需要压测', practice: '先灰度' },
+  })
+  const updated = written.radar.find((item) => item.id === target.id)
+  check('摘要写回成功', updated.summary.change === '阈值与实现变化' && updated.summary.practice === '先灰度')
+  check('摘要写回保留来源与时间', updated.url === target.url && updated.publishedAt === target.publishedAt)
+  let rejected = false
+  try {
+    await api.updateRadar('missing-radar', { summary: { change: 'x' } })
+  } catch (e) {
+    rejected = /找不到该资讯/.test(e.message)
+  }
+  check('写回不存在的资讯被拒绝', rejected)
+}
+
 // 知识编辑
 let kbState = await api.createKnowledge({ kind: 'note', title: '编辑前', body: '正文 A', tags: ['x'] })
 const kbItem = kbState.knowledge[kbState.knowledge.length - 1]
@@ -585,6 +745,35 @@ check('CI 意图触发 PR/CI 分组', prSearch.groups.some((g) => g.id === 'gith
   webMock = null
 }
 
+// P0-02：重载后 ID 与关联保持（项目归属 / 任务执行记录 / 来源证据 / 候选）
+let relState = await api.saveProject({ name: '关联项目', repoPath: '/tmp/link-proj' })
+const relProject = relState.projects.find((item) => item.repoPath === '/tmp/link-proj')
+const relSource = await api.addSource({ provider: 'test', title: '关联来源', excerpt: '请补充压测报告' })
+const relSourceId = (await api.snapshot()).sources.slice(-1)[0].id
+const relTaskResult = await api.createTask({ title: '关联任务', projectId: relProject.id, sourceRefId: relSourceId })
+const relTaskResultId = relTaskResult.tasks.slice(-1)[0].id
+const relRunResult = await api.recordRun({ taskId: relTaskResultId, status: 'completed', summary: '关联执行' })
+const relRunResultId = relRunResult.runs.slice(-1)[0].id
+const relCandResult = await api.extractCandidates()
+const relCandidate = relCandResult.candidates.find((item) => item.sourceRefId === relSourceId)
+const relIds = {
+  project: relProject.id,
+  task: relTaskResultId,
+  run: relRunResultId,
+  source: relSourceId,
+  candidate: relCandidate ? relCandidate.id : null,
+}
+
+// 业务修订号：每次写入递增，供页面判断新旧（schema version 不能当并发号）
+{
+  const rev1 = await api.revision()
+  await api.createTask({ title: '修订号测试' })
+  const rev2 = await api.revision()
+  check('revision 随写入递增', rev2.revision > rev1.revision, rev1.revision + ' -> ' + rev2.revision)
+  const revState = await api.snapshot()
+  check('快照携带 revision', Number.isFinite(Number(revState.revision)) && Number(revState.revision) === rev2.revision)
+}
+
 // 落盘后重新读取：验证持久化（对比重载前后的记录数，不写死数字）
 const preReload = await api.snapshot()
 const tasksBeforeReload = preReload.tasks.length
@@ -601,6 +790,50 @@ applyAgain({
 })
 const reloaded = await fresh.workbench.snapshot()
 check('重启后数据仍在', reloaded.tasks.length === tasksBeforeReload && reloaded.radar.length === radarBeforeReload, '任务 ' + reloaded.tasks.length + '/' + tasksBeforeReload + '，雷达 ' + reloaded.radar.length + '/' + radarBeforeReload)
+
+// P0-02 断言：重载后 ID 与关联保持
+check('重载后项目 ID 不变', reloaded.projects.some((item) => item.id === relIds.project), '期望 ' + relIds.project)
+const reloadedTask = reloaded.tasks.find((item) => item.id === relIds.task)
+check('重载后任务 ID 不变', !!reloadedTask, '期望 ' + relIds.task)
+check('重载后任务仍归属项目', !!reloadedTask && reloadedTask.projectId === relIds.project, reloadedTask && reloadedTask.projectId)
+check('重载后任务仍指向来源证据', !!reloadedTask && reloadedTask.sourceRefId === relIds.source)
+check('重载后执行记录 ID 不变', reloaded.runs.some((item) => item.id === relIds.run), '期望 ' + relIds.run)
+check('重载后执行记录仍关联任务', reloaded.runs.find((item) => item.id === relIds.run).taskId === relIds.task)
+check('重载后任务 runIds 指向执行记录', !!reloadedTask && reloadedTask.runIds.indexOf(relIds.run) >= 0, reloadedTask && JSON.stringify(reloadedTask.runIds))
+check('重载后候选 ID 不变', !relIds.candidate || reloaded.candidates.some((item) => item.id === relIds.candidate))
+check(
+  '重载后候选仍指向来源',
+  !relIds.candidate || reloaded.candidates.find((item) => item.id === relIds.candidate).sourceRefId === relIds.source,
+)
+
+// TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖
+{
+  const backupResult = await api.backup()
+  check('手动备份成功', typeof backupResult.created === 'string' && backupResult.created.length > 0, JSON.stringify(backupResult.created))
+  const listed = await api.backups()
+  check('备份列表可读', Array.isArray(listed.backups) && listed.backups.length >= 1)
+
+  const fs = await import('node:fs')
+  const statePath = join(home, 'storages', 'dev-workbench', 'state.json')
+  const corruptTarget = join(home, 'storages', 'dev-workbench', 'corrupt-case.json')
+  fs.writeFileSync(corruptTarget, '{ this is not json', 'utf8')
+  fs.copyFileSync(corruptTarget, statePath)
+  // 新进程读取：损坏文件必须被保留（改名留存），不能被空状态覆盖
+  const { apply: applyCorrupt } = await import('../index.js?corrupt=' + Date.now())
+  const corruptServices = {}
+  applyCorrupt({
+    provide: (name, value) => (corruptServices[name] = value),
+    inject: () => {},
+    effect: (fn) => fn(),
+    get: () => undefined,
+    logger: { info() {} },
+  })
+  const dirFiles = fs.readdirSync(join(home, 'storages', 'dev-workbench'))
+  const preserved = dirFiles.some((name) => name.indexOf('state.json.corrupt-') === 0)
+  check('损坏文件被保留而非直接覆盖', preserved, dirFiles.join(','))
+  const afterCorrupt = await corruptServices.workbench.snapshot()
+  check('损坏后从空状态启动', Array.isArray(afterCorrupt.tasks))
+}
 
 const failed = checks.filter((item) => !item.ok)
 console.log(

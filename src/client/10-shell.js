@@ -91,6 +91,138 @@ function Toaster() {
   )
 }
 
+/* -------------------------------------------------------------- 工作台助手 */
+const ASSISTANT_KIND_LABEL = {
+  task: '待办',
+  source: '来源消息',
+  radar: '资讯',
+  knowledge: '知识',
+  search: '检索结果',
+}
+
+function AssistantDrawer() {
+  const state = useStore()
+  const [instruction, setInstruction] = React.useState('')
+  if (!state.assistantOpen) return null
+  const refs = Array.isArray(state.assistantRefs) ? state.assistantRefs : []
+
+  function copyAndOpen() {
+    const brief = assistantBrief(refs, instruction)
+    WB.util
+      .copy(brief)
+      .then(function () {
+        WB.toast('上下文简报已复制，正在打开会话…', 'ok')
+        if (WB.openConversation) WB.openConversation()
+        wbStore.set({ assistantOpen: false })
+      })
+      .catch(function (error) {
+        WB.toast(String((error && error.message) || error), 'err')
+      })
+  }
+
+  return h(
+    'aside',
+    {
+      style: {
+        position: 'absolute',
+        top: 0,
+        right: 0,
+        bottom: 0,
+        width: 332,
+        zIndex: 40,
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0,
+        borderLeft: '1px solid ' + T.border1,
+        background: T.layer1,
+        boxShadow: '-12px 0 32px rgba(0,0,0,.28)',
+      },
+    },
+    h(
+      'div',
+      { className: 'wb-card-head', style: { borderBottom: '1px solid ' + T.border1 } },
+      h('span', { className: 'wb-card-icon' }, h(Icon, { name: 'sparkles', size: 15 })),
+      h(
+        'div',
+        { className: 'wb-card-titles' },
+        h('h3', { className: 'wb-card-title' }, '工作台助手'),
+        h('p', { className: 'wb-card-sub' }, '把下方上下文带进原生会话，Agent 会写回同一份数据'),
+      ),
+      h(
+        'div',
+        { className: 'wb-card-actions' },
+        h(IconBtn, {
+          name: 'close',
+          label: '关闭助手',
+          onClick: function () {
+            WB.assistant.close()
+          },
+        }),
+      ),
+    ),
+    h(
+      'div',
+      { style: { flex: '1 1 auto', overflow: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 } },
+      refs.length === 0
+        ? h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.7 } },
+            '还没有上下文。在待办、资讯、知识或搜索结果上点「AI 分析」，就会把那条记录加到这里（可随时移除）。')
+        : refs.map(function (ref) {
+            return h(
+              'div',
+              {
+                key: ref.kind + ':' + ref.id,
+                style: { display: 'flex', alignItems: 'flex-start', gap: 6, padding: '8px 10px', border: '1px solid ' + T.border1, borderRadius: 10 },
+              },
+              h(Badge, { tone: 'idle' }, ASSISTANT_KIND_LABEL[ref.kind] || ref.kind),
+              h(
+                'div',
+                { style: { flex: '1 1 auto', minWidth: 0, fontSize: 11.5, lineHeight: 1.5 } },
+                h('div', { style: { fontWeight: 500, overflowWrap: 'anywhere' } }, ref.title || ref.id),
+                ref.body ? h('div', { className: 'wb-tiny wb-muted wb-clamp2' }, String(ref.body).slice(0, 120)) : null,
+              ),
+              h(IconBtn, {
+                name: 'close',
+                label: '移除该上下文',
+                onClick: function () {
+                  WB.assistant.remove(ref.kind, ref.id)
+                },
+              }),
+            )
+          }),
+      h(Field, { label: '我的要求' }, h(Textarea, {
+        value: instruction,
+        placeholder: '例如：帮我判断这条消息要不要建待办，并补全截止时间',
+        onChange: function (event) {
+          setInstruction(event.target.value)
+        },
+      })),
+    ),
+    h(
+      'div',
+      { className: 'wb-card-foot', style: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderTop: '1px solid ' + T.border1 } },
+      h(Btn, {
+        size: 'sm',
+        kind: 'subtle',
+        icon: 'refresh',
+        disabled: refs.length === 0,
+        onClick: function () {
+          WB.assistant.clear()
+        },
+        children: '清空',
+      }),
+      h('div', { className: 'wb-spacer' }),
+      h(Btn, {
+        size: 'sm',
+        kind: 'primary',
+        icon: 'copy',
+        disabled: refs.length === 0,
+        onClick: copyAndOpen,
+        children: '复制上下文并打开会话',
+      }),
+    ),
+  )
+}
+
 /* --------------------------------------------------------------- error gate */
 function LoadingScreen() {
   return h(
@@ -248,6 +380,14 @@ function Toolbar(props) {
       },
     }),
     h(IconBtn, {
+      name: 'sparkles',
+      label: '工作台助手（携带上下文进入会话）',
+      active: !!props.assistantOpen,
+      onClick: function () {
+        WB.assistant.toggle()
+      },
+    }),
+    h(IconBtn, {
       name: 'settings',
       label: '连接与设置',
       active: props.page === 'settings',
@@ -278,6 +418,19 @@ function WorkbenchApp() {
   React.useEffect(function () {
     if (!WB.store.get().data) WB.actions.reload().catch(function () {})
   }, [])
+
+  // TODO 08：修订号轮询，后台/聊天改动几秒内自动体现；正在填表单时跳过
+  React.useEffect(
+    function () {
+      const timer = setInterval(function () {
+        WB.actions.syncCheck().catch(function () {})
+      }, 12000)
+      return function () {
+        clearInterval(timer)
+      }
+    },
+    [],
+  )
 
   React.useEffect(
     function () {
@@ -325,6 +478,7 @@ function WorkbenchApp() {
       h(Toolbar, {
         data: state.data,
         page: page,
+        assistantOpen: state.assistantOpen,
         onOpenPalette: function () {
           setPaletteOpen(true)
         },
@@ -348,6 +502,7 @@ function WorkbenchApp() {
             : h('div', { className: 'wb-page' }, Page ? h(Page, null) : h(MissingPage, { page: page })),
       ),
     ),
+    h(AssistantDrawer, null),
     WB.Palette ? h(WB.Palette, { open: paletteOpen, onClose: function () { setPaletteOpen(false) } }) : null,
     h(TaskFormHost, null),
     h(Toaster, null),
@@ -357,6 +512,9 @@ function WorkbenchApp() {
 /* -------------------------------------------------------------------- apply */
 WB.apply = function apply(ctx) {
   if (ctx.connection) wbConnection = ctx.connection
+  if (typeof WB.setLayout === 'function') {
+    WB.setLayout(ctx.get ? ctx.get('layout') : ctx.layout)
+  }
   if (typeof WB.setUiWorkspace === 'function') {
     WB.setUiWorkspace(ctx.get ? ctx.get('uiWorkspace') : ctx.uiWorkspace)
   }

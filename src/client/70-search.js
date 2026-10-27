@@ -128,6 +128,22 @@ function SearchResultRow(props) {
         children: '收藏',
         onClick: collect,
       }),
+      h(Btn, {
+        size: 'sm',
+        kind: 'subtle',
+        icon: 'sparkles',
+        children: 'AI 分析',
+        onClick: function () {
+          WB.assistant.add({
+            kind: 'source',
+            id: item.id,
+            title: item.title,
+            url: item.url || null,
+            body: item.snippet || '',
+            meta: '来源分组：' + props.groupLabel,
+          })
+        },
+      }),
     ),
   )
 }

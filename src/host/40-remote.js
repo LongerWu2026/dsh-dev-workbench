@@ -22,6 +22,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'updateKnowledge', params: ['id', 'patch'] },
   { method: 'deleteKnowledge', params: ['id'] },
   { method: 'saveRadarItem', params: ['input'] },
+  { method: 'updateRadar', params: ['id', 'patch'] },
   { method: 'deleteRadarItem', params: ['id'] },
   { method: 'recordRun', params: ['input'] },
   { method: 'updateRun', params: ['id', 'patch'] },
@@ -38,6 +39,10 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'github', params: [] },
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
+  { method: 'backup', params: [] },
+  { method: 'backups', params: [] },
+  { method: 'restoreBackup', params: ['id'] },
+  { method: 'revision', params: [] },
   { method: 'diagnostics', params: [] },
 ]
 

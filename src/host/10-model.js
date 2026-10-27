@@ -15,12 +15,14 @@ const AUDIT_LIMIT = 200
 const CANDIDATE_LIMIT = 200
 
 const CANDIDATE_STATUSES = ['pending', 'accepted', 'rejected']
+const OPERATION_LIMIT = 200
 
 const DEFAULT_TOPICS = ['Agent', 'LLM', 'RAG', 'Java', 'Python', '数据库']
 
 function emptyWorkbenchState() {
   return {
     version: HOST_STATE_VERSION,
+    revision: 0,
     updatedAt: hostNowIso(),
     settings: {
       topics: DEFAULT_TOPICS.slice(),
@@ -229,6 +231,8 @@ function normalizeCandidate(raw, existing) {
     confidence:
       typeof confidenceRaw === 'number' && confidenceRaw >= 0 && confidenceRaw <= 1 ? confidenceRaw : null,
     reasons: input.reasons === undefined ? ensureArray(base.reasons) : asTags(input.reasons, 8),
+    /** 提取方式：'rule' = 确定性规则候选（非模型判断），供 UI 与审计区分 */
+    extractor: asString(input.extractor === undefined ? base.extractor : input.extractor, 20) || 'rule',
     status: status,
     taskId: input.taskId === undefined ? base.taskId || null : input.taskId || null,
     createdAt: base.createdAt || hostNowIso(),
@@ -290,31 +294,56 @@ function normalizeState(raw) {
   }
   const state = {
     version: HOST_STATE_VERSION,
+    revision: Number.isFinite(Number(raw.revision)) ? Number(raw.revision) : 0,
     updatedAt: asIso(raw.updatedAt) || hostNowIso(),
     settings: normalizeSettings(raw.settings),
+    // 恢复时必须把「已存的记录自身」当作 base 传入：normalizeX(raw, null) 会把
+    // base 当成空对象，从而为每条记录重新生成 ID，导致 projectId / taskId /
+    // runIds / sourceRefId 等关联在每次加载后全部失效。
     projects: ensureArray(raw.projects)
       .slice(0, 40)
       .map(function (project) {
-        return normalizeProject(project, null)
+        return normalizeProject(project, project)
       }),
     tasks: ensureArray(raw.tasks)
       .slice(0, 2000)
       .map(function (task) {
-        return normalizeTask(task, null)
+        return normalizeTask(task, task)
       }),
     sources: ensureArray(raw.sources).slice(0, 2000),
     runs: ensureArray(raw.runs)
       .slice(0, 2000)
       .map(function (run) {
-        return normalizeRun(run, null)
+        return normalizeRun(run, run)
       }),
-    knowledge: ensureArray(raw.knowledge).slice(0, 2000),
+    knowledge: ensureArray(raw.knowledge)
+      .slice(0, 2000)
+      .map(function (item) {
+        return normalizeKnowledge(item, item)
+      }),
     radar: ensureArray(raw.radar).slice(0, 500),
     connectors: ensureArray(raw.connectors).slice(0, 40),
     candidates: ensureArray(raw.candidates)
       .slice(-CANDIDATE_LIMIT)
       .map(function (candidate) {
-        return normalizeCandidate(candidate, null)
+        return normalizeCandidate(candidate, candidate)
+      }),
+    operations: ensureArray(raw.operations)
+      .slice(-OPERATION_LIMIT)
+      .map(function (operation) {
+        const item = operation && typeof operation === 'object' ? operation : {}
+        return {
+          key: asString(item.key, 160),
+          tool: asString(item.tool, 60),
+          at: asIso(item.at) || hostNowIso(),
+          entityIds: ensureArray(item.entityIds).slice(0, 10).map(function (id) {
+            return asString(id, 80)
+          }),
+          status: asString(item.status, 20) || 'succeeded',
+        }
+      })
+      .filter(function (operation) {
+        return operation.key.length > 0
       }),
     lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),
     lastMentionsFetch: normalizeMentionsReport(raw.lastMentionsFetch),

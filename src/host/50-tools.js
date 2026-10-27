@@ -110,6 +110,12 @@ function workbenchToolDefinitions() {
           dueAt: { type: 'string', description: 'ISO 8601 时间；用户没有明确期限时不要填。' },
           tags: { type: 'array', items: { type: 'string' }, description: '最多 12 个短标签。' },
           projectId: { type: 'string', description: '已存在的项目 id；不确定就省略。' },
+          idempotencyKey: {
+            type: 'string',
+            description:
+              '可选幂等键：同一个键重复调用只会创建一次（用于网络重试或模型重复调用）。' +
+              '建议用「意图 + 目标」的稳定字符串，例如 "create-task:压测结论"（不要用随机值）。',
+          },
         },
         required: ['title'],
         additionalProperties: false,
@@ -118,13 +124,24 @@ function workbenchToolDefinitions() {
       async execute(args) {
         const input = args && typeof args === 'object' ? args : {}
         if (!asString(input.title, 200)) throw new Error('title 不能为空')
-        const state = mutateWorkbenchState(function (current) {
-          const task = normalizeTask(input, null)
-          current.tasks = ensureArray(current.tasks).concat([task])
-          auditEntry(current, 'task.created', task.title + '（来自 Agent 工具）')
+        const key = asString(input.idempotencyKey, 160)
+        if (key) {
+          const previous = findOperation(loadWorkbenchState(), key)
+          if (previous && previous.entityIds.length > 0) {
+            return {
+              text: '幂等命中：' + key + ' 之前已创建（taskId=' + previous.entityIds[0] + '），本次未重复创建。',
+              taskId: previous.entityIds[0],
+              idempotent: true,
+            }
+          }
+        }
+        const result = await mutateWorkbenchState(function (current) {
+          const applied = applyCreateTask(current, Object.assign({}, input))
+          if (key) recordOperation(current, { key: key, tool: 'workbench_create_task', entityIds: [applied.entity.id] })
+          auditEntry(current, 'task.created', applied.entity.title + '（来自 Agent 工具）')
           return current
         })
-        const created = state.tasks[state.tasks.length - 1]
+        const created = result.tasks[result.tasks.length - 1]
         return {
           text: '已创建待办：' + created.title + ' (id=' + created.id + '，状态 ' + created.status + ')',
           taskId: created.id,
@@ -158,17 +175,9 @@ function workbenchToolDefinitions() {
         const patch = Object.assign({}, input)
         delete patch.id
         if (patch.dueAt === '') patch.dueAt = null
-        const state = mutateWorkbenchState(function (current) {
-          const index = ensureArray(current.tasks).findIndex(function (task) {
-            return task.id === input.id
-          })
-          if (index < 0) throw new Error('找不到该待办：' + input.id)
-          const next = normalizeTask(patch, current.tasks[index])
-          next.id = current.tasks[index].id
-          next.createdAt = current.tasks[index].createdAt
-          current.tasks = current.tasks.slice()
-          current.tasks[index] = next
-          auditEntry(current, 'task.updated', next.title + ' → ' + next.status + '（来自 Agent 工具）')
+        const state = await mutateWorkbenchState(function (current) {
+          const applied = applyUpdateTask(current, input.id, patch)
+          auditEntry(current, 'task.updated', applied.entity.title + ' → ' + applied.entity.status + '（来自 Agent 工具）')
           return current
         })
         const updated = state.tasks.find(function (task) {
@@ -194,6 +203,7 @@ function workbenchToolDefinitions() {
             description: '本次执行的最终状态，通常是 completed 或 failed。',
           },
           summary: { type: 'string', description: '一到三句话说明做了什么、结论是什么。' },
+          idempotencyKey: { type: 'string', description: '可选幂等键：同一个键重复调用只登记一次。' },
           profile: { type: 'string', description: '逻辑 Agent 角色，如 Coding Agent / Research Agent。' },
           sessionId: { type: 'string', description: '关联会话 id，便于回跳。' },
           evidence: {
@@ -220,28 +230,24 @@ function workbenchToolDefinitions() {
       async execute(args, exec) {
         const input = args && typeof args === 'object' ? args : {}
         const payload = Object.assign({}, input)
+        const runKey = asString(input.idempotencyKey, 160)
+        if (runKey) {
+          const previous = findOperation(loadWorkbenchState(), runKey)
+          if (previous && previous.entityIds.length > 0) {
+            return {
+              text: '幂等命中：' + runKey + ' 之前已登记（runId=' + previous.entityIds[0] + '），本次未重复登记。',
+              runId: previous.entityIds[0],
+              idempotent: true,
+            }
+          }
+        }
         if (!payload.sessionId && exec && exec.agent && exec.agent.session && exec.agent.session.id) {
           payload.sessionId = String(exec.agent.session.id)
         }
-        const state = mutateWorkbenchState(function (current) {
-          const run = normalizeRun(payload, null)
-          if (run.taskId && !ensureArray(current.tasks).some(function (task) {
-            return task.id === run.taskId
-          })) {
-            throw new Error('关联的待办不存在：' + run.taskId)
-          }
-          current.runs = ensureArray(current.runs).concat([run])
-          if (run.taskId) {
-            current.tasks = ensureArray(current.tasks).map(function (task) {
-              if (task.id !== run.taskId) return task
-              const next = Object.assign({}, task)
-              next.runIds = ensureArray(task.runIds).concat([run.id])
-              next.updatedAt = hostNowIso()
-              if (run.status === 'failed') next.status = 'failed'
-              return next
-            })
-          }
-          auditEntry(current, 'agent.run.created', run.summary || run.id)
+        const state = await mutateWorkbenchState(function (current) {
+          const applied = applyRecordRun(current, payload)
+          if (runKey) recordOperation(current, { key: runKey, tool: 'workbench_record_run', entityIds: [applied.entity.id] })
+          auditEntry(current, 'agent.run.created', applied.entity.summary || applied.entity.id)
           return current
         })
         const run = state.runs[state.runs.length - 1]
@@ -322,6 +328,97 @@ function workbenchToolDefinitions() {
             (lines.length > 0 ? '\n新增：\n' + lines.join('\n') : '\n没有新增（此前已采集过）。') +
             '\n要分析这些消息时，用 workbench_task_brief 或直接读来源证据。',
         }
+      },
+    },
+
+    {
+      name: 'workbench_update_radar',
+      description:
+        '把四段摘要写回一条技术雷达资讯：技术变化 / 应用场景 / 采用风险 / 推荐实践。' +
+        '先用 workbench_fetch_radar 抓取（或联网发现）拿到条目 id，读原文后再归纳并调用本工具。' +
+        '每条结论都应来自原文，不要凭标题猜测；无法确认的段落留空。',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'string', description: '资讯 id（来自抓取报告或快照）。' },
+          change: { type: 'string', description: '技术变化：这次变化的关键事实。' },
+          usage: { type: 'string', description: '应用场景：适合用在哪里。' },
+          risk: { type: 'string', description: '采用风险：可能踩的坑。' },
+          practice: { type: 'string', description: '推荐实践：怎么落地。' },
+        },
+        required: ['id'],
+        additionalProperties: false,
+      },
+      output: { schema: toolOutputSchema(), render: renderToolText },
+      async execute(args) {
+        const input = args && typeof args === 'object' ? args : {}
+        if (!asString(input.id, 100)) throw new Error('id 不能为空')
+        if (!input.change && !input.usage && !input.risk && !input.practice) {
+          throw new Error('至少填写一段摘要（change / usage / risk / practice）')
+        }
+        const state = await mutateWorkbenchState(function (current) {
+          const item = ensureArray(current.radar).find(function (row) {
+            return row.id === input.id
+          })
+          if (!item) throw new Error('找不到该资讯：' + input.id)
+          const index = current.radar.indexOf(item)
+          const next = normalizeRadarItem(
+            {
+              summary: {
+                change: asString(input.change, 800),
+                usage: asString(input.usage, 800),
+                risk: asString(input.risk, 800),
+                practice: asString(input.practice, 800),
+              },
+            },
+            item,
+          )
+          next.id = item.id
+          next.createdAt = item.createdAt
+          current.radar = current.radar.slice()
+          current.radar[index] = next
+          auditEntry(current, 'radar.summary', next.title + '（来自 Agent 工具）')
+          return current
+        })
+        const updated = ensureArray(state.radar).find(function (row) {
+          return row.id === input.id
+        })
+        return { text: '已写回摘要：' + updated.title + '（' + updated.url + '）', radarId: updated.id }
+      },
+    },
+
+    {
+      name: 'workbench_search',
+      description:
+        '统一检索工作台的多路来源（待办 / 知识 / 雷达 / 来源证据 / 本地项目 / 企业云之家 / PR·CI / 互联网），' +
+        '返回按来源分组的结果与每路状态。回答用户问题时先用它取证据，再在回答里给出处；' +
+        '某一路 status 不是 ok 时要如实说明该路不可用，不要把「没查到」说成「不存在」。',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: '检索词。' },
+          includeWeb: { type: 'boolean', description: '是否查互联网（默认 true）。' },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+      output: { schema: toolOutputSchema(), render: renderToolText },
+      async execute(args) {
+        const input = args && typeof args === 'object' ? args : {}
+        const result = await runUnifiedSearch(workbenchCtx, {
+          query: input.query,
+          includeWeb: input.includeWeb !== false,
+        })
+        const lines = []
+        for (const group of result.groups) {
+          lines.push('## ' + group.label + '（' + group.status + '，' + group.items.length + ' 条）')
+          if (group.note) lines.push('说明：' + group.note)
+          for (const item of group.items.slice(0, 6)) {
+            const ref = item.url ? ' — ' + item.url : ''
+            lines.push('- ' + item.title + (item.snippet ? '｜' + item.snippet.slice(0, 80) : '') + ref)
+          }
+        }
+        return { text: '检索「' + input.query + '」共 ' + result.total + ' 条：\n' + lines.join('\n') }
       },
     },
 

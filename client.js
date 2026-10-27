@@ -743,6 +743,9 @@ window.__ModuleLoader__.load({
         /** Transient hand-off from the dashboard to the task center
          *  ({status?|dueFilter?}); the task page consumes it and clears it. */
         taskPreset: null,
+        /** 工作台助手：可移除的上下文引用（task / source / radar / knowledge / search） */
+        assistantOpen: false,
+        assistantRefs: [],
       }
       const listeners = new Set()
       return {
@@ -833,6 +836,7 @@ window.__ModuleLoader__.load({
     /* --------------------------------------------------------------------- RPC */
     let wbConnection = null
     let wbUiWorkspace = null
+    let wbLayout = null
 
     /**
      * Open the harness directory picker. Resolves null when the profile has no
@@ -887,6 +891,70 @@ window.__ModuleLoader__.load({
         })
       }, kind === 'err' ? 6000 : 3200)
       return id
+    }
+
+    /* --------------------------------------------------------------- 助手上下文 */
+    /**
+     * 工作台助手：把「当前在看的东西」作为**可见、可移除**的上下文引用收集起来，
+     * 交给原生会话里的 Agent（它有 workbench_* 工具，结果会写回同一份数据）。
+     * 插件内不嵌模型；这里只负责组装上下文与跳转（TODO 04 的备选路径）。
+     */
+    const assistant = {
+      open() {
+        wbStore.set({ assistantOpen: true })
+      },
+      close() {
+        wbStore.set({ assistantOpen: false })
+      },
+      toggle() {
+        wbStore.set(function (state) {
+          return { assistantOpen: !state.assistantOpen }
+        })
+      },
+      add(ref) {
+        if (!ref || !ref.kind) return
+        wbStore.set(function (state) {
+          const exists = state.assistantRefs.some(function (item) {
+            return item.kind === ref.kind && item.id === ref.id
+          })
+          return {
+            assistantOpen: true,
+            assistantRefs: exists ? state.assistantRefs : state.assistantRefs.concat([ref]).slice(-8),
+          }
+        })
+      },
+      remove(kind, id) {
+        wbStore.set(function (state) {
+          return {
+            assistantRefs: state.assistantRefs.filter(function (item) {
+              return !(item.kind === kind && item.id === id)
+            }),
+          }
+        })
+      },
+      clear() {
+        wbStore.set({ assistantRefs: [] })
+      },
+    }
+
+    /** 把上下文引用渲染成可直接粘贴给会话的 Markdown 简报。 */
+    function assistantBrief(refs, instruction) {
+      const lines = []
+      lines.push('请基于下面的工作台上下文协助我，并在有结论时用 workbench_* 工具写回（创建/更新待办、登记执行记录、写回资讯摘要）。')
+      lines.push('')
+      refs.forEach(function (ref, index) {
+        lines.push('### 上下文 ' + (index + 1) + '：' + (ref.label || ref.kind) + ' · ' + (ref.title || ref.id))
+        if (ref.url) lines.push('- 链接：' + ref.url)
+        if (ref.meta) lines.push('- 信息：' + ref.meta)
+        if (ref.body) {
+          lines.push('- 内容：')
+          lines.push(String(ref.body).slice(0, 1200))
+        }
+        lines.push('')
+      })
+      lines.push('### 我的要求')
+      lines.push(String(instruction || '').trim() || '（在这里补充要求）')
+      return lines.join('\n')
     }
 
     /* ----------------------------------------------------------------- actions */
@@ -1044,6 +1112,37 @@ window.__ModuleLoader__.load({
         return wbRpc('workbench/github', {})
       },
 
+      /**
+       * 自动同步：只比对业务修订号，变新才重取快照；正在编辑表单时跳过，
+       * 避免后台刷新打断输入（TODO 08）。
+       */
+      syncCheck() {
+        const store = wbStore.get()
+        const current = store.data
+        if (!current) return Promise.resolve(false)
+        if (store.taskForm) return Promise.resolve(false)
+        return wbRpc('workbench/revision', {})
+          .then(function (info) {
+            if (!info || Number(info.revision) <= Number(current.revision || 0)) return false
+            return wbRpc('workbench/snapshot', {}).then(function (snapshot) {
+              wbStore.set({ status: 'ready', data: snapshot, error: null })
+              return true
+            })
+          })
+          .catch(function () {
+            return false
+          })
+      },
+
+      backup() {
+        return wbRpc('workbench/backup', {})
+      },
+      backups() {
+        return wbRpc('workbench/backups', {})
+      },
+      restoreBackup(id) {
+        return settle(wbRpc('workbench/restoreBackup', { id: id }), '已从备份恢复')
+      },
       diagnostics() {
         return wbRpc('workbench/diagnostics', {})
       },
@@ -1717,9 +1816,24 @@ window.__ModuleLoader__.load({
       return useStore()
     }
     WB.toast = toast
+    WB.assistant = assistant
+    WB.assistantBrief = assistantBrief
     WB.pickDirectory = pickDirectory
     WB.setUiWorkspace = function (value) {
       wbUiWorkspace = value || null
+    }
+    WB.setLayout = function (value) {
+      wbLayout = value || null
+    }
+    /** 回到原生会话面板（助手把上下文复制到剪贴板后调用）。 */
+    WB.openConversation = function () {
+      if (!wbLayout || typeof wbLayout.selectPanel !== 'function') return false
+      try {
+        wbLayout.selectPanel(null)
+        return true
+      } catch (e) {
+        return false
+      }
     }
     WB.rpc = wbRpc
     WB.fmt = fmt
@@ -1842,6 +1956,138 @@ window.__ModuleLoader__.load({
             h('span', { style: { minWidth: 0, overflowWrap: 'anywhere' } }, item.text),
           )
         }),
+      )
+    }
+
+    /* -------------------------------------------------------------- 工作台助手 */
+    const ASSISTANT_KIND_LABEL = {
+      task: '待办',
+      source: '来源消息',
+      radar: '资讯',
+      knowledge: '知识',
+      search: '检索结果',
+    }
+
+    function AssistantDrawer() {
+      const state = useStore()
+      const [instruction, setInstruction] = React.useState('')
+      if (!state.assistantOpen) return null
+      const refs = Array.isArray(state.assistantRefs) ? state.assistantRefs : []
+
+      function copyAndOpen() {
+        const brief = assistantBrief(refs, instruction)
+        WB.util
+          .copy(brief)
+          .then(function () {
+            WB.toast('上下文简报已复制，正在打开会话…', 'ok')
+            if (WB.openConversation) WB.openConversation()
+            wbStore.set({ assistantOpen: false })
+          })
+          .catch(function (error) {
+            WB.toast(String((error && error.message) || error), 'err')
+          })
+      }
+
+      return h(
+        'aside',
+        {
+          style: {
+            position: 'absolute',
+            top: 0,
+            right: 0,
+            bottom: 0,
+            width: 332,
+            zIndex: 40,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 0,
+            borderLeft: '1px solid ' + T.border1,
+            background: T.layer1,
+            boxShadow: '-12px 0 32px rgba(0,0,0,.28)',
+          },
+        },
+        h(
+          'div',
+          { className: 'wb-card-head', style: { borderBottom: '1px solid ' + T.border1 } },
+          h('span', { className: 'wb-card-icon' }, h(Icon, { name: 'sparkles', size: 15 })),
+          h(
+            'div',
+            { className: 'wb-card-titles' },
+            h('h3', { className: 'wb-card-title' }, '工作台助手'),
+            h('p', { className: 'wb-card-sub' }, '把下方上下文带进原生会话，Agent 会写回同一份数据'),
+          ),
+          h(
+            'div',
+            { className: 'wb-card-actions' },
+            h(IconBtn, {
+              name: 'close',
+              label: '关闭助手',
+              onClick: function () {
+                WB.assistant.close()
+              },
+            }),
+          ),
+        ),
+        h(
+          'div',
+          { style: { flex: '1 1 auto', overflow: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 } },
+          refs.length === 0
+            ? h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.7 } },
+                '还没有上下文。在待办、资讯、知识或搜索结果上点「AI 分析」，就会把那条记录加到这里（可随时移除）。')
+            : refs.map(function (ref) {
+                return h(
+                  'div',
+                  {
+                    key: ref.kind + ':' + ref.id,
+                    style: { display: 'flex', alignItems: 'flex-start', gap: 6, padding: '8px 10px', border: '1px solid ' + T.border1, borderRadius: 10 },
+                  },
+                  h(Badge, { tone: 'idle' }, ASSISTANT_KIND_LABEL[ref.kind] || ref.kind),
+                  h(
+                    'div',
+                    { style: { flex: '1 1 auto', minWidth: 0, fontSize: 11.5, lineHeight: 1.5 } },
+                    h('div', { style: { fontWeight: 500, overflowWrap: 'anywhere' } }, ref.title || ref.id),
+                    ref.body ? h('div', { className: 'wb-tiny wb-muted wb-clamp2' }, String(ref.body).slice(0, 120)) : null,
+                  ),
+                  h(IconBtn, {
+                    name: 'close',
+                    label: '移除该上下文',
+                    onClick: function () {
+                      WB.assistant.remove(ref.kind, ref.id)
+                    },
+                  }),
+                )
+              }),
+          h(Field, { label: '我的要求' }, h(Textarea, {
+            value: instruction,
+            placeholder: '例如：帮我判断这条消息要不要建待办，并补全截止时间',
+            onChange: function (event) {
+              setInstruction(event.target.value)
+            },
+          })),
+        ),
+        h(
+          'div',
+          { className: 'wb-card-foot', style: { display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px', borderTop: '1px solid ' + T.border1 } },
+          h(Btn, {
+            size: 'sm',
+            kind: 'subtle',
+            icon: 'refresh',
+            disabled: refs.length === 0,
+            onClick: function () {
+              WB.assistant.clear()
+            },
+            children: '清空',
+          }),
+          h('div', { className: 'wb-spacer' }),
+          h(Btn, {
+            size: 'sm',
+            kind: 'primary',
+            icon: 'copy',
+            disabled: refs.length === 0,
+            onClick: copyAndOpen,
+            children: '复制上下文并打开会话',
+          }),
+        ),
       )
     }
 
@@ -2002,6 +2248,14 @@ window.__ModuleLoader__.load({
           },
         }),
         h(IconBtn, {
+          name: 'sparkles',
+          label: '工作台助手（携带上下文进入会话）',
+          active: !!props.assistantOpen,
+          onClick: function () {
+            WB.assistant.toggle()
+          },
+        }),
+        h(IconBtn, {
           name: 'settings',
           label: '连接与设置',
           active: props.page === 'settings',
@@ -2032,6 +2286,19 @@ window.__ModuleLoader__.load({
       React.useEffect(function () {
         if (!WB.store.get().data) WB.actions.reload().catch(function () {})
       }, [])
+
+      // TODO 08：修订号轮询，后台/聊天改动几秒内自动体现；正在填表单时跳过
+      React.useEffect(
+        function () {
+          const timer = setInterval(function () {
+            WB.actions.syncCheck().catch(function () {})
+          }, 12000)
+          return function () {
+            clearInterval(timer)
+          }
+        },
+        [],
+      )
 
       React.useEffect(
         function () {
@@ -2079,6 +2346,7 @@ window.__ModuleLoader__.load({
           h(Toolbar, {
             data: state.data,
             page: page,
+            assistantOpen: state.assistantOpen,
             onOpenPalette: function () {
               setPaletteOpen(true)
             },
@@ -2102,6 +2370,7 @@ window.__ModuleLoader__.load({
                 : h('div', { className: 'wb-page' }, Page ? h(Page, null) : h(MissingPage, { page: page })),
           ),
         ),
+        h(AssistantDrawer, null),
         WB.Palette ? h(WB.Palette, { open: paletteOpen, onClose: function () { setPaletteOpen(false) } }) : null,
         h(TaskFormHost, null),
         h(Toaster, null),
@@ -2111,6 +2380,9 @@ window.__ModuleLoader__.load({
     /* -------------------------------------------------------------------- apply */
     WB.apply = function apply(ctx) {
       if (ctx.connection) wbConnection = ctx.connection
+      if (typeof WB.setLayout === 'function') {
+        WB.setLayout(ctx.get ? ctx.get('layout') : ctx.layout)
+      }
       if (typeof WB.setUiWorkspace === 'function') {
         WB.setUiWorkspace(ctx.get ? ctx.get('uiWorkspace') : ctx.uiWorkspace)
       }
@@ -2642,6 +2914,18 @@ window.__ModuleLoader__.load({
               WB.focusTask(task.id)
             },
           }),
+          h(IconBtn, {
+            name: 'sparkles',
+            label: 'AI 分析这条待办（带上下文进入会话）',
+            onClick: function () {
+              WB.assistant.add({
+                kind: 'task',
+                id: task.id,
+                title: task.title,
+                body: [task.description, '状态：' + task.status + ' · 优先级：' + task.priority].filter(Boolean).join('\n'),
+              })
+            },
+          }),
         ),
       )
     }
@@ -2762,6 +3046,19 @@ window.__ModuleLoader__.load({
               name: 'edit',
               label: '编辑资讯与四段摘要',
               onClick: props.onEdit,
+            }),
+            h(IconBtn, {
+              name: 'sparkles',
+              label: 'AI 分析这条资讯（带上下文进入会话）',
+              onClick: function () {
+                WB.assistant.add({
+                  kind: 'radar',
+                  id: item.id,
+                  title: item.title,
+                  url: item.url || null,
+                  body: item.excerpt || [summaryParts.map(function (part) { return part.label + '：' + part.text }).join('；')].join(''),
+                })
+              },
             }),
             summaryParts.length > 0
               ? h(IconBtn, {
@@ -9127,6 +9424,19 @@ window.__ModuleLoader__.load({
               },
             }),
             h(IconBtn, {
+              name: 'sparkles',
+              label: 'AI 分析这条知识（带上下文进入会话）',
+              onClick: function () {
+                WB.assistant.add({
+                  kind: 'knowledge',
+                  id: item.id,
+                  title: item.title,
+                  url: item.url || null,
+                  body: String(item.body || '').slice(0, 800),
+                })
+              },
+            }),
+            h(IconBtn, {
               name: 'copy',
               label: '复制条目',
               onClick: function () {
@@ -9997,6 +10307,7 @@ window.__ModuleLoader__.load({
       const [projectPath, setProjectPath] = React.useState('')
       const [picking, setPicking] = React.useState(false)
       const [projectEdit, setProjectEdit] = React.useState(null)
+      const [backups, setBackups] = React.useState([])
       const [feedLabel, setFeedLabel] = React.useState('')
       const [feedUrl, setFeedUrl] = React.useState('')
       const [feedTopics, setFeedTopics] = React.useState('')
@@ -10023,6 +10334,11 @@ window.__ModuleLoader__.load({
 
       React.useEffect(function () {
         runDiagnostics()
+        WB.actions.backups()
+          .then(function (result) {
+            setBackups(result.backups || [])
+          })
+          .catch(function () {})
       }, [])
 
       function patchSettings(patch) {
@@ -10595,6 +10911,17 @@ window.__ModuleLoader__.load({
                   'div',
                   { className: 'wb-row wb-row--wrap' },
                   h(Btn, { icon: 'download', size: 'sm', onClick: exportJson, children: '导出 JSON' }),
+                h(Btn, {
+                  icon: 'save',
+                  size: 'sm',
+                  onClick: function () {
+                    WB.actions.backup().then(function (result) {
+                      setBackups(result.backups || [])
+                      WB.toast('已创建备份', 'ok')
+                    }).catch(function () {})
+                  },
+                  children: '立即备份',
+                }),
                   h(Btn, {
                     icon: 'sparkles',
                     size: 'sm',
@@ -10609,6 +10936,37 @@ window.__ModuleLoader__.load({
                   { className: 'wb-hint', style: { margin: '2px 0 0' } },
                   '“载入示例数据”会写入若干标注为示例的待办与资讯，用来快速看清布局；随时可重置清空。',
                 ),
+                backups.length > 0
+                  ? h(
+                      'div',
+                      { className: 'wb-stack', style: { gap: 4 } },
+                      h('div', { className: 'wb-label' }, '可用备份（每天首次写入自动留一份，保留 5 份）'),
+                      backups.slice(0, 5).map(function (item) {
+                        return h(
+                          'div',
+                          { key: item.id, className: 'wb-row', style: { gap: 8 } },
+                          h('span', { className: 'wb-mono wb-tiny wb-ellipsis', style: { flex: '1 1 auto' } }, item.id),
+                          h('span', { className: 'wb-tiny wb-muted' }, WB.fmt.bytes(item.bytes)),
+                          h(Btn, {
+                            size: 'sm',
+                            kind: 'subtle',
+                            icon: 'refresh',
+                            onClick: function () {
+                              if (!window.confirm('用这份备份覆盖当前数据？当前文件会先自动备份。')) return
+                              WB.actions
+                                .restoreBackup(item.id)
+                                .then(function () {
+                                  WB.toast('已从备份恢复', 'ok')
+                                  WB.actions.reload().catch(function () {})
+                                })
+                                .catch(function () {})
+                            },
+                            children: '恢复',
+                          }),
+                        )
+                      }),
+                    )
+                  : null,
                 h(Divider, null),
                 h(
                   'div',
@@ -11181,6 +11539,22 @@ window.__ModuleLoader__.load({
             icon: 'book',
             children: '收藏',
             onClick: collect,
+          }),
+          h(Btn, {
+            size: 'sm',
+            kind: 'subtle',
+            icon: 'sparkles',
+            children: 'AI 分析',
+            onClick: function () {
+              WB.assistant.add({
+                kind: 'source',
+                id: item.id,
+                title: item.title,
+                url: item.url || null,
+                body: item.snippet || '',
+                meta: '来源分组：' + props.groupLabel,
+              })
+            },
           }),
         ),
       )

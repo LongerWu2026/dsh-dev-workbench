@@ -32,6 +32,57 @@ function requireTask(state, id) {
   return task
 }
 
+/* ---------------------------------------------------------------------------
+ * 统一写入原语：返回 { state, entity }，由 workbenchApi 与 Agent 工具共用。
+ * 工具此前各自复制一份写入逻辑，容易与 Remote 路径行为分叉（TODO 04）。
+ * ------------------------------------------------------------------------- */
+function applyCreateTask(state, payload) {
+  if (payload.projectId === undefined && state.settings.defaultProjectId) {
+    payload.projectId = state.settings.defaultProjectId
+  }
+  const task = normalizeTask(payload, null)
+  state.tasks = ensureArray(state.tasks).concat([task])
+  auditEntry(state, 'task.created', task.title)
+  return { state: state, entity: task }
+}
+
+function applyUpdateTask(state, id, patch) {
+  const index = ensureArray(state.tasks).findIndex(function (task) {
+    return task.id === id
+  })
+  if (index < 0) throw new Error('找不到该待办：' + String(id))
+  const next = normalizeTask(patch || {}, state.tasks[index])
+  next.id = state.tasks[index].id
+  next.createdAt = state.tasks[index].createdAt
+  state.tasks = state.tasks.slice()
+  state.tasks[index] = next
+  auditEntry(state, 'task.updated', next.title + ' → ' + next.status)
+  return { state: state, entity: next }
+}
+
+function applyRecordRun(state, payload) {
+  const run = normalizeRun(payload || {}, null)
+  if (run.taskId && !ensureArray(state.tasks).some(function (task) {
+    return task.id === run.taskId
+  })) {
+    throw new Error('关联的待办不存在：' + run.taskId)
+  }
+  state.runs = ensureArray(state.runs).concat([run])
+  if (run.taskId) {
+    state.tasks = ensureArray(state.tasks).map(function (task) {
+      if (task.id !== run.taskId) return task
+      const next = Object.assign({}, task)
+      next.runIds = ensureArray(task.runIds).concat([run.id])
+      next.updatedAt = hostNowIso()
+      if (run.status === 'failed') next.status = 'failed'
+      else if (run.status === 'running' && (task.status === 'ready' || task.status === 'draft')) next.status = 'running'
+      return next
+    })
+  }
+  auditEntry(state, 'agent.run.created', run.summary || run.id)
+  return { state: state, entity: run }
+}
+
 const workbenchApi = {
   async snapshot() {
     return workbenchServiceState()
@@ -46,30 +97,16 @@ const workbenchApi = {
   },
 
   async createTask(input) {
-    const payload = input && typeof input === 'object' ? input : {}
+    const payload = input && typeof input === 'object' ? Object.assign({}, input) : {}
     if (!asString(payload.title, 200)) throw new Error('待办标题不能为空')
     return mutateWorkbenchState(function (state) {
-      if (payload.projectId === undefined && state.settings.defaultProjectId) {
-        payload.projectId = state.settings.defaultProjectId
-      }
-      const task = normalizeTask(payload, null)
-      state.tasks = ensureArray(state.tasks).concat([task])
-      auditEntry(state, 'task.created', task.title)
-      return state
+      return applyCreateTask(state, payload).state
     })
   },
 
   async updateTask(id, patch) {
     return mutateWorkbenchState(function (state) {
-      const task = requireTask(state, id)
-      const next = normalizeTask(patch || {}, task)
-      next.id = task.id
-      next.createdAt = task.createdAt
-      const index = state.tasks.indexOf(task)
-      state.tasks = state.tasks.slice()
-      state.tasks[index] = next
-      auditEntry(state, 'task.updated', next.title + ' → ' + next.status)
-      return state
+      return applyUpdateTask(state, id, patch).state
     })
   },
 
@@ -177,26 +214,7 @@ const workbenchApi = {
 
   async recordRun(input) {
     return mutateWorkbenchState(function (state) {
-      const run = normalizeRun(input || {}, null)
-      if (run.taskId && !ensureArray(state.tasks).some(function (task) {
-        return task.id === run.taskId
-      })) {
-        throw new Error('关联的待办不存在：' + run.taskId)
-      }
-      state.runs = ensureArray(state.runs).concat([run])
-      if (run.taskId) {
-        state.tasks = ensureArray(state.tasks).map(function (task) {
-          if (task.id !== run.taskId) return task
-          const next = Object.assign({}, task)
-          next.runIds = ensureArray(task.runIds).concat([run.id])
-          next.updatedAt = hostNowIso()
-          if (run.status === 'failed') next.status = 'failed'
-          else if (run.status === 'running' && (task.status === 'ready' || task.status === 'draft')) next.status = 'running'
-          return next
-        })
-      }
-      auditEntry(state, 'agent.run.created', run.summary || run.id)
-      return state
+      return applyRecordRun(state, input).state
     })
   },
 
@@ -312,7 +330,41 @@ const workbenchApi = {
   },
 
   async fetchRadar() {
-    return runRadarFetch(workbenchContext())
+    // 未配置 RSS 时按关注主题走联网发现（TODO 06 的默认路径）
+    return runRadarFetchOrDiscover(workbenchContext())
+  },
+
+  /** 写回四段摘要（Agent 读原文后调用）；只改摘要字段，不动来源与时间。 */
+  async updateRadar(id, patch) {
+    return mutateWorkbenchState(function (state) {
+      const item = ensureArray(state.radar).find(function (row) {
+        return row.id === id
+      })
+      if (!item) throw new Error('找不到该资讯：' + String(id))
+      const summary = patch && patch.summary && typeof patch.summary === 'object' ? patch.summary : null
+      const index = state.radar.indexOf(item)
+      const next = normalizeRadarItem(
+        {
+          title: patch && patch.title !== undefined ? patch.title : item.title,
+          topics: patch && patch.topics !== undefined ? patch.topics : item.topics,
+          summary: summary
+            ? {
+                change: asString(summary.change, 800),
+                usage: asString(summary.usage, 800),
+                risk: asString(summary.risk, 800),
+                practice: asString(summary.practice, 800),
+              }
+            : item.summary,
+        },
+        item,
+      )
+      next.id = item.id
+      next.createdAt = item.createdAt
+      state.radar = state.radar.slice()
+      state.radar[index] = next
+      auditEntry(state, 'radar.summary', next.title)
+      return state
+    })
   },
 
   /**
@@ -468,6 +520,30 @@ const workbenchApi = {
   /** GitHub 只读快照（PR / CI），走 gh CLI 白名单命令。 */
   async github() {
     return buildGithubSnapshot(workbenchContext())
+  },
+
+  /** 手动备份 + 列出 + 恢复（TODO 11）。 */
+  async backup() {
+    const path = createBackup('manual')
+    return {
+      created: path,
+      backups: listBackups().slice(0, BACKUP_KEEP),
+    }
+  },
+
+  async backups() {
+    return { backups: listBackups().slice(0, BACKUP_KEEP) }
+  },
+
+  async restoreBackup(id) {
+    const state = restoreBackup(id)
+    return state
+  },
+
+  /** 轻量版本探测：Client 轮询这个端点，只有 revision 变新才重取整份快照。 */
+  async revision() {
+    const state = loadWorkbenchState()
+    return { revision: Number(state.revision) || 0, updatedAt: state.updatedAt }
   },
 
   async diagnostics() {

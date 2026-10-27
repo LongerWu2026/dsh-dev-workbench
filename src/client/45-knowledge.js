@@ -263,6 +263,19 @@ function knowPage() {
           },
         }),
         h(IconBtn, {
+          name: 'sparkles',
+          label: 'AI 分析这条知识（带上下文进入会话）',
+          onClick: function () {
+            WB.assistant.add({
+              kind: 'knowledge',
+              id: item.id,
+              title: item.title,
+              url: item.url || null,
+              body: String(item.body || '').slice(0, 800),
+            })
+          },
+        }),
+        h(IconBtn, {
           name: 'copy',
           label: '复制条目',
           onClick: function () {
