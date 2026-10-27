@@ -152,7 +152,7 @@ function NavRail(props) {
       h(
         'div',
         { style: { minWidth: 0 } },
-        h('strong', null, WB.t('app.title', '开发者智能工作台')),
+        h('strong', null, WB.t('app.title', '智能工作台')),
       ),
     ),
     WB.NAV_GROUPS.map(function (group) {
@@ -406,7 +406,7 @@ WB.apply = function apply(ctx) {
             id: WB.PANEL_KEY,
             order: 30,
             label: function () {
-              return WB.t('app.title', '开发者智能工作台')
+              return WB.t('app.title', '智能工作台')
             },
           },
           WorkbenchIcon,

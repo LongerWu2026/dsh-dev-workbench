@@ -34,7 +34,7 @@ function toolInitialState() {
       error: '',
     },
     timestamp: { input: String(Date.now()), output: '', error: '' },
-    base64: { mode: 'encode', input: '开发者智能工作台 · local only', output: '', error: '' },
+    base64: { mode: 'encode', input: '智能工作台 · local only', output: '', error: '' },
     url: {
       mode: 'encode',
       input: 'https://example.com/search?q=开发 工具&page=2',

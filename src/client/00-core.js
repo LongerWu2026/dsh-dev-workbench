@@ -753,7 +753,7 @@ function useStore() {
 // 因此 zh / en 两个字典内容相同，避免英文环境下导航出现 Briefing / Task center 之类。
 const WB_DICT = {
   zh: {
-    'app.title': '开发者智能工作台',
+    'app.title': '智能工作台',
     'app.subtitle': '每天的入口',
     'nav.overview': '概览',
     'nav.work': '工作',

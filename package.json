@@ -2,7 +2,7 @@
   "name": "dsh-dev-workbench",
   "version": "0.1.0",
   "private": true,
-  "description": "开发者智能工作台 — DeepSeek Harness 原生插件：今日简报、任务中心、Agent 中心、技术雷达与离线开发工具箱。",
+  "description": "智能工作台 — DeepSeek Harness 原生插件：今日简报、任务中心、Agent 中心、技术雷达与离线开发工具箱。",
   "type": "module",
   "main": "index.js",
   "exports": {

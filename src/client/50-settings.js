@@ -674,7 +674,7 @@ function SettingsPage() {
 
         h(
           Panel,
-          { title: '关于', sub: '开发者智能工作台 0.1.0（dsh-dev-workbench）', icon: 'info' },
+          { title: '关于', sub: '智能工作台 0.1.0（dsh-dev-workbench）', icon: 'info' },
           h(
             'div',
             { className: 'wb-stack wb-tiny wb-muted', style: { gap: 5 } },

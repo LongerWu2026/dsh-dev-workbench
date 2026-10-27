@@ -1,4 +1,4 @@
-# 开发者智能工作台（dsh-dev-workbench）
+# 智能工作台（dsh-dev-workbench）
 
 DeepSeek Harness 的原生 Cordis 插件（Host + Client 双半），把「今天要处理的事」收进一个常驻面板：今日简报、任务中心、Agent 执行记录、离线开发工具箱、知识空间与连接设置。
 
@@ -36,7 +36,7 @@ dsh plugin --profile desktop remove dsh-dev-workbench
 
 | 层 | 文件 | 职责 |
 | --- | --- | --- |
-| 插件清单 | `package.json` | 包名/目录名 `dsh-dev-workbench`（技术标识，ASCII）；界面文案与插件页显示名「开发者智能工作台」为中文 |
+| 插件清单 | `package.json` | 包名/目录名 `dsh-dev-workbench`（技术标识，ASCII）；界面文案与插件页显示名「智能工作台」为中文 |
 | 补丁层 | `cordis.patch.yml` | 插入一行 `dev-workbench` 加载 `index.js` 作为 Host 半 |
 | Host | `src/host/*.js` → `index.js` | 状态权威、持久化、`workbench/*` Remote、`workbench_*` Agent 工具 |
 | Client | `src/client/*.js` → `client.js` | `main` 与 `sidebar.panellist` 两个插槽的页面与图标 |

@@ -778,7 +778,7 @@ window.__ModuleLoader__.load({
     // 因此 zh / en 两个字典内容相同，避免英文环境下导航出现 Briefing / Task center 之类。
     const WB_DICT = {
       zh: {
-        'app.title': '开发者智能工作台',
+        'app.title': '智能工作台',
         'app.subtitle': '每天的入口',
         'nav.overview': '概览',
         'nav.work': '工作',
@@ -1901,7 +1901,7 @@ window.__ModuleLoader__.load({
           h(
             'div',
             { style: { minWidth: 0 } },
-            h('strong', null, WB.t('app.title', '开发者智能工作台')),
+            h('strong', null, WB.t('app.title', '智能工作台')),
           ),
         ),
         WB.NAV_GROUPS.map(function (group) {
@@ -2155,7 +2155,7 @@ window.__ModuleLoader__.load({
                 id: WB.PANEL_KEY,
                 order: 30,
                 label: function () {
-                  return WB.t('app.title', '开发者智能工作台')
+                  return WB.t('app.title', '智能工作台')
                 },
               },
               WorkbenchIcon,
@@ -5623,7 +5623,7 @@ window.__ModuleLoader__.load({
           error: '',
         },
         timestamp: { input: String(Date.now()), output: '', error: '' },
-        base64: { mode: 'encode', input: '开发者智能工作台 · local only', output: '', error: '' },
+        base64: { mode: 'encode', input: '智能工作台 · local only', output: '', error: '' },
         url: {
           mode: 'encode',
           input: 'https://example.com/search?q=开发 工具&page=2',
@@ -10052,7 +10052,7 @@ window.__ModuleLoader__.load({
 
             h(
               Panel,
-              { title: '关于', sub: '开发者智能工作台 0.1.0（dsh-dev-workbench）', icon: 'info' },
+              { title: '关于', sub: '智能工作台 0.1.0（dsh-dev-workbench）', icon: 'info' },
               h(
                 'div',
                 { className: 'wb-stack wb-tiny wb-muted', style: { gap: 5 } },
