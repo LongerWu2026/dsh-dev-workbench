@@ -556,6 +556,27 @@ button.wb-stat:hover { border-color: var(--dsw-alias-border-l2); }
 .wb-table tr:last-child td { border-bottom: 0; }
 .wb-table tbody tr:hover { background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 45%, transparent); }
 
+.wb-assistant-suggest {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: 9px;
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--dsw-alias-label-secondary);
+  font: inherit;
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .12s ease, color .12s ease;
+}
+.wb-assistant-suggest:hover { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-label-primary); }
+.wb-assistant-suggest span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .wb-kbd {
   display: inline-block;
   min-width: 17px;

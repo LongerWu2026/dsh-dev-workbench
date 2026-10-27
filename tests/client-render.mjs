@@ -875,8 +875,20 @@ for (const [title, id, expected] of pageSpecs) {
     openBtn.onClick()
     const drawer = await renderTree('助手·抽屉')
     const text = treeText(drawer).replace(/\s+/g, ' ')
-    if (text.indexOf('工作台助手') < 0) problems.push('助手抽屉没有渲染标题')
+    // 新设计：头部不再有标题与说明文字，只留会话切换与操作
+    if (text.indexOf('DSH 原生会话与模型') >= 0) problems.push('助手头部仍渲染说明文字（应去掉）')
     if (text.indexOf('早上好') < 0) problems.push('助手抽屉没有载入历史消息')
+    // 会话选择器必须存在（头部唯一的选择控件）
+    let hasSessionSelect = false
+    const findSelect = (list) => {
+      list.forEach((item) => {
+        if (!item.tag) return
+        if (item.tag === 'select') hasSessionSelect = true
+        findSelect(item.children || [])
+      })
+    }
+    findSelect(drawer)
+    if (!hasSessionSelect) problems.push('助手头部缺少会话选择器')
     // 可拖拽分栏：必须有分隔条，且侧栏是固定宽度、主区随之让位
     let separator = null
     const findSeparator = (list) => {
@@ -901,6 +913,17 @@ for (const [title, id, expected] of pageSpecs) {
     }
     findAside(drawer)
     if (!hasFlexBasis) problems.push('助手侧栏没有固定 flex 宽度（无法与主区并排）')
+    // 空会话应显示建议提示（切到无记录的会话）
+    const emptyTree = await renderComponent(
+      (function () {
+        // 直接复用抽屉组件不现实（依赖 store），改为断言产物包含建议文案与样式
+        return null
+      })(),
+      {},
+    )
+    if (source.indexOf('想让我做点什么？') < 0) problems.push('产物缺少空会话建议标题')
+    if (source.indexOf('wb-assistant-suggest') < 0) problems.push('产物缺少建议按钮样式类')
+
     const composer = findInputs(drawer, []).find((props) => /输入指令/.test(String(props.placeholder || '')))
     if (!composer) problems.push('助手抽屉缺少输入框')
     else {

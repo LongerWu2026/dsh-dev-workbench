@@ -131,7 +131,6 @@ function AssistantDrawer() {
     [width],
   )
 
-  // 拖动左边缘调整宽度：工作台主区是 flex 兄弟节点，宽了会自动让位
   function startResize(event) {
     event.preventDefault()
     const startX = event.clientX
@@ -159,12 +158,9 @@ function AssistantDrawer() {
         setMessages((result && result.messages) || [])
         if (result && result.sessionId) setActiveId(result.sessionId)
       })
-      .catch(function () {
-        /* 读不到历史不影响继续对话 */
-      })
+      .catch(function () {})
   }
 
-  // 打开时载入会话列表与当前会话记录
   React.useEffect(
     function () {
       if (!open || loaded) return
@@ -218,22 +214,16 @@ function AssistantDrawer() {
         if (!result || result.status !== 'ok') {
           setSending(false)
           const note = (result && result.note) || ('状态：' + (result && result.status))
-          setError(
-            /resume failed|SessionPersistenceNotFound/i.test(note)
-              ? '助手会话已失效且自动重建失败。点标题栏「新会话」重开一个即可继续。'
-              : note,
-          )
+          setError(/resume failed|SessionPersistenceNotFound/i.test(note) ? '助手会话已失效，点右上「新会话」重开一个即可继续。' : note)
           return
         }
         let cursor = Number(result.fromSeq) || 0
         const sid = result.sessionId
-        // Host 可能在会话日志丢失后重建了会话：同步到新 id，避免后续继续用旧 id
         if (sid && activeId && String(sid) !== String(activeId)) {
           setActiveId(String(sid))
           WB.toast('原助手会话已失效，已自动切换到新会话', 'info')
         }
         const startedAt = Date.now()
-        // 方案 A1：每 400ms 取增量，工具调用/回复分段边跑边显示
         function tick() {
           WB.actions
             .assistantDelta(sid, cursor)
@@ -252,7 +242,6 @@ function AssistantDrawer() {
                 if (!delta.turnActive || timeout) {
                   setSending(false)
                   if (timeout) setError('本轮超过 3 分钟仍未结束，可稍后在主面板查看。')
-                  // 助手可能已用工具改过数据，对齐一次
                   WB.actions.reload().catch(function () {})
                   WB.actions
                     .assistantSessions(12)
@@ -300,15 +289,17 @@ function AssistantDrawer() {
       .catch(function () {})
   }
 
-  const sessionOptions = (sessions.length > 0 ? sessions : [{ id: activeId || '', title: '助手会话' }]).map(function (item) {
-    return { value: item.id, label: (item.isAssistant ? '★ ' : '') + (item.title || item.id) }
+  const sessionOptions = (sessions.length > 0 ? sessions : [{ id: activeId || '', title: '当前会话' }]).map(function (item) {
+    return { value: item.id, label: (item.isAssistant ? '★ ' : '') + WB.util.truncate(item.title || item.id, 22) }
   })
+
+  const hasHistory = messages.length > 0
 
   return h(
     'aside',
     {
+      className: 'wb-assistant',
       style: {
-        // 作为 .wb-root 的 flex 子项：主区 flex:1，助手固定宽度，工作台会随之变窄
         flex: '0 0 ' + width + 'px',
         width: width,
         minWidth: 240,
@@ -326,75 +317,105 @@ function AssistantDrawer() {
       'aria-label': '拖动调整助手宽度',
       title: '拖动调整宽度',
       onMouseDown: startResize,
-      style: {
-        position: 'absolute',
-        left: -3,
-        top: 0,
-        bottom: 0,
-        width: 6,
-        cursor: 'col-resize',
-        zIndex: 5,
-      },
+      style: { position: 'absolute', left: -3, top: 0, bottom: 0, width: 6, cursor: 'col-resize', zIndex: 5 },
     }),
+
+    /* ---- 头部：只保留会话切换与三个操作，不再有标题与说明 ---- */
     h(
       'div',
-      { className: 'wb-card-head', style: { borderBottom: '1px solid ' + T.border1 } },
-      h('span', { className: 'wb-card-icon' }, h(Icon, { name: 'sparkles', size: 15 })),
-      h(
-        'div',
-        { className: 'wb-card-titles' },
-        h('h3', { className: 'wb-card-title' }, '工作台助手'),
-        h('p', { className: 'wb-card-sub' }, 'DSH 原生会话与模型；可直接读写工作台数据'),
-      ),
-      h(
-        'div',
-        { className: 'wb-card-actions' },
-        h(IconBtn, { name: 'plus', label: '新会话', onClick: newSession }),
-        h(IconBtn, {
-          name: 'external',
-          label: '在主面板打开该会话',
-          onClick: function () {
-            if (activeId && WB.openSessionById) WB.openSessionById(activeId)
-            else if (WB.openConversation) WB.openConversation()
-          },
-        }),
-        h(IconBtn, { name: 'close', label: '关闭助手', onClick: function () { WB.assistant.close() } }),
-      ),
+      {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '7px 8px 7px 10px',
+          borderBottom: '1px solid ' + T.border1,
+          flex: 'none',
+        },
+      },
+      h('div', { style: { flex: '1 1 auto', minWidth: 0 } }, h(Select, {
+        value: activeId || '',
+        options: sessionOptions,
+        title: '切换原生会话',
+        onChange: function (event) {
+          switchSession(event.target.value)
+        },
+      })),
+      h(IconBtn, { name: 'plus', label: '新会话', onClick: newSession }),
+      h(IconBtn, {
+        name: 'external',
+        label: '在主面板打开该会话',
+        onClick: function () {
+          if (activeId && WB.openSessionById) WB.openSessionById(activeId)
+          else if (WB.openConversation) WB.openConversation()
+        },
+      }),
+      h(IconBtn, { name: 'close', label: '关闭助手', onClick: function () { WB.assistant.close() } }),
     ),
-    h(
-      'div',
-      { style: { padding: '8px 12px', borderBottom: '1px solid ' + T.border1, display: 'flex', alignItems: 'center', gap: 6 } },
-      h('span', { className: 'wb-tiny wb-muted' }, '会话'),
-      h(
-        'div',
-        { style: { flex: '1 1 auto', minWidth: 0 } },
-        h(Select, {
-          value: activeId || '',
-          options: sessionOptions,
-          onChange: function (event) {
-            switchSession(event.target.value)
-          },
-        }),
-      ),
-    ),
+
+    /* ---- 消息区 ---- */
     h(
       'div',
       {
         ref: bodyRef,
-        style: { flex: '1 1 auto', overflow: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 },
+        style: { flex: '1 1 auto', overflow: 'auto', padding: '14px 14px 10px', display: 'flex', flexDirection: 'column', gap: 12 },
       },
-      messages.length === 0 && !sending
+      !hasHistory && !sending
         ? h(
             'div',
-            { className: 'wb-tiny wb-muted', style: { lineHeight: 1.8 } },
-            h('p', { style: { margin: '0 0 6px' } }, '可以直接问我工作台里的事，例如：'),
-            h('p', { style: { margin: '0 0 4px' } }, '· 今天还有哪些没做完？帮我把逾期的排一下'),
-            h('p', { style: { margin: '0 0 4px' } }, '· 把这个消息整理成待办，截止放到明天'),
-            h('p', { style: { margin: '0 0 4px' } }, '· 这些资讯里哪条和限流有关？'),
-            h('p', { style: { margin: 0 } }, '带上下文提问时，先在卡片上点「AI 分析」把相关记录加进来。'),
+            {
+              style: {
+                margin: 'auto 0',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: 12,
+                padding: '8px 4px 14px',
+                textAlign: 'center',
+              },
+            },
+            h(
+              'div',
+              {
+                style: {
+                  display: 'grid',
+                  placeItems: 'center',
+                  width: 46,
+                  height: 46,
+                  borderRadius: 14,
+                  background: 'color-mix(in srgb, ' + T.accent + ' 14%, transparent)',
+                  color: T.accent,
+                },
+              },
+              h(Icon, { name: 'sparkles', size: 22 }),
+            ),
+            h(
+              'div',
+              { style: { display: 'flex', flexDirection: 'column', gap: 3 } },
+              h('strong', { style: { fontSize: 13.5, color: T.text } }, '想让我做点什么？'),
+              h('span', { className: 'wb-tiny wb-muted', style: { lineHeight: 1.6 } }, '我能读写工作台里的待办、资讯与知识'),
+            ),
+            h(
+              'div',
+              { style: { display: 'flex', flexDirection: 'column', gap: 6, width: '100%', maxWidth: 268 } },
+              ['今天还有哪些没做完？帮我把逾期的排一下', '把这条消息整理成待办，截止放到明天', '这些资讯里哪条和限流有关？'].map(function (prompt) {
+                return h(
+                  'button',
+                  {
+                    key: prompt,
+                    type: 'button',
+                    className: 'wb-assistant-suggest',
+                    onClick: function () {
+                      setDraft(prompt)
+                    },
+                  },
+                  h(Icon, { name: 'arrowRight', size: 11 }),
+                  h('span', null, prompt),
+                )
+              }),
+            ),
           )
         : messages.map(function (message, index) {
-            // 工具调用 / 工具结果 / 错误：紧凑行，不占气泡
             if (message.role === 'tool' || message.role === 'toolResult' || message.role === 'error') {
               const isTool = message.role === 'tool'
               const isError = message.role === 'error'
@@ -402,14 +423,7 @@ function AssistantDrawer() {
                 'div',
                 {
                   key: 'm' + index,
-                  style: {
-                    display: 'flex',
-                    alignItems: 'flex-start',
-                    gap: 6,
-                    fontSize: 11,
-                    color: isError ? T.err : T.text2,
-                    padding: '2px 2px',
-                  },
+                  style: { display: 'flex', alignItems: 'flex-start', gap: 6, fontSize: 11, color: isError ? T.err : T.text2, padding: '0 2px' },
                 },
                 h(Icon, { name: isError ? 'alert' : isTool ? 'play' : 'check', size: 11 }),
                 h(
@@ -474,29 +488,26 @@ function AssistantDrawer() {
                       { style: { marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 } },
                       message.toolCalls.map(function (tool, toolIndex) {
                         const name = typeof tool === 'string' ? tool : tool.name
-                        return h(Chip, {
-                          key: 't' + toolIndex,
-                          icon: 'command',
-                          title: (tool && tool.summary) || name,
-                          children: name,
-                        })
+                        return h(Chip, { key: 't' + toolIndex, icon: 'command', title: (tool && tool.summary) || name, children: name })
                       }),
                     )
                   : null,
               ),
             )
           }),
-      sending ? h('div', { className: 'wb-row wb-tiny wb-muted', style: { gap: 6 } }, h(Spinner, { size: 12 }), h('span', null, '助手正在思考…')) : null,
+      sending ? h('div', { className: 'wb-row wb-tiny wb-muted', style: { gap: 6 } }, h(Spinner, { size: 12 }), h('span', null, '思考中…')) : null,
       error ? h('div', { role: 'alert', className: 'wb-tiny', style: { color: T.err, lineHeight: 1.6 } }, error) : null,
     ),
+
+    /* ---- 输入区 ---- */
     h(
       'div',
-      { style: { borderTop: '1px solid ' + T.border1, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 8 } },
+      { style: { borderTop: '1px solid ' + T.border1, padding: '9px 10px 8px', display: 'flex', flexDirection: 'column', gap: 7, flex: 'none' } },
       refs.length > 0
         ? h(
             'div',
             { style: { display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' } },
-            h('span', { className: 'wb-tiny wb-muted' }, '上下文 ' + refs.length + ' 条：'),
+            h('span', { className: 'wb-tiny wb-muted' }, '上下文 ' + refs.length + '：'),
             refs.map(function (ref) {
               return h(Chip, {
                 key: ref.kind + ':' + ref.id,
@@ -548,7 +559,7 @@ function AssistantDrawer() {
   )
 }
 
-/* --------------------------------------------------------------- error gate *//* --------------------------------------------------------------- error gate */
+/* --------------------------------------------------------------- error gate *//* --------------------------------------------------------------- error gate *//* --------------------------------------------------------------- error gate */
 function LoadingScreen() {
   return h(
     'div',
