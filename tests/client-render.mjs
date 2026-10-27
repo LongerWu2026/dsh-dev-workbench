@@ -903,10 +903,9 @@ for (const [title, id, expected] of pageSpecs) {
 /* ------------------------------------- 原生聊天内嵌（方案 C，TODO 04） */
 {
   const actionIds = registrations.chatActions.map((item) => item.id)
-  if (registrations.chatActions.length !== 3) problems.push('原生聊天动作排应注册 3 个，实际 ' + registrations.chatActions.length)
-  if (actionIds.indexOf('workbench-task') < 0) problems.push('缺少「生成待办」动作注册')
-  if (actionIds.indexOf('workbench-knowledge') < 0) problems.push('缺少「存为知识」动作注册')
-  if (actionIds.indexOf('workbench-run') < 0) problems.push('缺少「记执行记录」动作注册')
+  // 只能有一个单元格：多个单元格会在原生聊天里并排渲染多个图标
+  if (registrations.chatActions.length !== 1) problems.push('原生聊天动作排应只注册 1 个单元格，实际 ' + registrations.chatActions.length)
+  if (actionIds.indexOf('workbench-actions') < 0) problems.push('缺少工作台动作下拉注册')
 
   const keys = registrations.toolViews.map((item) => item.key)
   if (keys.length !== 9) problems.push('工具卡片应注册 9 个 key，实际 ' + keys.length)

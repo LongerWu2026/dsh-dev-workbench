@@ -127,48 +127,36 @@ function ChatAssistantActions(props) {
     opacity: busy ? 0.45 : 0.62,
   }
 
-  // 默认只有一个图标按钮，点开才是下拉菜单，避免每条回复下面挂一排文字按钮
+  const MENU = {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 1,
+    minWidth: 132,
+    padding: 4,
+    border: '1px solid currentColor',
+    borderRadius: 9,
+    background: 'var(--dsw-alias-bg-layer-1, #1c1c20)',
+    boxShadow: '0 8px 22px rgba(0,0,0,.32)',
+    opacity: 0.98,
+  }
+
+  // 单个图标按钮；菜单在按钮**上方**展开（聊天流底部不会被裁切），
+  // 用文档流而不是绝对定位，避免被外层滚动容器裁掉。
   return h(
     'div',
-    { style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 2 } },
-    h(
-      'button',
-      {
-        type: 'button',
-        disabled: busy,
-        title: '工作台操作（生成待办 / 存为知识 / 记执行记录）',
-        'aria-label': '工作台操作',
-        'aria-expanded': open ? 'true' : 'false',
-        onClick: function () {
-          setOpen(!open)
-        },
-        style: ICON_BUTTON,
+    {
+      style: {
+        display: 'inline-flex',
+        flexDirection: 'column',
+        alignItems: 'flex-start',
+        gap: 4,
+        marginTop: 2,
       },
-      h(Icon, { name: 'sparkles', size: 12 }),
-      h(Icon, { name: open ? 'chevronUp' : 'chevronDown', size: 10 }),
-    ),
+    },
     open
       ? h(
           'div',
-          {
-            style: {
-              position: 'absolute',
-              top: '100%',
-              left: 0,
-              marginTop: 4,
-              zIndex: 60,
-              minWidth: 132,
-              padding: 4,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 1,
-              border: '1px solid currentColor',
-              borderRadius: 9,
-              background: 'var(--dsw-alias-bg-layer-1, #1c1c20)',
-              boxShadow: '0 10px 28px rgba(0,0,0,.35)',
-              opacity: 0.98,
-            },
-          },
+          { style: MENU },
           CHAT_EMBED_ACTIONS.map(function (action) {
             return h(
               'button',
@@ -202,14 +190,34 @@ function ChatAssistantActions(props) {
           }),
         )
       : null,
-    busy ? h('span', { style: { fontSize: 11, opacity: 0.6 } }, '处理中…') : null,
-    error
-      ? h(
-          'span',
-          { title: error.detail, style: { fontSize: 11, color: 'var(--dsw-alias-label-error, #d14343)' } },
-          error.text,
-        )
-      : null,
+    h(
+      'div',
+      { style: { display: 'inline-flex', alignItems: 'center', gap: 5 } },
+      h(
+        'button',
+        {
+          type: 'button',
+          disabled: busy,
+          title: '工作台操作（生成待办 / 存为知识 / 记执行记录）',
+          'aria-label': '工作台操作',
+          'aria-expanded': open ? 'true' : 'false',
+          onClick: function () {
+            setOpen(!open)
+          },
+          style: ICON_BUTTON,
+        },
+        h(Icon, { name: 'sparkles', size: 12 }),
+        h(Icon, { name: open ? 'chevronDown' : 'chevronUp', size: 10 }),
+      ),
+      busy ? h('span', { style: { fontSize: 11, opacity: 0.6 } }, '处理中…') : null,
+      error
+        ? h(
+            'span',
+            { title: error.detail, style: { fontSize: 11, color: 'var(--dsw-alias-label-error, #d14343)' } },
+            error.text,
+          )
+        : null,
+    ),
   )
 }
 
@@ -270,19 +278,18 @@ WB.registerChatEmbed = function (ctx) {
 
   try {
     disposers.push(
+      // 只注册**一个**单元格：三个动作收在同一个图标下拉里。
+      // 之前按动作注册了三个单元格，于是同一排出现三个图标按钮。
       ctx.slots.inject('conversation.chat.assistant-actions', function () {
-        const registrations = CHAT_EMBED_ACTIONS.map(function (action, index) {
-          return ctx.slots.register(
-            {
-              name: 'conversation.chat.assistant-actions',
-              id: action.id,
-              order: 30 + index,
-              label: action.label,
-            },
-            ChatAssistantActions,
-          )
-        })
-        return registrations
+        return ctx.slots.register(
+          {
+            name: 'conversation.chat.assistant-actions',
+            id: 'workbench-actions',
+            order: 30,
+            label: '工作台',
+          },
+          ChatAssistantActions,
+        )
       }),
     )
   } catch (e) {

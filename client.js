@@ -4352,77 +4352,76 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'wb-stack', style: { gap: 10 } },
+          // 一个图标按钮，菜单向上展开（不并排堆按钮）
           h(
             'div',
-            { className: 'wb-row wb-row--wrap', style: { gap: 8 } },
-            h(Btn, {
-              size: 'sm',
-              icon: 'plus',
-              onClick: function () {
-                WB.openTaskForm(null)
-              },
-              children: '新建待办',
-            }),
-            h(Btn, {
-              size: 'sm',
-              icon: 'search',
-              onClick: function () {
-                WB.go('search')
-              },
-              children: '统一搜索',
-            }),
-            // 其余入口收进「更多」，避免一排按钮把卡片撑得太满
-            h(Btn, {
-              size: 'sm',
-              kind: 'subtle',
-              icon: quickMore ? 'chevronDown' : 'chevronRight',
+            { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 } },
+            quickMore
+              ? h(
+                  'div',
+                  {
+                    style: {
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 1,
+                      minWidth: 168,
+                      padding: 4,
+                      border: '1px solid ' + T.border1,
+                      borderRadius: 10,
+                      background: T.layer1,
+                    },
+                  },
+                  [
+                    { key: 'new', icon: 'plus', label: '新建待办', run: function () { WB.openTaskForm(null) } },
+                    { key: 'search', icon: 'search', label: '统一搜索', run: function () { WB.go('search') } },
+                    { key: 'toolbox', icon: 'toolbox', label: '开发工具箱', run: function () { WB.go('toolbox') } },
+                    { key: 'agents', icon: 'agent', label: 'Agent 中心', run: function () { WB.go('agents') } },
+                    { key: 'mentions', icon: 'sparkles', label: mentionsBusy ? '拉取 @我…' : '拉取 @我', run: runMentionsFetch, disabled: mentionsBusy },
+                    { key: 'radar', icon: 'refresh', label: radarFetching ? '抓取中…' : '抓取资讯', run: runRadarFetch, disabled: radarFetching },
+                  ].map(function (item) {
+                    return h(
+                      'button',
+                      {
+                        key: item.key,
+                        type: 'button',
+                        disabled: !!item.disabled,
+                        onClick: function () {
+                          setQuickMore(false)
+                          item.run()
+                        },
+                        style: {
+                          appearance: 'none',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 7,
+                          width: '100%',
+                          textAlign: 'left',
+                          border: 0,
+                          borderRadius: 7,
+                          background: 'transparent',
+                          color: T.text,
+                          font: 'inherit',
+                          fontSize: 12,
+                          lineHeight: 1.7,
+                          padding: '4px 8px',
+                          cursor: item.disabled ? 'default' : 'pointer',
+                          opacity: item.disabled ? 0.55 : 1,
+                        },
+                      },
+                      h(Icon, { name: item.icon, size: 12 }),
+                      item.label,
+                    )
+                  }),
+                )
+              : null,
+            h(IconBtn, {
+              name: 'zap',
+              label: '快捷操作',
+              active: quickMore,
               onClick: function () {
                 setQuickMore(!quickMore)
               },
-              children: quickMore ? '收起' : '更多',
             }),
-            quickMore
-              ? [
-                  h(Btn, {
-                    key: 'toolbox',
-                    size: 'sm',
-                    kind: 'subtle',
-                    icon: 'toolbox',
-                    onClick: function () {
-                      WB.go('toolbox')
-                    },
-                    children: '开发工具箱',
-                  }),
-                  h(Btn, {
-                    key: 'agents',
-                    size: 'sm',
-                    kind: 'subtle',
-                    icon: 'agent',
-                    onClick: function () {
-                      WB.go('agents')
-                    },
-                    children: 'Agent 中心',
-                  }),
-                  h(Btn, {
-                    key: 'mentions',
-                    size: 'sm',
-                    kind: 'subtle',
-                    icon: 'sparkles',
-                    disabled: mentionsBusy,
-                    onClick: runMentionsFetch,
-                    children: mentionsBusy ? '拉取中…' : '拉取 @我',
-                  }),
-                  h(Btn, {
-                    key: 'radar',
-                    size: 'sm',
-                    kind: 'subtle',
-                    icon: 'refresh',
-                    disabled: radarFetching,
-                    onClick: runRadarFetch,
-                    children: radarFetching ? '抓取中…' : '抓取资讯',
-                  }),
-                ]
-              : null,
           ),
           h(DashPomodoro, null),
         ),
@@ -11875,48 +11874,36 @@ window.__ModuleLoader__.load({
         opacity: busy ? 0.45 : 0.62,
       }
 
-      // 默认只有一个图标按钮，点开才是下拉菜单，避免每条回复下面挂一排文字按钮
+      const MENU = {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 1,
+        minWidth: 132,
+        padding: 4,
+        border: '1px solid currentColor',
+        borderRadius: 9,
+        background: 'var(--dsw-alias-bg-layer-1, #1c1c20)',
+        boxShadow: '0 8px 22px rgba(0,0,0,.32)',
+        opacity: 0.98,
+      }
+
+      // 单个图标按钮；菜单在按钮**上方**展开（聊天流底部不会被裁切），
+      // 用文档流而不是绝对定位，避免被外层滚动容器裁掉。
       return h(
         'div',
-        { style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 2 } },
-        h(
-          'button',
-          {
-            type: 'button',
-            disabled: busy,
-            title: '工作台操作（生成待办 / 存为知识 / 记执行记录）',
-            'aria-label': '工作台操作',
-            'aria-expanded': open ? 'true' : 'false',
-            onClick: function () {
-              setOpen(!open)
-            },
-            style: ICON_BUTTON,
+        {
+          style: {
+            display: 'inline-flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            gap: 4,
+            marginTop: 2,
           },
-          h(Icon, { name: 'sparkles', size: 12 }),
-          h(Icon, { name: open ? 'chevronUp' : 'chevronDown', size: 10 }),
-        ),
+        },
         open
           ? h(
               'div',
-              {
-                style: {
-                  position: 'absolute',
-                  top: '100%',
-                  left: 0,
-                  marginTop: 4,
-                  zIndex: 60,
-                  minWidth: 132,
-                  padding: 4,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 1,
-                  border: '1px solid currentColor',
-                  borderRadius: 9,
-                  background: 'var(--dsw-alias-bg-layer-1, #1c1c20)',
-                  boxShadow: '0 10px 28px rgba(0,0,0,.35)',
-                  opacity: 0.98,
-                },
-              },
+              { style: MENU },
               CHAT_EMBED_ACTIONS.map(function (action) {
                 return h(
                   'button',
@@ -11950,14 +11937,34 @@ window.__ModuleLoader__.load({
               }),
             )
           : null,
-        busy ? h('span', { style: { fontSize: 11, opacity: 0.6 } }, '处理中…') : null,
-        error
-          ? h(
-              'span',
-              { title: error.detail, style: { fontSize: 11, color: 'var(--dsw-alias-label-error, #d14343)' } },
-              error.text,
-            )
-          : null,
+        h(
+          'div',
+          { style: { display: 'inline-flex', alignItems: 'center', gap: 5 } },
+          h(
+            'button',
+            {
+              type: 'button',
+              disabled: busy,
+              title: '工作台操作（生成待办 / 存为知识 / 记执行记录）',
+              'aria-label': '工作台操作',
+              'aria-expanded': open ? 'true' : 'false',
+              onClick: function () {
+                setOpen(!open)
+              },
+              style: ICON_BUTTON,
+            },
+            h(Icon, { name: 'sparkles', size: 12 }),
+            h(Icon, { name: open ? 'chevronDown' : 'chevronUp', size: 10 }),
+          ),
+          busy ? h('span', { style: { fontSize: 11, opacity: 0.6 } }, '处理中…') : null,
+          error
+            ? h(
+                'span',
+                { title: error.detail, style: { fontSize: 11, color: 'var(--dsw-alias-label-error, #d14343)' } },
+                error.text,
+              )
+            : null,
+        ),
       )
     }
 
@@ -12018,19 +12025,18 @@ window.__ModuleLoader__.load({
 
       try {
         disposers.push(
+          // 只注册**一个**单元格：三个动作收在同一个图标下拉里。
+          // 之前按动作注册了三个单元格，于是同一排出现三个图标按钮。
           ctx.slots.inject('conversation.chat.assistant-actions', function () {
-            const registrations = CHAT_EMBED_ACTIONS.map(function (action, index) {
-              return ctx.slots.register(
-                {
-                  name: 'conversation.chat.assistant-actions',
-                  id: action.id,
-                  order: 30 + index,
-                  label: action.label,
-                },
-                ChatAssistantActions,
-              )
-            })
-            return registrations
+            return ctx.slots.register(
+              {
+                name: 'conversation.chat.assistant-actions',
+                id: 'workbench-actions',
+                order: 30,
+                label: '工作台',
+              },
+              ChatAssistantActions,
+            )
           }),
         )
       } catch (e) {

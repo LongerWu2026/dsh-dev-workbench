@@ -1287,77 +1287,76 @@ function DashboardPage() {
     h(
       'div',
       { className: 'wb-stack', style: { gap: 10 } },
+      // 一个图标按钮，菜单向上展开（不并排堆按钮）
       h(
         'div',
-        { className: 'wb-row wb-row--wrap', style: { gap: 8 } },
-        h(Btn, {
-          size: 'sm',
-          icon: 'plus',
-          onClick: function () {
-            WB.openTaskForm(null)
-          },
-          children: '新建待办',
-        }),
-        h(Btn, {
-          size: 'sm',
-          icon: 'search',
-          onClick: function () {
-            WB.go('search')
-          },
-          children: '统一搜索',
-        }),
-        // 其余入口收进「更多」，避免一排按钮把卡片撑得太满
-        h(Btn, {
-          size: 'sm',
-          kind: 'subtle',
-          icon: quickMore ? 'chevronDown' : 'chevronRight',
+        { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 } },
+        quickMore
+          ? h(
+              'div',
+              {
+                style: {
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1,
+                  minWidth: 168,
+                  padding: 4,
+                  border: '1px solid ' + T.border1,
+                  borderRadius: 10,
+                  background: T.layer1,
+                },
+              },
+              [
+                { key: 'new', icon: 'plus', label: '新建待办', run: function () { WB.openTaskForm(null) } },
+                { key: 'search', icon: 'search', label: '统一搜索', run: function () { WB.go('search') } },
+                { key: 'toolbox', icon: 'toolbox', label: '开发工具箱', run: function () { WB.go('toolbox') } },
+                { key: 'agents', icon: 'agent', label: 'Agent 中心', run: function () { WB.go('agents') } },
+                { key: 'mentions', icon: 'sparkles', label: mentionsBusy ? '拉取 @我…' : '拉取 @我', run: runMentionsFetch, disabled: mentionsBusy },
+                { key: 'radar', icon: 'refresh', label: radarFetching ? '抓取中…' : '抓取资讯', run: runRadarFetch, disabled: radarFetching },
+              ].map(function (item) {
+                return h(
+                  'button',
+                  {
+                    key: item.key,
+                    type: 'button',
+                    disabled: !!item.disabled,
+                    onClick: function () {
+                      setQuickMore(false)
+                      item.run()
+                    },
+                    style: {
+                      appearance: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 7,
+                      width: '100%',
+                      textAlign: 'left',
+                      border: 0,
+                      borderRadius: 7,
+                      background: 'transparent',
+                      color: T.text,
+                      font: 'inherit',
+                      fontSize: 12,
+                      lineHeight: 1.7,
+                      padding: '4px 8px',
+                      cursor: item.disabled ? 'default' : 'pointer',
+                      opacity: item.disabled ? 0.55 : 1,
+                    },
+                  },
+                  h(Icon, { name: item.icon, size: 12 }),
+                  item.label,
+                )
+              }),
+            )
+          : null,
+        h(IconBtn, {
+          name: 'zap',
+          label: '快捷操作',
+          active: quickMore,
           onClick: function () {
             setQuickMore(!quickMore)
           },
-          children: quickMore ? '收起' : '更多',
         }),
-        quickMore
-          ? [
-              h(Btn, {
-                key: 'toolbox',
-                size: 'sm',
-                kind: 'subtle',
-                icon: 'toolbox',
-                onClick: function () {
-                  WB.go('toolbox')
-                },
-                children: '开发工具箱',
-              }),
-              h(Btn, {
-                key: 'agents',
-                size: 'sm',
-                kind: 'subtle',
-                icon: 'agent',
-                onClick: function () {
-                  WB.go('agents')
-                },
-                children: 'Agent 中心',
-              }),
-              h(Btn, {
-                key: 'mentions',
-                size: 'sm',
-                kind: 'subtle',
-                icon: 'sparkles',
-                disabled: mentionsBusy,
-                onClick: runMentionsFetch,
-                children: mentionsBusy ? '拉取中…' : '拉取 @我',
-              }),
-              h(Btn, {
-                key: 'radar',
-                size: 'sm',
-                kind: 'subtle',
-                icon: 'refresh',
-                disabled: radarFetching,
-                onClick: runRadarFetch,
-                children: radarFetching ? '抓取中…' : '抓取资讯',
-              }),
-            ]
-          : null,
       ),
       h(DashPomodoro, null),
     ),

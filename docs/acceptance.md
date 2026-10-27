@@ -166,14 +166,14 @@ node tests/client-render.mjs
 
 | 能力 | 落点 | 验证 |
 | --- | --- | --- |
-| 「工作台」下拉里的「生成待办 / 存为知识 / 记执行记录」 | `conversation.chat.assistant-actions`（list，replaceRisk none，3 个 id） | 渲染测试：3 个注册 + 默认只渲染 1 个「工作台」入口（折叠）+ 展开后出现 3 个动作 + 点「生成待办」真实触发 `assistantMessage` 与 `createTask` |
+| 「工作台」下拉里的「生成待办 / 存为知识 / 记执行记录」 | `conversation.chat.assistant-actions`（list，replaceRisk none，**只注册 1 个单元格** `workbench-actions`） | 渲染测试：断言只注册 1 个单元格（多个单元格会并排渲染多个图标）+ 默认折叠 + 向上展开出现 3 个动作 + 点「生成待办」真实触发 `assistantMessage` 与 `createTask` |
 | `workbench_*` 工具调用渲染为工作台卡片 | `tool.call.toolview`（keyed，9 个工具名） | 渲染测试：9 个 key 全部 `workbench_` 前缀、卡片渲染出工具名 |
 
 ## 12. UI 收敛（按界面评审意见）
 
 | 问题 | 处理 |
 | --- | --- |
-| 原生聊天每行挂三个文字按钮，视觉过载 | 改为**单个图标下拉**（✨ + ▾），点开才是纵向菜单；未展开时不占版面 |
+| 原生聊天每行挂三个文字按钮，视觉过载 | 改为**单个图标下拉**（✨ + ▾），菜单**向上**展开；且只注册 1 个插槽单元格（此前按动作注册了 3 个，导致并排出现 3 个图标） |
 | 代码级报错直接暴露给用户（`会话创建失败：返回值里没有 session`） | Host 统一转成用户可读提示（「AI 助手连接失败，请稍后重试」等），技术细节只放 `detail`，界面仅作为 title 提示；同时 `create` 返回形状容错（`agent.session` / `session` / `sessionId`） |
 | 「今日待办」空态沉在卡片底部 | `.wb-empty` 加 `margin:auto`，并在面板里包一层居中容器（minHeight 190） |
 | 顶部四个统计卡信息太碎、占高度 | 合并成**一条紧凑指标条**（待处理 / 今日到期 / 已逾期 / 执行中 + 任务中心），把纵向空间还给待办列表 |
