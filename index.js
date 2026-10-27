@@ -4460,6 +4460,32 @@ function hostService(ctx, key) {
  * 过滤宿主注入的系统消息：这些不是用户输入，展示出来只会干扰阅读。
  * 命中任一特征即视为系统文本（<system-reminder>、运行时上下文、turn 元信息）。
  */
+/**
+ * 剥离助手 prompt 的样板（上下文头 / 尾部工具指令），还原真实用户内容。
+ * 会话标题与回显都应基于它，否则侧栏会出现「添加时区（需要落库时请直接调用…」这类杂料。
+ */
+function stripAssistantBoilerplate(text) {
+  const lines = String(text || '').split('\n')
+  const kept = []
+  let inContext = false
+  for (const line of lines) {
+    if (line.indexOf('【工作台上下文】') === 0) {
+      inContext = true
+      continue
+    }
+    if (inContext) {
+      if (line.trim() === '') {
+        inContext = false
+      }
+      continue
+    }
+    if (line.indexOf('（需要落库时') === 0) continue
+    kept.push(line)
+  }
+  const cleaned = kept.join('\n').replace(/^\n+|\n+$/g, '').trim()
+  return cleaned
+}
+
 function isSystemInjectedText(text) {
   const source = String(text || '')
   if (source.indexOf('<system-reminder>') >= 0) return true
@@ -4502,7 +4528,8 @@ function assistantHistoryFrom(session, limit) {
         .filter(Boolean)
         .join('\n')
         .trim()
-      if (text && !isSystemInjectedText(text)) out.push({ role: 'user', text: text, at: event.time })
+      const historyText = stripAssistantBoilerplate(text)
+      if (historyText && !isSystemInjectedText(historyText)) out.push({ role: 'user', text: historyText, at: event.time })
     } else if (event.type === 'assistant/message') {
       const text = assistantTextOf(event.data.message)
       if (text) out.push({ role: 'assistant', text: text, at: event.time })
@@ -4523,10 +4550,12 @@ function sessionTitleOf(session) {
           return block && block.type === 'text' ? block.text : ''
         })
         .filter(Boolean)
-        .join(' ')
+        .join('\n')
+      // 先剥样板再压缩空白：一旦把换行压掉，整条 prompt 会变成「以样板开头的一行」被整行吃掉
+      const titleText = stripAssistantBoilerplate(text)
         .replace(/\s+/g, ' ')
         .trim()
-      if (text && !isSystemInjectedText(text)) return text.slice(0, 40)
+      if (titleText && !isSystemInjectedText(titleText)) return titleText.slice(0, 40)
     }
   } catch (e) {
     /* 读不到就给短 id */
@@ -4560,7 +4589,8 @@ function transcriptOf(session, limit) {
         .filter(Boolean)
         .join('\n')
         .trim()
-      if (text) entries.push({ role: 'user', text: text, at: event.time })
+      const transcriptText = stripAssistantBoilerplate(text)
+      if (transcriptText && !isSystemInjectedText(transcriptText)) entries.push({ role: 'user', text: transcriptText, at: event.time })
     } else if (event.type === 'tool/call') {
       const name = event.data && event.data.name ? String(event.data.name) : 'tool'
       const args = event.data && event.data.arguments ? event.data.arguments : null
@@ -4746,7 +4776,8 @@ function transcriptDelta(session, fromSeq) {
         .filter(Boolean)
         .join('\n')
         .trim()
-      if (text && !isSystemInjectedText(text)) entries.push({ role: 'user', text: text, at: event.time, seq: event.seq })
+      const entryText = stripAssistantBoilerplate(text)
+      if (entryText && !isSystemInjectedText(entryText)) entries.push({ role: 'user', text: entryText, at: event.time, seq: event.seq })
     } else if (event.type === 'assistant/message') {
       const text = assistantTextOf(event.data.message)
       if (text) entries.push({ role: 'assistant', text: text, at: event.time, seq: event.seq })

@@ -980,6 +980,42 @@ check(
   const byMessageId = await api.assistantMessage({ sessionId: world.session.id, messageId: liveMessage.messageId })
   check('按消息 id 可取正文', byMessageId.status === 'ok' && byMessageId.text.indexOf('助手回复') >= 0, String(byMessageId.text || '').slice(0, 40))
 
+  // --- 场景 1b：prompt 样板剥离（标题与回显只显示真实内容） ---
+  {
+    const ugly = makeFakeWorld()
+    fakeSessions = ugly.sessions
+    fakeSessionController = ugly.controller
+    await api.saveSettings({ assistantSessionId: null })
+    ugly.controller.prompt = async (request) => {
+      const full = request.content.map((block) => block.text).join('\n')
+      // 模拟宿主会把组装的 prompt 作为 user 消息写入会话
+      ugly.events.push({ type: 'user/message', seq: ugly.events.length + 1, time: Date.now(), data: { content: [{ type: 'text', text: full }] } })
+      ugly.events.push({
+        type: 'assistant/message',
+        seq: ugly.events.length + 1,
+        time: Date.now(),
+        data: { message: { id: 'msg-' + ugly.events.length, content: [{ type: 'text', text: '好，已记录' }] } },
+      })
+      ugly.events.push({ type: 'turn/end', seq: ugly.events.length + 1, time: Date.now(), data: {} })
+      return { accepted: true }
+    }
+    const outcome = await api.assistantAsk({ text: '添加时区设置', refs: [{ kind: 'task', id: 't9' }] })
+    check('问答成功（样板场景）', outcome.status === 'ok', JSON.stringify(outcome).slice(0, 120))
+    const titles = await api.assistantSessions({ limit: 5 })
+    const row = titles.sessions.find((item) => item.id === ugly.session.id)
+    check('会话标题不含样板', !!row && row.title.indexOf('添加时区设置') >= 0 && row.title.indexOf('工作台上下文') < 0 && row.title.indexOf('需要落库时') < 0, row && row.title)
+    const view = await api.assistantTranscript({ sessionId: ugly.session.id })
+    const userEntry = view.messages.find((entry) => entry.role === 'user')
+    check(
+      '记录里的用户消息已剥离样板',
+      !!userEntry && userEntry.text.indexOf('添加时区设置') >= 0 && userEntry.text.indexOf('【工作台上下文】') < 0 && userEntry.text.indexOf('需要落库时') < 0,
+      userEntry && userEntry.text,
+    )
+    // 恢复场景 1 的 fake，后续场景依赖它
+    fakeSessions = world.sessions
+    fakeSessionController = world.controller
+  }
+
   // --- 场景 2：渐进渲染 ---
   {
     const sent = await api.assistantSend({ text: '渐进渲染测试', sessionId: world.session.id })
