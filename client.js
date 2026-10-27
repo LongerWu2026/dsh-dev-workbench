@@ -11875,10 +11875,18 @@ window.__ModuleLoader__.load({
       }
 
       const MENU = {
+        position: 'absolute',
+        // 贴着图标上沿向上展开：菜单底边不会越过图标，也不会把图标顶出可视区
+        bottom: '100%',
+        left: 0,
+        marginBottom: 6,
+        zIndex: 70,
         display: 'flex',
         flexDirection: 'column',
         gap: 1,
         minWidth: 132,
+        maxHeight: 220,
+        overflowY: 'auto',
         padding: 4,
         border: '1px solid currentColor',
         borderRadius: 9,
@@ -11893,10 +11901,12 @@ window.__ModuleLoader__.load({
         'div',
         {
           style: {
+            position: 'relative',
+            // 抬高整行的层叠顺序，避免被后面的消息行盖住
+            zIndex: 71,
             display: 'inline-flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            gap: 4,
+            alignItems: 'center',
+            gap: 5,
             marginTop: 2,
           },
         },
