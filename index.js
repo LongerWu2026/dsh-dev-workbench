@@ -1706,6 +1706,16 @@ const workbenchApi = {
     return runAssistantAsk(workbenchContext(), request || {})
   },
 
+  /** 只提交提示（立即返回 fromSeq），配合 assistantDelta 做渐进渲染。 */
+  async assistantSend(request) {
+    return sendAssistantPrompt(workbenchContext(), request || {})
+  },
+
+  /** 增量读取会话记录（fromSeq 之后的新条目 + turnActive）。 */
+  async assistantDelta(request) {
+    return readAssistantDelta(workbenchContext(), request || {})
+  },
+
   async assistantHistory() {
     return readAssistantHistory(workbenchContext())
   },
@@ -4165,6 +4175,8 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
   { method: 'assistantAsk', params: ['request'] },
+  { method: 'assistantSend', params: ['request'] },
+  { method: 'assistantDelta', params: ['request'] },
   { method: 'assistantHistory', params: [] },
   { method: 'assistantSessions', params: ['request'] },
   { method: 'assistantTranscript', params: ['request'] },
@@ -4554,6 +4566,145 @@ async function readAssistantTranscript(ctx, request) {
     title: sessionTitleOf(session),
     messages: transcriptOf(session, Math.min(80, Number(request && request.limit) || 40)),
   }
+}
+
+/**
+ * 增量读取（方案 A1）：只返回 fromSeq 之后的新条目，并告知本轮是否仍在进行。
+ * 侧栏在 turnActive 期间轮询这个端点，实现「工具调用 → 结果 → 回复分段」的渐进渲染，
+ * 不依赖未验证的 stream 描述符。
+ */
+function transcriptDelta(session, fromSeq) {
+  const start = Number(fromSeq)
+  const events = session.snapshotEvents(Number.isFinite(start) && start >= 0 ? start : 0)
+  const entries = []
+  let turnActive = false
+  for (const event of events) {
+    if (event.type === 'turn/start') {
+      turnActive = true
+      continue
+    }
+    if (event.type === 'turn/end') {
+      turnActive = false
+      continue
+    }
+    if (event.type === 'user/message') {
+      const content = Array.isArray(event.data.content) ? event.data.content : []
+      const text = content
+        .map(function (block) {
+          return block && block.type === 'text' ? block.text : ''
+        })
+        .filter(Boolean)
+        .join('\n')
+        .trim()
+      if (text) entries.push({ role: 'user', text: text, at: event.time, seq: event.seq })
+    } else if (event.type === 'assistant/message') {
+      const text = assistantTextOf(event.data.message)
+      if (text) entries.push({ role: 'assistant', text: text, at: event.time, seq: event.seq })
+    } else if (event.type === 'tool/call') {
+      const name = event.data && event.data.name ? String(event.data.name) : 'tool'
+      let summary = ''
+      try {
+        summary = event.data && event.data.arguments ? JSON.stringify(event.data.arguments).slice(0, 200) : ''
+      } catch (e) {
+        summary = ''
+      }
+      entries.push({ role: 'tool', text: name, summary: summary, at: event.time, seq: event.seq })
+    } else if (event.type === 'tool/result') {
+      const name = event.data && event.data.name ? String(event.data.name) : 'tool'
+      const ok = !(event.data && (event.data.isError === true || event.data.error))
+      entries.push({ role: 'toolResult', text: name, ok: ok, at: event.time, seq: event.seq })
+    } else if (event.type === 'turn/error') {
+      const note = event.data && event.data.message ? String(event.data.message) : '本轮执行出错'
+      entries.push({ role: 'error', text: note, at: event.time, seq: event.seq })
+    }
+  }
+  return { entries: entries, nextSeq: session.seq, turnActive: turnActive }
+}
+
+/** 只提交提示并立即返回（不等待本轮结束），供侧栏渐进渲染。 */
+async function sendAssistantPrompt(ctx, request) {
+  const input = request && typeof request === 'object' ? request : {}
+  const text = asString(input.text, 4000)
+  if (!text) return { status: 'invalid', note: '请输入内容' }
+
+  const controller = hostService(ctx, 'sessionController')
+  if (!controller || typeof controller.prompt !== 'function') {
+    return {
+      status: 'unavailable',
+      note: '当前宿主没有 sessionController 服务，无法把提示提交给模型；可改用「复制上下文并打开会话」。',
+    }
+  }
+
+  const wantedSession = asString(input.sessionId, 120)
+  let session = null
+  if (wantedSession) {
+    const sessions = hostService(ctx, 'sessions')
+    session = sessions && typeof sessions.get === 'function' ? sessions.get(wantedSession) : null
+    if (!session) return { status: 'not_found', note: '找不到该会话：' + wantedSession }
+    mutateWorkbenchState(function (current) {
+      current.settings.assistantSessionId = String(session.id)
+      return current
+    })
+  } else {
+    const resolved = getAssistantSession(ctx)
+    if (!resolved) return { status: 'unavailable', note: '当前宿主没有可用的 sessions 服务。' }
+    session = resolved.session
+  }
+
+  const fromSeq = session.seq
+  const refs = Array.isArray(input.refs) ? input.refs.slice(0, 6) : []
+  const lines = []
+  if (refs.length > 0) {
+    lines.push('【工作台上下文】')
+    refs.forEach(function (ref, index) {
+      lines.push(
+        (index + 1) + '. [' + asString(ref.kind, 20) + '] ' + asString(ref.title, 200) +
+          (ref.url ? ' — ' + asString(ref.url, 500) : '') +
+          (ref.body ? '\n   ' + asString(ref.body, 600).replace(/\n/g, ' ') : ''),
+      )
+    })
+    lines.push('')
+  }
+  lines.push(text)
+  lines.push('')
+  lines.push('（需要落库时请直接调用 workbench_* 工具：建/改待办、登记执行记录、写回资讯摘要。）')
+
+  try {
+    await controller.prompt(
+      {
+        requestId: 'wb-assistant-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
+        sessionId: session.id,
+        mode: input.steer === true ? 'steer' : 'queue',
+        content: [{ type: 'text', text: lines.join('\n') }],
+        clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+      AbortSignal.timeout(30000),
+    )
+  } catch (e) {
+    return { status: 'error', note: '提示提交失败：' + String((e && e.message) || e).slice(0, 200), sessionId: String(session.id) }
+  }
+  return { status: 'ok', sessionId: String(session.id), fromSeq: fromSeq }
+}
+
+/** 增量读取端点：供侧栏渐进渲染。 */
+async function readAssistantDelta(ctx, request) {
+  const input = request && typeof request === 'object' ? request : {}
+  const sessions = hostService(ctx, 'sessions')
+  if (!sessions || typeof sessions.get !== 'function') {
+    return { status: 'unavailable', note: '没有可用的会话服务', entries: [], nextSeq: 0, turnActive: false }
+  }
+  const wanted = asString(input.sessionId, 120)
+  let session = null
+  if (wanted) {
+    session = sessions.get(wanted)
+    if (!session) return { status: 'not_found', note: '找不到该会话', entries: [], nextSeq: 0, turnActive: false }
+  } else {
+    const resolved = getAssistantSession(ctx)
+    if (!resolved) return { status: 'unavailable', note: '没有可用的会话服务', entries: [], nextSeq: 0, turnActive: false }
+    session = resolved.session
+  }
+  const delta = transcriptDelta(session, Number(input.fromSeq) || 0)
+  return Object.assign({ status: 'ok', sessionId: String(session.id) }, delta)
 }
 
 async function runAssistantAsk(ctx, request) {

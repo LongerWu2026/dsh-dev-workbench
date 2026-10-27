@@ -12,7 +12,7 @@
 | Host 半语法 | `node --check index.js` | 通过 |
 | Client 半语法 | `node --check client.js` | 通过 |
 | 跨文件顶层重名 | `node scripts/build.mjs --check` | 11 host / 12 client part，无冲突 |
-| Host 业务逻辑 | `node tests/host-smoke.mjs` | **156/156 通过** |
+| Host 业务逻辑 | `node tests/host-smoke.mjs` | **162/162 通过** |
 | Client 全页面渲染 | `node tests/client-render.mjs` | **8/8 页面 + 空态 + 6 个新增工具面板**；真实驱动搜索、抓取资讯、@我 再拉一次、逐个切换工具 |
 | **描述符实参交叉校验** | 渲染测试从 `src/host/40-remote.js` 解析签名表，逐一核对每个 RPC 调用的实参键 | **22/22 一致**——正是此项挡住 `fetchRadar` 的 `unexpected "request"`（客户端对零参端点多发了 `request` 字段，网关严格校验拒绝） |
 | 插件安装 | `plugin_manager install_bundle` | `application: applied`，`warnings: []` |
@@ -135,6 +135,7 @@ node tests/client-render.mjs
 | 09 Agent 回写 | 任务上下文入会话，`workbench_record_run` 回写并挂 `runIds` | 工具执行断言 |
 | 10 引用问答 | `workbench_search` 返回分组 + 每路状态，模型据此引用作答 | 工具注册与描述 |
 | 11 备份恢复 | 损坏文件留存、每日自动备份、手动备份/恢复 UI | 3 项断言 |
+| 04 渐进渲染 | `assistantSend` 立即返回 fromSeq；`assistantDelta` 增量返回 tool/toolResult/assistant 条目与 turnActive，轮询到本轮结束停机；侧栏支持「排队 / 打断」 | 6 项 Host 断言（立即返回、条目、工具与助手条目、nextSeq、收尾 turnActive、不重复）+ 渲染测试等待轮询后断言回复 |
 | 04 会话级内嵌 | 侧栏可列出最近原生会话、按会话读取记录（含工具调用参数）、在所选会话继续对话、主面板打开该会话 | 4 项 Host 断言（会话列表、助手标记、记录含工具调用、不存在会话如实返回）+ 渲染测试驱动发送 |
 | 04 侧栏对话 | `assistantAsk` 走 `sessions.create → sessionController.prompt → snapshotEvents 轮询 turn/end`，返回回复、工具调用与会话 id；历史/新会话/清空可用 | 6 项 Host 断言（回复、工具调用、会话复用、历史、重置、缺服务降级）+ 渲染测试真实发送并断言回复气泡 |
 | 07 后台调度 | 插件侧定时器：60s 判定到期、单飞锁、启动补跑、`lastAutomation` 记录；设置页开关/间隔/立即执行（仅进程存活期间生效） | 5 项断言（默认关闭、未开启不执行、开启后执行并记录、写入资讯、刚跑完不算到期） |

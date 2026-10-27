@@ -114,6 +114,7 @@ function AssistantDrawer() {
   const [sessions, setSessions] = React.useState([])
   const [activeId, setActiveId] = React.useState(null)
   const [loaded, setLoaded] = React.useState(false)
+  const [steerMode, setSteerMode] = React.useState(false)
   const bodyRef = React.useRef(null)
 
   const open = !!state.assistantOpen
@@ -178,28 +179,59 @@ function AssistantDrawer() {
     setMessages(function (previous) {
       return previous.concat([{ role: 'user', text: text }])
     })
+
     WB.actions
-      .assistantAsk(text, refs, activeId)
+      .assistantSend(text, refs, activeId, steerMode)
       .then(function (result) {
-        setSending(false)
-        if (result && result.reply) {
-          setMessages(function (previous) {
-            return previous.concat([
-              { role: 'assistant', text: result.reply, toolCalls: (result.toolCalls || []).map(function (name) { return { name: name } }) },
-            ])
-          })
+        if (!result || result.status !== 'ok') {
+          setSending(false)
+          setError((result && result.note) || ('状态：' + (result && result.status)))
+          return
         }
-        if (result && result.status !== 'ok') setError(result.note || ('状态：' + result.status))
-        if (result && result.status === 'ok') {
-          // 助手可能已用工具改过数据，立刻对齐一次
-          WB.actions.reload().catch(function () {})
+        let cursor = Number(result.fromSeq) || 0
+        const sid = result.sessionId
+        const startedAt = Date.now()
+        // 方案 A1：每 400ms 取增量，工具调用/回复分段边跑边显示
+        function tick() {
           WB.actions
-            .assistantSessions(12)
-            .then(function (next) {
-              setSessions((next && next.sessions) || [])
+            .assistantDelta(sid, cursor)
+            .then(function (delta) {
+              if (delta && delta.status === 'ok') {
+                cursor = Number(delta.nextSeq) || cursor
+                const fresh = (delta.entries || []).filter(function (entry) {
+                  return entry.role !== 'user'
+                })
+                if (fresh.length > 0) {
+                  setMessages(function (previous) {
+                    return previous.concat(fresh)
+                  })
+                }
+                const timeout = Date.now() - startedAt > 180000
+                if (!delta.turnActive || timeout) {
+                  setSending(false)
+                  if (timeout) setError('本轮超过 3 分钟仍未结束，可稍后在主面板查看。')
+                  // 助手可能已用工具改过数据，对齐一次
+                  WB.actions.reload().catch(function () {})
+                  WB.actions
+                    .assistantSessions(12)
+                    .then(function (next) {
+                      setSessions((next && next.sessions) || [])
+                    })
+                    .catch(function () {})
+                  return
+                }
+                setTimeout(tick, 400)
+                return
+              }
+              setSending(false)
+              setError((delta && delta.note) || '读取会话增量失败')
             })
-            .catch(function () {})
+            .catch(function (failure) {
+              setSending(false)
+              setError(String((failure && failure.message) || failure))
+            })
         }
+        setTimeout(tick, 400)
       })
       .catch(function (failure) {
         setSending(false)
@@ -305,6 +337,32 @@ function AssistantDrawer() {
             h('p', { style: { margin: 0 } }, '带上下文提问时，先在卡片上点「AI 分析」把相关记录加进来。'),
           )
         : messages.map(function (message, index) {
+            // 工具调用 / 工具结果 / 错误：紧凑行，不占气泡
+            if (message.role === 'tool' || message.role === 'toolResult' || message.role === 'error') {
+              const isTool = message.role === 'tool'
+              const isError = message.role === 'error'
+              return h(
+                'div',
+                {
+                  key: 'm' + index,
+                  style: {
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 6,
+                    fontSize: 11,
+                    color: isError ? T.err : T.text2,
+                    padding: '2px 2px',
+                  },
+                },
+                h(Icon, { name: isError ? 'alert' : isTool ? 'play' : 'check', size: 11 }),
+                h(
+                  'div',
+                  { style: { minWidth: 0, overflowWrap: 'anywhere' } },
+                  h('span', { className: 'wb-mono' }, message.text),
+                  message.summary ? h('span', { className: 'wb-muted' }, '  ' + WB.util.truncate(String(message.summary), 120)) : null,
+                ),
+              )
+            }
             const mine = message.role === 'user'
             const markdown = !mine
             return h(
@@ -412,6 +470,14 @@ function AssistantDrawer() {
       h(
         'div',
         { className: 'wb-row', style: { gap: 6 } },
+        h(Chip, {
+          active: steerMode,
+          onClick: function () {
+            setSteerMode(!steerMode)
+          },
+          title: steerMode ? '打断当前轮并立即处理' : '排队等当前轮结束再处理',
+          children: steerMode ? '打断当前轮' : '排队',
+        }),
         h('div', { className: 'wb-spacer' }),
         h(Btn, {
           size: 'sm',
@@ -419,7 +485,7 @@ function AssistantDrawer() {
           icon: 'arrowRight',
           disabled: sending || !draft.trim(),
           onClick: send,
-          children: sending ? '发送中…' : '发送',
+          children: sending ? '执行中…' : '发送',
         }),
       ),
     ),

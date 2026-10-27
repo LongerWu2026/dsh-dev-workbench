@@ -211,7 +211,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 39 个 Remote 描述符', invocations.length === 39, '实际 ' + invocations.length)
+check('注册了 41 个 Remote 描述符', invocations.length === 41, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -938,6 +938,22 @@ check(
   check('会话记录可读（含工具调用）', transcript.status === 'ok' && transcript.messages.some((m) => m.role === 'assistant' && (m.toolCalls || []).length >= 1), JSON.stringify(transcript.messages.slice(-1)))
   const missing = await api.assistantTranscript({ sessionId: 'no-such-session' })
   check('读取不存在的会话如实返回', missing.status === 'not_found')
+
+  // 方案 A1：渐进渲染链路（send 立即返回 → delta 增量取条目）
+  {
+    const sent = await api.assistantSend({ text: '渐进渲染测试', sessionId: 'session-assistant-fake' })
+    check('assistantSend 立即返回 fromSeq', sent.status === 'ok' && Number.isFinite(sent.fromSeq), JSON.stringify(sent))
+    // 假控制器 20ms 后写入事件；给一点时间再取增量
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    const delta = await api.assistantDelta({ sessionId: 'session-assistant-fake', fromSeq: sent.fromSeq })
+    check('assistantDelta 返回新条目', delta.status === 'ok' && delta.entries.length >= 3, JSON.stringify(delta.entries.map((e) => e.role)))
+    check('assistantDelta 含工具与助手条目', delta.entries.some((e) => e.role === 'tool') && delta.entries.some((e) => e.role === 'assistant'))
+    check('assistantDelta 给出 nextSeq', Number.isFinite(delta.nextSeq) && delta.nextSeq >= sent.fromSeq)
+    check('turn 结束后 turnActive 为假', delta.turnActive === false)
+    // 再取一次不应重复返回旧条目
+    const again = await api.assistantDelta({ sessionId: 'session-assistant-fake', fromSeq: delta.nextSeq })
+    check('增量读取不重复', again.entries.length === 0, JSON.stringify(again.entries.map((e) => e.role)))
+  }
 
   const history = await api.assistantHistory()
   check('助手历史可读（含用户与助手）', history.messages.filter((m) => m.role === 'assistant').length >= 1 && history.messages.filter((m) => m.role === 'user').length >= 1)

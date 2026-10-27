@@ -40,6 +40,8 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
   { method: 'assistantAsk', params: ['request'] },
+  { method: 'assistantSend', params: ['request'] },
+  { method: 'assistantDelta', params: ['request'] },
   { method: 'assistantHistory', params: [] },
   { method: 'assistantSessions', params: ['request'] },
   { method: 'assistantTranscript', params: ['request'] },

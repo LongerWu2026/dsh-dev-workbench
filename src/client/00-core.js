@@ -1115,6 +1115,18 @@ const wbActions = {
       request: { text: text, refs: refs || [], sessionId: sessionId || null },
     })
   },
+  /** 只提交提示，立即返回 {sessionId, fromSeq}；配合 assistantDelta 渐进渲染。 */
+  assistantSend(text, refs, sessionId, steer) {
+    return wbRpc('workbench/assistantSend', {
+      request: { text: text, refs: refs || [], sessionId: sessionId || null, steer: steer === true },
+    })
+  },
+  /** 增量读取：{entries, nextSeq, turnActive}。 */
+  assistantDelta(sessionId, fromSeq) {
+    return wbRpc('workbench/assistantDelta', {
+      request: { sessionId: sessionId || null, fromSeq: fromSeq || 0 },
+    })
+  },
   assistantSessions(limit) {
     return wbRpc('workbench/assistantSessions', { request: { limit: limit || 12 } })
   },

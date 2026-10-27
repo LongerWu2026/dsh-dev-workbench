@@ -486,6 +486,25 @@ const ctx = {
         if (endpoint === 'workbench/diagnostics') return Promise.resolve({ ok: true, value: diagnostics })
         if (endpoint === 'workbench/environment') return Promise.resolve({ ok: true, value: environmentFixture })
         if (endpoint === 'workbench/github') return Promise.resolve({ ok: true, value: githubFixture })
+        if (endpoint === 'workbench/assistantSend') {
+          return Promise.resolve({ ok: true, value: { status: 'ok', sessionId: 'session-fake', fromSeq: 0 } })
+        }
+        if (endpoint === 'workbench/assistantDelta') {
+          return Promise.resolve({
+            ok: true,
+            value: {
+              status: 'ok',
+              sessionId: 'session-fake',
+              nextSeq: 3,
+              turnActive: false,
+              entries: [
+                { role: 'tool', text: 'workbench_create_task', summary: '{"title":"限流结论"}' },
+                { role: 'toolResult', text: 'workbench_create_task', ok: true },
+                { role: 'assistant', text: '助手回复：已建好待办，今天先处理限流结论。' },
+              ],
+            },
+          })
+        }
         if (endpoint === 'workbench/assistantAsk') {
           return Promise.resolve({
             ok: true,
@@ -772,6 +791,8 @@ for (const [title, id, expected] of pageSpecs) {
       if (!sendBtn) problems.push('助手抽屉缺少「发送」按钮')
       else {
         sendBtn.onClick()
+        // 渐进渲染：等一次 400ms 轮询落地
+        await new Promise((resolve) => setTimeout(resolve, 700))
         const replied = await renderTree('助手·已回复')
         const replyText = treeText(replied).replace(/\s+/g, ' ')
         if (replyText.indexOf('助手回复') < 0) problems.push('助手没有显示模型回复')

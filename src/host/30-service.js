@@ -527,6 +527,16 @@ const workbenchApi = {
     return runAssistantAsk(workbenchContext(), request || {})
   },
 
+  /** 只提交提示（立即返回 fromSeq），配合 assistantDelta 做渐进渲染。 */
+  async assistantSend(request) {
+    return sendAssistantPrompt(workbenchContext(), request || {})
+  },
+
+  /** 增量读取会话记录（fromSeq 之后的新条目 + turnActive）。 */
+  async assistantDelta(request) {
+    return readAssistantDelta(workbenchContext(), request || {})
+  },
+
   async assistantHistory() {
     return readAssistantHistory(workbenchContext())
   },
