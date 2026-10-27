@@ -869,6 +869,30 @@ for (const [title, id, expected] of pageSpecs) {
     const text = treeText(drawer).replace(/\s+/g, ' ')
     if (text.indexOf('工作台助手') < 0) problems.push('助手抽屉没有渲染标题')
     if (text.indexOf('早上好') < 0) problems.push('助手抽屉没有载入历史消息')
+    // 可拖拽分栏：必须有分隔条，且侧栏是固定宽度、主区随之让位
+    let separator = null
+    const findSeparator = (list) => {
+      list.forEach((item) => {
+        if (!item.tag) return
+        const props = item.props || {}
+        if (String(props['aria-label'] || '') === '拖动调整助手宽度') separator = props
+        findSeparator(item.children || [])
+      })
+    }
+    findSeparator(drawer)
+    if (!separator) problems.push('助手侧栏缺少宽度拖拽分隔条')
+    if (separator && typeof separator.onMouseDown !== 'function') problems.push('拖拽分隔条没有 onMouseDown')
+    let hasFlexBasis = false
+    const findAside = (list) => {
+      list.forEach((item) => {
+        if (!item.tag) return
+        const style = (item.props || {}).style || {}
+        if (typeof style.flex === 'string' && style.flex.indexOf('0 0') === 0) hasFlexBasis = true
+        findAside(item.children || [])
+      })
+    }
+    findAside(drawer)
+    if (!hasFlexBasis) problems.push('助手侧栏没有固定 flex 宽度（无法与主区并排）')
     const composer = findInputs(drawer, []).find((props) => /输入指令/.test(String(props.placeholder || '')))
     if (!composer) problems.push('助手抽屉缺少输入框')
     else {

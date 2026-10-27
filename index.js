@@ -304,6 +304,12 @@ function normalizeSettings(raw) {
     mentionKeywords: asTags(input.mentionKeywords, 6),
     /** 工作台助手复用的原生会话 id（侧栏聊天） */
     assistantSessionId: asString(input.assistantSessionId, 120) || null,
+    /** 助手侧栏宽度（px）：拖拽分栏后持久化，重启/刷新保持 */
+    assistantWidth: (function () {
+      const width = Number(input.assistantWidth)
+      if (!Number.isFinite(width)) return 384
+      return Math.max(240, Math.min(760, Math.round(width)))
+    })(),
     /** 后台自动化（TODO 07）：插件侧定时执行确定性采集 */
     automation: normalizeAutomation(input.automation),
   }

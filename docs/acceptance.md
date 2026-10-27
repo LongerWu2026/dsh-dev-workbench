@@ -184,7 +184,13 @@ node tests/client-render.mjs
 | 次要文字在深色下偏暗 | `.wb-muted` 用 color-mix 向主文字提亮 |
 | 底部状态归属不明 | 改为「工作台状态 / 本地持久化 · 最近写入 X」，明确是全局状态 |
 
-## 13. 生效条件
+## 13. 助手侧栏宽度（2026-10-28）
+
+- 助手侧栏从「绝对定位盖住工作台」改为**并排可拖拽分栏**：是 `.wb-root` 的 flex 子项（`flex: 0 0 Npx`），主区 `flex:1; min-width:0`，变宽时工作台自动收窄。
+- 左边缘有 6px 拖拽手柄（`role="separator"`），范围 240–760px，同时 `max-width: 62%` 防止把主区挤没。
+- 宽度持久化在 `settings.assistantWidth`（Host 侧归一化 240–760），刷新页面与重启后保持。
+
+## 14. 生效条件
 
 - 只改 `src/client/**`：重新构建后刷新 GUI 窗口即可。
 - 改 `src/host/**`（新增 Remote 端点或工具）：必须**重启 DSH**；重新安装 bundle 不会替换已加载的

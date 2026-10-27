@@ -119,6 +119,38 @@ function AssistantDrawer() {
 
   const open = !!state.assistantOpen
   const refs = Array.isArray(state.assistantRefs) ? state.assistantRefs : []
+  const settings = (state.data && state.data.settings) || {}
+  const savedWidth = Number(settings.assistantWidth)
+  const [width, setWidth] = React.useState(Number.isFinite(savedWidth) ? savedWidth : 384)
+  const widthRef = React.useRef(width)
+
+  React.useEffect(
+    function () {
+      widthRef.current = width
+    },
+    [width],
+  )
+
+  // 拖动左边缘调整宽度：工作台主区是 flex 兄弟节点，宽了会自动让位
+  function startResize(event) {
+    event.preventDefault()
+    const startX = event.clientX
+    const startWidth = widthRef.current
+    function onMove(moveEvent) {
+      const next = Math.max(240, Math.min(760, Math.round(startWidth + (startX - moveEvent.clientX))))
+      widthRef.current = next
+      setWidth(next)
+    }
+    function onUp() {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      window.removeEventListener('mouseleave', onUp)
+      if (widthRef.current) WB.actions.saveSettings({ assistantWidth: widthRef.current }).catch(function () {})
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+    window.addEventListener('mouseleave', onUp)
+  }
 
   function loadTranscript(sessionId) {
     return WB.actions
@@ -276,19 +308,34 @@ function AssistantDrawer() {
     'aside',
     {
       style: {
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        width: 384,
-        zIndex: 40,
+        // 作为 .wb-root 的 flex 子项：主区 flex:1，助手固定宽度，工作台会随之变窄
+        flex: '0 0 ' + width + 'px',
+        width: width,
+        minWidth: 240,
+        maxWidth: '62%',
         display: 'flex',
         flexDirection: 'column',
+        position: 'relative',
         borderLeft: '1px solid ' + T.border1,
         background: T.layer1,
-        boxShadow: '-12px 0 32px rgba(0,0,0,.28)',
       },
     },
+    h('div', {
+      role: 'separator',
+      'aria-orientation': 'vertical',
+      'aria-label': '拖动调整助手宽度',
+      title: '拖动调整宽度',
+      onMouseDown: startResize,
+      style: {
+        position: 'absolute',
+        left: -3,
+        top: 0,
+        bottom: 0,
+        width: 6,
+        cursor: 'col-resize',
+        zIndex: 5,
+      },
+    }),
     h(
       'div',
       { className: 'wb-card-head', style: { borderBottom: '1px solid ' + T.border1 } },
