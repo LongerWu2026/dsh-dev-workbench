@@ -168,7 +168,8 @@ function SearchPage() {
 
   const [draft, setDraft] = React.useState('')
   const [query, setQuery] = React.useState('')
-  const [includeWeb, setIncludeWeb] = React.useState(true)
+  // 默认只搜本地与已有来源（不联网）；需要外网时再打开开关
+  const [includeWeb, setIncludeWeb] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState(null)
   const [result, setResult] = React.useState(null)
@@ -191,7 +192,16 @@ function SearchPage() {
         setDraft(text)
         run(text)
       }
-      if (preset.category) setCategory(preset.category)
+      if (preset.groups && preset.groups.length > 0) {
+        // 命令面板选中的具体结果：把该结果所在的分组映射到分类
+        const groupId = preset.groups[0]
+        const matched = SEARCH_CATEGORIES.find(function (item) {
+          return item.groups && item.groups.indexOf(groupId) >= 0
+        })
+        if (matched) setCategory(matched.id)
+      } else if (preset.category) {
+        setCategory(preset.category)
+      }
       WB.clearSearchPreset()
     },
     [preset],
