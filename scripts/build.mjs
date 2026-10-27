@@ -90,7 +90,7 @@ const client = [
   "    const React = require('react')",
   '',
   ...clientParts.map((part) => `    // ===== ${part.file} =====\n${indent(part.source.trimEnd(), 4)}\n`),
-  '    return { name: ' + JSON.stringify(NAME) + ', inject: WB.inject, apply: WB.apply }',
+  '    return { name: ' + JSON.stringify(NAME) + ', inject: WB.inject, apply: WB.apply, WB: WB }',
   '  },',
   '})',
   '',

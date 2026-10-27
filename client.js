@@ -13363,6 +13363,6 @@ window.__ModuleLoader__.load({
 
     WB.pages.search = SearchPage
 
-    return { name: "dsh-dev-workbench", inject: WB.inject, apply: WB.apply }
+    return { name: "dsh-dev-workbench", inject: WB.inject, apply: WB.apply, WB: WB }
   },
 })

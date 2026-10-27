@@ -46,9 +46,24 @@ const React = {
       },
     ]
   },
-  useEffect(fn) {
-    const cleanup = fn()
-    if (typeof cleanup === 'function') cleanups.push(cleanup)
+  useEffect(fn, deps) {
+    // 依赖数组语义与真实 React 一致：相同则跳过，不再每趟渲染重复执行
+    // （否则依赖 [props.open] 的效果会不停的触发，比如命令面板 setQuery('')）
+    const slot = hookIndex++
+    const key = 'dep:' + slot
+    if (!(key in hookSlots)) hookSlots[key] = undefined
+    const last = hookSlots[key]
+    const same = Array.isArray(deps) && Array.isArray(last) && deps.length === last.length && deps.every((value, index) => value === last[index])
+    hookSlots[key] = deps || null
+    if (same) return
+    // 真实 React 在 commit 后才运行 effect（rem 在渲染推进之后）；
+    // 同步执行会撞上组件内后置声明的 const（TDZ），例如 SEARCH_CATEGORIES
+    Promise.resolve()
+      .then(function () {
+        const cleanup = fn()
+        if (typeof cleanup === 'function') cleanups.push(cleanup)
+      })
+      .catch(function () {})
   },
   useMemo(fn) {
     return fn()
@@ -112,6 +127,7 @@ const plugin = factory(function (id) {
   if (id === 'react') return React
   throw new Error('unexpected module import: ' + id)
 })
+const WB = plugin.WB
 
 /* ------------------------------------------------------------- fixtures */
 const now = Date.now()
@@ -667,13 +683,20 @@ function findInputs(entries, out) {
   return out
 }
 
-/** 直接渲染任意组件（含 ownerProps），用于验证插槽组件本身。 */
+/**
+ * 直接渲染任意组件（含 ownerProps），用于验证插槽组件本身。
+ * hooks 在 pass 之间保留（与真实 React 一致），否则有状态组件（如命令面板）
+ * 的 onChange 会被下一趟渲染重置。
+ */
+const hookStoreByComponent = new Map()
 async function renderComponent(Component, props) {
+  // hooks 按组件身份跨调用保留：像真实 React 一样，onChange 的状态要在下一次渲染可见
+  if (!hookStoreByComponent.has(Component)) hookStoreByComponent.set(Component, [])
+  hookSlots = hookStoreByComponent.get(Component)
+  hookIndex = 0
   let entries = []
   for (let pass = 0; pass < 6; pass += 1) {
     dirty = false
-    hookSlots = []
-    hookIndex = 0
     entries = expand({ type: Component, props: props || {}, children: [] }, [])
     await tick()
     await tick()
@@ -1002,6 +1025,52 @@ for (const [title, id, expected] of pageSpecs) {
     const text = treeText(tree).replace(/\s+/g, ' ')
     if (text.indexOf('工作台') < 0) problems.push('工具卡片没有渲染工作台标识')
     if (text.indexOf('create_task') < 0) problems.push('工具卡片没有渲染工具名')
+  }
+}
+
+/* ------------------------------------- 命令面板内联检索（键盘路径） */
+{
+  const PanelComp = WB.Palette
+  // probe：直连一次 search 动作，确认链路本身通
+  let probe = 'pending'
+  WB.actions
+    .search('限流', { includeWeb: false })
+    .then(function (value) {
+      probe = 'ok:' + (value && value.groups ? value.groups.length : 'no-groups')
+    })
+    .catch(function (error) {
+      probe = 'err:' + String((error && error.message) || error)
+    })
+  await new Promise((resolve) => setTimeout(resolve, 60))
+  if (probe === 'pending' || probe.indexOf('err:') === 0 || probe.indexOf('no-groups') >= 0) {
+    problems.push('DEBUG search probe=' + probe)
+  }
+  const opened = await renderComponent(PanelComp, { open: true, onClose: function () {} })
+  const input = findInputs(opened, [])[0]
+  if (!input) problems.push('命令面板缺少输入框')
+  else {
+    input.onChange({ target: { value: '限流' } })
+    // 等待 260ms 防抖 + RPC 解析
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    let withResults = await renderComponent(PanelComp, { open: true, onClose: function () {} })
+    let text = treeText(withResults).replace(/\s+/g, ' ')
+    // 防抖回调是异步落库的：多等几拍再渲染
+    for (let attempt = 0; attempt < 3 && text.indexOf('搜索 · 我的待办') < 0; attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 400))
+      withResults = await renderComponent(PanelComp, { open: true, onClose: function () {} })
+      text = treeText(withResults).replace(/\s+/g, ' ')
+    }
+    const rpcSearches = rpcCalls.filter((call) => call.endpoint === 'workbench/search').length
+    if (rpcSearches === 0) problems.push('命令面板没有发起本地检索 RPC')
+    if (text.indexOf('搜索 · 我的待办') < 0) problems.push('命令面板没有出现内联检索分组')
+    if (text.indexOf('给出网关限流阈值结论') < 0) problems.push('命令面板没有返回本地检索结果')
+    if (text.indexOf('本地检索 · 不联网') < 0) problems.push('命令面板缺少「本地检索 · 不联网」提示')
+    // 键盘路径：Enter 执行第一条 → 应写入 searchPreset 并跳转
+    const firstInput = findInputs(withResults, [])[0]
+    firstInput.onKeyDown({ key: 'Enter', preventDefault: function () {} })
+    const preset = ((WB.store && WB.store.get) ? WB.store.get().searchPreset : null)
+    if (!preset || String(preset.query) !== '限流') problems.push('回车执行没有写入 searchPreset')
+    if (preset && preset.groups && preset.groups[0] !== 'tasks') problems.push('回车执行没有携带来源分组')
   }
 }
 
