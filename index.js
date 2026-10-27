@@ -1710,6 +1710,16 @@ const workbenchApi = {
     return readAssistantHistory(workbenchContext())
   },
 
+  /** 最近原生会话列表（供侧栏切换）。 */
+  async assistantSessions(request) {
+    return listAssistantSessions(workbenchContext(), request || {})
+  },
+
+  /** 读取指定会话的记录（缺省为助手会话）。 */
+  async assistantTranscript(request) {
+    return readAssistantTranscript(workbenchContext(), request || {})
+  },
+
   async assistantReset() {
     return resetAssistantSession(workbenchContext())
   },
@@ -4156,6 +4166,8 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'seedDemo', params: [] },
   { method: 'assistantAsk', params: ['request'] },
   { method: 'assistantHistory', params: [] },
+  { method: 'assistantSessions', params: ['request'] },
+  { method: 'assistantTranscript', params: ['request'] },
   { method: 'assistantReset', params: [] },
   { method: 'automationRun', params: [] },
   { method: 'automationStatus', params: [] },
@@ -4397,6 +4409,77 @@ function assistantHistoryFrom(session, limit) {
   return out.slice(-(limit || 20))
 }
 
+/** 会话的展示标题：优先取首条用户消息，其次给短 id。 */
+function sessionTitleOf(session) {
+  try {
+    const events = session.snapshotEvents()
+    for (const event of events) {
+      if (event.type !== 'user/message') continue
+      const content = Array.isArray(event.data.content) ? event.data.content : []
+      const text = content
+        .map(function (block) {
+          return block && block.type === 'text' ? block.text : ''
+        })
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim()
+      if (text) return text.slice(0, 40)
+    }
+  } catch (e) {
+    /* 读不到就给短 id */
+  }
+  return '会话 ' + String(session.id).slice(-6)
+}
+
+function sessionLastAt(session) {
+  try {
+    const events = session.snapshotEvents()
+    const last = events[events.length - 1]
+    return last && last.time ? last.time : session.header && session.header.createdAt ? session.header.createdAt : null
+  } catch (e) {
+    return null
+  }
+}
+
+/** 把会话事件转成侧栏可渲染的记录条目。 */
+function transcriptOf(session, limit) {
+  if (!session || typeof session.snapshotEvents !== 'function') return []
+  const events = session.snapshotEvents()
+  const entries = []
+  let pendingCalls = []
+  for (const event of events) {
+    if (event.type === 'user/message') {
+      const content = Array.isArray(event.data.content) ? event.data.content : []
+      const text = content
+        .map(function (block) {
+          return block && block.type === 'text' ? block.text : ''
+        })
+        .filter(Boolean)
+        .join('\n')
+        .trim()
+      if (text) entries.push({ role: 'user', text: text, at: event.time })
+    } else if (event.type === 'tool/call') {
+      const name = event.data && event.data.name ? String(event.data.name) : 'tool'
+      const args = event.data && event.data.arguments ? event.data.arguments : null
+      let summary = ''
+      try {
+        summary = args ? JSON.stringify(args).slice(0, 160) : ''
+      } catch (e) {
+        summary = ''
+      }
+      pendingCalls.push({ name: name, summary: summary })
+    } else if (event.type === 'assistant/message') {
+      const text = assistantTextOf(event.data.message)
+      if (text || pendingCalls.length > 0) {
+        entries.push({ role: 'assistant', text: text, at: event.time, toolCalls: pendingCalls.slice(0, 8) })
+      }
+      pendingCalls = []
+    }
+  }
+  return entries.slice(-(limit || 40))
+}
+
 function getAssistantSession(ctx) {
   const sessions = hostService(ctx, 'sessions')
   if (!sessions || typeof sessions.create !== 'function' || typeof sessions.get !== 'function') return null
@@ -4420,6 +4503,59 @@ function getAssistantSession(ctx) {
  * 一次助手问答：提交提示 → 等待本轮结束 → 返回回复与工具调用。
  * 所有失败都以 {status, note} 返回，不抛给 Remote 层（侧栏要显示原因）。
  */
+/** 最近会话列表（含助手会话标记），供侧栏切换。 */
+async function listAssistantSessions(ctx, request) {
+  const sessions = hostService(ctx, 'sessions')
+  if (!sessions || typeof sessions.list !== 'function') {
+    return { status: 'unavailable', note: '没有可用的会话服务', sessions: [], assistantSessionId: null }
+  }
+  const limit = Math.max(1, Math.min(20, Number(request && request.limit) || 12))
+  const state = loadWorkbenchState()
+  const currentId = state.settings && state.settings.assistantSessionId ? String(state.settings.assistantSessionId) : null
+  const rows = sessions
+    .list()
+    .map(function (session) {
+      return {
+        id: String(session.id),
+        title: sessionTitleOf(session),
+        lastAt: sessionLastAt(session),
+        createdAt: session.header && session.header.createdAt ? new Date(session.header.createdAt).toISOString() : null,
+        isAssistant: currentId === String(session.id),
+      }
+    })
+    .sort(function (a, b) {
+      const left = a.lastAt ? new Date(a.lastAt).getTime() : 0
+      const right = b.lastAt ? new Date(b.lastAt).getTime() : 0
+      return right - left
+    })
+    .slice(0, limit)
+  return { status: 'ok', sessions: rows, assistantSessionId: currentId }
+}
+
+/** 读取指定会话（缺省为助手会话）的记录。 */
+async function readAssistantTranscript(ctx, request) {
+  const sessions = hostService(ctx, 'sessions')
+  if (!sessions || typeof sessions.get !== 'function') {
+    return { status: 'unavailable', note: '没有可用的会话服务', messages: [] }
+  }
+  const wanted = asString(request && request.sessionId, 120)
+  let session = null
+  if (wanted) {
+    session = sessions.get(wanted)
+    if (!session) return { status: 'not_found', note: '找不到该会话', messages: [] }
+  } else {
+    const resolved = getAssistantSession(ctx)
+    if (!resolved) return { status: 'unavailable', note: '没有可用的会话服务', messages: [] }
+    session = resolved.session
+  }
+  return {
+    status: 'ok',
+    sessionId: String(session.id),
+    title: sessionTitleOf(session),
+    messages: transcriptOf(session, Math.min(80, Number(request && request.limit) || 40)),
+  }
+}
+
 async function runAssistantAsk(ctx, request) {
   const input = request && typeof request === 'object' ? request : {}
   const text = asString(input.text, 4000)
@@ -4433,15 +4569,29 @@ async function runAssistantAsk(ctx, request) {
       reply: '',
     }
   }
-  const resolved = getAssistantSession(ctx)
-  if (!resolved) {
-    return {
-      status: 'unavailable',
-      note: '当前宿主没有可用的 sessions 服务，无法创建助手会话。',
-      reply: '',
+  const wantedSession = asString(input.sessionId, 120)
+  let session = null
+  if (wantedSession) {
+    const sessions = hostService(ctx, 'sessions')
+    session = sessions && typeof sessions.get === 'function' ? sessions.get(wantedSession) : null
+    if (!session) {
+      return { status: 'not_found', note: '找不到该会话：' + wantedSession, reply: '' }
     }
+    mutateWorkbenchState(function (current) {
+      current.settings.assistantSessionId = String(session.id)
+      return current
+    })
+  } else {
+    const resolved = getAssistantSession(ctx)
+    if (!resolved) {
+      return {
+        status: 'unavailable',
+        note: '当前宿主没有可用的 sessions 服务，无法创建助手会话。',
+        reply: '',
+      }
+    }
+    session = resolved.session
   }
-  const session = resolved.session
   const fromSeq = session.seq
 
   // 上下文引用拼进提示（保持可见、可回溯），Agent 可直接调用 workbench_* 工具回写

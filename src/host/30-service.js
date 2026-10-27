@@ -531,6 +531,16 @@ const workbenchApi = {
     return readAssistantHistory(workbenchContext())
   },
 
+  /** 最近原生会话列表（供侧栏切换）。 */
+  async assistantSessions(request) {
+    return listAssistantSessions(workbenchContext(), request || {})
+  },
+
+  /** 读取指定会话的记录（缺省为助手会话）。 */
+  async assistantTranscript(request) {
+    return readAssistantTranscript(workbenchContext(), request || {})
+  },
+
   async assistantReset() {
     return resetAssistantSession(workbenchContext())
   },

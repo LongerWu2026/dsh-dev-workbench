@@ -492,6 +492,33 @@ const ctx = {
             value: { status: 'ok', reply: '助手回复：今天先处理限流结论，已帮你排好序。', toolCalls: ['workbench_create_task'], sessionId: 'session-fake' },
           })
         }
+        if (endpoint === 'workbench/assistantSessions') {
+          return Promise.resolve({
+            ok: true,
+            value: {
+              status: 'ok',
+              assistantSessionId: 'session-fake',
+              sessions: [
+                { id: 'session-fake', title: '工作台助手会话', lastAt: iso(-0.2), isAssistant: true },
+                { id: 'session-other', title: '另一个会话', lastAt: iso(-3), isAssistant: false },
+              ],
+            },
+          })
+        }
+        if (endpoint === 'workbench/assistantTranscript') {
+          return Promise.resolve({
+            ok: true,
+            value: {
+              status: 'ok',
+              sessionId: 'session-fake',
+              title: '工作台助手会话',
+              messages: [
+                { role: 'user', text: '早上好', at: iso(-1) },
+                { role: 'assistant', text: '**收到**：今天先处理限流结论', at: iso(-0.9), toolCalls: [{ name: 'workbench_record_run', summary: '{"status":"completed"}' }] },
+              ],
+            },
+          })
+        }
         if (endpoint === 'workbench/assistantHistory') {
           return Promise.resolve({ ok: true, value: { status: 'ok', messages: [{ role: 'user', text: '早上好', at: iso(-1) }], sessionId: 'session-fake' } })
         }

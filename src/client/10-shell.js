@@ -111,33 +111,48 @@ function AssistantDrawer() {
   const [draft, setDraft] = React.useState('')
   const [sending, setSending] = React.useState(false)
   const [error, setError] = React.useState(null)
+  const [sessions, setSessions] = React.useState([])
+  const [activeId, setActiveId] = React.useState(null)
   const [loaded, setLoaded] = React.useState(false)
   const bodyRef = React.useRef(null)
 
   const open = !!state.assistantOpen
   const refs = Array.isArray(state.assistantRefs) ? state.assistantRefs : []
 
-  // 打开时载入历史（复用同一个原生会话，跨次打开内容连续）
+  function loadTranscript(sessionId) {
+    return WB.actions
+      .assistantTranscript(sessionId, 40)
+      .then(function (result) {
+        setMessages((result && result.messages) || [])
+        if (result && result.sessionId) setActiveId(result.sessionId)
+      })
+      .catch(function () {
+        /* 读不到历史不影响继续对话 */
+      })
+  }
+
+  // 打开时载入会话列表与当前会话记录
   React.useEffect(
     function () {
       if (!open || loaded) return
       setLoaded(true)
       WB.actions
-        .assistantHistory()
+        .assistantSessions(12)
         .then(function (result) {
-          const history = (result && result.messages) || []
-          setMessages(function (previous) {
-            return previous.length > 0 ? previous : history
-          })
+          const list = (result && result.sessions) || []
+          setSessions(list)
+          const preferred = (result && result.assistantSessionId) || (list[0] && list[0].id) || null
+          if (preferred) {
+            setActiveId(preferred)
+            return loadTranscript(preferred)
+          }
+          return null
         })
-        .catch(function () {
-          /* 历史读取失败不影响继续对话 */
-        })
+        .catch(function () {})
     },
     [open, loaded],
   )
 
-  // 新消息滚到底部
   React.useEffect(
     function () {
       const node = bodyRef.current
@@ -147,6 +162,12 @@ function AssistantDrawer() {
   )
 
   if (!open) return null
+
+  function switchSession(nextId) {
+    setActiveId(nextId)
+    setError(null)
+    loadTranscript(nextId)
+  }
 
   function send() {
     const text = draft.trim()
@@ -158,22 +179,26 @@ function AssistantDrawer() {
       return previous.concat([{ role: 'user', text: text }])
     })
     WB.actions
-      .assistantAsk(text, refs)
+      .assistantAsk(text, refs, activeId)
       .then(function (result) {
         setSending(false)
         if (result && result.reply) {
           setMessages(function (previous) {
             return previous.concat([
-              { role: 'assistant', text: result.reply, toolCalls: result.toolCalls || [] },
+              { role: 'assistant', text: result.reply, toolCalls: (result.toolCalls || []).map(function (name) { return { name: name } }) },
             ])
           })
         }
-        if (result && result.status !== 'ok') {
-          setError(result.note || ('状态：' + result.status))
-        }
+        if (result && result.status !== 'ok') setError(result.note || ('状态：' + result.status))
         if (result && result.status === 'ok') {
-          // 助手可能已通过工具改过数据，立刻对齐一次
+          // 助手可能已用工具改过数据，立刻对齐一次
           WB.actions.reload().catch(function () {})
+          WB.actions
+            .assistantSessions(12)
+            .then(function (next) {
+              setSessions((next && next.sessions) || [])
+            })
+            .catch(function () {})
         }
       })
       .catch(function (failure) {
@@ -182,16 +207,28 @@ function AssistantDrawer() {
       })
   }
 
-  function resetSession() {
+  function newSession() {
     WB.actions
       .assistantReset()
-      .then(function () {
+      .then(function (result) {
         setMessages([])
         setError(null)
+        const nextId = result && result.sessionId
+        if (nextId) setActiveId(nextId)
+        WB.actions
+          .assistantSessions(12)
+          .then(function (next) {
+            setSessions((next && next.sessions) || [])
+          })
+          .catch(function () {})
         WB.toast('已开始新的助手会话', 'ok')
       })
       .catch(function () {})
   }
+
+  const sessionOptions = (sessions.length > 0 ? sessions : [{ id: activeId || '', title: '助手会话' }]).map(function (item) {
+    return { value: item.id, label: (item.isAssistant ? '★ ' : '') + (item.title || item.id) }
+  })
 
   return h(
     'aside',
@@ -201,7 +238,7 @@ function AssistantDrawer() {
         top: 0,
         right: 0,
         bottom: 0,
-        width: 360,
+        width: 384,
         zIndex: 40,
         display: 'flex',
         flexDirection: 'column',
@@ -218,20 +255,37 @@ function AssistantDrawer() {
         'div',
         { className: 'wb-card-titles' },
         h('h3', { className: 'wb-card-title' }, '工作台助手'),
-        h('p', { className: 'wb-card-sub' }, '原生会话与模型；可直接读写工作台数据'),
+        h('p', { className: 'wb-card-sub' }, 'DSH 原生会话与模型；可直接读写工作台数据'),
       ),
       h(
         'div',
         { className: 'wb-card-actions' },
-        h(IconBtn, { name: 'plus', label: '新会话', onClick: resetSession }),
+        h(IconBtn, { name: 'plus', label: '新会话', onClick: newSession }),
         h(IconBtn, {
           name: 'external',
-          label: '打开完整会话',
+          label: '在主面板打开该会话',
           onClick: function () {
-            if (WB.openConversation) WB.openConversation()
+            if (activeId && WB.openSessionById) WB.openSessionById(activeId)
+            else if (WB.openConversation) WB.openConversation()
           },
         }),
         h(IconBtn, { name: 'close', label: '关闭助手', onClick: function () { WB.assistant.close() } }),
+      ),
+    ),
+    h(
+      'div',
+      { style: { padding: '8px 12px', borderBottom: '1px solid ' + T.border1, display: 'flex', alignItems: 'center', gap: 6 } },
+      h('span', { className: 'wb-tiny wb-muted' }, '会话'),
+      h(
+        'div',
+        { style: { flex: '1 1 auto', minWidth: 0 } },
+        h(Select, {
+          value: activeId || '',
+          options: sessionOptions,
+          onChange: function (event) {
+            switchSession(event.target.value)
+          },
+        }),
       ),
     ),
     h(
@@ -248,10 +302,11 @@ function AssistantDrawer() {
             h('p', { style: { margin: '0 0 4px' } }, '· 今天还有哪些没做完？帮我把逾期的排一下'),
             h('p', { style: { margin: '0 0 4px' } }, '· 把这个消息整理成待办，截止放到明天'),
             h('p', { style: { margin: '0 0 4px' } }, '· 这些资讯里哪条和限流有关？'),
-            h('p', { style: { margin: 0 } }, '带上下文提问时，先在上方卡片点「AI 分析」把相关记录加进来。'),
+            h('p', { style: { margin: 0 } }, '带上下文提问时，先在卡片上点「AI 分析」把相关记录加进来。'),
           )
         : messages.map(function (message, index) {
             const mine = message.role === 'user'
+            const markdown = !mine
             return h(
               'div',
               { key: 'm' + index, style: { display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' } },
@@ -259,41 +314,65 @@ function AssistantDrawer() {
                 'div',
                 {
                   style: {
-                    maxWidth: '92%',
+                    maxWidth: '94%',
                     padding: '8px 10px',
                     borderRadius: 10,
                     fontSize: 12,
-                    lineHeight: 1.65,
-                    whiteSpace: 'pre-wrap',
+                    lineHeight: 1.7,
                     overflowWrap: 'anywhere',
                     background: mine ? T.accent : T.layer2,
                     color: mine ? T.bg : T.text,
                   },
                 },
-                message.text,
+                markdown && typeof mdParse === 'function'
+                  ? h(
+                      'div',
+                      { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+                      mdParse(message.text || '').slice(0, 40).map(function (block, blockIndex) {
+                        const key = 'b' + index + '-' + blockIndex
+                        if (block.type === 'heading') {
+                          return h('div', { key: key, style: { fontWeight: 600, margin: '6px 0 2px' } }, mdInline(block.text, key))
+                        }
+                        if (block.type === 'code') {
+                          return h('pre', { key: key, className: 'wb-code', style: { margin: '4px 0' } }, block.text)
+                        }
+                        if (block.type === 'list') {
+                          return h(
+                            block.ordered ? 'ol' : 'ul',
+                            { key: key, style: { margin: '2px 0', paddingLeft: 18 } },
+                            block.items.map(function (item, itemIndex) {
+                              return h('li', { key: key + '-' + itemIndex }, mdInline(item, key + '-' + itemIndex))
+                            }),
+                          )
+                        }
+                        if (block.type === 'hr') return h('hr', { key: key, className: 'wb-divider', style: { margin: '6px 0' } })
+                        if (block.type === 'quote') {
+                          return h('div', { key: key, style: { borderLeft: '2px solid ' + T.border2, paddingLeft: 8, color: T.text2 } }, mdInline(block.text, key))
+                        }
+                        return h('div', { key: key, style: { whiteSpace: 'pre-wrap' } }, mdInline(block.text || '', key))
+                      }),
+                    )
+                  : h('div', { style: { whiteSpace: 'pre-wrap' } }, message.text),
                 message.toolCalls && message.toolCalls.length > 0
                   ? h(
                       'div',
                       { style: { marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 } },
-                      message.toolCalls.map(function (name, toolIndex) {
-                        return h(Chip, { key: 't' + toolIndex, icon: 'command', children: name })
+                      message.toolCalls.map(function (tool, toolIndex) {
+                        const name = typeof tool === 'string' ? tool : tool.name
+                        return h(Chip, {
+                          key: 't' + toolIndex,
+                          icon: 'command',
+                          title: (tool && tool.summary) || name,
+                          children: name,
+                        })
                       }),
                     )
                   : null,
               ),
             )
           }),
-      sending
-        ? h(
-            'div',
-            { className: 'wb-row wb-tiny wb-muted', style: { gap: 6 } },
-            h(Spinner, { size: 12 }),
-            h('span', null, '助手正在思考…'),
-          )
-        : null,
-      error
-        ? h('div', { role: 'alert', className: 'wb-tiny', style: { color: T.err, lineHeight: 1.6 } }, error)
-        : null,
+      sending ? h('div', { className: 'wb-row wb-tiny wb-muted', style: { gap: 6 } }, h(Spinner, { size: 12 }), h('span', null, '助手正在思考…')) : null,
+      error ? h('div', { role: 'alert', className: 'wb-tiny', style: { color: T.err, lineHeight: 1.6 } }, error) : null,
     ),
     h(
       'div',
@@ -308,7 +387,7 @@ function AssistantDrawer() {
                 key: ref.kind + ':' + ref.id,
                 active: true,
                 title: ref.title,
-                children: WB.util.truncate(ref.title || ref.id, 16),
+                children: WB.util.truncate(ref.title || ref.id, 14),
                 onRemove: function () {
                   WB.assistant.remove(ref.kind, ref.id)
                 },

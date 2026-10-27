@@ -1110,8 +1110,18 @@ const wbActions = {
   },
 
   /** 侧栏助手：向原生会话提交一次问答，返回 {status, reply, toolCalls, note}。 */
-  assistantAsk(text, refs) {
-    return wbRpc('workbench/assistantAsk', { request: { text: text, refs: refs || [] } })
+  assistantAsk(text, refs, sessionId) {
+    return wbRpc('workbench/assistantAsk', {
+      request: { text: text, refs: refs || [], sessionId: sessionId || null },
+    })
+  },
+  assistantSessions(limit) {
+    return wbRpc('workbench/assistantSessions', { request: { limit: limit || 12 } })
+  },
+  assistantTranscript(sessionId, limit) {
+    return wbRpc('workbench/assistantTranscript', {
+      request: { sessionId: sessionId || null, limit: limit || 40 },
+    })
   },
   assistantHistory() {
     return wbRpc('workbench/assistantHistory', {})
@@ -1817,6 +1827,30 @@ WB.setUiWorkspace = function (value) {
 WB.setLayout = function (value) {
   wbLayout = value || null
 }
+/** 在主面板打开指定原生会话（助手侧栏「打开完整会话」）。 */
+WB.openSessionById = function (sessionId) {
+  if (!sessionId) return false
+  const workspace = wbUiWorkspace
+  if (workspace && typeof workspace.openSession === 'function') {
+    try {
+      workspace.openSession(sessionId)
+      return true
+    } catch (e) {
+      /* 落到下面的会话面板切换 */
+    }
+  }
+  if (wbLayout && typeof wbLayout.selectPanel === 'function') {
+    try {
+      // 会话面板的 main key 是 'conversation'
+      wbLayout.selectPanel('conversation')
+      return true
+    } catch (e) {
+      return false
+    }
+  }
+  return false
+}
+
 /** 回到原生会话面板（助手把上下文复制到剪贴板后调用）。 */
 WB.openConversation = function () {
   if (!wbLayout || typeof wbLayout.selectPanel !== 'function') return false

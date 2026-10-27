@@ -211,7 +211,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 37 个 Remote 描述符', invocations.length === 37, '实际 ' + invocations.length)
+check('注册了 39 个 Remote 描述符', invocations.length === 39, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -904,19 +904,22 @@ check(
   fakeSessions = {
     get: (id) => registry.get(id),
     create: () => fakeSession,
+    list: () => [fakeSession],
   }
   fakeSessionController = {
     prompt: async (request) => {
       setTimeout(() => {
+        // 真实事件顺序：用户消息 → 工具调用 → 工具结果 → 助手消息 → 本轮结束
         events.push({ type: 'user/message', seq: 1, time: Date.now(), data: { content: request.content } })
+        events.push({ type: 'tool/call', seq: 2, time: Date.now(), data: { name: 'workbench_create_task', arguments: { title: '限流结论' } } })
+        events.push({ type: 'tool/result', seq: 3, time: Date.now(), data: { name: 'workbench_create_task' } })
         events.push({
           type: 'assistant/message',
-          seq: 2,
+          seq: 4,
           time: Date.now(),
           data: { message: { content: [{ type: 'text', text: '助手回复：今天先处理限流结论' }] } },
         })
-        events.push({ type: 'tool/call', seq: 3, time: Date.now(), data: { name: 'workbench_create_task' } })
-        events.push({ type: 'turn/end', seq: 4, time: Date.now(), data: {} })
+        events.push({ type: 'turn/end', seq: 5, time: Date.now(), data: {} })
       }, 20)
       return { accepted: true }
     },
@@ -926,6 +929,15 @@ check(
   check('助手问答返回回复', asked.status === 'ok' && asked.reply.indexOf('助手回复') >= 0, JSON.stringify(asked))
   check('助手回传本轮工具调用', Array.isArray(asked.toolCalls) && asked.toolCalls.indexOf('workbench_create_task') >= 0)
   check('助手复用同一个原生会话', asked.sessionId === 'session-assistant-fake')
+
+  // 会话列表与记录（原生会话浏览器）
+  const sessionList = await api.assistantSessions({ limit: 5 })
+  check('助手会话列表可读', sessionList.status === 'ok' && sessionList.sessions.length >= 1, JSON.stringify(sessionList))
+  check('会话列表标记助手会话', sessionList.sessions.some((row) => row.isAssistant))
+  const transcript = await api.assistantTranscript({ sessionId: 'session-assistant-fake' })
+  check('会话记录可读（含工具调用）', transcript.status === 'ok' && transcript.messages.some((m) => m.role === 'assistant' && (m.toolCalls || []).length >= 1), JSON.stringify(transcript.messages.slice(-1)))
+  const missing = await api.assistantTranscript({ sessionId: 'no-such-session' })
+  check('读取不存在的会话如实返回', missing.status === 'not_found')
 
   const history = await api.assistantHistory()
   check('助手历史可读（含用户与助手）', history.messages.filter((m) => m.role === 'assistant').length >= 1 && history.messages.filter((m) => m.role === 'user').length >= 1)

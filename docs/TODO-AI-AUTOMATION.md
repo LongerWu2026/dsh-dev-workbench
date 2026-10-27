@@ -40,7 +40,9 @@
   - 先验证当前安装版本的原生会话嵌入和控制能力；若嵌入暂不可行，先做带上下文的原生会话跳转与回写。
   - 验收：侧栏或原生会话中的创建、查询、修改待办，以及保存资讯摘要和知识后，页面展示同一份数据；会话持续性、上下文范围和写入结果可追溯。
   - 处理（已升级为侧栏内可对话）：工具写入逻辑收敛到 `applyCreateTask/applyUpdateTask/applyRecordRun`；新增 `workbench_search`、`workbench_update_radar`；**「工作台助手」侧栏现在是真正的聊天窗口**——`workbench/assistantAsk` 用宿主原生链路 `sessions.create → sessionController.prompt({requestId, sessionId, mode:'queue', content}) → 轮询 session.snapshotEvents() 等 turn/end`，抽取 `assistant/message` 文本与本轮 `tool/call` 回传；侧栏显示历史、思考态、失败原因，并保留上下文引用（可移除）随每条消息一起提交；「新会话 / 打开完整会话」可用。Agent 因此能直接调用 `workbench_*` 工具写回同一份数据。
-  - 未做：流式增量渲染（当前按轮次整段返回）；侧栏使用同一个原生会话，历史会与该会话在 GUI 里的记录共享。
+  - 会话级内嵌（2026-10-27 追加）：侧栏顶部可**切换原生会话**（`assistantSessions` 列出最近会话并标记助手会话）、按会话**读取原生记录**（`assistantTranscript`，含 user/assistant 消息与 tool/call 参数摘要）、在所选会话里继续对话、一键在主面板打开该会话（`uiWorkspace.openSession`）。助手回复按 Markdown 渲染，工具调用以 chip 展示。
+  - 未做（受平台限制）：**组件级内嵌**——DSH 未导出会话组件，插槽也不允许把会话面板搬进插件面板，因此只能在侧栏复刻「会话列表 + 记录 + 继续对话」这套能力，而不是渲染原生会话组件本身。
+  - 未做：流式增量渲染（当前按轮次整段返回）。
   - 具体设计见 `AI-ASSISTANT-DESIGN.md`。
   - 快速执行方案见 `AI-COMMAND-EXECUTION.md`：简单指令优先一次模型决策后调用业务工具；耗时操作返回 jobId 后独立执行；补充持久化幂等、串行写入和业务修订号。
 
