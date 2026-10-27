@@ -1000,6 +1000,20 @@ snapshotMode = 'empty'
   for (const marker of ['还没有待办', '技术雷达还没有内容', '抓取资讯', '手动添加资讯', '新建第一条待办']) {
     if (text.indexOf(marker) < 0) problems.push('空态首页缺少「' + marker + '」')
   }
+  // 空态要有引导内容（插画 + 三步），不能只是一句话
+  for (const marker of ['记一条手动待办', '拉取云之家 @我', '让会话帮你整理', '拉取 @我 消息']) {
+    if (text.indexOf(marker) < 0) problems.push('空态待办缺少引导「' + marker + '」')
+  }
+  let hasSvg = false
+  const findSvg = (list) => {
+    list.forEach((item) => {
+      if (!item.tag) return
+      if (item.tag === 'svg') hasSvg = true
+      findSvg(item.children || [])
+    })
+  }
+  findSvg(tree)
+  if (!hasSvg) problems.push('空态待办缺少插画（svg）')
   // 空态下雷达头部不应再渲染筛选 Chip（用户反馈 #2：头部信息在空态是冗余）
   if (text.indexOf('仅看关注主题') >= 0) problems.push('空态雷达头部不应出现「仅看关注主题」筛选')
   // 空态下不应出现上次抓取副标题

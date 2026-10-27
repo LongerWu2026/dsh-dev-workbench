@@ -766,6 +766,76 @@ function DashRadarModal(props) {
 }
 
 /* ---------------------------------------------------------------- 番茄钟 */
+/** 今日待办空态插画：清单 + 勾选 + 时钟，纯 SVG 跟随主题变量。 */
+function DashEmptyIllustration() {
+  return h(
+    'svg',
+    {
+      width: 132,
+      height: 96,
+      viewBox: '0 0 132 96',
+      fill: 'none',
+      'aria-hidden': 'true',
+      style: { opacity: 0.9 },
+    },
+    // 清单卡片
+    h('rect', { x: 26, y: 10, width: 62, height: 74, rx: 9, fill: 'var(--dsw-alias-bg-layer-2)' }),
+    h('rect', { x: 26, y: 10, width: 62, height: 74, rx: 9, stroke: 'var(--dsw-alias-border-l1)' }),
+    // 三条待办行
+    [0, 1, 2].map(function (row) {
+      const y = 26 + row * 18
+      return h(
+        'g',
+        { key: 'row' + row },
+        h('rect', { x: 34, y: y, width: 10, height: 10, rx: 3, stroke: row === 0 ? 'var(--dsw-alias-brand-primary)' : 'var(--dsw-alias-border-l2)', strokeWidth: 1.4 }),
+        row === 0
+          ? h('path', { d: 'M36.5 ' + (y + 5.2) + ' l2.4 2.6 l4.4 -5', stroke: 'var(--dsw-alias-brand-primary)', strokeWidth: 1.6, strokeLinecap: 'round', strokeLinejoin: 'round' })
+          : null,
+        h('rect', { x: 50, y: y + 2.5, width: row === 2 ? 24 : 30, height: 5, rx: 2.5, fill: 'var(--dsw-alias-border-l2)' }),
+      )
+    }),
+    // 右下角时钟
+    h('circle', { cx: 100, cy: 66, r: 20, fill: 'var(--dsw-alias-bg-layer-1)', stroke: 'var(--dsw-alias-border-l1)' }),
+    h('circle', { cx: 100, cy: 66, r: 20, stroke: 'var(--dsw-alias-brand-primary)', strokeOpacity: 0.35 }),
+    h('path', { d: 'M100 55 v11 l8 5', stroke: 'var(--dsw-alias-label-secondary)', strokeWidth: 2, strokeLinecap: 'round', strokeLinejoin: 'round' }),
+    // 左上角星点
+    h('path', { d: 'M14 22 l2.2 4.6 l4.8 0.7 l-3.5 3.4 l0.8 4.8 l-4.3 -2.3 l-4.3 2.3 l0.8 -4.8 l-3.5 -3.4 l4.8 -0.7 z', fill: 'var(--dsw-alias-brand-primary)', fillOpacity: 0.5 }),
+    h('circle', { cx: 112, cy: 18, r: 3, fill: 'var(--dsw-alias-brand-primary)', fillOpacity: 0.35 }),
+  )
+}
+
+/** 空态里的三步引导行。 */
+function DashEmptyStep(props) {
+  return h(
+    'div',
+    { style: { display: 'flex', alignItems: 'flex-start', gap: 9, textAlign: 'left', maxWidth: 300 } },
+    h(
+      'span',
+      {
+        style: {
+          flex: 'none',
+          display: 'grid',
+          placeItems: 'center',
+          width: 22,
+          height: 22,
+          borderRadius: 999,
+          background: 'var(--dsw-alias-bg-layer-2)',
+          color: 'var(--dsw-alias-brand-primary)',
+          fontSize: 11,
+          fontWeight: 700,
+        },
+      },
+      String(props.index),
+    ),
+    h(
+      'div',
+      { style: { fontSize: 11.5, lineHeight: 1.65, color: 'var(--dsw-alias-label-secondary)' } },
+      h('div', { style: { color: 'var(--dsw-alias-label-primary)', fontWeight: 600 } }, props.title),
+      props.hint,
+    ),
+  )
+}
+
 function DashPomodoro() {
   const FOCUS = 25 * 60
   const [left, setLeft] = React.useState(FOCUS)
@@ -1123,17 +1193,49 @@ function DashboardPage() {
             return h(DashTaskRow, { key: task.id, task: task, data: data })
           }),
         )
-      : h('div', { style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 150, padding: '10px 0' } }, h(Empty, {
-          icon: tasks.length === 0 ? 'tasks' : 'checkCircle',
-          title: tasks.length === 0 ? '还没有待办' : '今天没有必须处理的待办',
-          hint:
-            tasks.length === 0
-              ? '先记下一条手动待办；接入云之家后，@ 你的消息会自动进入这里。'
-              : '逾期、今日到期与高优先级任务都已清空，其余待办在任务中心。',
-          action:
+      : h(
+          'div',
+          {
+            style: {
+              flex: '1 1 auto',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 14,
+              padding: '22px 18px 20px',
+              minHeight: 210,
+            },
+          },
+          h(DashEmptyIllustration, null),
+          h(
+            'div',
+            { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, textAlign: 'center' } },
+            h('strong', { style: { fontSize: 13.5, color: 'var(--dsw-alias-label-primary)' } }, tasks.length === 0 ? '还没有待办' : '今天没有必须处理的待办'),
+            h(
+              'p',
+              { style: { margin: 0, fontSize: 11.5, lineHeight: 1.6, color: 'var(--dsw-alias-label-secondary)', maxWidth: 320 } },
+              tasks.length === 0
+                ? '待办可以手动记，也可以从消息、资讯、会话里一键生成。'
+                : '逾期、今日到期与高优先级都已清空，其余待办在任务中心。',
+            ),
+          ),
+          tasks.length === 0
+            ? h(
+                'div',
+                { style: { display: 'flex', flexDirection: 'column', gap: 9, alignItems: 'center' } },
+                h(DashEmptyStep, { index: 1, title: '记一条手动待办', hint: '标题 + 截止时间即可，之后可补项目与标签。' }),
+                h(DashEmptyStep, { index: 2, title: '拉取云之家 @我', hint: '被 @ 的消息会自动进入这里，可一键转成待办。' }),
+                h(DashEmptyStep, { index: 3, title: '让会话帮你整理', hint: '把消息或资讯加进上下文，AI 分析后直接建待办。' }),
+              )
+            : null,
+          h(
+            'div',
+            { className: 'wb-row', style: { gap: 8, marginTop: 2 } },
             tasks.length === 0
               ? h(Btn, {
                   size: 'sm',
+                  kind: 'primary',
                   icon: 'plus',
                   onClick: function () {
                     WB.openTaskForm(null)
@@ -1142,13 +1244,23 @@ function DashboardPage() {
                 })
               : h(Btn, {
                   size: 'sm',
+                  kind: 'primary',
                   icon: 'arrowRight',
                   onClick: function () {
                     WB.go('tasks')
                   },
                   children: '查看全部待办',
                 }),
-        })),
+            h(Btn, {
+              size: 'sm',
+              kind: 'subtle',
+              icon: 'sparkles',
+              onClick: runMentionsFetch,
+              disabled: mentionsBusy,
+              children: mentionsBusy ? '拉取中…' : '拉取 @我 消息',
+            }),
+          ),
+        ),
     actionableAll.length > shownTasks.length
       ? h(
           'div',
