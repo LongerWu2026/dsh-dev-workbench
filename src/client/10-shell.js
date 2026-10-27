@@ -466,7 +466,7 @@ function AssistantDrawer() {
       h(Textarea, {
         value: draft,
         rows: 2,
-        placeholder: '问点什么，或让我把某些信息整理成待办…（Enter 发送 / Shift+Enter 换行）',
+        placeholder: '输入指令，或让我帮你整理待办…',
         onChange: function (event) {
           setDraft(event.target.value)
         },
@@ -486,16 +486,15 @@ function AssistantDrawer() {
             setSteerMode(!steerMode)
           },
           title: steerMode ? '打断当前轮并立即处理' : '排队等当前轮结束再处理',
-          children: steerMode ? '打断当前轮' : '排队',
+          children: steerMode ? '打断' : '排队',
         }),
+        h('span', { className: 'wb-tiny wb-muted', title: 'Enter 发送 / Shift+Enter 换行' }, '⏎ 发送'),
         h('div', { className: 'wb-spacer' }),
-        h(Btn, {
-          size: 'sm',
-          kind: 'primary',
-          icon: 'arrowRight',
-          disabled: sending || !draft.trim(),
+        h(IconBtn, {
+          name: 'arrowRight',
+          label: sending ? '正在执行' : '发送',
+          active: !sending && !!draft.trim(),
           onClick: send,
-          children: sending ? '执行中…' : '发送',
         }),
       ),
     ),
@@ -559,7 +558,7 @@ function NavRail(props) {
     h(
       'div',
       { className: 'wb-nav-brand' },
-      h(WorkbenchIcon, { size: 22, active: true }),
+      h(WorkbenchIcon, { size: 22, active: false }),
       h(
         'div',
         { style: { minWidth: 0 } },
@@ -598,13 +597,17 @@ function NavRail(props) {
     h('div', { className: 'wb-spacer' }),
     h(
       'div',
-      { className: 'wb-nav-label', style: { paddingBottom: 0 } },
-      '数据由 Host 持久化',
+      {
+        className: 'wb-nav-label',
+        style: { paddingBottom: 0, display: 'flex', alignItems: 'center', gap: 4 },
+      },
+      h(Icon, { name: 'database', size: 10 }),
+      '工作台状态',
     ),
     h(
       'div',
       { className: 'wb-tiny wb-muted', style: { padding: '2px 9px 0', lineHeight: 1.5 } },
-      data && data.updatedAt ? '最近写入 ' + WB.fmt.relative(data.updatedAt) : '尚未写入',
+      '本地持久化 · ' + (data && data.updatedAt ? '最近写入 ' + WB.fmt.relative(data.updatedAt) : '尚未写入'),
     ),
   )
 }

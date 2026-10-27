@@ -96,7 +96,7 @@ function ChatAssistantActions(props) {
       .assistantMessage(sessionId, messageId)
       .then(function (result) {
         if (!result || result.status !== 'ok' || !result.text) {
-          throw new Error((result && result.note) || '没有取到该条回复的内容')
+          throw new Error((result && (result.detail || result.note)) || '没有取到该条回复的内容')
         }
         return action.run(result.text, result)
       })
@@ -105,61 +105,111 @@ function ChatAssistantActions(props) {
         setOpen(false)
       })
       .catch(function (failure) {
-        setError(String((failure && failure.message) || failure))
+        // 面向用户的短提示；技术细节放进 title 供排查
+        setError({ text: '操作没成功，请重试', detail: String((failure && failure.message) || failure) })
         setBusy(false)
       })
   }
 
-  const pill = function (label, onClick, active) {
-    return h(
-      'button',
-      {
-        key: label,
-        type: 'button',
-        disabled: busy,
-        onClick: onClick,
-        style: {
-          appearance: 'none',
-          border: '1px solid currentColor',
-          borderRadius: 999,
-          background: active ? 'currentColor' : 'transparent',
-          color: active ? 'transparent' : 'inherit',
-          fontSize: 11,
-          lineHeight: 1.4,
-          padding: '0 7px',
-          cursor: busy ? 'default' : 'pointer',
-          opacity: busy ? 0.5 : 0.7,
-        },
-      },
-      label,
-    )
+  const ICON_BUTTON = {
+    appearance: 'none',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 3,
+    border: '1px solid currentColor',
+    borderRadius: 8,
+    background: 'transparent',
+    color: 'inherit',
+    fontSize: 11,
+    lineHeight: 1.4,
+    padding: '1px 5px',
+    cursor: busy ? 'default' : 'pointer',
+    opacity: busy ? 0.45 : 0.62,
   }
 
-  // 默认只留一个「工作台」入口，点开才展开动作，避免每条回复下面挂一排按钮
+  // 默认只有一个图标按钮，点开才是下拉菜单，避免每条回复下面挂一排文字按钮
   return h(
     'div',
-    {
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        gap: 5,
-        flexWrap: 'wrap',
-        marginTop: 2,
-        fontSize: 11,
-        lineHeight: 1.5,
+    { style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 2 } },
+    h(
+      'button',
+      {
+        type: 'button',
+        disabled: busy,
+        title: '工作台操作（生成待办 / 存为知识 / 记执行记录）',
+        'aria-label': '工作台操作',
+        'aria-expanded': open ? 'true' : 'false',
+        onClick: function () {
+          setOpen(!open)
+        },
+        style: ICON_BUTTON,
       },
-    },
-    pill(busy ? '处理中…' : open ? '工作台 ▴' : '工作台 ▾', function () {
-      setOpen(!open)
-    }, open),
+      h(Icon, { name: 'sparkles', size: 12 }),
+      h(Icon, { name: open ? 'chevronUp' : 'chevronDown', size: 10 }),
+    ),
     open
-      ? CHAT_EMBED_ACTIONS.map(function (action) {
-          return pill(action.label, function () {
-            trigger(action)
-          }, false)
-        })
+      ? h(
+          'div',
+          {
+            style: {
+              position: 'absolute',
+              top: '100%',
+              left: 0,
+              marginTop: 4,
+              zIndex: 60,
+              minWidth: 132,
+              padding: 4,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+              border: '1px solid currentColor',
+              borderRadius: 9,
+              background: 'var(--dsw-alias-bg-layer-1, #1c1c20)',
+              boxShadow: '0 10px 28px rgba(0,0,0,.35)',
+              opacity: 0.98,
+            },
+          },
+          CHAT_EMBED_ACTIONS.map(function (action) {
+            return h(
+              'button',
+              {
+                key: action.id,
+                type: 'button',
+                disabled: busy,
+                onClick: function () {
+                  trigger(action)
+                },
+                style: {
+                  appearance: 'none',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  width: '100%',
+                  textAlign: 'left',
+                  border: 0,
+                  borderRadius: 6,
+                  background: 'transparent',
+                  color: 'inherit',
+                  fontSize: 11.5,
+                  lineHeight: 1.6,
+                  padding: '4px 7px',
+                  cursor: busy ? 'default' : 'pointer',
+                },
+              },
+              h(Icon, { name: action.icon || 'plus', size: 11 }),
+              action.label,
+            )
+          }),
+        )
       : null,
-    error ? h('span', { style: { color: 'var(--dsh-color-danger, #d14343)' } }, error) : null,
+    busy ? h('span', { style: { fontSize: 11, opacity: 0.6 } }, '处理中…') : null,
+    error
+      ? h(
+          'span',
+          { title: error.detail, style: { fontSize: 11, color: 'var(--dsw-alias-label-error, #d14343)' } },
+          error.text,
+        )
+      : null,
   )
 }
 

@@ -4586,10 +4586,32 @@ async function createPersistedSession(ctx) {
         : null
   if (!creator) return null
   const created = await creator(request)
-  // create 返回 { agent, agentPreset }；agent 上挂着 session
-  const agent = created && created.agent ? created.agent : created
-  const session = agent && agent.session ? agent.session : agent
-  if (!session || !session.id) throw new Error('会话创建失败：返回值里没有 session')
+  const sessions = hostService(ctx, 'sessions')
+  // 不同版本的返回形状不一致：{agent:{session}} / {session} / Session / {sessionId}
+  const candidates = [
+    created && created.agent && created.agent.session,
+    created && created.session,
+    created && created.agentSession,
+    created && created.id ? created : null,
+  ]
+  let session = candidates.find(function (item) {
+    return item && typeof item === 'object' && item.id
+  })
+  if (!session && created && created.sessionId && sessions && typeof sessions.get === 'function') {
+    session = sessions.get(String(created.sessionId)) || null
+  }
+  if (!session) {
+    const detail = 'create() 返回里没有可用会话：' + (function () {
+      try {
+        return JSON.stringify(created).slice(0, 200)
+      } catch (e) {
+        return String(created).slice(0, 200)
+      }
+    })()
+    const error = new Error(detail)
+    error.userFacing = true
+    throw error
+  }
   return session
 }
 
@@ -4728,6 +4750,25 @@ function transcriptDelta(session, fromSeq) {
 }
 
 /**
+ * 把内部错误翻译成用户能看懂的一句话；技术细节只放进 detail（不主动展示）。
+ * 代码级异常（例如「返回值里没有 session」）绝不能原样抛给界面。
+ */
+function userFacingAssistantError(failure) {
+  const detail = String((failure && failure.message) || failure || '').slice(0, 300)
+  let note = 'AI 助手暂时不可用，请稍后重试'
+  if (/resume failed|SessionPersistenceNotFound/i.test(detail)) {
+    note = '助手会话已失效，请点标题栏「新会话」重开一个'
+  } else if (/writer-held|SessionAlreadyOwned/i.test(detail)) {
+    note = '这个会话正在被另一个窗口使用，换一个会话或稍后再试'
+  } else if (/timeout|aborted/i.test(detail)) {
+    note = '这次等待超时了，可以稍后在主面板查看结果'
+  } else if (/create|session/i.test(detail)) {
+    note = 'AI 助手连接失败，请稍后重试'
+  }
+  return { status: 'error', note: note, detail: detail }
+}
+
+/**
  * 提交提示，并在会话日志丢失时自愈。
  *
  * `prompt` 内部会对目标会话做 resume；如果该会话没有持久化日志（旧版本用
@@ -4818,7 +4859,7 @@ async function sendAssistantPrompt(ctx, request) {
       recovered: submitted.recovered === true,
     }
   } catch (e) {
-    return { status: 'error', note: '提示提交失败：' + String((e && e.message) || e).slice(0, 240), sessionId: String(session.id) }
+    return userFacingAssistantError(e)
   }
 }
 
@@ -4868,11 +4909,16 @@ async function runAssistantAsk(ctx, request) {
       return current
     })
   } else {
-    session = await ensureAssistantSession(ctx)
+    try {
+      session = await ensureAssistantSession(ctx)
+    } catch (e) {
+      return Object.assign(userFacingAssistantError(e), { reply: '' })
+    }
     if (!session) {
       return {
         status: 'unavailable',
-        note: '当前宿主没有可用的 sessions / sessionController 服务，无法创建助手会话。',
+        note: 'AI 助手连接失败，请稍后重试',
+        detail: '宿主没有可用的 sessions / sessionController 服务',
         reply: '',
       }
     }
@@ -4903,12 +4949,7 @@ async function runAssistantAsk(ctx, request) {
     session = submitted.session
     fromSeq = submitted.fromSeq
   } catch (e) {
-    return {
-      status: 'error',
-      note: '提示提交失败：' + String((e && e.message) || e).slice(0, 240),
-      reply: '',
-      sessionId: String(session.id),
-    }
+    return Object.assign(userFacingAssistantError(e), { reply: '', sessionId: String(session && session.id ? session.id : '') })
   }
 
   // 等待本轮结束（turn/end）或超时；期间持续读取已产生的 assistant 消息

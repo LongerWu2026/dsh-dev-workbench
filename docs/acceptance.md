@@ -12,7 +12,7 @@
 | Host 半语法 | `node --check index.js` | 通过 |
 | Client 半语法 | `node --check client.js` | 通过 |
 | 跨文件顶层重名 | `node scripts/build.mjs --check` | 11 host / 12 client part，无冲突 |
-| Host 业务逻辑 | `node tests/host-smoke.mjs` | **180/180 通过** |
+| Host 业务逻辑 | `node tests/host-smoke.mjs` | **183/183 通过** |
 | Client 全页面渲染 | `node tests/client-render.mjs` | **8/8 页面 + 空态 + 6 个新增工具面板**；真实驱动搜索、抓取资讯、@我 再拉一次、逐个切换工具 |
 | **描述符实参交叉校验** | 渲染测试从 `src/host/40-remote.js` 解析签名表，逐一核对每个 RPC 调用的实参键 | **22/22 一致**——正是此项挡住 `fetchRadar` 的 `unexpected "request"`（客户端对零参端点多发了 `request` 字段，网关严格校验拒绝） |
 | 插件安装 | `plugin_manager install_bundle` | `application: applied`，`warnings: []` |
@@ -169,7 +169,21 @@ node tests/client-render.mjs
 | 「工作台」下拉里的「生成待办 / 存为知识 / 记执行记录」 | `conversation.chat.assistant-actions`（list，replaceRisk none，3 个 id） | 渲染测试：3 个注册 + 默认只渲染 1 个「工作台」入口（折叠）+ 展开后出现 3 个动作 + 点「生成待办」真实触发 `assistantMessage` 与 `createTask` |
 | `workbench_*` 工具调用渲染为工作台卡片 | `tool.call.toolview`（keyed，9 个工具名） | 渲染测试：9 个 key 全部 `workbench_` 前缀、卡片渲染出工具名 |
 
-## 12. 生效条件
+## 12. UI 收敛（按界面评审意见）
+
+| 问题 | 处理 |
+| --- | --- |
+| 原生聊天每行挂三个文字按钮，视觉过载 | 改为**单个图标下拉**（✨ + ▾），点开才是纵向菜单；未展开时不占版面 |
+| 代码级报错直接暴露给用户（`会话创建失败：返回值里没有 session`） | Host 统一转成用户可读提示（「AI 助手连接失败，请稍后重试」等），技术细节只放 `detail`，界面仅作为 title 提示；同时 `create` 返回形状容错（`agent.session` / `session` / `sessionId`） |
+| 「今日待办」空态沉在卡片底部 | `.wb-empty` 加 `margin:auto`，并在面板里包一层居中容器（minHeight 190） |
+| 顶部四个统计卡信息太碎、占高度 | 合并成**一条紧凑指标条**（待处理 / 今日到期 / 已逾期 / 执行中 + 任务中心），把纵向空间还给待办列表 |
+| 左侧「智能工作台」与「今日简报」双重高亮 | 品牌行的图标去掉 `active`，高亮只保留当前二级菜单 |
+| 「今日待办」标题栏按钮像文字 | 「任务中心」加边框、主操作保留图标；两者视觉层级区分 |
+| 助手输入框 placeholder 过长、发送按钮笨重 | placeholder 改为「输入指令，或让我帮你整理待办…」；发送改为**圆形图标按钮**，快捷键提示缩成极小的「⏎ 发送」 |
+| 次要文字在深色下偏暗 | `.wb-muted` 用 color-mix 向主文字提亮 |
+| 底部状态归属不明 | 改为「工作台状态 / 本地持久化 · 最近写入 X」，明确是全局状态 |
+
+## 13. 生效条件
 
 - 只改 `src/client/**`：重新构建后刷新 GUI 窗口即可。
 - 改 `src/host/**`（新增 Remote 端点或工具）：必须**重启 DSH**；重新安装 bundle 不会替换已加载的

@@ -504,6 +504,7 @@ button.wb-stat:hover { border-color: var(--dsw-alias-border-l2); }
 .wb-empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 6px;
+  margin: auto; width: 100%;
   padding: 26px 16px 24px;
   text-align: center;
   color: var(--dsw-alias-label-secondary);
@@ -647,7 +648,7 @@ button.wb-stat:hover { border-color: var(--dsw-alias-border-l2); }
   max-height: 340px;
   overflow: auto;
 }
-.wb-muted { color: var(--dsw-alias-label-secondary); }
+.wb-muted { color: color-mix(in srgb, var(--dsw-alias-label-secondary) 74%, var(--dsw-alias-label-primary)); }
 .wb-tiny { font-size: 11px; }
 .wb-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wb-clamp2 {

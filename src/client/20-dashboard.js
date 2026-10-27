@@ -851,54 +851,6 @@ function DashboardPage() {
     dashStoreNavigate(preset)
   }
 
-  const statCards = [
-    h(Stat, {
-      key: 'open',
-      label: '待处理',
-      value: counts.open,
-      sub: '共 ' + counts.total + ' 条待办',
-      icon: 'tasks',
-      tone: 'accent',
-      onClick: function () {
-        goTasks({ status: 'open' })
-      },
-    }),
-    h(Stat, {
-      key: 'today',
-      label: '今日到期',
-      value: counts.today,
-      sub: '截止到今天 23:59',
-      icon: 'calendar',
-      tone: counts.today > 0 ? 'warn' : undefined,
-      onClick: function () {
-        goTasks({ dueFilter: 'today' })
-      },
-    }),
-    h(Stat, {
-      key: 'overdue',
-      label: '已逾期',
-      value: counts.overdue,
-      sub: overdueSince ? '最早一条' + WB.fmt.due(overdueSince).text : '没有逾期任务',
-      icon: 'alert',
-      tone: counts.overdue > 0 ? 'err' : undefined,
-      onClick: function () {
-        goTasks({ dueFilter: 'overdue' })
-      },
-    }),
-    h(Stat, {
-      key: 'running',
-      label: '执行中',
-      value: counts.running,
-      sub: counts.running > 0 ? '含等待审批的 Agent 执行' : '当前没有执行中的任务',
-      icon: 'zap',
-      tone: counts.running > 0 ? 'ok' : undefined,
-      onClick: function () {
-        goTasks({ status: 'running' })
-      },
-    }),
-  ]
-
-  // 云之家 @我 来源：上次拉取新增了来源证据时给一条可点的横条（§3.2 的确定性采集）
   const lastMentions = data && data.lastMentionsFetch ? data.lastMentionsFetch : null
   const newMentions = lastMentions && lastMentions.added > 0
     ? (data.sources || []).filter(function (row) {
@@ -985,6 +937,66 @@ function DashboardPage() {
         ),
       )
 
+  // 指标条：四个数字合并成一行紧凑标签，把纵向空间留给待办列表
+  const statStrip = h(
+    'div',
+    {
+      className: 'wb-card',
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+        padding: '7px 12px',
+        marginBottom: 12,
+      },
+    },
+    h('span', { className: 'wb-row', style: { gap: 5, color: T.text2 } }, h(Icon, { name: 'tasks', size: 12 }), h('span', { className: 'wb-tiny', style: { fontWeight: 600, color: T.text } }, '今日待办')),
+    h(Chip, {
+      active: counts.open > 0,
+      onClick: function () {
+        goTasks({ status: 'open' })
+      },
+      title: '查看全部未完成',
+      children: '待处理 ' + counts.open,
+    }),
+    h(Chip, {
+      active: counts.today > 0,
+      onClick: function () {
+        goTasks({ dueFilter: 'today' })
+      },
+      title: '查看今日到期',
+      children: '今日到期 ' + counts.today,
+    }),
+    h(Chip, {
+      active: counts.overdue > 0,
+      tone: counts.overdue > 0 ? 'err' : undefined,
+      onClick: function () {
+        goTasks({ dueFilter: 'overdue' })
+      },
+      title: overdueSince ? '最早一条' + WB.fmt.due(overdueSince).text : '没有逾期任务',
+      children: '已逾期 ' + counts.overdue,
+    }),
+    h(Chip, {
+      active: counts.running > 0,
+      onClick: function () {
+        goTasks({ status: 'running' })
+      },
+      title: '查看执行中的任务',
+      children: '执行中 ' + counts.running,
+    }),
+    h('div', { className: 'wb-spacer' }),
+    h(Btn, {
+      size: 'sm',
+      kind: 'subtle',
+      icon: 'arrowRight',
+      onClick: function () {
+        WB.go('tasks')
+      },
+      children: '任务中心',
+    }),
+  )
+
   const taskPanel = h(
     Panel,
     {
@@ -1002,6 +1014,7 @@ function DashboardPage() {
           size: 'sm',
           kind: 'subtle',
           icon: 'tasks',
+          style: { border: '1px solid ' + T.border1 },
           onClick: function () {
             WB.go('tasks')
           },
@@ -1026,8 +1039,7 @@ function DashboardPage() {
             return h(DashTaskRow, { key: task.id, task: task, data: data })
           }),
         )
-      : h(Empty, {
-          style: { flex: '1 1 auto', justifyContent: 'center' },
+      : h('div', { style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 190 } }, h(Empty, {
           icon: tasks.length === 0 ? 'tasks' : 'checkCircle',
           title: tasks.length === 0 ? '还没有待办' : '今天没有必须处理的待办',
           hint:
@@ -1052,7 +1064,7 @@ function DashboardPage() {
                   },
                   children: '查看全部待办',
                 }),
-        }),
+        })),
     actionableAll.length > shownTasks.length
       ? h(
           'div',
@@ -1446,7 +1458,7 @@ function DashboardPage() {
         )
       : null,
     mentionsStrip,
-    h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 } }, statCards),
+    statStrip,
     h('div', { className: 'wb-split', style: { marginBottom: 16 } }, taskPanel, radarPanel),
     h('div', { style: { marginBottom: 16 } }, quickActionsPanel),
     connectorsPanel,

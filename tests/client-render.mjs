@@ -869,12 +869,14 @@ for (const [title, id, expected] of pageSpecs) {
     const text = treeText(drawer).replace(/\s+/g, ' ')
     if (text.indexOf('工作台助手') < 0) problems.push('助手抽屉没有渲染标题')
     if (text.indexOf('早上好') < 0) problems.push('助手抽屉没有载入历史消息')
-    const composer = findInputs(drawer, []).find((props) => /问点什么/.test(String(props.placeholder || '')))
+    const composer = findInputs(drawer, []).find((props) => /输入指令/.test(String(props.placeholder || '')))
     if (!composer) problems.push('助手抽屉缺少输入框')
     else {
       composer.onChange({ target: { value: '今天还有哪些没做完？' } })
       const typed = await renderTree('助手·已输入')
-      const sendBtn = findButtons(typed, []).find((button) => button.text.indexOf('发送') >= 0)
+      const sendBtn = findButtons(typed, []).find(
+        (button) => button.text.indexOf('发送') >= 0 || button.label.indexOf('发送') >= 0,
+      )
       if (!sendBtn) problems.push('助手抽屉缺少「发送」按钮')
       else {
         sendBtn.onClick()
@@ -915,11 +917,10 @@ for (const [title, id, expected] of pageSpecs) {
   if (ActionComp) {
     const tree = await renderComponent(ActionComp, { messageId: 'm-1', sessionId: 'session-fake' })
     const collapsed = treeText(tree).replace(/\s+/g, ' ')
-    // 默认只应有一个「工作台」入口，避免每条回复下挂一排按钮
-    if (collapsed.indexOf('工作台') < 0) problems.push('动作排缺少「工作台」入口')
-    if (collapsed.indexOf('生成待办') >= 0) problems.push('动作排默认就展开了全部按钮（应折叠）')
-    const trigger = findButtons(tree, []).find((button) => button.text.indexOf('工作台') >= 0)
-    if (!trigger) problems.push('动作排找不到「工作台」展开按钮')
+    // 默认只是一个图标按钮，不应铺开文字按钮
+    if (collapsed.indexOf('生成待办') >= 0) problems.push('动作排默认就展开了全部按钮（应折叠成图标）')
+    const trigger = findButtons(tree, []).find((button) => button.label.indexOf('工作台操作') >= 0)
+    if (!trigger) problems.push('动作排找不到图标下拉按钮')
     else trigger.onClick()
     const opened = await renderComponent(ActionComp, { messageId: 'm-1', sessionId: 'session-fake' })
     const text = treeText(opened).replace(/\s+/g, ' ')

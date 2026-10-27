@@ -530,6 +530,7 @@ window.__ModuleLoader__.load({
     .wb-empty {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 6px;
+      margin: auto; width: 100%;
       padding: 26px 16px 24px;
       text-align: center;
       color: var(--dsw-alias-label-secondary);
@@ -673,7 +674,7 @@ window.__ModuleLoader__.load({
       max-height: 340px;
       overflow: auto;
     }
-    .wb-muted { color: var(--dsw-alias-label-secondary); }
+    .wb-muted { color: color-mix(in srgb, var(--dsw-alias-label-secondary) 74%, var(--dsw-alias-label-primary)); }
     .wb-tiny { font-size: 11px; }
     .wb-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .wb-clamp2 {
@@ -2426,7 +2427,7 @@ window.__ModuleLoader__.load({
           h(Textarea, {
             value: draft,
             rows: 2,
-            placeholder: '问点什么，或让我把某些信息整理成待办…（Enter 发送 / Shift+Enter 换行）',
+            placeholder: '输入指令，或让我帮你整理待办…',
             onChange: function (event) {
               setDraft(event.target.value)
             },
@@ -2446,16 +2447,15 @@ window.__ModuleLoader__.load({
                 setSteerMode(!steerMode)
               },
               title: steerMode ? '打断当前轮并立即处理' : '排队等当前轮结束再处理',
-              children: steerMode ? '打断当前轮' : '排队',
+              children: steerMode ? '打断' : '排队',
             }),
+            h('span', { className: 'wb-tiny wb-muted', title: 'Enter 发送 / Shift+Enter 换行' }, '⏎ 发送'),
             h('div', { className: 'wb-spacer' }),
-            h(Btn, {
-              size: 'sm',
-              kind: 'primary',
-              icon: 'arrowRight',
-              disabled: sending || !draft.trim(),
+            h(IconBtn, {
+              name: 'arrowRight',
+              label: sending ? '正在执行' : '发送',
+              active: !sending && !!draft.trim(),
               onClick: send,
-              children: sending ? '执行中…' : '发送',
             }),
           ),
         ),
@@ -2519,7 +2519,7 @@ window.__ModuleLoader__.load({
         h(
           'div',
           { className: 'wb-nav-brand' },
-          h(WorkbenchIcon, { size: 22, active: true }),
+          h(WorkbenchIcon, { size: 22, active: false }),
           h(
             'div',
             { style: { minWidth: 0 } },
@@ -2558,13 +2558,17 @@ window.__ModuleLoader__.load({
         h('div', { className: 'wb-spacer' }),
         h(
           'div',
-          { className: 'wb-nav-label', style: { paddingBottom: 0 } },
-          '数据由 Host 持久化',
+          {
+            className: 'wb-nav-label',
+            style: { paddingBottom: 0, display: 'flex', alignItems: 'center', gap: 4 },
+          },
+          h(Icon, { name: 'database', size: 10 }),
+          '工作台状态',
         ),
         h(
           'div',
           { className: 'wb-tiny wb-muted', style: { padding: '2px 9px 0', lineHeight: 1.5 } },
-          data && data.updatedAt ? '最近写入 ' + WB.fmt.relative(data.updatedAt) : '尚未写入',
+          '本地持久化 · ' + (data && data.updatedAt ? '最近写入 ' + WB.fmt.relative(data.updatedAt) : '尚未写入'),
         ),
       )
     }
@@ -3912,54 +3916,6 @@ window.__ModuleLoader__.load({
         dashStoreNavigate(preset)
       }
 
-      const statCards = [
-        h(Stat, {
-          key: 'open',
-          label: '待处理',
-          value: counts.open,
-          sub: '共 ' + counts.total + ' 条待办',
-          icon: 'tasks',
-          tone: 'accent',
-          onClick: function () {
-            goTasks({ status: 'open' })
-          },
-        }),
-        h(Stat, {
-          key: 'today',
-          label: '今日到期',
-          value: counts.today,
-          sub: '截止到今天 23:59',
-          icon: 'calendar',
-          tone: counts.today > 0 ? 'warn' : undefined,
-          onClick: function () {
-            goTasks({ dueFilter: 'today' })
-          },
-        }),
-        h(Stat, {
-          key: 'overdue',
-          label: '已逾期',
-          value: counts.overdue,
-          sub: overdueSince ? '最早一条' + WB.fmt.due(overdueSince).text : '没有逾期任务',
-          icon: 'alert',
-          tone: counts.overdue > 0 ? 'err' : undefined,
-          onClick: function () {
-            goTasks({ dueFilter: 'overdue' })
-          },
-        }),
-        h(Stat, {
-          key: 'running',
-          label: '执行中',
-          value: counts.running,
-          sub: counts.running > 0 ? '含等待审批的 Agent 执行' : '当前没有执行中的任务',
-          icon: 'zap',
-          tone: counts.running > 0 ? 'ok' : undefined,
-          onClick: function () {
-            goTasks({ status: 'running' })
-          },
-        }),
-      ]
-
-      // 云之家 @我 来源：上次拉取新增了来源证据时给一条可点的横条（§3.2 的确定性采集）
       const lastMentions = data && data.lastMentionsFetch ? data.lastMentionsFetch : null
       const newMentions = lastMentions && lastMentions.added > 0
         ? (data.sources || []).filter(function (row) {
@@ -4046,6 +4002,66 @@ window.__ModuleLoader__.load({
             ),
           )
 
+      // 指标条：四个数字合并成一行紧凑标签，把纵向空间留给待办列表
+      const statStrip = h(
+        'div',
+        {
+          className: 'wb-card',
+          style: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            flexWrap: 'wrap',
+            padding: '7px 12px',
+            marginBottom: 12,
+          },
+        },
+        h('span', { className: 'wb-row', style: { gap: 5, color: T.text2 } }, h(Icon, { name: 'tasks', size: 12 }), h('span', { className: 'wb-tiny', style: { fontWeight: 600, color: T.text } }, '今日待办')),
+        h(Chip, {
+          active: counts.open > 0,
+          onClick: function () {
+            goTasks({ status: 'open' })
+          },
+          title: '查看全部未完成',
+          children: '待处理 ' + counts.open,
+        }),
+        h(Chip, {
+          active: counts.today > 0,
+          onClick: function () {
+            goTasks({ dueFilter: 'today' })
+          },
+          title: '查看今日到期',
+          children: '今日到期 ' + counts.today,
+        }),
+        h(Chip, {
+          active: counts.overdue > 0,
+          tone: counts.overdue > 0 ? 'err' : undefined,
+          onClick: function () {
+            goTasks({ dueFilter: 'overdue' })
+          },
+          title: overdueSince ? '最早一条' + WB.fmt.due(overdueSince).text : '没有逾期任务',
+          children: '已逾期 ' + counts.overdue,
+        }),
+        h(Chip, {
+          active: counts.running > 0,
+          onClick: function () {
+            goTasks({ status: 'running' })
+          },
+          title: '查看执行中的任务',
+          children: '执行中 ' + counts.running,
+        }),
+        h('div', { className: 'wb-spacer' }),
+        h(Btn, {
+          size: 'sm',
+          kind: 'subtle',
+          icon: 'arrowRight',
+          onClick: function () {
+            WB.go('tasks')
+          },
+          children: '任务中心',
+        }),
+      )
+
       const taskPanel = h(
         Panel,
         {
@@ -4063,6 +4079,7 @@ window.__ModuleLoader__.load({
               size: 'sm',
               kind: 'subtle',
               icon: 'tasks',
+              style: { border: '1px solid ' + T.border1 },
               onClick: function () {
                 WB.go('tasks')
               },
@@ -4087,8 +4104,7 @@ window.__ModuleLoader__.load({
                 return h(DashTaskRow, { key: task.id, task: task, data: data })
               }),
             )
-          : h(Empty, {
-              style: { flex: '1 1 auto', justifyContent: 'center' },
+          : h('div', { style: { flex: '1 1 auto', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 190 } }, h(Empty, {
               icon: tasks.length === 0 ? 'tasks' : 'checkCircle',
               title: tasks.length === 0 ? '还没有待办' : '今天没有必须处理的待办',
               hint:
@@ -4113,7 +4129,7 @@ window.__ModuleLoader__.load({
                       },
                       children: '查看全部待办',
                     }),
-            }),
+            })),
         actionableAll.length > shownTasks.length
           ? h(
               'div',
@@ -4507,7 +4523,7 @@ window.__ModuleLoader__.load({
             )
           : null,
         mentionsStrip,
-        h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 } }, statCards),
+        statStrip,
         h('div', { className: 'wb-split', style: { marginBottom: 16 } }, taskPanel, radarPanel),
         h('div', { style: { marginBottom: 16 } }, quickActionsPanel),
         connectorsPanel,
@@ -11828,7 +11844,7 @@ window.__ModuleLoader__.load({
           .assistantMessage(sessionId, messageId)
           .then(function (result) {
             if (!result || result.status !== 'ok' || !result.text) {
-              throw new Error((result && result.note) || '没有取到该条回复的内容')
+              throw new Error((result && (result.detail || result.note)) || '没有取到该条回复的内容')
             }
             return action.run(result.text, result)
           })
@@ -11837,61 +11853,111 @@ window.__ModuleLoader__.load({
             setOpen(false)
           })
           .catch(function (failure) {
-            setError(String((failure && failure.message) || failure))
+            // 面向用户的短提示；技术细节放进 title 供排查
+            setError({ text: '操作没成功，请重试', detail: String((failure && failure.message) || failure) })
             setBusy(false)
           })
       }
 
-      const pill = function (label, onClick, active) {
-        return h(
-          'button',
-          {
-            key: label,
-            type: 'button',
-            disabled: busy,
-            onClick: onClick,
-            style: {
-              appearance: 'none',
-              border: '1px solid currentColor',
-              borderRadius: 999,
-              background: active ? 'currentColor' : 'transparent',
-              color: active ? 'transparent' : 'inherit',
-              fontSize: 11,
-              lineHeight: 1.4,
-              padding: '0 7px',
-              cursor: busy ? 'default' : 'pointer',
-              opacity: busy ? 0.5 : 0.7,
-            },
-          },
-          label,
-        )
+      const ICON_BUTTON = {
+        appearance: 'none',
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 3,
+        border: '1px solid currentColor',
+        borderRadius: 8,
+        background: 'transparent',
+        color: 'inherit',
+        fontSize: 11,
+        lineHeight: 1.4,
+        padding: '1px 5px',
+        cursor: busy ? 'default' : 'pointer',
+        opacity: busy ? 0.45 : 0.62,
       }
 
-      // 默认只留一个「工作台」入口，点开才展开动作，避免每条回复下面挂一排按钮
+      // 默认只有一个图标按钮，点开才是下拉菜单，避免每条回复下面挂一排文字按钮
       return h(
         'div',
-        {
-          style: {
-            display: 'flex',
-            alignItems: 'center',
-            gap: 5,
-            flexWrap: 'wrap',
-            marginTop: 2,
-            fontSize: 11,
-            lineHeight: 1.5,
+        { style: { position: 'relative', display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 2 } },
+        h(
+          'button',
+          {
+            type: 'button',
+            disabled: busy,
+            title: '工作台操作（生成待办 / 存为知识 / 记执行记录）',
+            'aria-label': '工作台操作',
+            'aria-expanded': open ? 'true' : 'false',
+            onClick: function () {
+              setOpen(!open)
+            },
+            style: ICON_BUTTON,
           },
-        },
-        pill(busy ? '处理中…' : open ? '工作台 ▴' : '工作台 ▾', function () {
-          setOpen(!open)
-        }, open),
+          h(Icon, { name: 'sparkles', size: 12 }),
+          h(Icon, { name: open ? 'chevronUp' : 'chevronDown', size: 10 }),
+        ),
         open
-          ? CHAT_EMBED_ACTIONS.map(function (action) {
-              return pill(action.label, function () {
-                trigger(action)
-              }, false)
-            })
+          ? h(
+              'div',
+              {
+                style: {
+                  position: 'absolute',
+                  top: '100%',
+                  left: 0,
+                  marginTop: 4,
+                  zIndex: 60,
+                  minWidth: 132,
+                  padding: 4,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 1,
+                  border: '1px solid currentColor',
+                  borderRadius: 9,
+                  background: 'var(--dsw-alias-bg-layer-1, #1c1c20)',
+                  boxShadow: '0 10px 28px rgba(0,0,0,.35)',
+                  opacity: 0.98,
+                },
+              },
+              CHAT_EMBED_ACTIONS.map(function (action) {
+                return h(
+                  'button',
+                  {
+                    key: action.id,
+                    type: 'button',
+                    disabled: busy,
+                    onClick: function () {
+                      trigger(action)
+                    },
+                    style: {
+                      appearance: 'none',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      width: '100%',
+                      textAlign: 'left',
+                      border: 0,
+                      borderRadius: 6,
+                      background: 'transparent',
+                      color: 'inherit',
+                      fontSize: 11.5,
+                      lineHeight: 1.6,
+                      padding: '4px 7px',
+                      cursor: busy ? 'default' : 'pointer',
+                    },
+                  },
+                  h(Icon, { name: action.icon || 'plus', size: 11 }),
+                  action.label,
+                )
+              }),
+            )
           : null,
-        error ? h('span', { style: { color: 'var(--dsh-color-danger, #d14343)' } }, error) : null,
+        busy ? h('span', { style: { fontSize: 11, opacity: 0.6 } }, '处理中…') : null,
+        error
+          ? h(
+              'span',
+              { title: error.detail, style: { fontSize: 11, color: 'var(--dsw-alias-label-error, #d14343)' } },
+              error.text,
+            )
+          : null,
       )
     }
 

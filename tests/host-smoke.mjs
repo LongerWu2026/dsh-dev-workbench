@@ -1030,6 +1030,33 @@ check(
     check('自愈后继续可用', sentHealed.status === 'ok', JSON.stringify(sentHealed))
   }
 
+  // --- 场景 5：create 只返回 sessionId 时也能工作（返回形状容错） ---
+  {
+    const shape = makeFakeWorld()
+    fakeSessions = shape.sessions
+    fakeSessionController = {
+      createSession: async () => {
+        shape.registry.set(shape.session.id, shape.session)
+        return { sessionId: shape.session.id }
+      },
+      prompt: shape.controller.prompt,
+    }
+    await api.saveSettings({ assistantSessionId: null })
+    const outcome = await api.assistantAsk({ text: '返回形状容错' })
+    check('create 只返回 sessionId 时仍可用', outcome.status === 'ok' && !!outcome.reply, JSON.stringify(outcome).slice(0, 140))
+  }
+
+  // --- 场景 6：create 返回不可用结构时，不把代码细节暴露给用户 ---
+  {
+    const broken = makeFakeWorld()
+    fakeSessions = broken.sessions
+    fakeSessionController = { createSession: async () => ({ nothing: true }), prompt: async () => ({ accepted: true }) }
+    await api.saveSettings({ assistantSessionId: null })
+    const failed = await api.assistantAsk({ text: '结构异常' })
+    check('结构异常时返回用户可读错误', failed.status === 'error' && !/返回值里没有 session/.test(failed.note), JSON.stringify(failed).slice(0, 160))
+    check('结构异常时技术细节放在 detail', typeof failed.detail === 'string' && failed.detail.length > 0)
+  }
+
   fakeSessions = null
   fakeSessionController = null
   const degraded = await api.assistantAsk({ text: '在吗' })
