@@ -3858,6 +3858,7 @@ window.__ModuleLoader__.load({
       const [radarEditItem, setRadarEditItem] = React.useState(null)
       const [radarFetching, setRadarFetching] = React.useState(false)
       const [mentionsBusy, setMentionsBusy] = React.useState(false)
+      const [quickMore, setQuickMore] = React.useState(false)
 
       if (!data) {
         return h(
@@ -4354,36 +4355,58 @@ window.__ModuleLoader__.load({
               },
               children: '统一搜索',
             }),
+            // 其余入口收进「更多」，避免一排按钮把卡片撑得太满
             h(Btn, {
               size: 'sm',
-              icon: 'toolbox',
+              kind: 'subtle',
+              icon: quickMore ? 'chevronDown' : 'chevronRight',
               onClick: function () {
-                WB.go('toolbox')
+                setQuickMore(!quickMore)
               },
-              children: '开发工具箱',
+              children: quickMore ? '收起' : '更多',
             }),
-            h(Btn, {
-              size: 'sm',
-              icon: 'agent',
-              onClick: function () {
-                WB.go('agents')
-              },
-              children: 'Agent 中心',
-            }),
-            h(Btn, {
-              size: 'sm',
-              icon: 'sparkles',
-              disabled: mentionsBusy,
-              onClick: runMentionsFetch,
-              children: mentionsBusy ? '拉取中…' : '拉取 @我',
-            }),
-            h(Btn, {
-              size: 'sm',
-              icon: 'refresh',
-              disabled: radarFetching,
-              onClick: runRadarFetch,
-              children: radarFetching ? '抓取中…' : '抓取资讯',
-            }),
+            quickMore
+              ? [
+                  h(Btn, {
+                    key: 'toolbox',
+                    size: 'sm',
+                    kind: 'subtle',
+                    icon: 'toolbox',
+                    onClick: function () {
+                      WB.go('toolbox')
+                    },
+                    children: '开发工具箱',
+                  }),
+                  h(Btn, {
+                    key: 'agents',
+                    size: 'sm',
+                    kind: 'subtle',
+                    icon: 'agent',
+                    onClick: function () {
+                      WB.go('agents')
+                    },
+                    children: 'Agent 中心',
+                  }),
+                  h(Btn, {
+                    key: 'mentions',
+                    size: 'sm',
+                    kind: 'subtle',
+                    icon: 'sparkles',
+                    disabled: mentionsBusy,
+                    onClick: runMentionsFetch,
+                    children: mentionsBusy ? '拉取中…' : '拉取 @我',
+                  }),
+                  h(Btn, {
+                    key: 'radar',
+                    size: 'sm',
+                    kind: 'subtle',
+                    icon: 'refresh',
+                    disabled: radarFetching,
+                    onClick: runRadarFetch,
+                    children: radarFetching ? '抓取中…' : '抓取资讯',
+                  }),
+                ]
+              : null,
           ),
           h(DashPomodoro, null),
         ),
@@ -11792,6 +11815,7 @@ window.__ModuleLoader__.load({
     function ChatAssistantActions(props) {
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState(null)
+      const [open, setOpen] = React.useState(false)
       const messageId = props && props.messageId ? String(props.messageId) : ''
       const sessionId = props && props.sessionId ? String(props.sessionId) : null
       if (!messageId) return null
@@ -11808,55 +11832,65 @@ window.__ModuleLoader__.load({
             }
             return action.run(result.text, result)
           })
+          .then(function () {
+            setBusy(false)
+            setOpen(false)
+          })
           .catch(function (failure) {
             setError(String((failure && failure.message) || failure))
-          })
-          .then(function () {
             setBusy(false)
           })
       }
 
+      const pill = function (label, onClick, active) {
+        return h(
+          'button',
+          {
+            key: label,
+            type: 'button',
+            disabled: busy,
+            onClick: onClick,
+            style: {
+              appearance: 'none',
+              border: '1px solid currentColor',
+              borderRadius: 999,
+              background: active ? 'currentColor' : 'transparent',
+              color: active ? 'transparent' : 'inherit',
+              fontSize: 11,
+              lineHeight: 1.4,
+              padding: '0 7px',
+              cursor: busy ? 'default' : 'pointer',
+              opacity: busy ? 0.5 : 0.7,
+            },
+          },
+          label,
+        )
+      }
+
+      // 默认只留一个「工作台」入口，点开才展开动作，避免每条回复下面挂一排按钮
       return h(
         'div',
         {
           style: {
             display: 'flex',
             alignItems: 'center',
-            gap: 6,
+            gap: 5,
             flexWrap: 'wrap',
-            marginTop: 4,
+            marginTop: 2,
             fontSize: 11,
-            opacity: busy ? 0.6 : 1,
+            lineHeight: 1.5,
           },
         },
-        h('span', { style: { opacity: 0.65 } }, '工作台'),
-        CHAT_EMBED_ACTIONS.map(function (action) {
-          return h(
-            'button',
-            {
-              key: action.id,
-              type: 'button',
-              disabled: busy,
-              onClick: function () {
+        pill(busy ? '处理中…' : open ? '工作台 ▴' : '工作台 ▾', function () {
+          setOpen(!open)
+        }, open),
+        open
+          ? CHAT_EMBED_ACTIONS.map(function (action) {
+              return pill(action.label, function () {
                 trigger(action)
-              },
-              title: '基于这条回复' + action.label,
-              style: {
-                appearance: 'none',
-                border: '1px solid currentColor',
-                borderRadius: 999,
-                background: 'transparent',
-                color: 'inherit',
-                fontSize: 11,
-                lineHeight: 1.5,
-                padding: '1px 8px',
-                cursor: busy ? 'default' : 'pointer',
-                opacity: 0.8,
-              },
-            },
-            action.label,
-          )
-        }),
+              }, false)
+            })
+          : null,
         error ? h('span', { style: { color: 'var(--dsh-color-danger, #d14343)' } }, error) : null,
       )
     }

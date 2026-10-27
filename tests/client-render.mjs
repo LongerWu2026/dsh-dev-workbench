@@ -914,11 +914,19 @@ for (const [title, id, expected] of pageSpecs) {
   const ActionComp = registrations.chatActions[0] && registrations.chatActions[0].Component
   if (ActionComp) {
     const tree = await renderComponent(ActionComp, { messageId: 'm-1', sessionId: 'session-fake' })
-    const text = treeText(tree).replace(/\s+/g, ' ')
+    const collapsed = treeText(tree).replace(/\s+/g, ' ')
+    // 默认只应有一个「工作台」入口，避免每条回复下挂一排按钮
+    if (collapsed.indexOf('工作台') < 0) problems.push('动作排缺少「工作台」入口')
+    if (collapsed.indexOf('生成待办') >= 0) problems.push('动作排默认就展开了全部按钮（应折叠）')
+    const trigger = findButtons(tree, []).find((button) => button.text.indexOf('工作台') >= 0)
+    if (!trigger) problems.push('动作排找不到「工作台」展开按钮')
+    else trigger.onClick()
+    const opened = await renderComponent(ActionComp, { messageId: 'm-1', sessionId: 'session-fake' })
+    const text = treeText(opened).replace(/\s+/g, ' ')
     for (const label of ['生成待办', '存为知识', '记执行记录']) {
-      if (text.indexOf(label) < 0) problems.push('动作排缺少按钮：' + label)
+      if (text.indexOf(label) < 0) problems.push('展开后缺少按钮：' + label)
     }
-    const createBtn = findButtons(tree, []).find((button) => button.text.indexOf('生成待办') >= 0)
+    const createBtn = findButtons(opened, []).find((button) => button.text.indexOf('生成待办') >= 0)
     if (!createBtn) problems.push('动作排找不到「生成待办」按钮')
     else {
       const before = rpcCalls.length

@@ -166,7 +166,7 @@ node tests/client-render.mjs
 
 | 能力 | 落点 | 验证 |
 | --- | --- | --- |
-| 每条助手回复下方的「生成待办 / 存为知识 / 记执行记录」 | `conversation.chat.assistant-actions`（list，replaceRisk none，3 个 id） | 渲染测试：3 个注册 + 组件渲染出 3 个按钮 + 点「生成待办」真实触发 `assistantMessage` 与 `createTask` |
+| 「工作台」下拉里的「生成待办 / 存为知识 / 记执行记录」 | `conversation.chat.assistant-actions`（list，replaceRisk none，3 个 id） | 渲染测试：3 个注册 + 默认只渲染 1 个「工作台」入口（折叠）+ 展开后出现 3 个动作 + 点「生成待办」真实触发 `assistantMessage` 与 `createTask` |
 | `workbench_*` 工具调用渲染为工作台卡片 | `tool.call.toolview`（keyed，9 个工具名） | 渲染测试：9 个 key 全部 `workbench_` 前缀、卡片渲染出工具名 |
 
 ## 12. 生效条件

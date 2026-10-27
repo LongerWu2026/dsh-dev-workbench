@@ -797,6 +797,7 @@ function DashboardPage() {
   const [radarEditItem, setRadarEditItem] = React.useState(null)
   const [radarFetching, setRadarFetching] = React.useState(false)
   const [mentionsBusy, setMentionsBusy] = React.useState(false)
+  const [quickMore, setQuickMore] = React.useState(false)
 
   if (!data) {
     return h(
@@ -1293,36 +1294,58 @@ function DashboardPage() {
           },
           children: '统一搜索',
         }),
+        // 其余入口收进「更多」，避免一排按钮把卡片撑得太满
         h(Btn, {
           size: 'sm',
-          icon: 'toolbox',
+          kind: 'subtle',
+          icon: quickMore ? 'chevronDown' : 'chevronRight',
           onClick: function () {
-            WB.go('toolbox')
+            setQuickMore(!quickMore)
           },
-          children: '开发工具箱',
+          children: quickMore ? '收起' : '更多',
         }),
-        h(Btn, {
-          size: 'sm',
-          icon: 'agent',
-          onClick: function () {
-            WB.go('agents')
-          },
-          children: 'Agent 中心',
-        }),
-        h(Btn, {
-          size: 'sm',
-          icon: 'sparkles',
-          disabled: mentionsBusy,
-          onClick: runMentionsFetch,
-          children: mentionsBusy ? '拉取中…' : '拉取 @我',
-        }),
-        h(Btn, {
-          size: 'sm',
-          icon: 'refresh',
-          disabled: radarFetching,
-          onClick: runRadarFetch,
-          children: radarFetching ? '抓取中…' : '抓取资讯',
-        }),
+        quickMore
+          ? [
+              h(Btn, {
+                key: 'toolbox',
+                size: 'sm',
+                kind: 'subtle',
+                icon: 'toolbox',
+                onClick: function () {
+                  WB.go('toolbox')
+                },
+                children: '开发工具箱',
+              }),
+              h(Btn, {
+                key: 'agents',
+                size: 'sm',
+                kind: 'subtle',
+                icon: 'agent',
+                onClick: function () {
+                  WB.go('agents')
+                },
+                children: 'Agent 中心',
+              }),
+              h(Btn, {
+                key: 'mentions',
+                size: 'sm',
+                kind: 'subtle',
+                icon: 'sparkles',
+                disabled: mentionsBusy,
+                onClick: runMentionsFetch,
+                children: mentionsBusy ? '拉取中…' : '拉取 @我',
+              }),
+              h(Btn, {
+                key: 'radar',
+                size: 'sm',
+                kind: 'subtle',
+                icon: 'refresh',
+                disabled: radarFetching,
+                onClick: runRadarFetch,
+                children: radarFetching ? '抓取中…' : '抓取资讯',
+              }),
+            ]
+          : null,
       ),
       h(DashPomodoro, null),
     ),
