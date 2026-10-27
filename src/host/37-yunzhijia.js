@@ -316,6 +316,71 @@ function yzjParseMentionSearch(json, myOpenId) {
 }
 
 /**
+ * 增量游标同步（TODO 05）：
+ *   1. im group recent 取最近会话；
+ *   2. 每个群用 cursor.lastMsgId 拉「新消息」（--type new），没有游标时取最新一页；
+ *   3. 用 param.notifyType / desc[].type==='at' 判定「有人在群里 @我」——
+ *      这条判据不依赖显示名，因此**昵称 @ 也能覆盖**（关键词检索会漏）；
+ *   4. 把每群最新 msgId 存回游标，下次只取增量。
+ * 返回 null 表示这条路不可用，调用方回退到关键词检索。
+ */
+async function fetchMentionsIncremental(ctx, probe, cursors) {
+  const recent = await runYzj(ctx, ['im', 'group', 'recent', '--limit', '12', '--page', '1'])
+  if (recent.status !== 'ok') return { error: { status: recent.status, note: recent.note } }
+  const groups = recent.json && recent.json.data && Array.isArray(recent.json.data.list) ? recent.json.data.list : []
+  if (groups.length === 0) return null
+
+  const mentions = []
+  const nextCursors = Object.assign({}, cursors || {})
+  let scannedGroups = 0
+  let scannedMessages = 0
+
+  for (const group of groups.slice(0, 10)) {
+    const groupId = asString(group && group.groupId, 80)
+    const groupName = asString(group && group.groupName, 120) || '未知会话'
+    if (!groupId) continue
+    const cursor = nextCursors[groupId]
+    const args = ['im', 'message', 'list', '--group-id', groupId, '--limit', '20']
+    if (cursor && cursor.lastMsgId) {
+      args.push('--type', 'new', '--msg-id', cursor.lastMsgId)
+    } else {
+      args.push('--type', 'newest')
+    }
+    const listed = await runYzj(ctx, args)
+    if (listed.status !== 'ok') continue
+    const list = listed.json && listed.json.data && Array.isArray(listed.json.data.list) ? listed.json.data.list : []
+    scannedGroups += 1
+    scannedMessages += list.length
+    for (const wrapper of list) {
+      // im message list 的每条可能是 { message: {...} } 包装；两种形状都要兼容
+      const message = wrapper && wrapper.message ? wrapper.message : wrapper
+      if (!message || typeof message !== 'object') continue
+      if (!yzjMentionTargetsMe(message, probe.openId)) continue
+      if (message.fromOpenId === probe.openId) continue
+      mentions.push({
+        msgId: asString(message.msgId, 60),
+        groupId: groupId,
+        groupName: groupName,
+        content: asString(message.content, 2000),
+        fromOpenId: asString(message.fromOpenId, 60) || null,
+        sendTime: asIso(message.sendTime) || null,
+      })
+    }
+    const firstWrapper = list[0]
+    const newest = firstWrapper && firstWrapper.message ? firstWrapper.message : firstWrapper
+    if (newest && newest.msgId) {
+      nextCursors[groupId] = {
+        lastMsgId: asString(newest.msgId, 60),
+        lastSendTime: asIso(newest.sendTime) || null,
+        groupName: groupName,
+        at: hostNowIso(),
+      }
+    }
+  }
+  return { mentions: mentions, cursors: nextCursors, scannedGroups: scannedGroups, scannedMessages: scannedMessages }
+}
+
+/**
  * Design report §3.2: pull @-mention messages as source evidence. Deterministic
  * part only — creating tasks with AI-extracted fields stays an agent job.
  * Keyword search matches "@<display name>"; a custom remark name would be
@@ -336,20 +401,52 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
     return state
   }
 
-  const result = await runYzj(ctx, ['im', 'message', 'search', '--keyword', '@' + probe.name])
-  if (result.status !== 'ok') {
+  // 优先走增量游标（可覆盖昵称 @）；不可用时回退关键词检索
+  const incrementalResult = await fetchMentionsIncremental(ctx, probe, state.syncCursors)
+  const incremental = incrementalResult && incrementalResult.error ? null : incrementalResult
+  const incrementalError = incrementalResult && incrementalResult.error ? incrementalResult.error : null
+  let keywords = ['@' + probe.name].concat(
+    ensureArray(state.settings && state.settings.mentionKeywords).map(function (word) {
+      return String(word).indexOf('@') === 0 ? String(word) : '@' + String(word)
+    }),
+  )
+  const keywordMentions = []
+  let searchFailure = incrementalError
+  if (!incremental) {
+    for (const keyword of keywords.slice(0, 3)) {
+      const searched = await runYzj(ctx, ['im', 'message', 'search', '--keyword', keyword])
+      if (searched.status !== 'ok') {
+        // 如实记录失败：不要把「接口不可用」当成「没有 @我」
+        if (!searchFailure) searchFailure = { status: searched.status, note: searched.note }
+        continue
+      }
+      for (const mention of yzjParseMentionSearch(searched.json, probe.openId)) keywordMentions.push(mention)
+    }
+  }
+  if (!incremental && keywordMentions.length === 0 && searchFailure) {
     state.lastMentionsFetch = {
       at: at,
-      status: result.status,
+      status: searchFailure.status === 'refused' ? 'error' : searchFailure.status,
       found: 0,
       added: 0,
-      note: result.note || '消息搜索失败',
+      note: '消息接口不可用：' + (searchFailure.note || searchFailure.status),
     }
-    auditEntry(state, 'mentions.fetch', '消息搜索失败：' + (result.note || result.status))
+    auditEntry(state, 'mentions.fetch', '消息接口不可用：' + (searchFailure.note || searchFailure.status))
     return state
   }
+  const rawMentions = incremental
+    ? incremental.mentions
+    : keywordMentions
+  if (incremental && incremental.cursors) {
+    state.syncCursors = incremental.cursors
+  }
 
-  const mentions = yzjParseMentionSearch(result.json, probe.openId).slice(0, MENTIONS_FETCH_LIMIT)
+  const mentions = rawMentions
+    .filter(function (mention) {
+      return !!mention.msgId
+    })
+    .slice(0, MENTIONS_FETCH_LIMIT)
+
   // 发送人姓名：一次批量查询，失败不影响主流程（回退为 openId 短标识）
   const senderNames = await resolveSenderNames(
     ctx,
@@ -369,7 +466,7 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
   let added = 0
   for (const mention of mentions) {
     const externalId = 'yzj:msg:' + mention.msgId
-    if (!mention.msgId || existing.has(externalId)) continue
+    if (existing.has(externalId)) continue
     existing.add(externalId)
     state.sources = ensureArray(state.sources).concat([
       normalizeSource({
@@ -391,20 +488,27 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
     ])
     added += 1
   }
+
+  const mode = incremental
+    ? '增量游标（最近 ' +
+      incremental.scannedGroups +
+      ' 个群 / ' +
+      incremental.scannedMessages +
+      ' 条新消息，notifyType 判据可覆盖昵称 @）'
+    : '关键词检索（' + keywords.slice(0, 3).join(' / ') + '）'
   state.lastMentionsFetch = {
     at: at,
     status: 'ok',
     found: mentions.length,
     added: added,
     user: probe.name,
+    mode: incremental ? 'incremental' : 'keyword',
     note:
-      '按 “@' +
-      probe.name +
-      '” 关键词检索' +
+      mode +
       (probe.expiresAt ? '；token 至 ' + probe.expiresAt.slice(0, 16).replace('T', ' ') + ' 有效' : '') +
-      '。对方若用昵称 @ 你会漏掉，可在会话里让 Agent 补查。',
+      (incremental ? '。' : '。昵称 @ 可能漏采，可在「连接与设置」补充关键词。'),
   }
-  auditEntry(state, 'mentions.fetch', '发现 ' + mentions.length + ' 条 @我，新增来源 ' + added + ' 条')
+  auditEntry(state, 'mentions.fetch', '发现 ' + mentions.length + ' 条 @我，新增来源 ' + added + ' 条（' + (incremental ? '增量' : '关键词') + '）')
   return state
 }
 

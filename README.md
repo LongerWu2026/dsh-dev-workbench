@@ -121,6 +121,8 @@ Host 用 `ctx.provide('workbench', api)` 暴露服务，并用 `ctx.typert.regis
 - **页面同步**：业务修订号 `revision` + 12s 轻量轮询，只有变新才重取快照，且编辑表单期间跳过。
 - **备份与损坏保护**：每天首次写入自动备份（保留 5 份），损坏文件先改名留存再从空状态启动；设置页可手动备份/恢复。
 - **工作台助手**：卡片「AI 分析」把记录加入可移除的上下文引用，一键把上下文简报送进原生会话，Agent 用 `workbench_*` 工具写回同一份数据。
+- **增量同步**：按最近群 + 每群游标只取新消息，用 `notifyType` 判据覆盖昵称 @；关键词检索作为兜底。
+- **后台自动化**：插件侧定时器（每 60s 判定到期）执行资讯采集与 @我 拉取，单飞锁 + 补跑 + 结果记录；设置页可开关、调间隔、立即执行。
 
 ## 开发
 
@@ -129,7 +131,7 @@ cd dsh-dev-workbench
 node scripts/build.mjs            # 生成 index.js 与 client.js
 node scripts/build.mjs --check    # 只做跨文件重名检查
 node --check index.js && node --check client.js
-node tests/host-smoke.mjs         # Host 半自测（133 项：含 PR/CI、进程、本地文件搜索、语义去重、候选采纳/忽略、三路意图搜索）
+node tests/host-smoke.mjs         # Host 半自测（146 项：含 PR/CI、进程、本地文件搜索、语义去重、候选采纳/忽略、三路意图搜索）
 node tests/client-render.mjs      # Client 全页面渲染（8 页 + 空态 + 6 个新增工具面板；真实驱动搜索/抓取/@我 按钮）
 ```
 

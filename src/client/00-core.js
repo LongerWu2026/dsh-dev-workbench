@@ -1109,6 +1109,12 @@ const wbActions = {
       })
   },
 
+  automationRun() {
+    return wbRpc('workbench/automationRun', {})
+  },
+  automationStatus() {
+    return wbRpc('workbench/automationStatus', {})
+  },
   backup() {
     return wbRpc('workbench/backup', {})
   },

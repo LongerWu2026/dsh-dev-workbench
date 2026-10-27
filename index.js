@@ -16,6 +16,7 @@
  *   38-candidates.js
  *   39-github.js
  *   40-remote.js
+ *   45-automation.js
  *   50-tools.js
  *   90-apply.js
  */
@@ -195,6 +196,8 @@ function emptyWorkbenchState() {
     radar: [],
     connectors: [],
     candidates: [],
+    syncCursors: {},
+    lastAutomation: null,
     audit: [],
   }
 }
@@ -212,6 +215,37 @@ function normalizeFeed(raw) {
     url: url,
     topics: asTags(input.topics, 6),
   }
+}
+
+function normalizeAutomation(raw) {
+  const input = raw && typeof raw === 'object' ? raw : {}
+  const minutes = Number(input.intervalMinutes)
+  return {
+    enabled: input.enabled === true,
+    intervalMinutes: Number.isFinite(minutes) && minutes >= 5 ? Math.min(24 * 60, Math.round(minutes)) : 60,
+    radar: input.radar !== false,
+    mentions: input.mentions !== false,
+  }
+}
+
+function normalizeSyncCursors(raw) {
+  if (!raw || typeof raw !== 'object') return {}
+  const out = {}
+  Object.keys(raw)
+    .slice(0, 40)
+    .forEach(function (groupId) {
+      const item = raw[groupId]
+      if (!item || typeof item !== 'object') return
+      const lastMsgId = asString(item.lastMsgId, 80)
+      if (!lastMsgId) return
+      out[groupId] = {
+        lastMsgId: lastMsgId,
+        lastSendTime: asIso(item.lastSendTime),
+        groupName: asString(item.groupName, 120),
+        at: asIso(item.at) || hostNowIso(),
+      }
+    })
+  return out
 }
 
 function normalizeFetchReport(raw) {
@@ -265,6 +299,10 @@ function normalizeSettings(raw) {
     staleHours: Number.isFinite(staleHours) && staleHours > 0 ? Math.min(24 * 30, Math.round(staleHours)) : 24,
     showCompleted: input.showCompleted === true,
     feeds: feeds,
+    /** 昵称/别名 @ 的补充关键词（增量游标覆盖不到时的兜底检索） */
+    mentionKeywords: asTags(input.mentionKeywords, 6),
+    /** 后台自动化（TODO 07）：插件侧定时执行确定性采集 */
+    automation: normalizeAutomation(input.automation),
   }
 }
 
@@ -502,6 +540,16 @@ function normalizeState(raw) {
       .filter(function (operation) {
         return operation.key.length > 0
       }),
+    syncCursors: normalizeSyncCursors(raw.syncCursors),
+    lastAutomation: raw.lastAutomation && typeof raw.lastAutomation === 'object'
+      ? {
+          at: asIso(raw.lastAutomation.at) || hostNowIso(),
+          radarAdded: Number(raw.lastAutomation.radarAdded) || 0,
+          mentionsAdded: Number(raw.lastAutomation.mentionsAdded) || 0,
+          status: asString(raw.lastAutomation.status, 20) || 'ok',
+          note: asString(raw.lastAutomation.note, 300),
+        }
+      : null,
     lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),
     lastMentionsFetch: normalizeMentionsReport(raw.lastMentionsFetch),
     audit: ensureArray(raw.audit).slice(-AUDIT_LIMIT),
@@ -1648,6 +1696,26 @@ const workbenchApi = {
   /** GitHub 只读快照（PR / CI），走 gh CLI 白名单命令。 */
   async github() {
     return buildGithubSnapshot(workbenchContext())
+  },
+
+  /** 立即跑一次后台自动化（TODO 07）；返回本次结果。 */
+  async automationRun() {
+    return runAutomationTick(workbenchContext())
+  },
+
+  /** 自动化状态：是否开启、间隔、上次结果、是否到期。 */
+  async automationStatus() {
+    const state = loadWorkbenchState()
+    const config = (state.settings && state.settings.automation) || {}
+    return {
+      enabled: config.enabled === true,
+      intervalMinutes: Number(config.intervalMinutes) || 60,
+      radar: config.radar !== false,
+      mentions: config.mentions !== false,
+      lastAutomation: state.lastAutomation || null,
+      due: automationDue(state, Date.now()),
+      note: '插件侧定时器：仅在 DSH 进程运行期间生效，退出/休眠时暂停，恢复后按到期补跑一次。',
+    }
   },
 
   /** 手动备份 + 列出 + 恢复（TODO 11）。 */
@@ -3127,6 +3195,71 @@ function yzjParseMentionSearch(json, myOpenId) {
 }
 
 /**
+ * 增量游标同步（TODO 05）：
+ *   1. im group recent 取最近会话；
+ *   2. 每个群用 cursor.lastMsgId 拉「新消息」（--type new），没有游标时取最新一页；
+ *   3. 用 param.notifyType / desc[].type==='at' 判定「有人在群里 @我」——
+ *      这条判据不依赖显示名，因此**昵称 @ 也能覆盖**（关键词检索会漏）；
+ *   4. 把每群最新 msgId 存回游标，下次只取增量。
+ * 返回 null 表示这条路不可用，调用方回退到关键词检索。
+ */
+async function fetchMentionsIncremental(ctx, probe, cursors) {
+  const recent = await runYzj(ctx, ['im', 'group', 'recent', '--limit', '12', '--page', '1'])
+  if (recent.status !== 'ok') return { error: { status: recent.status, note: recent.note } }
+  const groups = recent.json && recent.json.data && Array.isArray(recent.json.data.list) ? recent.json.data.list : []
+  if (groups.length === 0) return null
+
+  const mentions = []
+  const nextCursors = Object.assign({}, cursors || {})
+  let scannedGroups = 0
+  let scannedMessages = 0
+
+  for (const group of groups.slice(0, 10)) {
+    const groupId = asString(group && group.groupId, 80)
+    const groupName = asString(group && group.groupName, 120) || '未知会话'
+    if (!groupId) continue
+    const cursor = nextCursors[groupId]
+    const args = ['im', 'message', 'list', '--group-id', groupId, '--limit', '20']
+    if (cursor && cursor.lastMsgId) {
+      args.push('--type', 'new', '--msg-id', cursor.lastMsgId)
+    } else {
+      args.push('--type', 'newest')
+    }
+    const listed = await runYzj(ctx, args)
+    if (listed.status !== 'ok') continue
+    const list = listed.json && listed.json.data && Array.isArray(listed.json.data.list) ? listed.json.data.list : []
+    scannedGroups += 1
+    scannedMessages += list.length
+    for (const wrapper of list) {
+      // im message list 的每条可能是 { message: {...} } 包装；两种形状都要兼容
+      const message = wrapper && wrapper.message ? wrapper.message : wrapper
+      if (!message || typeof message !== 'object') continue
+      if (!yzjMentionTargetsMe(message, probe.openId)) continue
+      if (message.fromOpenId === probe.openId) continue
+      mentions.push({
+        msgId: asString(message.msgId, 60),
+        groupId: groupId,
+        groupName: groupName,
+        content: asString(message.content, 2000),
+        fromOpenId: asString(message.fromOpenId, 60) || null,
+        sendTime: asIso(message.sendTime) || null,
+      })
+    }
+    const firstWrapper = list[0]
+    const newest = firstWrapper && firstWrapper.message ? firstWrapper.message : firstWrapper
+    if (newest && newest.msgId) {
+      nextCursors[groupId] = {
+        lastMsgId: asString(newest.msgId, 60),
+        lastSendTime: asIso(newest.sendTime) || null,
+        groupName: groupName,
+        at: hostNowIso(),
+      }
+    }
+  }
+  return { mentions: mentions, cursors: nextCursors, scannedGroups: scannedGroups, scannedMessages: scannedMessages }
+}
+
+/**
  * Design report §3.2: pull @-mention messages as source evidence. Deterministic
  * part only — creating tasks with AI-extracted fields stays an agent job.
  * Keyword search matches "@<display name>"; a custom remark name would be
@@ -3147,20 +3280,52 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
     return state
   }
 
-  const result = await runYzj(ctx, ['im', 'message', 'search', '--keyword', '@' + probe.name])
-  if (result.status !== 'ok') {
+  // 优先走增量游标（可覆盖昵称 @）；不可用时回退关键词检索
+  const incrementalResult = await fetchMentionsIncremental(ctx, probe, state.syncCursors)
+  const incremental = incrementalResult && incrementalResult.error ? null : incrementalResult
+  const incrementalError = incrementalResult && incrementalResult.error ? incrementalResult.error : null
+  let keywords = ['@' + probe.name].concat(
+    ensureArray(state.settings && state.settings.mentionKeywords).map(function (word) {
+      return String(word).indexOf('@') === 0 ? String(word) : '@' + String(word)
+    }),
+  )
+  const keywordMentions = []
+  let searchFailure = incrementalError
+  if (!incremental) {
+    for (const keyword of keywords.slice(0, 3)) {
+      const searched = await runYzj(ctx, ['im', 'message', 'search', '--keyword', keyword])
+      if (searched.status !== 'ok') {
+        // 如实记录失败：不要把「接口不可用」当成「没有 @我」
+        if (!searchFailure) searchFailure = { status: searched.status, note: searched.note }
+        continue
+      }
+      for (const mention of yzjParseMentionSearch(searched.json, probe.openId)) keywordMentions.push(mention)
+    }
+  }
+  if (!incremental && keywordMentions.length === 0 && searchFailure) {
     state.lastMentionsFetch = {
       at: at,
-      status: result.status,
+      status: searchFailure.status === 'refused' ? 'error' : searchFailure.status,
       found: 0,
       added: 0,
-      note: result.note || '消息搜索失败',
+      note: '消息接口不可用：' + (searchFailure.note || searchFailure.status),
     }
-    auditEntry(state, 'mentions.fetch', '消息搜索失败：' + (result.note || result.status))
+    auditEntry(state, 'mentions.fetch', '消息接口不可用：' + (searchFailure.note || searchFailure.status))
     return state
   }
+  const rawMentions = incremental
+    ? incremental.mentions
+    : keywordMentions
+  if (incremental && incremental.cursors) {
+    state.syncCursors = incremental.cursors
+  }
 
-  const mentions = yzjParseMentionSearch(result.json, probe.openId).slice(0, MENTIONS_FETCH_LIMIT)
+  const mentions = rawMentions
+    .filter(function (mention) {
+      return !!mention.msgId
+    })
+    .slice(0, MENTIONS_FETCH_LIMIT)
+
   // 发送人姓名：一次批量查询，失败不影响主流程（回退为 openId 短标识）
   const senderNames = await resolveSenderNames(
     ctx,
@@ -3180,7 +3345,7 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
   let added = 0
   for (const mention of mentions) {
     const externalId = 'yzj:msg:' + mention.msgId
-    if (!mention.msgId || existing.has(externalId)) continue
+    if (existing.has(externalId)) continue
     existing.add(externalId)
     state.sources = ensureArray(state.sources).concat([
       normalizeSource({
@@ -3202,20 +3367,27 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
     ])
     added += 1
   }
+
+  const mode = incremental
+    ? '增量游标（最近 ' +
+      incremental.scannedGroups +
+      ' 个群 / ' +
+      incremental.scannedMessages +
+      ' 条新消息，notifyType 判据可覆盖昵称 @）'
+    : '关键词检索（' + keywords.slice(0, 3).join(' / ') + '）'
   state.lastMentionsFetch = {
     at: at,
     status: 'ok',
     found: mentions.length,
     added: added,
     user: probe.name,
+    mode: incremental ? 'incremental' : 'keyword',
     note:
-      '按 “@' +
-      probe.name +
-      '” 关键词检索' +
+      mode +
       (probe.expiresAt ? '；token 至 ' + probe.expiresAt.slice(0, 16).replace('T', ' ') + ' 有效' : '') +
-      '。对方若用昵称 @ 你会漏掉，可在会话里让 Agent 补查。',
+      (incremental ? '。' : '。昵称 @ 可能漏采，可在「连接与设置」补充关键词。'),
   }
-  auditEntry(state, 'mentions.fetch', '发现 ' + mentions.length + ' 条 @我，新增来源 ' + added + ' 条')
+  auditEntry(state, 'mentions.fetch', '发现 ' + mentions.length + ' 条 @我，新增来源 ' + added + ' 条（' + (incremental ? '增量' : '关键词') + '）')
   return state
 }
 
@@ -3966,6 +4138,8 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'github', params: [] },
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
+  { method: 'automationRun', params: [] },
+  { method: 'automationStatus', params: [] },
   { method: 'backup', params: [] },
   { method: 'backups', params: [] },
   { method: 'restoreBackup', params: ['id'] },
@@ -3997,6 +4171,133 @@ const WORKBENCH_REMOTE = {
   invocations: WORKBENCH_REMOTE_SIGNATURES.map(function (entry) {
     return remoteJsonInvocation('workbench', 'workbench', entry.method, entry.params)
   }),
+}
+
+// ===== 45-automation.js =====
+/* ============================================================================
+ * dev-workbench host — 后台自动化（TODO 07 的可落地部分）
+ *
+ * 设计文档 07 要求「无前台聊天时仍能按配置执行」。宿主的 `schedule` 只做
+ * 会话提醒投递、`jobs` 是抽象契约（需要具体 Provider），因此这里用**插件自身**
+ * 的定时器执行**确定性采集**（资讯抓取/联网发现、@我 拉取），不涉及模型调用：
+ *
+ *   - 每 60s 检查一次是否到期（lastAutomation.at + intervalMinutes），
+ *     因此开关、间隔、启用的子任务都能在运行时改变，无需重启；
+ *   - 单飞锁：同一时刻只有一个 tick 在跑，避免重复写入；
+ *   - 启动时若已过期则补跑一次（catch-up），并记录在 lastAutomation；
+ *   - 失败只记状态与原因，不做无限重试；
+ *   - 进程退出即停止（不假装自己能常驻），文档里如实说明。
+ * ========================================================================== */
+
+let automationInFlight = false
+let automationTimer = null
+
+function automationDue(state, now) {
+  const config = (state.settings && state.settings.automation) || {}
+  if (!config.enabled) return false
+  const intervalMs = Math.max(5, Number(config.intervalMinutes) || 60) * 60 * 1000
+  const last = state.lastAutomation && state.lastAutomation.at ? new Date(state.lastAutomation.at).getTime() : 0
+  return !Number.isFinite(last) || last === 0 || now - last >= intervalMs
+}
+
+/**
+ * 跑一次自动化 tick。返回 { ran, radarAdded, mentionsAdded, status, note }。
+ * 内部捕获所有异常：后台任务不能把插件带崩。
+ */
+async function runAutomationTick(ctx) {
+  if (automationInFlight) {
+    return { ran: false, status: 'busy', note: '上一次自动化仍在执行，本次跳过' }
+  }
+  const state = loadWorkbenchState()
+  const config = (state.settings && state.settings.automation) || {}
+  if (!config.enabled) {
+    return { ran: false, status: 'disabled', note: '自动化未开启' }
+  }
+
+  automationInFlight = true
+  const at = hostNowIso()
+  let radarAdded = 0
+  let mentionsAdded = 0
+  const notes = []
+  let status = 'ok'
+
+  try {
+    if (config.radar !== false) {
+      try {
+        const afterRadar = await runRadarFetchOrDiscover(ctx)
+        const report = afterRadar.lastRadarFetch || {}
+        radarAdded = Number(report.added) || 0
+        notes.push('资讯新增 ' + radarAdded)
+        if (report.note) notes.push(report.note)
+      } catch (e) {
+        status = 'partial'
+        notes.push('资讯失败：' + String((e && e.message) || e).slice(0, 120))
+      }
+    }
+
+    if (config.mentions !== false) {
+      try {
+        const probe = await probeYunzhijia(ctx)
+        if (probe.state === 'ok') {
+          const afterMentions = await mutateWorkbenchState(function (current) {
+            return fetchYunzhijiaMentionsInto(ctx, current)
+          })
+          const report = afterMentions.lastMentionsFetch || {}
+          mentionsAdded = Number(report.added) || 0
+          notes.push('@我 新增 ' + mentionsAdded + '（' + (report.mode || '关键字') + '）')
+          if (report.status !== 'ok') {
+            status = status === 'ok' ? 'partial' : status
+            notes.push(report.note || report.status)
+          }
+        } else {
+          notes.push('云之家不可用：' + (probe.note || probe.state))
+          if (probe.state !== 'unconfigured') status = status === 'ok' ? 'partial' : status
+        }
+      } catch (e) {
+        status = 'partial'
+        notes.push('@我 失败：' + String((e && e.message) || e).slice(0, 120))
+      }
+    }
+  } finally {
+    automationInFlight = false
+  }
+
+  await mutateWorkbenchState(function (current) {
+    current.lastAutomation = {
+      at: at,
+      radarAdded: radarAdded,
+      mentionsAdded: mentionsAdded,
+      status: status,
+      note: notes.join('；').slice(0, 300),
+    }
+    auditEntry(current, 'automation.tick', '自动执行：资讯 +' + radarAdded + '，@我 +' + mentionsAdded)
+    return current
+  })
+
+  return { ran: true, status: status, radarAdded: radarAdded, mentionsAdded: mentionsAdded, note: notes.join('；') }
+}
+
+/** 启动后台检查循环（每 60s 判断是否到期）；返回清理函数。 */
+function startAutomation(ctx) {
+  if (automationTimer) return function () {}
+  automationTimer = setInterval(function () {
+    const state = loadWorkbenchState()
+    if (!automationDue(state, Date.now())) return
+    runAutomationTick(ctx).catch(function () {})
+  }, 60 * 1000)
+  // 不要因为后台定时器阻止宿主正常退出
+  if (automationTimer && typeof automationTimer.unref === 'function') automationTimer.unref()
+  // 启动补跑：如果已过期，等 8s 让宿主其它服务就绪后跑一次
+  const boot = setTimeout(function () {
+    const state = loadWorkbenchState()
+    if (automationDue(state, Date.now())) runAutomationTick(ctx).catch(function () {})
+  }, 8000)
+  if (boot && typeof boot.unref === 'function') boot.unref()
+  return function () {
+    if (automationTimer) clearInterval(automationTimer)
+    automationTimer = null
+    clearTimeout(boot)
+  }
 }
 
 // ===== 50-tools.js =====
@@ -4503,6 +4804,11 @@ export function apply(ctx, config) {
         })
       }
     })
+  })
+
+  // 后台自动化（TODO 07）：定时检查是否到期，到期跑确定性采集
+  ctx.effect(function () {
+    return startAutomation(ctx)
   })
 
   ctx.effect(function () {

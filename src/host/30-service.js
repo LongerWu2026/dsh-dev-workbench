@@ -522,6 +522,26 @@ const workbenchApi = {
     return buildGithubSnapshot(workbenchContext())
   },
 
+  /** 立即跑一次后台自动化（TODO 07）；返回本次结果。 */
+  async automationRun() {
+    return runAutomationTick(workbenchContext())
+  },
+
+  /** 自动化状态：是否开启、间隔、上次结果、是否到期。 */
+  async automationStatus() {
+    const state = loadWorkbenchState()
+    const config = (state.settings && state.settings.automation) || {}
+    return {
+      enabled: config.enabled === true,
+      intervalMinutes: Number(config.intervalMinutes) || 60,
+      radar: config.radar !== false,
+      mentions: config.mentions !== false,
+      lastAutomation: state.lastAutomation || null,
+      due: automationDue(state, Date.now()),
+      note: '插件侧定时器：仅在 DSH 进程运行期间生效，退出/休眠时暂停，恢复后按到期补跑一次。',
+    }
+  },
+
   /** 手动备份 + 列出 + 恢复（TODO 11）。 */
   async backup() {
     const path = createBackup('manual')

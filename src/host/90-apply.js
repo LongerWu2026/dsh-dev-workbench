@@ -46,6 +46,11 @@ export function apply(ctx, config) {
     })
   })
 
+  // 后台自动化（TODO 07）：定时检查是否到期，到期跑确定性采集
+  ctx.effect(function () {
+    return startAutomation(ctx)
+  })
+
   ctx.effect(function () {
     const state = loadWorkbenchState()
     if (ctx.logger && typeof ctx.logger.info === 'function') {

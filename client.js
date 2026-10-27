@@ -1134,6 +1134,12 @@ window.__ModuleLoader__.load({
           })
       },
 
+      automationRun() {
+        return wbRpc('workbench/automationRun', {})
+      },
+      automationStatus() {
+        return wbRpc('workbench/automationStatus', {})
+      },
       backup() {
         return wbRpc('workbench/backup', {})
       },
@@ -10308,6 +10314,8 @@ window.__ModuleLoader__.load({
       const [picking, setPicking] = React.useState(false)
       const [projectEdit, setProjectEdit] = React.useState(null)
       const [backups, setBackups] = React.useState([])
+      const [automation, setAutomation] = React.useState(null)
+      const [mentionDraft, setMentionDraft] = React.useState('')
       const [feedLabel, setFeedLabel] = React.useState('')
       const [feedUrl, setFeedUrl] = React.useState('')
       const [feedTopics, setFeedTopics] = React.useState('')
@@ -10337,6 +10345,11 @@ window.__ModuleLoader__.load({
         WB.actions.backups()
           .then(function (result) {
             setBackups(result.backups || [])
+          })
+          .catch(function () {})
+        WB.actions.automationStatus()
+          .then(function (status) {
+            setAutomation(status)
           })
           .catch(function () {})
       }, [])
@@ -10846,6 +10859,154 @@ window.__ModuleLoader__.load({
                   size: 'sm',
                   onClick: addTopic,
                   disabled: !topicDraft.trim(),
+                  children: '添加',
+                }),
+              ),
+            ),
+
+            h(
+              Panel,
+              {
+                title: '自动化',
+                sub: '插件侧定时执行确定性采集（不调模型）',
+                icon: 'zap',
+                badge: automation ? h(Badge, { tone: automation.enabled ? 'ok' : 'idle' }, automation.enabled ? '已开启' : '已关闭') : null,
+                actions: h(Btn, {
+                  size: 'sm',
+                  kind: 'subtle',
+                  icon: 'play',
+                  disabled: !automation || !automation.enabled,
+                  onClick: function () {
+                    WB.actions
+                      .automationRun()
+                      .then(function (result) {
+                        WB.toast(result.ran ? '已执行一次：资讯 +' + (result.radarAdded || 0) + '，@我 +' + (result.mentionsAdded || 0) : (result.note || '未执行'), result.ran ? 'ok' : 'info')
+                        return WB.actions.automationStatus()
+                      })
+                      .then(function (status) {
+                        setAutomation(status)
+                      })
+                      .catch(function () {})
+                  },
+                  children: '立即执行',
+                }),
+              },
+              h(
+                'div',
+                null,
+                h(SettingsRow, {
+                  title: '开启后台自动化',
+                  hint:
+                    automation && automation.lastAutomation
+                      ? '上次运行 ' + WB.fmt.relative(automation.lastAutomation.at) + '（' + automation.lastAutomation.status + '）：' + (automation.lastAutomation.note || '')
+                      : '仅在 DSH 进程运行期间生效；退出/休眠后恢复会按到期补跑一次',
+                  control: h(Toggle, {
+                    checked: !!(automation && automation.enabled),
+                    onChange: function (next) {
+                      patchSettings({ automation: { enabled: next } })
+                      setAutomation(Object.assign({}, automation, { enabled: next }))
+                    },
+                  }),
+                }),
+                h(SettingsRow, {
+                  title: '运行间隔',
+                  hint: '到点才执行；开关与间隔改动立即生效',
+                  control: h(Select, {
+                    value: String((automation && automation.intervalMinutes) || 60),
+                    options: [
+                      { value: '15', label: '15 分钟' },
+                      { value: '30', label: '30 分钟' },
+                      { value: '60', label: '1 小时' },
+                      { value: '180', label: '3 小时' },
+                      { value: '720', label: '12 小时' },
+                    ],
+                    onChange: function (event) {
+                      patchSettings({ automation: { intervalMinutes: Number(event.target.value) } })
+                      setAutomation(Object.assign({}, automation, { intervalMinutes: Number(event.target.value) }))
+                    },
+                  }),
+                }),
+                h(SettingsRow, {
+                  title: '资讯采集',
+                  hint: '未配置 RSS 时按关注主题联网发现',
+                  control: h(Toggle, {
+                    checked: !(automation && automation.radar === false),
+                    onChange: function (next) {
+                      patchSettings({ automation: { radar: next } })
+                      setAutomation(Object.assign({}, automation, { radar: next }))
+                    },
+                  }),
+                }),
+                h(SettingsRow, {
+                  title: '拉取 @我 消息',
+                  hint: '增量游标优先；云之家不可用时自动跳过',
+                  control: h(Toggle, {
+                    checked: !(automation && automation.mentions === false),
+                    onChange: function (next) {
+                      patchSettings({ automation: { mentions: next } })
+                      setAutomation(Object.assign({}, automation, { mentions: next }))
+                    },
+                  }),
+                }),
+              ),
+            ),
+
+            h(
+              Panel,
+              {
+                title: '补充 @ 关键词',
+                sub: '增量游标不可用时，用这些关键词兜底检索昵称/别名 @',
+                icon: 'search',
+              },
+              h(
+                'div',
+                { className: 'wb-row wb-row--wrap', style: { marginBottom: 10 } },
+                (settings.mentionKeywords || []).length === 0
+                  ? h('span', { className: 'wb-tiny wb-muted' }, '还没有补充关键词（默认用当前账号显示名检索）')
+                  : (settings.mentionKeywords || []).map(function (word) {
+                      return h(Chip, {
+                        key: word,
+                        active: true,
+                        children: word,
+                        onRemove: function () {
+                          patchSettings({
+                            mentionKeywords: (settings.mentionKeywords || []).filter(function (item) {
+                              return item !== word
+                            }),
+                          })
+                        },
+                      })
+                    }),
+              ),
+              h(
+                'div',
+                { className: 'wb-row' },
+                h(Input, {
+                  value: mentionDraft,
+                  placeholder: '如：小龙 / 珑珑',
+                  onChange: function (event) {
+                    setMentionDraft(event.target.value)
+                  },
+                  onKeyDown: function (event) {
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      const word = mentionDraft.trim()
+                      if (!word) return
+                      patchSettings({ mentionKeywords: (settings.mentionKeywords || []).concat([word]).slice(0, 6) })
+                      setMentionDraft('')
+                    }
+                  },
+                }),
+                h(Btn, {
+                  size: 'sm',
+                  icon: 'plus',
+                  disabled: !mentionDraft.trim(),
+                  onClick: function () {
+                    const word = mentionDraft.trim()
+                    if (!word) return
+                    patchSettings({ mentionKeywords: (settings.mentionKeywords || []).concat([word]).slice(0, 6) })
+                    setMentionDraft('')
+                  },
                   children: '添加',
                 }),
               ),

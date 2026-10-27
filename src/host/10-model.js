@@ -38,6 +38,8 @@ function emptyWorkbenchState() {
     radar: [],
     connectors: [],
     candidates: [],
+    syncCursors: {},
+    lastAutomation: null,
     audit: [],
   }
 }
@@ -55,6 +57,37 @@ function normalizeFeed(raw) {
     url: url,
     topics: asTags(input.topics, 6),
   }
+}
+
+function normalizeAutomation(raw) {
+  const input = raw && typeof raw === 'object' ? raw : {}
+  const minutes = Number(input.intervalMinutes)
+  return {
+    enabled: input.enabled === true,
+    intervalMinutes: Number.isFinite(minutes) && minutes >= 5 ? Math.min(24 * 60, Math.round(minutes)) : 60,
+    radar: input.radar !== false,
+    mentions: input.mentions !== false,
+  }
+}
+
+function normalizeSyncCursors(raw) {
+  if (!raw || typeof raw !== 'object') return {}
+  const out = {}
+  Object.keys(raw)
+    .slice(0, 40)
+    .forEach(function (groupId) {
+      const item = raw[groupId]
+      if (!item || typeof item !== 'object') return
+      const lastMsgId = asString(item.lastMsgId, 80)
+      if (!lastMsgId) return
+      out[groupId] = {
+        lastMsgId: lastMsgId,
+        lastSendTime: asIso(item.lastSendTime),
+        groupName: asString(item.groupName, 120),
+        at: asIso(item.at) || hostNowIso(),
+      }
+    })
+  return out
 }
 
 function normalizeFetchReport(raw) {
@@ -108,6 +141,10 @@ function normalizeSettings(raw) {
     staleHours: Number.isFinite(staleHours) && staleHours > 0 ? Math.min(24 * 30, Math.round(staleHours)) : 24,
     showCompleted: input.showCompleted === true,
     feeds: feeds,
+    /** 昵称/别名 @ 的补充关键词（增量游标覆盖不到时的兜底检索） */
+    mentionKeywords: asTags(input.mentionKeywords, 6),
+    /** 后台自动化（TODO 07）：插件侧定时执行确定性采集 */
+    automation: normalizeAutomation(input.automation),
   }
 }
 
@@ -345,6 +382,16 @@ function normalizeState(raw) {
       .filter(function (operation) {
         return operation.key.length > 0
       }),
+    syncCursors: normalizeSyncCursors(raw.syncCursors),
+    lastAutomation: raw.lastAutomation && typeof raw.lastAutomation === 'object'
+      ? {
+          at: asIso(raw.lastAutomation.at) || hostNowIso(),
+          radarAdded: Number(raw.lastAutomation.radarAdded) || 0,
+          mentionsAdded: Number(raw.lastAutomation.mentionsAdded) || 0,
+          status: asString(raw.lastAutomation.status, 20) || 'ok',
+          note: asString(raw.lastAutomation.note, 300),
+        }
+      : null,
     lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),
     lastMentionsFetch: normalizeMentionsReport(raw.lastMentionsFetch),
     audit: ensureArray(raw.audit).slice(-AUDIT_LIMIT),

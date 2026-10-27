@@ -39,6 +39,8 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'github', params: [] },
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
+  { method: 'automationRun', params: [] },
+  { method: 'automationStatus', params: [] },
   { method: 'backup', params: [] },
   { method: 'backups', params: [] },
   { method: 'restoreBackup', params: ['id'] },

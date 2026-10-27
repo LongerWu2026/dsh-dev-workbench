@@ -207,7 +207,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 32 个 Remote 描述符', invocations.length === 32, '实际 ' + invocations.length)
+check('注册了 34 个 Remote 描述符', invocations.length === 34, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -636,6 +636,57 @@ try {
   check('编辑不存在的知识被拒绝', /找不到该知识条目/.test(e.message))
 }
 
+// TODO 05：增量游标 + 昵称 @（notifyType 判据，不依赖显示名）
+{
+  const GROUP = { groupId: 'g-inc', groupName: '增量群' }
+  const pages = {
+    first: [
+      // 昵称 @：正文里没有「@测试用户」，只能靠 notifyType 判定
+      { message: { msgId: 'inc-2', content: '小王 这个今天看下', fromOpenId: 'other-9', sendTime: '2026-10-27 11:00:00', param: { notifyType: 1 } } },
+      { message: { msgId: 'inc-1', content: '普通闲聊', fromOpenId: 'other-9', sendTime: '2026-10-27 10:00:00', param: null } },
+    ],
+    second: [
+      { message: { msgId: 'inc-3', content: '再看一个新事项', fromOpenId: 'other-9', sendTime: '2026-10-27 12:00:00', param: { notifyType: 1 } } },
+    ],
+  }
+  let phase = 'first'
+  const spawn = (spec) => {
+    const cmd = spec.argv.join(' ')
+    let text = JSON.stringify({ success: true, data: {} })
+    if (/whoami/.test(cmd)) text = JSON.stringify(WHOAMI)
+    else if (/im group recent/.test(cmd)) text = JSON.stringify({ success: true, data: { list: [GROUP] } })
+    else if (/im message list/.test(cmd)) {
+      // 第一次取最新一页；带 --msg-id 的增量请求返回第二页
+      const useSecond = /--msg-id/.test(cmd) && phase === 'second'
+      text = JSON.stringify({ success: true, data: { list: useSecond ? pages.second : pages.first } })
+    } else if (/contact user get/.test(cmd)) text = JSON.stringify({ success: true, data: { list: [{ name: '同事', openId: 'other-9' }] } })
+    return {
+      collected: {
+        stdout: { readFrom: () => ({ text, nextOffset: text.length, lossy: false }) },
+        stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+      },
+      done: Promise.resolve({ exitCode: 0, signal: null }),
+      terminate() {},
+    }
+  }
+  yzjSpawner = { spawn, resolveExecutable: () => Promise.resolve('/fake/yzj-cli') }
+
+  const incState1 = await api.fetchMentions()
+  const incSources = incState1.sources.filter((row) => String(row.externalId || '').indexOf('yzj:msg:inc-') === 0)
+  check('增量同步按 notifyType 捕获昵称 @', incSources.some((row) => row.externalId === 'yzj:msg:inc-2'), JSON.stringify(incSources.map((r) => r.externalId)))
+  check('增量同步不把普通消息当 @', !incSources.some((row) => row.externalId === 'yzj:msg:inc-1'))
+  check('增量同步写入群游标', !!incState1.syncCursors['g-inc'] && incState1.syncCursors['g-inc'].lastMsgId === 'inc-2', JSON.stringify(incState1.syncCursors))
+  check('增量同步如实标注模式', incState1.lastMentionsFetch.mode === 'incremental', String(incState1.lastMentionsFetch.mode))
+
+  phase = 'second'
+  const incState2 = await api.fetchMentions()
+  const incNew = incState2.sources.filter((row) => row.externalId === 'yzj:msg:inc-3')
+  check('增量同步只取游标之后的新消息', incNew.length === 1, JSON.stringify(incState2.sources.filter((r) => String(r.externalId || '').indexOf('inc-') >= 0).map((r) => r.externalId)))
+  check('增量同步推进游标', !!incState2.syncCursors['g-inc'] && incState2.syncCursors['g-inc'].lastMsgId === 'inc-3', JSON.stringify(incState2.syncCursors))
+  // 恢复默认 spawner，供后续企业搜索断言使用
+  yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
+}
+
 // 企业搜索：消息+文档两路
 const entResult = await api.search({ query: '限流' })
 const entGroup = entResult.groups.find((group) => group.id === 'enterprise')
@@ -805,6 +856,33 @@ check(
   '重载后候选仍指向来源',
   !relIds.candidate || reloaded.candidates.find((item) => item.id === relIds.candidate).sourceRefId === relIds.source,
 )
+
+// TODO 07：插件侧后台自动化（定时器 + 单飞 + 补跑）
+{
+  const before = await api.automationStatus()
+  check('自动化默认关闭', before.enabled === false)
+  const skipped = await api.automationRun()
+  check('未开启时 tick 不执行', skipped.ran === false && skipped.status === 'disabled', JSON.stringify(skipped))
+
+  await api.saveSettings({ automation: { enabled: true, intervalMinutes: 5, radar: true, mentions: false }, feeds: [], topics: ['Agent'] })
+  webMock = {
+    fetch: () => Promise.resolve({ statusCode: 200, url: 'x', body: { kind: 'text', content: FAKE_RSS } }),
+    search: () => Promise.resolve({ sources: [{ url: 'https://example.org/auto', title: '自动化发现的资讯', snippet: 's', publishedAt: null }], truncated: false }),
+  }
+  const ran = await api.automationRun()
+  check('开启后 tick 执行', ran.ran === true, JSON.stringify(ran))
+  const after = await api.automationStatus()
+  check('记录最近一次自动化', !!after.lastAutomation && after.lastAutomation.at, JSON.stringify(after.lastAutomation))
+  check('自动化写入资讯', after.lastAutomation.radarAdded >= 1, String(after.lastAutomation.radarAdded))
+  const statusAfter = await api.automationStatus()
+  check('刚跑完不算到期', statusAfter.due === false)
+
+  // 关闭后不再执行
+  await api.saveSettings({ automation: { enabled: false } })
+  const off = await api.automationRun()
+  check('关闭后 tick 不执行', off.ran === false)
+  webMock = null
+}
 
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖
 {

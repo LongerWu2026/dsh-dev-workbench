@@ -633,7 +633,7 @@ const pageSpecs = [
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
   ['研发协作', 'collab', ['添加仓库目录', '端口占用', 'PR 与 CI', '进程 CPU / 内存']],
   ['知识空间', 'knowledge', ['知识空间']],
-  ['连接与设置', 'settings', ['仓库目录决定', '资讯源']],
+  ['连接与设置', 'settings', ['仓库目录决定', '资讯源', '自动化', '补充 @ 关键词', '立即备份']],
 ]
 
 // 1) the shell on the default page
