@@ -1,0 +1,13 @@
+# dsh-dev-workbench — bundle patch layer.
+#
+# One row loads the package's main entry as the Host half: it owns the
+# workbench state (tasks, runs, knowledge, settings), persists it under
+# $DSH_HOME/storages/dsh-dev-workbench/, and publishes `workbench/*` Remote
+# endpoints plus the `workbench_*` Agent tools.
+#
+# The `dsh.client` declaration in package.json makes the Web app load
+# ./client.js as the browser half; the browser half registers the panel in
+# the `main` slot and its icon in `sidebar.panellist`.
+- insert:
+    - id: dev-workbench
+      name: 'dsh-dev-workbench'

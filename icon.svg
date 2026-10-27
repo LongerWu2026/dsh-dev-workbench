@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="Developer Workbench">
+  <defs>
+    <linearGradient id="wbGrad" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#7C9CFF"/>
+      <stop offset="1" stop-color="#4CD4A0"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="#0B1120"/>
+  <rect x="5.5" y="5.5" width="53" height="53" rx="14.5" fill="none" stroke="url(#wbGrad)" stroke-width="3" opacity="0.85"/>
+  <rect x="16" y="16" width="14" height="14" rx="4" fill="url(#wbGrad)"/>
+  <rect x="34" y="16" width="14" height="14" rx="4" fill="#7C9CFF" opacity="0.45"/>
+  <rect x="16" y="34" width="14" height="14" rx="4" fill="#4CD4A0" opacity="0.45"/>
+  <path d="M34.5 41h13M41 34.5v13" stroke="url(#wbGrad)" stroke-width="3" stroke-linecap="round"/>
+</svg>

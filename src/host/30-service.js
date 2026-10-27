@@ -1,0 +1,435 @@
+/* ============================================================================
+ * dev-workbench host — workbench service
+ *
+ * The single authority for workbench state. Every mutation returns the whole
+ * new snapshot, so the Client never has to merge: it swaps. That is the
+ * "Host 维护可重建快照" contract from design report §5.2, kept deliberately
+ * boring so a reconnecting Client cannot drift.
+ * ========================================================================== */
+
+let workbenchCtx = null
+
+function workbenchContext() {
+  return workbenchCtx
+}
+
+async function workbenchServiceState() {
+  const state = loadWorkbenchState()
+  const ctx = workbenchContext()
+  if (!ctx) return state
+  try {
+    return await refreshConnectors(ctx, state)
+  } catch (e) {
+    return state
+  }
+}
+
+function requireTask(state, id) {
+  const task = ensureArray(state.tasks).find(function (item) {
+    return item.id === id
+  })
+  if (!task) throw new Error('找不到该待办：' + String(id))
+  return task
+}
+
+const workbenchApi = {
+  async snapshot() {
+    return workbenchServiceState()
+  },
+
+  async saveSettings(patch) {
+    return mutateWorkbenchState(function (state) {
+      state.settings = normalizeSettings(Object.assign({}, state.settings, patch || {}))
+      auditEntry(state, 'settings.updated', '更新设置：' + Object.keys(patch || {}).join(', '))
+      return state
+    })
+  },
+
+  async createTask(input) {
+    const payload = input && typeof input === 'object' ? input : {}
+    if (!asString(payload.title, 200)) throw new Error('待办标题不能为空')
+    return mutateWorkbenchState(function (state) {
+      if (payload.projectId === undefined && state.settings.defaultProjectId) {
+        payload.projectId = state.settings.defaultProjectId
+      }
+      const task = normalizeTask(payload, null)
+      state.tasks = ensureArray(state.tasks).concat([task])
+      auditEntry(state, 'task.created', task.title)
+      return state
+    })
+  },
+
+  async updateTask(id, patch) {
+    return mutateWorkbenchState(function (state) {
+      const task = requireTask(state, id)
+      const next = normalizeTask(patch || {}, task)
+      next.id = task.id
+      next.createdAt = task.createdAt
+      const index = state.tasks.indexOf(task)
+      state.tasks = state.tasks.slice()
+      state.tasks[index] = next
+      auditEntry(state, 'task.updated', next.title + ' → ' + next.status)
+      return state
+    })
+  },
+
+  async deleteTask(id) {
+    return mutateWorkbenchState(function (state) {
+      const task = requireTask(state, id)
+      state.tasks = ensureArray(state.tasks).filter(function (item) {
+        return item.id !== id
+      })
+      state.runs = ensureArray(state.runs).filter(function (run) {
+        return run.taskId !== id
+      })
+      auditEntry(state, 'task.deleted', task.title)
+      return state
+    })
+  },
+
+  async addSource(input) {
+    const source = normalizeSource(input || {})
+    return mutateWorkbenchState(function (state) {
+      const duplicate = ensureArray(state.sources).find(function (item) {
+        return item.payloadHash === source.payloadHash
+      })
+      if (!duplicate) {
+        state.sources = ensureArray(state.sources).concat([source])
+        auditEntry(state, 'source.added', source.title)
+      }
+      return state
+    })
+  },
+
+  async createKnowledge(input) {
+    const item = normalizeKnowledge(input || {})
+    return mutateWorkbenchState(function (state) {
+      const duplicate = ensureArray(state.knowledge).find(function (existing) {
+        return existing.title === item.title && (existing.url || '') === (item.url || '')
+      })
+      if (!duplicate) {
+        state.knowledge = ensureArray(state.knowledge).concat([item])
+        auditEntry(state, 'knowledge.created', item.title)
+      }
+      return state
+    })
+  },
+
+  async deleteKnowledge(id) {
+    return mutateWorkbenchState(function (state) {
+      state.knowledge = ensureArray(state.knowledge).filter(function (item) {
+        return item.id !== id
+      })
+      auditEntry(state, 'knowledge.deleted', String(id))
+      return state
+    })
+  },
+
+  async saveRadarItem(input) {
+    const payload = input && typeof input === 'object' ? input : {}
+    return mutateWorkbenchState(function (state) {
+      const list = ensureArray(state.radar)
+      const existing = payload.id
+        ? list.find(function (item) {
+            return item.id === payload.id
+          })
+        : payload.url
+          ? list.find(function (item) {
+              return item.url === asUrl(payload.url)
+            })
+          : null
+      const item = normalizeRadarItem(payload, existing || null)
+      state.radar = existing
+        ? list.map(function (row) {
+            return row.id === item.id ? item : row
+          })
+        : list.concat([item])
+      auditEntry(state, existing ? 'radar.updated' : 'radar.added', item.title)
+      return state
+    })
+  },
+
+  async deleteRadarItem(id) {
+    return mutateWorkbenchState(function (state) {
+      state.radar = ensureArray(state.radar).filter(function (item) {
+        return item.id !== id
+      })
+      auditEntry(state, 'radar.deleted', String(id))
+      return state
+    })
+  },
+
+  async recordRun(input) {
+    return mutateWorkbenchState(function (state) {
+      const run = normalizeRun(input || {}, null)
+      if (run.taskId && !ensureArray(state.tasks).some(function (task) {
+        return task.id === run.taskId
+      })) {
+        throw new Error('关联的待办不存在：' + run.taskId)
+      }
+      state.runs = ensureArray(state.runs).concat([run])
+      if (run.taskId) {
+        state.tasks = ensureArray(state.tasks).map(function (task) {
+          if (task.id !== run.taskId) return task
+          const next = Object.assign({}, task)
+          next.runIds = ensureArray(task.runIds).concat([run.id])
+          next.updatedAt = hostNowIso()
+          if (run.status === 'failed') next.status = 'failed'
+          else if (run.status === 'running' && (task.status === 'ready' || task.status === 'draft')) next.status = 'running'
+          return next
+        })
+      }
+      auditEntry(state, 'agent.run.created', run.summary || run.id)
+      return state
+    })
+  },
+
+  async updateRun(id, patch) {
+    return mutateWorkbenchState(function (state) {
+      const run = ensureArray(state.runs).find(function (item) {
+        return item.id === id
+      })
+      if (!run) throw new Error('找不到该执行记录：' + String(id))
+      const next = normalizeRun(Object.assign({}, patch || {}, { taskId: run.taskId }), run)
+      next.id = run.id
+      next.startedAt = run.startedAt
+      state.runs = ensureArray(state.runs).map(function (item) {
+        return item.id === id ? next : item
+      })
+      if (next.taskId && next.status === 'completed') {
+        state.tasks = ensureArray(state.tasks).map(function (task) {
+          if (task.id !== next.taskId) return task
+          return Object.assign({}, task, { updatedAt: hostNowIso() })
+        })
+      }
+      auditEntry(state, 'agent.run.' + next.status, next.summary || next.id)
+      return state
+    })
+  },
+
+  async reset(scope) {
+    const target = scope === 'tasks' || scope === 'runs' ? scope : 'all'
+    return mutateWorkbenchState(function (state) {
+      if (target === 'tasks') {
+        const removed = ensureArray(state.tasks).length
+        state.tasks = []
+        state.runs = []
+        auditEntry(state, 'state.reset', '清空 ' + removed + ' 条待办与全部执行记录')
+        return state
+      }
+      if (target === 'runs') {
+        state.runs = []
+        auditEntry(state, 'state.reset', '清空执行记录')
+        return state
+      }
+      state.tasks = []
+      state.runs = []
+      state.knowledge = []
+      state.radar = []
+      state.sources = []
+      state.audit = []
+      auditEntry(state, 'state.reset', '清空业务数据，保留设置')
+      return state
+    })
+  },
+
+  async seedDemo() {
+    return mutateWorkbenchState(function (state) {
+      state.tasks = ensureArray(state.tasks).filter(function (task) {
+        return task.demo !== true
+      })
+      state.radar = ensureArray(state.radar).filter(function (item) {
+        return item.demo !== true
+      })
+      state.sources = ensureArray(state.sources).filter(function (item) {
+        return asString(item.externalId, 40) !== 'demo-msg-1'
+      })
+      state.runs = []
+      seedDemoData(state)
+      auditEntry(state, 'state.seeded', '载入示例数据')
+      return state
+    })
+  },
+
+  async saveProject(input) {
+    const payload = input && typeof input === 'object' ? input : {}
+    const repoPath = asString(payload.repoPath, 500)
+    if (!repoPath) throw new Error('仓库目录不能为空')
+    return mutateWorkbenchState(function (state) {
+      const list = ensureArray(state.projects)
+      const existing = payload.id
+        ? list.find(function (project) {
+            return project.id === payload.id
+          })
+        : list.find(function (project) {
+            return project.repoPath === repoPath
+          })
+      const project = normalizeProject(payload, existing || null)
+      project.repoPath = repoPath
+      state.projects = existing
+        ? list.map(function (item) {
+            return item.id === project.id ? project : item
+          })
+        : list.concat([project])
+      invalidateEnvironmentCache()
+      auditEntry(state, existing ? 'project.updated' : 'project.created', project.name + ' · ' + project.repoPath)
+      return state
+    })
+  },
+
+  async deleteProject(id) {
+    return mutateWorkbenchState(function (state) {
+      const target = ensureArray(state.projects).find(function (project) {
+        return project.id === id
+      })
+      state.projects = ensureArray(state.projects).filter(function (project) {
+        return project.id !== id
+      })
+      state.tasks = ensureArray(state.tasks).map(function (task) {
+        return task.projectId === id ? Object.assign({}, task, { projectId: null }) : task
+      })
+      if (state.settings.defaultProjectId === id) state.settings.defaultProjectId = null
+      invalidateEnvironmentCache()
+      auditEntry(state, 'project.deleted', target ? target.name : String(id))
+      return state
+    })
+  },
+
+  async fetchRadar() {
+    return runRadarFetch(workbenchContext())
+  },
+
+  /**
+   * Design report §3.2: pull @-mention messages as source evidence through the
+   * real yzj-cli. Deterministic collection only — turning a mention into a task
+   * stays an agent decision, so nothing is auto-created here.
+   */
+  async fetchMentions() {
+    return mutateWorkbenchState(function (state) {
+      return fetchYunzhijiaMentionsInto(workbenchContext(), state)
+    })
+  },
+
+  /**
+   * Design report §3.1 后续行动: turn one radar item into a real task, keeping
+   * the source evidence. Atomic on the Host so the task can never exist
+   * without its SourceRef.
+   */
+  async createTaskFromRadar(id) {
+    return mutateWorkbenchState(function (state) {
+      const item = ensureArray(state.radar).find(function (row) {
+        return row.id === id
+      })
+      if (!item) throw new Error('找不到该资讯：' + String(id))
+
+      const summary = item.summary || {}
+      const brief = [
+        summary.change ? '技术变化：' + summary.change : '',
+        summary.usage ? '应用场景：' + summary.usage : '',
+        summary.risk ? '采用风险：' + summary.risk : '',
+        summary.practice ? '推荐实践：' + summary.practice : '',
+        item.excerpt ? '原文摘录：' + item.excerpt : '',
+        item.url ? '原文：' + item.url : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+
+      const source = normalizeSource({
+        provider: asString(item.source, 40) || 'radar',
+        url: item.url,
+        title: item.title,
+        excerpt: brief.slice(0, 2000),
+        fetchedAt: item.publishedAt || item.updatedAt || hostNowIso(),
+      })
+      const duplicate = ensureArray(state.sources).find(function (row) {
+        return row.payloadHash === source.payloadHash
+      })
+      const sourceId = duplicate ? duplicate.id : source.id
+      if (!duplicate) {
+        state.sources = ensureArray(state.sources).concat([source])
+      }
+
+      const duplicateTask = ensureArray(state.tasks).find(function (row) {
+        return row.sourceRefId === sourceId && row.title === '实践：' + item.title
+      })
+      if (duplicateTask) {
+        auditEntry(state, 'task.fromRadar', '重复生成已忽略：' + item.title)
+        return state
+      }
+      const task = normalizeTask(
+        {
+          title: '实践：' + item.title,
+          description: brief,
+          status: 'ready',
+          priority: 'normal',
+          tags: asTags(item.topics),
+          sourceRefId: sourceId,
+          projectId: state.settings ? state.settings.defaultProjectId : null,
+        },
+        null,
+      )
+      state.tasks = ensureArray(state.tasks).concat([task])
+      auditEntry(state, 'task.fromRadar', task.title)
+      return state
+    })
+  },
+
+  async search(request) {
+    return runUnifiedSearch(workbenchContext(), request || {})
+  },
+
+  async environment() {
+    return buildEnvironment(workbenchContext())
+  },
+
+  async diagnostics() {
+    const state = loadWorkbenchState()
+    const path = workbenchStatePath()
+    const toolNames = ensureArray(workbenchCtxToolNames())
+    return {
+      platform: HOST_META.platform,
+      arch: HOST_META.arch,
+      nodeVersion: HOST_META.nodeVersion,
+      statePath: path,
+      dataPath: path,
+      dataBytes: fileSizeOf(path),
+      counts: workbenchCounts(state),
+      hostTime: hostNowIso(),
+      loadNote: workbenchLoadNote,
+      toolNames: toolNames,
+    }
+  },
+}
+
+/* ---------------------------------------------------------------------------
+ * The Typert gateway resolves `workbench/<method>` by reading a `typertRemote`
+ * binding off the service instance that `ctx.get('workbench')` returns — see
+ * the gateway's validateBinding(): `Reflect.get(original, 'typertRemote')`
+ * must yield `{ service: original, serviceKey: 'workbench', namespace: … }`,
+ * otherwise it throws
+ *   gateway/binding-invalid: Service "workbench" has no visible typertRemote
+ *   binding
+ * which is exactly the failure the shipped UI reported. `service` must be this
+ * same object so readBinding()'s identity check passes; the frozen shape
+ * mirrors bindTypertRemote() from @deepseek-ai/dsh-typert-protocol.
+ * ------------------------------------------------------------------------- */
+Object.defineProperty(workbenchApi, 'typertRemote', {
+  value: Object.freeze({
+    service: workbenchApi,
+    serviceKey: 'workbench',
+    namespace: 'workbench',
+  }),
+  enumerable: false,
+  configurable: false,
+  writable: false,
+})
+
+let workbenchToolNames = []
+
+function workbenchCtxToolNames() {
+  return workbenchToolNames
+}
+
+function registerWorkbenchToolNames(names) {
+  workbenchToolNames = names.slice()
+}

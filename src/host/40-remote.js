@@ -1,0 +1,63 @@
+/* ============================================================================
+ * dev-workbench host — Remote endpoints
+ *
+ * Hand-written `src-json` descriptors registered through ctx.typert.register:
+ * the supported manual path for a plain-JavaScript plugin, without a generated
+ * schema bundle. Each endpoint becomes `workbench/<method>` on the shared
+ * `/api` channel, callable from the Client half through
+ * `ctx.connection.rpc.call('/api', 'workbench/<method>', { args })`.
+ *
+ * The plain-object `workbenchApi` carries the same service under
+ * `ctx.provide('workbench', …)`, so the gateway can bind the two halves.
+ * ========================================================================== */
+
+const WORKBENCH_REMOTE_SIGNATURES = [
+  { method: 'snapshot', params: [] },
+  { method: 'saveSettings', params: ['patch'] },
+  { method: 'createTask', params: ['input'] },
+  { method: 'updateTask', params: ['id', 'patch'] },
+  { method: 'deleteTask', params: ['id'] },
+  { method: 'addSource', params: ['input'] },
+  { method: 'createKnowledge', params: ['input'] },
+  { method: 'deleteKnowledge', params: ['id'] },
+  { method: 'saveRadarItem', params: ['input'] },
+  { method: 'deleteRadarItem', params: ['id'] },
+  { method: 'recordRun', params: ['input'] },
+  { method: 'updateRun', params: ['id', 'patch'] },
+  { method: 'saveProject', params: ['input'] },
+  { method: 'fetchRadar', params: [] },
+  { method: 'fetchMentions', params: [] },
+  { method: 'createTaskFromRadar', params: ['id'] },
+  { method: 'deleteProject', params: ['id'] },
+  { method: 'search', params: ['request'] },
+  { method: 'environment', params: [] },
+  { method: 'reset', params: ['scope'] },
+  { method: 'seedDemo', params: [] },
+  { method: 'diagnostics', params: [] },
+]
+
+function remoteJsonParam(name) {
+  return { name: name, wire: name, source: 'json', codec: { mode: 'src-json' } }
+}
+
+function remoteJsonInvocation(service, namespace, method, params) {
+  return {
+    id: PLUGIN_NAME + '#' + namespace + '/' + method,
+    service: service,
+    namespace: namespace,
+    method: method,
+    invocation: { kind: 'direct' },
+    parameters: params.map(remoteJsonParam),
+    result: { mode: 'src-json' },
+  }
+}
+
+const WORKBENCH_REMOTE = {
+  package: PLUGIN_NAME,
+  face: 'host',
+  schemas: [],
+  model: { services: [], events: [], objects: [] },
+  invocations: WORKBENCH_REMOTE_SIGNATURES.map(function (entry) {
+    return remoteJsonInvocation('workbench', 'workbench', entry.method, entry.params)
+  }),
+}

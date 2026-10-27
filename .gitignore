@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+*.log
+.env
+.env.*
+
+# 本地产物与临时目录
+.tmp/
+coverage/
+*.tgz
