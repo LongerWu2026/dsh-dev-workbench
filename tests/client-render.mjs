@@ -295,6 +295,9 @@ const fixture = {
     { id: 'local-storage', type: 'storage', label: '本地持久化', capabilities: ['快照'], authState: 'ok', updatedAt: iso(0), note: '/tmp/state.json' },
     { id: 'yunzhijia', type: 'enterprise-im', label: '云之家', capabilities: [], authState: 'unconfigured', updatedAt: iso(0), note: '未完成能力发现' },
   ],
+  replies: [
+    { id: 'rep-1', sourceId: 'src-1', msgId: 'yzj:msg:m1', groupId: 'g1', groupName: '压测群', contact: '张三', snippet: '明天下班前给结论', stage: '待回复', taskIds: ['task-1'], createdAt: iso(-1), updatedAt: iso(-1) },
+  ],
   candidates: [
     {
       id: 'cand-1',
@@ -738,7 +741,7 @@ if (entry && entry.key !== 'dev-workbench') problems.push('main key 不是 dev-w
 if (!registrations.panellist.length) problems.push('没有注册 sidebar.panellist')
 
 const pageSpecs = [
-  ['今日简报', 'dashboard', ['技术雷达', '抓取资讯', '快捷操作', '专注', '复制今日简报', '待回复']],
+  ['今日简报', 'dashboard', ['技术雷达', '抓取资讯', '快捷操作', '专注', '复制今日简报', '待回复', '张三', '已回复']],
   ['任务中心', 'tasks', ['看板', '待确认', '提取候选', '义务：', '事项类型：', '待答复']],
   ['搜索', 'search', ['一个入口搜全部', '企业（云之家）', '本地', '互联网']],
   ['Agent 中心', 'agents', ['执行队列']],
