@@ -1231,6 +1231,12 @@ window.__ModuleLoader__.load({
       radarSummarize(onlyIds) {
         return wbRpc('workbench/radarSummarize', { request: { onlyIds: onlyIds || [] } })
       },
+      exportMigration() {
+        return wbRpc('workbench/exportMigration', {})
+      },
+      importMigration(payload, mode, dryRun) {
+        return wbRpc('workbench/importMigration', { request: { payload: payload, mode: mode, dryRun: dryRun === true } })
+      },
       analyzeConfirm(entryId) {
         return settle(wbRpc('workbench/analyzeConfirm', { entryId: entryId }), '已按分析登记待办')
       },
@@ -11208,6 +11214,8 @@ window.__ModuleLoader__.load({
       const [picking, setPicking] = React.useState(false)
       const [projectEdit, setProjectEdit] = React.useState(null)
       const [backups, setBackups] = React.useState([])
+      const [migrationJson, setMigrationJson] = React.useState('')
+      const [migrationMode, setMigrationMode] = React.useState('replace')
       const [automation, setAutomation] = React.useState(null)
       const [mentionDraft, setMentionDraft] = React.useState('')
       const [feedLabel, setFeedLabel] = React.useState('')
@@ -11997,6 +12005,21 @@ window.__ModuleLoader__.load({
                   },
                   children: '立即备份',
                 }),
+                h(Btn, {
+                  icon: 'share',
+                  size: 'sm',
+                  onClick: function () {
+                    WB.actions
+                      .exportMigration()
+                      .then(function (pack) {
+                        WB.util.copy(JSON.stringify(pack, null, 2)).then(function () {
+                          WB.toast('迁移包已复制（含校验），粘贴到目标端即可导入', 'ok')
+                        })
+                      })
+                      .catch(function () {})
+                  },
+                  children: '导出迁移包',
+                }),
                   h(Btn, {
                     icon: 'sparkles',
                     size: 'sm',
@@ -12011,6 +12034,66 @@ window.__ModuleLoader__.load({
                   { className: 'wb-hint', style: { margin: '2px 0 0' } },
                   '“载入示例数据”会写入若干标注为示例的待办与资讯，用来快速看清布局；随时可重置清空。',
                 ),
+                migrationJson.trim().length > 10
+                  ? h(
+                      'div',
+                      { className: 'wb-stack', style: { gap: 6, marginTop: 8 } },
+                      h(
+                        'div',
+                        { className: 'wb-row' },
+                        h(Chip, { active: migrationMode === 'replace', onClick: function () { setMigrationMode('replace') }, children: '替换' }),
+                        h(Chip, { active: migrationMode === 'merge', onClick: function () { setMigrationMode('merge') }, children: '合并' }),
+                        h(Btn, {
+                          size: 'sm',
+                          kind: 'subtle',
+                          icon: 'search',
+                          onClick: function () {
+                            try {
+                              const payload = JSON.parse(migrationJson)
+                              WB.actions
+                                .importMigration(payload, migrationMode, true)
+                                .then(function (preview) {
+                                  WB.toast('预检通过：' + preview.applied + ' 条；冲突 replace=N/A / merge 见控制台', 'ok')
+                                })
+                                .catch(function (error) {
+                                  WB.toast(String((error && error.message) || error), 'err')
+                                })
+                            } catch (e) {
+                              WB.toast('迁移包不是合法 JSON：' + e.message, 'err')
+                            }
+                          },
+                          children: '预检',
+                        }),
+                        h(Btn, {
+                          size: 'sm',
+                          kind: 'primary',
+                          icon: 'save',
+                          onClick: function () {
+                            if (!window.confirm('导入将' + (migrationMode === 'replace' ? '替换' : '合并') + '当前数据（导入前自动备份）。继续？')) return
+                            try {
+                              const payload = JSON.parse(migrationJson)
+                              WB.actions
+                                .importMigration(payload, migrationMode, false)
+                                .then(function (result) {
+                                  WB.toast('导入完成：' + result.applied + ' 条；修订号 ' + result.revision, 'ok')
+                                  WB.actions.reload().catch(function () {})
+                                })
+                                .catch(function (error) {
+                                  WB.toast(String((error && error.message) || error), 'err')
+                                })
+                            } catch (e) {
+                              WB.toast('迁移包不是合法 JSON：' + e.message, 'err')
+                            }
+                          },
+                          children: '执行导入',
+                        }),
+                      ),
+                    )
+                  : h(
+                      'div',
+                      { className: 'wb-tiny wb-muted', style: { lineHeight: 1.6, marginTop: 6 } },
+                      '在新端粘贴迁移包后可用「替换 / 合并」导入；跨机器请配合路径映射（后续在导入请求中映射 repoPath）。',
+                    ),
                 backups.length > 0
                   ? h(
                       'div',

@@ -1205,6 +1205,12 @@ const wbActions = {
   radarSummarize(onlyIds) {
     return wbRpc('workbench/radarSummarize', { request: { onlyIds: onlyIds || [] } })
   },
+  exportMigration() {
+    return wbRpc('workbench/exportMigration', {})
+  },
+  importMigration(payload, mode, dryRun) {
+    return wbRpc('workbench/importMigration', { request: { payload: payload, mode: mode, dryRun: dryRun === true } })
+  },
   analyzeConfirm(entryId) {
     return settle(wbRpc('workbench/analyzeConfirm', { entryId: entryId }), '已按分析登记待办')
   },

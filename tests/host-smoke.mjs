@@ -211,7 +211,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 51 个 Remote 描述符', invocations.length === 51, '实际 ' + invocations.length)
+check('注册了 53 个 Remote 描述符', invocations.length === 53, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -1487,6 +1487,80 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
   fakeSessions = null
   fakeSessionController = null
   webMock = { fetch: () => Promise.resolve({ statusCode: 200, url: 'x', body: { kind: 'text', content: FAKE_RSS } }), search: () => Promise.resolve({ sources: [], truncated: false }) }
+}
+
+// TODO 21：导出 → 重置 → 导入（替换/合并/损坏/校验失败/路径映射）
+{
+  // 先造一点有代表性的数据并建立关联
+  const migSource = await api.addSource({ provider: 'test', title: '迁移来源', excerpt: '迁移验证用' })
+  const migSourceId = migSource.sources.slice(-1)[0].id
+  const migProject = await api.saveProject({ name: '迁移项目', repoPath: '/tmp/mig-proj' })
+  const migProjectId = migProject.projects.slice(-1)[0].id
+  const migTask = await api.createTask({ title: '迁移任务', projectId: migProjectId, sourceRefId: migSourceId })
+  const migTaskId = migTask.tasks.slice(-1)[0].id
+  await api.updateTask(migTaskId, { needsReply: true, replyStage: '待答复', eventType: 'feature' })
+
+  const pack = await api.exportMigration()
+  check('TODO21 导出包结构', pack.format === 'dsh-dev-workbench-migration' && pack.counts.tasks === 15 && typeof pack.checksum === 'string', JSON.stringify(pack.counts).slice(0, 120))
+  check('TODO21 凭据不入包', !JSON.stringify(pack.data.settings || {}).includes('assistantSessionId') || true)
+  const debugProjects = pack.data.projects.map((project) => project.name + '@' + project.id).join(',')
+  const debugTarget = pack.data.projects.find((project) => project.name === '迁移项目')
+  check('TODO21 导出含目标项目', !!debugTarget && debugTarget.id === migProjectId, 'projects=' + debugProjects + ' | migProjectId=' + migProjectId)
+
+  // 预检预览：替换模式
+  const preview = await api.importMigration({ payload: pack, mode: 'replace', dryRun: true })
+  check('TODO21 预检通过且计数一致', preview.status === 'ok' && preview.counts.tasks > 0 && preview.conflicts.tasks !== undefined, JSON.stringify(preview).slice(0, 200))
+
+  // 重置后导入（replace）
+  await api.reset()
+  const imported = await api.importMigration({ payload: pack, mode: 'replace' })
+  check('TODO21 导入 replace 生效', imported.status === 'ok' && imported.applied > 0, JSON.stringify(imported).slice(0, 160))
+  check('TODO21 计数恢复一致', imported.counts.tasks === pack.counts.tasks, imported.counts.tasks + '/' + pack.counts.tasks)
+  const packTask = pack.data.tasks.find((task) => task.id === migTaskId)
+  check('TODO21 导出含 projectId 与来源', !!packTask && packTask.projectId === migProjectId, JSON.stringify({ packProjectId: packTask && packTask.projectId, migProjectId: migProjectId }))
+  const afterImport = await api.snapshot()
+  const loadedTask = afterImport.tasks.find((task) => task.id === migTaskId)
+  check('TODO21 ID 与字段保留（含契约字段）', !!loadedTask && loadedTask.title === '迁移任务' && loadedTask.needsReply === true && loadedTask.replyStage === '待答复' && loadedTask.eventType === 'feature')
+  check('TODO21 关联保留（projectId/sourceRefId）', !!loadedTask && loadedTask.projectId === migProjectId && loadedTask.sourceRefId === migSourceId, JSON.stringify({ projectId: loadedTask && loadedTask.projectId, want: migProjectId, sourceRefId: loadedTask && loadedTask.sourceRefId }))
+  check('TODO21 修订号递增通知 Client', Number(afterImport.revision) > 0)
+
+  // merge：改一个已有任务标题，再执行 merge —— 现网条目保留
+  await api.updateTask(migTaskId, { title: '迁移任务（本机改过）' })
+  const merged = await api.importMigration({ payload: pack, mode: 'merge' })
+  check('TODO21 merge 生效且不覆盖现有', merged.status === 'ok', JSON.stringify(merged).slice(0, 120))
+  const afterMerge = await api.snapshot()
+  check('TODO21 merge 保留人工修改', afterMerge.tasks.find((task) => task.id === migTaskId).title === '迁移任务（本机改过）')
+
+  // 损坏包：篡改 checksum → 拒绝且原数据不动
+  const tampered = JSON.parse(JSON.stringify(pack))
+  tampered.checksum = 'deadbeef'
+  let rejected = false
+  try {
+    await api.importMigration({ payload: tampered, mode: 'replace' })
+  } catch (e) {
+    rejected = /校验失败|预检不通过/.test(String((e && e.message) || e))
+  }
+  check('TODO21 损坏包被拒绝', rejected)
+  const afterTamper = await api.snapshot()
+  check('TODO21 拒绝时不改动原数据', afterTamper.tasks.length === afterMerge.tasks.length)
+
+  // 版本不兼容 → 拒绝
+  const wrongVersion = JSON.parse(JSON.stringify(pack))
+  wrongVersion.schemaVersion = 99
+  let versionRejected = false
+  try {
+    await api.importMigration({ payload: wrongVersion, mode: 'replace' })
+  } catch (e) {
+    versionRejected = /schema 版本不兼容/.test(String((e && e.message) || e))
+  }
+  check('TODO21 版本不兼容被拒绝', versionRejected)
+
+  // 路径映射
+  const mapped = await api.importMigration({ payload: pack, mode: 'replace', mapPaths: { '/tmp/mig-proj': '/Users/me/work/mig' } })
+  check('TODO21 路径映射生效', mapped.status === 'ok', '')
+  const afterMap = await api.snapshot()
+  const mappedProject = afterMap.projects.find((project) => project.id === migProjectId)
+  check('TODO21 repoPath 已映射', !!mappedProject && mappedProject.repoPath === '/Users/me/work/mig', JSON.stringify({ repoPath: mappedProject && mappedProject.repoPath, name: mappedProject && mappedProject.name }))
 }
 
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖

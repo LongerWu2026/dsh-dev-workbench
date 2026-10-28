@@ -564,6 +564,16 @@ const workbenchApi = {
     return runRadarSummarizeBatch(workbenchContext(), request || {})
   },
 
+  /** TODO 21：导出迁移包（一致性快照 + 校验；凭据/原生会话不入包）。 */
+  async exportMigration() {
+    return buildMigrationPackage(false)
+  },
+
+  /** TODO 21：导入迁移包（dryRun 预检可先跑；提交自动先备份）。 */
+  async importMigration(request) {
+    return applyMigration(request || {})
+  },
+
   /** TODO 14：清空分析队列（重新采集/重整时使用）。 */
   async analyzeReset() {
     return mutateWorkbenchState(function (state) {
