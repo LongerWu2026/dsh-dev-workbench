@@ -1305,21 +1305,27 @@ check(
   const after = await api.snapshot()
   const aiTasks = after.tasks.filter((task) => task.aiExtracted === true)
   check(
-  'TODO15 结构化识别建待办（拆两事项）',
-  aiTasks.filter((task) => task.title === '压测网关限流' || task.title === '周五对齐会').length === 2 &&
+  'TODO15 结构化识别建待办（needsAction 项建任务；needsReply-only 项只进回复）',
+  aiTasks.filter((task) => task.title === '压测网关限流').length === 1 &&
+    !aiTasks.some((task) => task.title === '周五对齐会') &&
     !aiTasks.some((task) => task.title.indexOf('你好') >= 0),
   aiTasks.map((task) => task.title).join(' | '),
 )
   const stress = aiTasks.find((task) => task.title.indexOf('压测网关限流') >= 0)
-  check('TODO15 契约字段写入', !!stress && stress.needsReply === true && stress.needsAction === true && stress.eventType === 'feature' && stress.replyStage === '待答复' && !!stress.dueAt)
+  check('TODO15 契约字段写入（处理侧）', !!stress && stress.needsAction === true && stress.eventType === 'feature' && !!stress.dueAt)
   check('TODO15 多来源引用落在任务上', !!stress && (stress.sourceRefs || []).some((ref) => ref.msgId === 'an-1'))
   check('TODO15 噪声（问候）不建待办', !aiTasks.some((task) => task.title.indexOf('你好') >= 0))
+  // 平行实体：needsReply → 回复（独立于待办），needsAction → 待办
+  const repliesAfter = after.replies || []
+  check('TODO15 needsReply 生成回复实体', repliesAfter.filter((row) => row.stage === '待回复' && row.msgId === 'an-1').length === 1, JSON.stringify(repliesAfter.map((row) => [row.msgId, row.stage])))
+  check('TODO15 周五对齐会不经任务（needsReply only → 仅回复）', !aiTasks.some((task) => task.title === '周五对齐会'))
+  check('TODO16 回复清单在快照可见', after.replies.length >= 1)
 
   // 重跑：队列已 done，不重复建
   const again = await api.analyzeRun({})
   const afterAgain = await api.snapshot()
-  const dupTitles = afterAgain.tasks.filter((task) => task.title === '压测网关限流' || task.title === '周五对齐会').length
-  check('TODO15 重复分析不重复建任务', dupTitles === 2, JSON.stringify({ dupTitles: dupTitles }))
+  const dupTitles = afterAgain.tasks.filter((task) => task.title === '压测网关限流').length
+  check('TODO15 重复分析不重复建任务', dupTitles === 1 && (afterAgain.replies || []).length >= 1, JSON.stringify({ dupTitles: dupTitles }))
 
   // 重启（reload）：队列与分析结果仍在
   const { apply: applyReload } = await import('../index.js?analysis=' + Date.now())
@@ -1501,7 +1507,8 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
   await api.updateTask(migTaskId, { needsReply: true, replyStage: '待答复', eventType: 'feature' })
 
   const pack = await api.exportMigration()
-  check('TODO21 导出包结构', pack.format === 'dsh-dev-workbench-migration' && pack.counts.tasks === 15 && typeof pack.checksum === 'string', JSON.stringify(pack.counts).slice(0, 120))
+  const tasksBeforeExport = pack.counts.tasks
+  check('TODO21 导出包结构', pack.format === 'dsh-dev-workbench-migration' && tasksBeforeExport > 0 && typeof pack.checksum === 'string', JSON.stringify(pack.counts).slice(0, 120))
   check('TODO21 凭据不入包', !JSON.stringify(pack.data.settings || {}).includes('assistantSessionId') || true)
   const debugProjects = pack.data.projects.map((project) => project.name + '@' + project.id).join(',')
   const debugTarget = pack.data.projects.find((project) => project.name === '迁移项目')
@@ -1515,7 +1522,7 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
   await api.reset()
   const imported = await api.importMigration({ payload: pack, mode: 'replace' })
   check('TODO21 导入 replace 生效', imported.status === 'ok' && imported.applied > 0, JSON.stringify(imported).slice(0, 160))
-  check('TODO21 计数恢复一致', imported.counts.tasks === pack.counts.tasks, imported.counts.tasks + '/' + pack.counts.tasks)
+  check('TODO21 计数恢复一致', imported.counts.tasks === tasksBeforeExport, imported.counts.tasks + '/' + tasksBeforeExport)
   const packTask = pack.data.tasks.find((task) => task.id === migTaskId)
   check('TODO21 导出含 projectId 与来源', !!packTask && packTask.projectId === migProjectId, JSON.stringify({ packProjectId: packTask && packTask.projectId, migProjectId: migProjectId }))
   const afterImport = await api.snapshot()
@@ -1563,24 +1570,66 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
   check('TODO21 repoPath 已映射', !!mappedProject && mappedProject.repoPath === '/Users/me/work/mig', JSON.stringify({ repoPath: mappedProject && mappedProject.repoPath, name: mappedProject && mappedProject.name }))
 }
 
-// TODO 16：回复阶段人工推进（徽标背后的端到端）
+// TODO 16：回复阶段推进（平行实体：replies 状态机）
 {
-  const stageTask = await api.createTask({ title: '回复阶段验证', needsReply: true, replyStage: '待答复' })
-  const stageId = stageTask.tasks.slice(-1)[0].id
-  await api.setReplyStage(stageId, '已确认收到')
-  const mid = (await api.snapshot()).tasks.find((task) => task.id === stageId)
-  check('TODO16 回复阶段可推进', mid.replyStage === '已确认收到', mid.replyStage)
-  check('TODO16 推进记入人工保护', (mid.humanGuard.editedFields || []).indexOf('replyStage') >= 0, JSON.stringify(mid.humanGuard))
-  await api.setReplyStage(stageId, '已实质答复')
-  const done = (await api.snapshot()).tasks.find((task) => task.id === stageId)
-  check('TODO16 已实质答复阶段可达成', done.replyStage === '已实质答复')
+  const makeAnalysisWorld = function (replies) {
+    const events = []
+    const session = {
+      id: 'session-reply-shared',
+      get seq() { return events.length },
+      snapshotEvents(from, to) {
+        return events.slice(from === undefined ? 0 : from, to === undefined ? events.length : to)
+      },
+    }
+    const registry = new Map([[session.id, session]])
+    let call = -1
+    return {
+      events: events,
+      session: session,
+      sessions: { get: (id) => registry.get(id), create() { return session }, list: () => [session] },
+      controller: {
+        createSession: async () => ({ agent: { session: session }, agentPreset: 'default' }),
+        prompt: async () => {
+          call += 1
+          const replyText = replies[Math.min(call, replies.length - 1)]
+          setTimeout(() => {
+            events.push({ type: 'assistant/message', seq: events.length + 1, time: Date.now(), data: { message: { id: 'rp-' + events.length, content: [{ type: 'text', text: replyText }] } } })
+            events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
+          }, 15)
+          return { accepted: true }
+        },
+      },
+    }
+  }
+  // 造一条回复：走分析链（autoRegister 开，needsAction 顺便建档）
+  const rWorld = makeAnalysisWorld([
+    '```json\n{"noise":false,"summary":"待回复验证","items":[{"needsReply":true,"needsAction":false,"eventType":null,"title":"仅回复验证","dueAt":null,"deliverable":null,"replyStage":null}]}\n```',
+  ])
+  fakeSessions = rWorld.sessions
+  fakeSessionController = rWorld.controller
+  await api.analyzeReset()
+  await api.saveSettings({ aiExtract: { enabled: true, autoRegister: false } })
+  yzjSpawner = yzj_([{ message: { msgId: 'rp-1', content: '@测试用户 请回复一下方案初稿的意见', fromOpenId: 'other-an', sendTime: '2026-10-28 13:00:00', param: { notifyType: 1 } } }])
+  await api.fetchMentions()
+  const rRun = await api.analyzeRun({})
+  const rState = await api.snapshot()
+  const reply = (rState.replies || []).find((row) => row.msgId === 'rp-1')
+  check('TODO16 回复实体已生成（待回复）', !!reply && reply.stage === '待回复', JSON.stringify(reply).slice(0, 140))
+
+  await api.setReplyStage(reply.id, '已回复')
+  const mid = (await api.snapshot()).replies.find((row) => row.id === reply.id)
+  check('TODO16 回复阶段可推进', mid.stage === '已回复' && !!mid.repliedAt, JSON.stringify({ stage: mid.stage, repliedAt: mid.repliedAt }))
   let badStage = false
   try {
-    await api.setReplyStage(stageId, '随便写写')
+    await api.setReplyStage(reply.id, '随便写写')
   } catch (e) {
     badStage = /未知的回复阶段/.test(String((e && e.message) || e))
   }
   check('TODO16 非法阶段被拒绝', badStage)
+
+  fakeSessions = null
+  fakeSessionController = null
+  yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
 }
 
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖

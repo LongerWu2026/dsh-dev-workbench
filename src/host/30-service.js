@@ -588,28 +588,24 @@ const workbenchApi = {
     return confirmAnalysis(workbenchContext(), entryId)
   },
 
-  /** TODO 16：人工推进回复阶段（待答复 → 已确认收到 / 已实质答复 / 不需答复）。
-   *  这是人工动作：replyStage 记入 humanGuard.editedFields，后续 AI 不得覆盖。 */
+  /** TODO 16：推进回复阶段（待回复 → 已回复 / 不需回复）。标记已回复会记录 repliedAt。 */
   async setReplyStage(id, stage) {
-    const STAGES = ['待答复', '已确认收到', '已实质答复', '不需答复']
     return mutateWorkbenchState(function (state) {
-      const index = ensureArray(state.tasks).findIndex(function (task) {
-        return task.id === id
+      const index = ensureArray(state.replies).findIndex(function (row) {
+        return row.id === id
       })
-      if (index < 0) throw new Error('找不到该待办：' + String(id))
+      if (index < 0) throw new Error('找不到该回复：' + String(id))
       const stageText = asString(stage, 20)
-      if (STAGES.indexOf(stageText) < 0) throw new Error('未知的回复阶段：' + stageText)
-      const task = state.tasks[index]
-      const guard = normalizeHumanGuard(
-        Object.assign({}, normalizeHumanGuard(task.humanGuard), {
-          editedFields: normalizeHumanGuard({ editedFields: normalizeHumanGuard(task.humanGuard).editedFields.concat(['replyStage']) }).editedFields,
-        }),
-      )
-      const next = normalizeTask({ replyStage: stageText }, task)
-      next.humanGuard = guard
-      state.tasks = state.tasks.slice()
-      state.tasks[index] = next
-      auditEntry(state, 'task.replyStage', task.title + ' → ' + stageText)
+      if (REPLY_STATUSES.indexOf(stageText) < 0) throw new Error('未知的回复阶段：' + stageText)
+      const reply = state.replies[index]
+      const next = normalizeReplies([Object.assign({}, reply, {
+        stage: stageText,
+        repliedAt: stageText === '已回复' ? hostNowIso() : reply.repliedAt || null,
+        updatedAt: hostNowIso(),
+      })])[0]
+      state.replies = state.replies.slice()
+      state.replies[index] = next
+      auditEntry(state, 'reply.stage', (reply.contact || reply.msgId) + ' → ' + stageText)
       return state
     })
   },

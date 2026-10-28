@@ -45,6 +45,8 @@ function emptyWorkbenchState() {
     candidates: [],
     /** TODO 14：分析队列（采集已入库、等待/正在/失败 AI 识别的消息） */
     analysisQueue: [],
+    /** TODO 16 重构：回复义务（平行于待办；一条消息可同时产生回复与待办） */
+    replies: [],
     syncCursors: {},
     lastAutomation: null,
     audit: [],
@@ -91,6 +93,34 @@ function normalizeAutomation(raw) {
 }
 
 const ANALYSIS_STATUSES = ['pending', 'running', 'failed', 'done', 'awaiting_human']
+
+/** TODO 16：回复义务条目（upsert by msgId；stage 独立于任务状态机） */
+function normalizeReplies(raw) {
+  const list = ensureArray(raw)
+    .map(function (item) {
+      const row = item && typeof item === 'object' ? item : {}
+      const msgId = asString(row.msgId, 80)
+      if (!msgId) return null
+      return {
+        id: asString(row.id, 80) || newId('rep'),
+        sourceId: asString(row.sourceId, 80) || null,
+        msgId: msgId,
+        groupId: asString(row.groupId, 80) || null,
+        groupName: asString(row.groupName, 120) || null,
+        contact: asString(row.contact, 80) || null,
+        snippet: asString(row.snippet, 300) || null,
+        stage: REPLY_STATUSES.indexOf(row.stage) >= 0 ? row.stage : '待回复',
+        taskIds: ensureArray(row.taskIds).slice(0, 6).map(function (id) { return asString(id, 80) }).filter(Boolean),
+        repliedAt: asIso(row.repliedAt) || null,
+        createdAt: asIso(row.createdAt) || hostNowIso(),
+        updatedAt: asIso(row.updatedAt) || hostNowIso(),
+      }
+    })
+    .filter(Boolean)
+  return list.slice(-300)
+}
+/** 回复阶段（Reply 自身状态机，平行于 Task 的处理状态机） */
+const REPLY_STATUSES = ['待回复', '已回复', '不需回复']
 
 /** TODO 14：分析队列条目（按 msgId 幂等；失败保留 attempts/lastError 以便重放） */
 function normalizeAnalysisQueue(raw) {
@@ -525,6 +555,7 @@ function normalizeState(raw) {
         return operation.key.length > 0
       }),
     analysisQueue: normalizeAnalysisQueue(raw.analysisQueue),
+    replies: normalizeReplies(raw.replies),
     syncCursors: normalizeSyncCursors(raw.syncCursors),
     lastAutomation: raw.lastAutomation && typeof raw.lastAutomation === 'object'
       ? {

@@ -76,16 +76,27 @@ function mergeAnalysisIntoState(state, entry, analysis, options) {
   const existingTitles = ensureArray(state.tasks).map(function (task) { return task.title })
   const created = []
   const updated = []
+  const createdReplies = []
   const items = ensureArray(analysis.items).slice(0, 3)
   // 拆多事项时，「同一来源消息」不是合并依据（多条事项共享一条证据是正常的）
-
   const multiItem = items.length > 1
 
   if (analysis.noise === true || items.length === 0) {
-    return { created: created, updated: updated, noise: true }
+    return { created: created, updated: updated, createdReplies: createdReplies, noise: true }
   }
 
   for (const item of items) {
+    /** TODO 16 重构：needsReply → 回复实体（平行于待办；upsert by msgId，不受 autoRegister 限制） */
+    if (item.needsReply === true) {
+      const stage = item.replyStage === '已确认收到' || item.replyStage === '已实质答复' ? '已回复' : '待回复'
+      const replyResult = upsertReply(state, entry, source, stage)
+      if (replyResult.created) createdReplies.push(replyResult.reply)
+    }
+    // 仅回复义务（needsReply && !needsAction）不产生待办——两个概念平行
+    if (item.needsReply === true && item.needsAction !== true) {
+      continue
+    }
+
     const related = item.title
       ? ensureArray(state.tasks).find(function (task) {
           return existingTitles.indexOf(task.title) >= 0 && (task.title === item.title || task.title.indexOf(item.title) >= 0 || item.title.indexOf(task.title) >= 0)
@@ -94,14 +105,12 @@ function mergeAnalysisIntoState(state, entry, analysis, options) {
     const target = related || (multiItem ? null : findTaskBySourceRef(state, entry.sourceId))
 
     if (target && !analysis.noise) {
-      // 续接：追加来源引用、合并义务/回复阶段；不覆盖人工已编辑字段
+      // 续接：追加来源引用；不覆盖人工已编辑字段
       const guard = normalizeHumanGuard(target.humanGuard)
       const patch = {
         sourceRefs: ensureArray(target.sourceRefs).concat([sourceRef]),
-        needsReply: target.needsReply === true || item.needsReply === true,
         needsAction: target.needsAction === true || item.needsAction === true,
       }
-      if (item.replyStage && guard.editedFields.indexOf('replyStage') < 0) patch.replyStage = item.replyStage
       if (item.dueAt && guard.editedFields.indexOf('dueAt') < 0 && !target.dueAt) patch.dueAt = item.dueAt
       const applied = applyUpdateTask(state, target.id, patch)
       updated.push(applied.entity)
@@ -119,9 +128,7 @@ function mergeAnalysisIntoState(state, entry, analysis, options) {
       aiExtracted: true,
       sourceRefId: entry.sourceId,
       sourceRefs: [sourceRef],
-      needsReply: item.needsReply === true,
       needsAction: item.needsAction !== false,
-      replyStage: item.replyStage || (item.needsReply === true ? '待答复' : null),
       eventType: item.eventType || null,
       deliverable: item.deliverable || null,
       confidence: 0.72,
@@ -131,11 +138,44 @@ function mergeAnalysisIntoState(state, entry, analysis, options) {
     created.push(applied.entity)
   }
 
-  return { created: created, updated: updated, noise: false }
+  return { created: created, updated: updated, createdReplies: createdReplies, noise: false }
 }
 
+/** upsert 回复义务：同一消息只有一条回复记录；阶段/摘录可更新。 */
+function upsertReply(state, entry, source, stage) {
+  const existing = ensureArray(state.replies).find(function (row) {
+    return row.msgId === entry.msgId
+  })
+  const contact = source && (source.sender || null)
+  if (existing) {
+    const next = Object.assign({}, existing, {
+      stage: stage || existing.stage,
+      snippet: source ? String(source.excerpt || '').slice(0, 300) : existing.snippet,
+      updatedAt: hostNowIso(),
+    })
+    state.replies = ensureArray(state.replies).map(function (row) {
+      return row.id === existing.id ? next : row
+    })
+    return { reply: next, created: false }
+  }
+  const reply = normalizeReplies([{
+    id: newId('rep'),
+    sourceId: entry.sourceId,
+    msgId: entry.msgId,
+    groupId: entry.groupId || (source && source.locator && source.locator.groupId) || null,
+    groupName: (source && source.locator && source.locator.groupName) || null,
+    contact: contact,
+    snippet: source ? String(source.excerpt || '').slice(0, 300) : null,
+    stage: stage || '待回复',
+    createdAt: hostNowIso(),
+  }])[0]
+  state.replies = ensureArray(state.replies).concat([reply]).slice(-300)
+  return { reply: reply, created: true }
+}
+
+
 /**
- * 手动/后台触发的分析批处理：从队列取 pending（或重放 failed），逐条调原生会话。
+ * 手动/后台触发的分析批处理：从队列取 pending（或重放 failed<3），逐条调原生会话。
  * 单条失败计入 attempts/lastError，不阻断批次其余条目。
  */
 async function runAnalysisBatch(ctx, request) {
@@ -145,7 +185,7 @@ async function runAnalysisBatch(ctx, request) {
   }
   const settings = loadWorkbenchState().settings
   if (!settings.aiExtract || settings.aiExtract.enabled !== true) {
-    return { status: 'disabled', note: 'AI 识别未开启（连接与设置 → 自动化 → AI 识别）。' }
+    return { status: 'disabled', note: 'AI 识别未开启（设置 → 自动化 → AI 识别）。' }
   }
   const resolved = await ensureAssistantSession(ctx)
   if (!resolved) return { status: 'unavailable', note: '当前宿主没有可用的 sessions / sessionController 服务。' }
@@ -159,12 +199,10 @@ async function runAnalysisBatch(ctx, request) {
   const sources = ensureArray(state0.sources)
   const entries = queue
     .filter(function (row) {
-      return row.status === 'pending' || (row.status === 'failed' && row.attempts < 3)
+      return row.status === 'pending' || (row.status === 'failed' && (Number(row.attempts) || 0) < 3)
     })
     .filter(function (row) {
-      return sources.some(function (source) {
-        return source.id === row.sourceId
-      })
+      return sources.some(function (source) { return source.id === row.sourceId })
     })
     .slice(0, limit)
 
@@ -172,9 +210,7 @@ async function runAnalysisBatch(ctx, request) {
   const failures = []
 
   for (const entry of entries) {
-    const source = sources.find(function (row) {
-      return row.id === entry.sourceId
-    })
+    const source = sources.find(function (row) { return row.id === entry.sourceId })
     if (!source) continue
 
     const titles = ensureArray(loadWorkbenchState().tasks).map(function (task) { return task.title })
@@ -182,15 +218,14 @@ async function runAnalysisBatch(ctx, request) {
     const session = submitted.session
     const fromSeq = submitted.fromSeq
 
-    // 等待本轮结束并抽取回复（复用助手的轮询语义）
     const deadline = Date.now() + ANALYSIS_TURN_TIMEOUT_MS
     let reply = ''
     while (Date.now() < deadline) {
       await sleepMs(ANALYSIS_POLL_MS)
       const delta = transcriptDelta(session, fromSeq)
       const assistantTexts = delta.entries
-        .filter(function (item) { return item.role === 'assistant' })
-        .map(function (item) { return item.text })
+        .filter(function (row) { return row.role === 'assistant' })
+        .map(function (row) { return row.text })
       if (assistantTexts.length > 0) reply = assistantTexts.join('\n\n')
       if (!delta.turnActive) break
     }
@@ -212,7 +247,7 @@ async function runAnalysisBatch(ctx, request) {
       continue
     }
 
-    const applied = await mutateWorkbenchState(function (current) {
+    await mutateWorkbenchState(function (current) {
       const analysis = {
         noise: parsed.noise === true,
         items: ensureArray(parsed.items).slice(0, 6),
@@ -222,13 +257,15 @@ async function runAnalysisBatch(ctx, request) {
         return row.id === entry.id
       })
       const merged = mergeAnalysisIntoState(current, queueRow || entry, analysis)
+      const hasTaskProgress = merged.created.length > 0 || merged.updated.length > 0
+      const replyBuilt = merged.createdReplies.length > 0
+      const actionPending = !hasTaskProgress && ensureArray(parsed.items).some(function (item) {
+        return item.needsAction === true
+      })
       current.analysisQueue = ensureArray(current.analysisQueue).map(function (row) {
         if (row.id !== entry.id) return row
-        const status = merged.created.length > 0 || merged.updated.length > 0
-          ? 'done'
-          : analysis.noise
-            ? 'done'
-            : 'awaiting_human'
+        // 回复建档即完成沟通侧；处理义务未自动登记（autoRegister 关）时停在待人工确认
+        const status = actionPending ? 'awaiting_human' : hasTaskProgress || analysis.noise || replyBuilt ? 'done' : 'awaiting_human'
         return Object.assign({}, row, {
           status: status,
           analyzedAt: hostNowIso(),
@@ -236,14 +273,10 @@ async function runAnalysisBatch(ctx, request) {
           taskIds: merged.created.map(function (task) { return task.id }).concat(merged.updated.map(function (task) { return task.id })).slice(0, 6),
         })
       })
-      auditEntry(current, 'analysis.run', entry.sourceId + ' → ' + (merged.noise ? '噪声' : merged.created.length + ' 新建 / ' + merged.updated.length + ' 续接'))
+      auditEntry(current, 'analysis.run', entry.sourceId + ' → ' + (merged.noise ? '噪声' : '回复 ' + merged.createdReplies.length + ' / 待办 ' + merged.created.length + ' 新建 / ' + merged.updated.length + ' 续接'))
       return current
     })
-
-    processed.push({
-      sourceId: entry.sourceId,
-      created: applied.analysisQueue.filter(function (row) { return row.id === entry.id })[0],
-    })
+    processed.push(entry.sourceId)
   }
 
   return {
