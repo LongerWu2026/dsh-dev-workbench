@@ -1243,6 +1243,13 @@ window.__ModuleLoader__.load({
       automationRun() {
         return wbRpc('workbench/automationRun', {})
       },
+      /** TODO 16：人工推进回复阶段（AI 不得覆盖人工设置）。 */
+      setReplyStage(id, stage) {
+        return settle(wbRpc('workbench/setReplyStage', { id: id, stage: stage }), '回复阶段：' + stage)
+      },
+      taskMarkHuman(id, mark) {
+        return settle(wbRpc('workbench/taskMarkHuman', { id: id, mark: mark || {} }), '已记录人工处置')
+      },
       automationStatus() {
         return wbRpc('workbench/automationStatus', {})
       },
@@ -5335,6 +5342,20 @@ window.__ModuleLoader__.load({
             h(
               'div',
               { className: 'wb-row wb-row--wrap', style: { gap: 6, alignItems: 'center' } },
+                      task.needsReply === true
+              ? h(Chip, {
+                  active: true,
+                  title: '回复阶段：' + (task.replyStage || '未标记') + '；点击推进到下一阶段',
+                  onClick: function () {
+                    const stages = ['待答复', '已确认收到', '已实质答复', '不需答复']
+                    const current = stages.indexOf(task.replyStage || '待答复')
+                    const next = stages[(current + 1) % stages.length]
+                    WB.actions.setReplyStage(task.id, next).catch(function () {})
+                  },
+                  children: task.replyStage || '待答复',
+                })
+              : null,
+
               h(
                 'button',
                 {

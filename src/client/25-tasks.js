@@ -336,6 +336,20 @@ function TaskCenterRow(props) {
         h(
           'div',
           { className: 'wb-row wb-row--wrap', style: { gap: 6, alignItems: 'center' } },
+                  task.needsReply === true
+          ? h(Chip, {
+              active: true,
+              title: '回复阶段：' + (task.replyStage || '未标记') + '；点击推进到下一阶段',
+              onClick: function () {
+                const stages = ['待答复', '已确认收到', '已实质答复', '不需答复']
+                const current = stages.indexOf(task.replyStage || '待答复')
+                const next = stages[(current + 1) % stages.length]
+                WB.actions.setReplyStage(task.id, next).catch(function () {})
+              },
+              children: task.replyStage || '待答复',
+            })
+          : null,
+
           h(
             'button',
             {

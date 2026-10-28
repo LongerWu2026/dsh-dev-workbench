@@ -1217,6 +1217,13 @@ const wbActions = {
   automationRun() {
     return wbRpc('workbench/automationRun', {})
   },
+  /** TODO 16：人工推进回复阶段（AI 不得覆盖人工设置）。 */
+  setReplyStage(id, stage) {
+    return settle(wbRpc('workbench/setReplyStage', { id: id, stage: stage }), '回复阶段：' + stage)
+  },
+  taskMarkHuman(id, mark) {
+    return settle(wbRpc('workbench/taskMarkHuman', { id: id, mark: mark || {} }), '已记录人工处置')
+  },
   automationStatus() {
     return wbRpc('workbench/automationStatus', {})
   },

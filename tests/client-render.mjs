@@ -739,7 +739,7 @@ if (!registrations.panellist.length) problems.push('没有注册 sidebar.panelli
 
 const pageSpecs = [
   ['今日简报', 'dashboard', ['技术雷达', '抓取资讯', '快捷操作', '专注', '复制今日简报']],
-  ['任务中心', 'tasks', ['看板', '待确认', '提取候选', '义务：', '事项类型：']],
+  ['任务中心', 'tasks', ['看板', '待确认', '提取候选', '义务：', '事项类型：', '待答复']],
   ['搜索', 'search', ['一个入口搜全部', '企业（云之家）', '本地', '互联网']],
   ['Agent 中心', 'agents', ['执行队列']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
