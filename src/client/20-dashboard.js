@@ -968,6 +968,20 @@ function DashboardPage() {
   const [radarFetching, setRadarFetching] = React.useState(false)
   const [mentionsBusy, setMentionsBusy] = React.useState(false)
   const [quickMore, setQuickMore] = React.useState(false)
+  // TODO 22：AI 识别状态一块看全（待确认/失败/计数），上轮摘要状态也在这里
+  const [analysis, setAnalysis] = React.useState(null)
+
+  React.useEffect(
+    function () {
+      WB.actions
+        .analysisStatus()
+        .then(function (status) {
+          setAnalysis(status)
+        })
+        .catch(function () {})
+    },
+    [],
+  )
 
   if (!data) {
     return h(
@@ -1324,9 +1338,17 @@ function DashboardPage() {
   }
 
   const radarEmpty = radarItems.length === 0
-  const radarStatus = lastFetch && lastFetch.at
+  const radarStatusBase = lastFetch && lastFetch.at
     ? '上次抓取 ' + WB.fmt.relative(lastFetch.at) + ' · 新增 ' + (lastFetch.added || 0)
     : '还没有抓取过'
+  // TODO 22：上轮摘要统计与失败原因一并展示（不隐藏失败）
+  const lastSum = data && data.lastRadarSummarize ? data.lastRadarSummarize : null
+  const summarizeStatus = lastSum && lastSum.at
+    ? lastSum.failed > 0
+      ? ' · 摘要：成功 ' + lastSum.done + ' / 失败 ' + lastSum.failed + ((lastSum.note ? '（' + lastSum.note + '）' : ''))
+      : ' · 摘要：成功 ' + lastSum.done
+    : ''
+  const radarStatus = radarStatusBase + summarizeStatus
   const radarPanel = h(
     Panel,
     {
@@ -1671,6 +1693,87 @@ function DashboardPage() {
         )
       : null,
     mentionsStrip,
+    /** TODO 22：AI 识别状态面板（与自动化开关共用配置语义，展示即真实） */
+    (analysis && (analysis.pending || analysis.awaitingHuman || analysis.failed || analysis.done))
+      ? h(
+          Panel,
+          {
+            icon: 'sparkles',
+            title: 'AI 识别',
+            sub: '采集与识别解耦；失败可重放（attempts<3 自动重试）',
+            badge: analysis
+              ? h(Badge, { tone: analysis.awaitingHuman > 0 ? 'warn' : analysis.failed > 0 ? 'err' : 'ok' },
+                  '待识别 ' + analysis.pending + ' · 待确认 ' + analysis.awaitingHuman + ' · 失败 ' + analysis.failed + ' · 完成 ' + analysis.done)
+              : null,
+            actions: h(Btn, {
+              size: 'sm',
+              kind: 'subtle',
+              icon: 'play',
+              onClick: function () {
+                WB.actions
+                  .analyzeRun(8)
+                  .then(function (result) {
+                    WB.toast('AI 分析：处理 ' + (result.processed || 0) + ' / 失败 ' + (result.failures || 0), 'ok')
+                    return WB.actions.analysisStatus()
+                  })
+                  .then(function (status) {
+                    setAnalysis(status)
+                  })
+                  .catch(function () {})
+              },
+              children: '运行分析',
+            }),
+          },
+          (analysis.awaitingHuman > 0 || analysis.failed > 0)
+            ? h(
+                'div',
+                { className: 'wb-stack', style: { gap: 8 } },
+                (analysis.entries || [])
+                  .filter(function (entry) {
+                    return entry.status === 'awaiting_human' || entry.status === 'failed'
+                  })
+                  .slice(0, 6)
+                  .map(function (entry) {
+                    const sourceRow = (data.sources || []).find(function (row) { return row.id === entry.sourceId })
+                    return h(
+                      'div',
+                      { key: entry.id, className: 'wb-item' },
+                      h(Badge, { tone: entry.status === 'failed' ? 'err' : 'warn' }, entry.status === 'failed' ? '失败' : '待确认'),
+                      h(
+                        'div',
+                        { className: 'wb-item-main' },
+                        h('div', { className: 'wb-item-title wb-ellipsis' }, WB.util.truncate((sourceRow && sourceRow.excerpt) || entry.msgId || entry.sourceId, 46)),
+                        entry.status === 'failed'
+                          ? h('div', { className: 'wb-item-sub' }, '重试第 ' + ((entry.attempts || 0) + 1) + ' 次' + (entry.lastError ? ' · ' + entry.lastError : ''))
+                          : h('div', { className: 'wb-item-sub' }, (entry.analysis && entry.analysis.summary) || '已识别，待确认建档'),
+                      ),
+                      entry.status === 'awaiting_human'
+                        ? h(Btn, {
+                            size: 'sm',
+                            kind: 'primary',
+                            icon: 'check',
+                            onClick: function () {
+                              WB.actions
+                                .analyzeConfirm(entry.id)
+                                .then(function () {
+                                  return WB.actions.analysisStatus()
+                                })
+                                .then(function (status) {
+                                  setAnalysis(status)
+                                  WB.actions.reload().catch(function () {})
+                                })
+                                .catch(function () {})
+                            },
+                            children: '确认建档',
+                          })
+                        : null,
+                    )
+                  }),
+              )
+            : h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.6 } },
+                '没有待确认或失败条目。开启「设置 → 自动化 → AI 识别」后，抓取的消息会进入这里。'),
+        )
+      : null,
     statStrip,
     h('div', { className: 'wb-split', style: { gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)', marginBottom: 16 } }, taskPanel, radarPanel),
     h('div', { style: { marginBottom: 16 } }, quickActionsPanel),
