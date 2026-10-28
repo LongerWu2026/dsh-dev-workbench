@@ -86,6 +86,7 @@ function normalizeAutomation(raw) {
     intervalMinutes: Number.isFinite(minutes) && minutes >= 5 ? Math.min(24 * 60, Math.round(minutes)) : 60,
     radar: input.radar !== false,
     mentions: input.mentions !== false,
+    analyze: input.analyze !== false,
   }
 }
 
@@ -421,6 +422,14 @@ function normalizeRadarItem(raw, existing) {
     source: asString(input.source === undefined ? base.source : input.source, 80) || 'manual',
     url: url,
     publishedAt: input.publishedAt === undefined ? base.publishedAt || null : asIso(input.publishedAt),
+    /** TODO 20 日期纪律：publishedAt 可核实才标 published；未知 → unknown（不得用抓取时间冒充） */
+    dateKind: (function () {
+      if (input.dateKind !== undefined) return input.dateKind === 'published' ? 'published' : 'unknown'
+      if (base.dateKind) return base.dateKind
+      if (base.publishedAt || input.publishedAt) return 'published'
+      return 'unknown'
+    })(),
+    fetchedAt: input.fetchedAt === undefined ? base.fetchedAt || base.createdAt || hostNowIso() : asIso(input.fetchedAt) || hostNowIso(),
     topics: input.topics === undefined ? asTags(base.topics, 8) : asTags(input.topics, 8),
     summary: {
       change: asString(summaryInput.change, 800),
@@ -524,6 +533,14 @@ function normalizeState(raw) {
           mentionsAdded: Number(raw.lastAutomation.mentionsAdded) || 0,
           status: asString(raw.lastAutomation.status, 20) || 'ok',
           note: asString(raw.lastAutomation.note, 300),
+        }
+      : null,
+    lastRadarSummarize: raw.lastRadarSummarize && typeof raw.lastRadarSummarize === 'object'
+      ? {
+          at: asIso(raw.lastRadarSummarize.at) || hostNowIso(),
+          done: Number(raw.lastRadarSummarize.done) || 0,
+          failed: Number(raw.lastRadarSummarize.failed) || 0,
+          note: asString(raw.lastRadarSummarize.note, 200) || null,
         }
       : null,
     lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),

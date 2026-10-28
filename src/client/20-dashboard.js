@@ -338,7 +338,13 @@ function DashRadarRow(props) {
           { className: 'wb-item-sub', style: { gap: 5 } },
           h('span', { className: 'wb-muted' }, item.source || '未知来源'),
           h('span', { className: 'wb-muted' }, '·'),
-          h('span', { className: 'wb-muted' }, published ? WB.fmt.date(published) : '未注明日期'),
+          published
+            ? h('span', { className: 'wb-muted' }, WB.fmt.date(published))
+            : h(
+                'span',
+                { className: 'wb-muted', title: '原文未注明发布时间；抓取于 ' + (item.fetchedAt ? WB.fmt.datetime(item.fetchedAt) : '') + '，不以抓取时间冒充' },
+                '日期未注明（抓取于 ' + (item.fetchedAt ? WB.fmt.relative(item.fetchedAt) : '最近') + '）',
+              ),
           topics.map(function (topic, index) {
             return dashTagPill(topic, 'topic:' + topic + ':' + index)
           }),
@@ -465,6 +471,16 @@ function DashRadarMenu(props) {
       label: props.makingTask ? '生成中…' : '生成实践任务',
       disabled: props.makingTask,
       run: props.onMakeTask,
+    },
+    {
+      key: 'summarize',
+      icon: 'book',
+      label: '生成四段摘要',
+      run: function () {
+        WB.actions.radarSummarize([item.id]).then(function (result) {
+          WB.toast(result.failed > 0 ? '摘要：成功 ' + result.done + ' / 失败 ' + result.failed : result.done > 0 ? '已生成四段摘要' : (result.note || '无需生成'), result.failed > 0 ? 'warn' : 'ok')
+        }).catch(function () {})
+      },
     },
     { key: 'edit', icon: 'edit', label: '编辑四段摘要', run: props.onEdit },
     {
@@ -1510,6 +1526,7 @@ function DashboardPage() {
                 { key: 'mentions', icon: 'sparkles', label: mentionsBusy ? '拉取 @我…' : '拉取 @我', run: runMentionsFetch, disabled: mentionsBusy },
                 { key: 'radar', icon: 'refresh', label: radarFetching ? '抓取中…' : '抓取资讯', run: runRadarFetch, disabled: radarFetching },
                 { key: 'aiextract', icon: 'sparkles', label: '运行 AI 分析', run: function () { WB.actions.analyzeRun(8) } },
+    { key: 'radarsum', icon: 'book', label: '生成资讯摘要', run: function () { WB.actions.radarSummarize([]) } },
               ].map(function (item) {
                 return h(
                   'button',

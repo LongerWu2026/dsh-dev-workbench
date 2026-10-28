@@ -366,13 +366,17 @@ async function discoverRadarByTopics(ctx) {
       }
       knownUrls.add(key)
       knownTitles.push(title)
+      const parsedPublished = asIso(source.publishedAt)
       candidates.push(
         normalizeRadarItem(
           {
             title: title,
             source: '联网检索 · ' + topic,
             url: url,
-            publishedAt: asIso(source.publishedAt) || null,
+            publishedAt: parsedPublished,
+            // TODO 20 日期纪律：publishedAt 可核实才标 published，否则 unknown（显示时注明抓取时间）
+            dateKind: parsedPublished ? 'published' : 'unknown',
+            fetchedAt: hostNowIso(),
             topics: [topic],
             summary: { change: '', usage: '', risk: '', practice: '' },
             excerpt: asString(source.snippet, 800),

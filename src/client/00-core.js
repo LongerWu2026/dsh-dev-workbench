@@ -1201,6 +1201,10 @@ const wbActions = {
   analyzeRun(limit) {
     return wbRpc('workbench/analyzeRun', { request: { limit: limit || 5 } })
   },
+  /** TODO 20：对指定资讯批量生成四段摘要（读原文 → 模型 → 写回卡片）。 */
+  radarSummarize(onlyIds) {
+    return wbRpc('workbench/radarSummarize', { request: { onlyIds: onlyIds || [] } })
+  },
   analyzeConfirm(entryId) {
     return settle(wbRpc('workbench/analyzeConfirm', { entryId: entryId }), '已按分析登记待办')
   },

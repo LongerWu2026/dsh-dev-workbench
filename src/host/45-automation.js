@@ -34,6 +34,7 @@ async function runAutomationTick(ctx) {
   }
   const state = loadWorkbenchState()
   const config = (state.settings && state.settings.automation) || {}
+  const extractSettings = (state.settings && state.settings.aiExtract) || {}
   if (!config.enabled) {
     return { ran: false, status: 'disabled', note: '自动化未开启' }
   }
@@ -42,6 +43,9 @@ async function runAutomationTick(ctx) {
   const at = hostNowIso()
   let radarAdded = 0
   let mentionsAdded = 0
+  let analysisDone = 0
+  let analysisPending = 0
+  let analysisFailed = false
   const notes = []
   let status = 'ok'
 
@@ -56,6 +60,22 @@ async function runAutomationTick(ctx) {
       } catch (e) {
         status = 'partial'
         notes.push('资讯失败：' + String((e && e.message) || e).slice(0, 120))
+      }
+    }
+
+    if (config.analyze !== false && extractSettings.enabled) {
+      // TODO 19：采集 → 分析在同一 tick 顺序执行；识别在写入临界区外跑，
+      // 提交时走统一的 mutate（短写），失败计入重试（attempts<3 每个 tick 重放一次）
+      try {
+        const analyzed = await runAnalysisBatch(ctx, {})
+        notes.push('AI 识别 ' + (analyzed.status === 'ok' ? processed_ + '' : analyzed.status) + (analyzed.processed !== undefined ? '/' + analyzed.processed + ' 条' : ''))
+        if (analyzed.status !== 'ok' && analyzed.status !== 'disabled') {
+          status = status === 'ok' ? 'partial' : status
+          notes.push(analyzed.note || analyzed.status)
+        }
+      } catch (e) {
+        status = 'partial'
+        notes.push('AI 识别失败：' + String((e && e.message) || e).slice(0, 120))
       }
     }
 
@@ -82,6 +102,26 @@ async function runAutomationTick(ctx) {
         notes.push('@我 失败：' + String((e && e.message) || e).slice(0, 120))
       }
     }
+
+    if (config.analyze !== false && extractSettings.enabled) {
+      // TODO 19：采集 → 分析在同一 tick 顺序执行；识别在写入临界区外跑，
+      // 提交时走统一的 mutate（短写），失败计入重试（attempts<3 每个 tick 重放一次）
+      try {
+        const analyzed = await runAnalysisBatch(ctx, {})
+        const analyzedCount = Number(analyzed.processed) || 0
+        analysisDone = analyzedCount
+        analysisPending = Number(analyzed.failures) || 0
+        notes.push('AI 识别处理 ' + analyzedCount + ' 条' + (analyzed.failures ? ('，失败 ' + analyzed.failures) : ''))
+        if (analyzed.status !== 'ok' && analyzed.status !== 'disabled') {
+          status = status === 'ok' ? 'partial' : status
+          notes.push(analyzed.note || analyzed.status)
+        }
+      } catch (e) {
+        status = 'partial'
+        analysisFailed = true
+        notes.push('AI 识别失败：' + String((e && e.message) || e).slice(0, 120))
+      }
+    }
   } finally {
     automationInFlight = false
   }
@@ -91,14 +131,24 @@ async function runAutomationTick(ctx) {
       at: at,
       radarAdded: radarAdded,
       mentionsAdded: mentionsAdded,
+      analysisDone: analysisDone,
+      analysisFailedAttempts: analysisPending,
+      analysisErrored: analysisFailed,
       status: status,
       note: notes.join('；').slice(0, 300),
     }
-    auditEntry(current, 'automation.tick', '自动执行：资讯 +' + radarAdded + '，@我 +' + mentionsAdded)
+    auditEntry(current, 'automation.tick', '自动执行：资讯 +' + radarAdded + '，@我 +' + mentionsAdded + '，AI 识别 ' + analysisDone)
     return current
   })
 
-  return { ran: true, status: status, radarAdded: radarAdded, mentionsAdded: mentionsAdded, note: notes.join('；') }
+  return {
+    ran: true,
+    status: status,
+    radarAdded: radarAdded,
+    mentionsAdded: mentionsAdded,
+    analysisDone: analysisDone,
+    note: notes.join('；'),
+  }
 }
 
 /** 启动后台检查循环（每 60s 判断是否到期）；返回清理函数。 */

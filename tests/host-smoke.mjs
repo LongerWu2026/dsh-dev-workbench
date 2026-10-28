@@ -211,7 +211,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 50 个 Remote 描述符', invocations.length === 50, '实际 ' + invocations.length)
+check('注册了 51 个 Remote 描述符', invocations.length === 51, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -1348,6 +1348,145 @@ check(
   fakeSessions = null
   fakeSessionController = null
   yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
+}
+
+// 共享：分析/采集联测的云之家 spawner 工厂
+const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let text = JSON.stringify({ success: true, data: {} });
+  if (/whoami/.test(cmd)) text = JSON.stringify(WHOAMI)
+  else if (/im group recent/.test(cmd)) text = JSON.stringify({ success: true, data: { list: [{ groupId: 'g-an', groupName: '分析群' }] } })
+  else if (/im message list/.test(cmd)) text = JSON.stringify({ success: true, data: { list: list } })
+  else if (/contact user get/.test(cmd)) text = JSON.stringify({ success: true, data: { list: [{ name: '发起人', openId: 'other-an' }] } })
+  return { collected: { stdout: { readFrom: () => ({ text: text, nextOffset: text.length, lossy: false }) }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } }, done: Promise.resolve({ exitCode: 0, signal: null }), terminate() {} } },
+  resolveExecutable: async () => '/fake/yzj-cli' })
+
+
+// TODO 19：后台 tick 融合分析阶段（采集→@我→AI 识别，统一 Count）
+{
+  // 独立 helper（与 TODO15 场景同形）
+  const makeAnalysisWorld = function (replies) {
+    const events = []
+    const session = {
+      id: 'session-analysis-shared',
+      get seq() { return events.length },
+      snapshotEvents(from, to) {
+        return events.slice(from === undefined ? 0 : from, to === undefined ? events.length : to)
+      },
+    }
+    const registry = new Map([[session.id, session]])
+    let call = -1
+    return {
+      events: events,
+      session: session,
+      sessions: { get: (id) => registry.get(id), create() { return session }, list: () => [session] },
+      controller: {
+        createSession: async () => ({ agent: { session: session }, agentPreset: 'default' }),
+        prompt: async () => {
+          call += 1
+          const replyText = replies[Math.min(call, replies.length - 1)]
+          setTimeout(() => {
+            events.push({ type: 'assistant/message', seq: events.length + 1, time: Date.now(), data: { message: { id: 'an-' + events.length, content: [{ type: 'text', text: replyText }] } } })
+            events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
+          }, 15)
+          return { accepted: true }
+        },
+      },
+    }
+  }
+  const aWorld = makeAnalysisWorld([
+    '```json\n{"noise":false,"summary":"后台识别","items":[{"needsReply":true,"needsAction":true,"eventType":"other","title":"后台登记的事项","dueAt":null,"deliverable":null,"replyStage":"待答复"}]}\n```',
+    '```json\n{"noise":true,"summary":"问候","items":[]}\n```',
+  ])
+  fakeSessions = aWorld.sessions
+  fakeSessionController = aWorld.controller
+  await api.analyzeReset()
+  await api.saveSettings({ automation: { enabled: true, intervalMinutes: 5, radar: true, mentions: true, analyze: true }, aiExtract: { enabled: true, autoRegister: true }, topics: ['Agent'], feeds: [] })
+  // tick 内的 @我 采集带来一条新消息 → 队列 pending=1 → 分析阶段处理它
+  yzjSpawner = yzj_( [
+    { message: { msgId: 'tk-77', content: '@测试用户 后台识别一下这条', fromOpenId: 'other-an', sendTime: '2026-10-28 12:00:00', param: { notifyType: 1 } } },
+  ] )
+  webMock = {
+    fetch: () => Promise.resolve({ statusCode: 200, url: 'x', body: { kind: 'text', content: FAKE_RSS } }),
+    search: () => Promise.resolve({ sources: [{ url: 'https://example.org/auto2', title: '自动化发现 2', snippet: 's', publishedAt: '2026-10-27T08:00:00Z' }], truncated: false }),
+  }
+  const tick = await api.automationRun()
+  check('TODO19 后台 tick 融合 AI 分析', tick.ran === true && (tick.analysisDone > 0 || /AI 识别/.test(String(tick.note))), JSON.stringify({ analysisDone: tick.analysisDone, note: tick.note }).slice(0, 160))
+  const tickStatus = await api.automationStatus()
+  check('TODO19 lastAutomation 含分析统计', !!tickStatus.lastAutomation && Number(tickStatus.lastAutomation.analysisDone) > 0, JSON.stringify(tickStatus.lastAutomation).slice(0, 200))
+  webMock = null
+  // 还原（避免破坏后续场景）
+  fakeSessions = null
+  fakeSessionController = null
+  await api.saveSettings({ automation: { enabled: false } })
+}
+
+// TODO 20：摘要批处理——读原文→模型→写回，单条失败如实 partial
+{
+  const makeAnalysisWorld = function (replies) {
+    const events = []
+    const session = {
+      id: 'session-summary-shared',
+      get seq() { return events.length },
+      snapshotEvents(from, to) {
+        return events.slice(from === undefined ? 0 : from, to === undefined ? events.length : to)
+      },
+    }
+    const registry = new Map([[session.id, session]])
+    let call = -1
+    return {
+      events: events,
+      session: session,
+      sessions: { get: (id) => registry.get(id), create() { return session }, list: () => [session] },
+      controller: {
+        createSession: async () => ({ agent: { session: session }, agentPreset: 'default' }),
+        prompt: async () => {
+          call += 1
+          const replyText = replies[Math.min(call, replies.length - 1)]
+          setTimeout(() => {
+            events.push({ type: 'assistant/message', seq: events.length + 1, time: Date.now(), data: { message: { id: 'sm-' + events.length, content: [{ type: 'text', text: replyText }] } } })
+            events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
+          }, 15)
+          return { accepted: true }
+        },
+      },
+    }
+  }
+  const sumWorld = makeAnalysisWorld([
+    '```json\n{"change":"阈值 1500→1200","usage":"适合网关","risk":"需重测","practice":"先灰度"}\n```',
+    '```json\n{"change":"第二篇","usage":"u","risk":"r","practice":"p"}\n```',
+  ])
+  fakeSessions = sumWorld.sessions
+  fakeSessionController = sumWorld.controller
+  await api.saveSettings({ aiExtract: { enabled: true }, assistantSessionId: null })
+  webMock = {
+    fetch: (request) => {
+      if (String(request.url).indexOf('ok1') >= 0) {
+        return Promise.resolve({ statusCode: 200, url: request.url, body: { kind: 'text', content: '<h1>限流发布</h1><p>' + '限流阈值发布流程说明 '.repeat(120) + '</p>' } })
+      }
+      return Promise.reject(new Error('原文不可访问'))
+    },
+    search() { return Promise.resolve({ sources: [], truncated: false }) },
+  }
+  // 两条待摘要：一条 URL ok（#/ok1），一条 URL 挂（#/bad1）
+  await api.saveRadarItem({ title: '待摘要一', url: 'https://example.org/ok1', publishedAt: '2026-10-26T08:00:00Z', source: 'test', topics: [] })
+  await api.saveRadarItem({ title: '待摘要二', url: 'https://example.org/bad1', publishedAt: null, source: 'test', topics: [] })
+  const state3 = await api.snapshot()
+  const target1 = state3.radar.find((row) => row.title === '待摘要一')
+  const target2 = state3.radar.find((row) => row.title === '待摘要二')
+  check('TODO20 日期纪律：无发布时间标 unknown', target2.dateKind === 'unknown' && target1.dateKind === 'published', target1.dateKind + '/' + target2.dateKind)
+
+  const result = await api.radarSummarize({ onlyIds: [target1.id, target2.id] })
+  check('TODO20 单条失败如实 partial', result.status === 'partial' && result.done === 1 && result.failed === 1, JSON.stringify(result))
+  const after = await api.summarizedSnapshot ? await api.summarizedSnapshot() : await api.snapshot()
+  const ok1 = after.radar.find((row) => row.id === target1.id)
+  check('TODO20 摘要真实写回卡片', !!ok1 && ok1.summary.change === '阈值 1500→1200' && ok1.summary.practice === '先灰度', JSON.stringify(ok1 && ok1.summary).slice(0, 120))
+  const bad1 = after.radar.find((row) => row.id === target2.id)
+  check('TODO20 失败条目保持空摘要', !!bad1 && !bad1.summary.change)
+  const sumStatus = after.lastRadarSummarize
+  check('TODO20 lastRadarSummarize 如实记录', !!sumStatus && sumStatus.done === 1 && sumStatus.failed === 1, JSON.stringify(sumStatus).slice(0, 160))
+
+  fakeSessions = null
+  fakeSessionController = null
+  webMock = { fetch: () => Promise.resolve({ statusCode: 200, url: 'x', body: { kind: 'text', content: FAKE_RSS } }), search: () => Promise.resolve({ sources: [], truncated: false }) }
 }
 
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖

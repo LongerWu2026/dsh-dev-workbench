@@ -19,6 +19,7 @@
  *   45-automation.js
  *   46-assistant.js
  *   47-analysis.js
+ *   48-radar-summarize.js
  *   50-tools.js
  *   90-apply.js
  */
@@ -246,6 +247,7 @@ function normalizeAutomation(raw) {
     intervalMinutes: Number.isFinite(minutes) && minutes >= 5 ? Math.min(24 * 60, Math.round(minutes)) : 60,
     radar: input.radar !== false,
     mentions: input.mentions !== false,
+    analyze: input.analyze !== false,
   }
 }
 
@@ -581,6 +583,14 @@ function normalizeRadarItem(raw, existing) {
     source: asString(input.source === undefined ? base.source : input.source, 80) || 'manual',
     url: url,
     publishedAt: input.publishedAt === undefined ? base.publishedAt || null : asIso(input.publishedAt),
+    /** TODO 20 日期纪律：publishedAt 可核实才标 published；未知 → unknown（不得用抓取时间冒充） */
+    dateKind: (function () {
+      if (input.dateKind !== undefined) return input.dateKind === 'published' ? 'published' : 'unknown'
+      if (base.dateKind) return base.dateKind
+      if (base.publishedAt || input.publishedAt) return 'published'
+      return 'unknown'
+    })(),
+    fetchedAt: input.fetchedAt === undefined ? base.fetchedAt || base.createdAt || hostNowIso() : asIso(input.fetchedAt) || hostNowIso(),
     topics: input.topics === undefined ? asTags(base.topics, 8) : asTags(input.topics, 8),
     summary: {
       change: asString(summaryInput.change, 800),
@@ -684,6 +694,14 @@ function normalizeState(raw) {
           mentionsAdded: Number(raw.lastAutomation.mentionsAdded) || 0,
           status: asString(raw.lastAutomation.status, 20) || 'ok',
           note: asString(raw.lastAutomation.note, 300),
+        }
+      : null,
+    lastRadarSummarize: raw.lastRadarSummarize && typeof raw.lastRadarSummarize === 'object'
+      ? {
+          at: asIso(raw.lastRadarSummarize.at) || hostNowIso(),
+          done: Number(raw.lastRadarSummarize.done) || 0,
+          failed: Number(raw.lastRadarSummarize.failed) || 0,
+          note: asString(raw.lastRadarSummarize.note, 200) || null,
         }
       : null,
     lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),
@@ -1869,6 +1887,11 @@ const workbenchApi = {
   /** TODO 15：运行一批 AI 识别（手动触发；自动运行由 19 接管）。 */
   async analyzeRun(request) {
     return runAnalysisBatch(workbenchContext(), request || {})
+  },
+
+  /** TODO 20：批量生成四段摘要（读原文 → 模型 → 写回卡片）。 */
+  async radarSummarize(request) {
+    return runRadarSummarizeBatch(workbenchContext(), request || {})
   },
 
   /** TODO 14：清空分析队列（重新采集/重整时使用）。 */
@@ -3125,13 +3148,17 @@ async function discoverRadarByTopics(ctx) {
       }
       knownUrls.add(key)
       knownTitles.push(title)
+      const parsedPublished = asIso(source.publishedAt)
       candidates.push(
         normalizeRadarItem(
           {
             title: title,
             source: '联网检索 · ' + topic,
             url: url,
-            publishedAt: asIso(source.publishedAt) || null,
+            publishedAt: parsedPublished,
+            // TODO 20 日期纪律：publishedAt 可核实才标 published，否则 unknown（显示时注明抓取时间）
+            dateKind: parsedPublished ? 'published' : 'unknown',
+            fetchedAt: hostNowIso(),
             topics: [topic],
             summary: { change: '', usage: '', risk: '', practice: '' },
             excerpt: asString(source.snippet, 800),
@@ -4536,6 +4563,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'analysisStatus', params: [] },
   { method: 'analyzeRun', params: ['request'] },
   { method: 'analyzeReset', params: [] },
+  { method: 'radarSummarize', params: ['request'] },
   { method: 'analyzeConfirm', params: ['entryId'] },
   { method: 'taskMarkHuman', params: ['id', 'mark'] },
   { method: 'assistantMessage', params: ['request'] },
@@ -4621,6 +4649,7 @@ async function runAutomationTick(ctx) {
   }
   const state = loadWorkbenchState()
   const config = (state.settings && state.settings.automation) || {}
+  const extractSettings = (state.settings && state.settings.aiExtract) || {}
   if (!config.enabled) {
     return { ran: false, status: 'disabled', note: '自动化未开启' }
   }
@@ -4629,6 +4658,9 @@ async function runAutomationTick(ctx) {
   const at = hostNowIso()
   let radarAdded = 0
   let mentionsAdded = 0
+  let analysisDone = 0
+  let analysisPending = 0
+  let analysisFailed = false
   const notes = []
   let status = 'ok'
 
@@ -4643,6 +4675,22 @@ async function runAutomationTick(ctx) {
       } catch (e) {
         status = 'partial'
         notes.push('资讯失败：' + String((e && e.message) || e).slice(0, 120))
+      }
+    }
+
+    if (config.analyze !== false && extractSettings.enabled) {
+      // TODO 19：采集 → 分析在同一 tick 顺序执行；识别在写入临界区外跑，
+      // 提交时走统一的 mutate（短写），失败计入重试（attempts<3 每个 tick 重放一次）
+      try {
+        const analyzed = await runAnalysisBatch(ctx, {})
+        notes.push('AI 识别 ' + (analyzed.status === 'ok' ? processed_ + '' : analyzed.status) + (analyzed.processed !== undefined ? '/' + analyzed.processed + ' 条' : ''))
+        if (analyzed.status !== 'ok' && analyzed.status !== 'disabled') {
+          status = status === 'ok' ? 'partial' : status
+          notes.push(analyzed.note || analyzed.status)
+        }
+      } catch (e) {
+        status = 'partial'
+        notes.push('AI 识别失败：' + String((e && e.message) || e).slice(0, 120))
       }
     }
 
@@ -4669,6 +4717,26 @@ async function runAutomationTick(ctx) {
         notes.push('@我 失败：' + String((e && e.message) || e).slice(0, 120))
       }
     }
+
+    if (config.analyze !== false && extractSettings.enabled) {
+      // TODO 19：采集 → 分析在同一 tick 顺序执行；识别在写入临界区外跑，
+      // 提交时走统一的 mutate（短写），失败计入重试（attempts<3 每个 tick 重放一次）
+      try {
+        const analyzed = await runAnalysisBatch(ctx, {})
+        const analyzedCount = Number(analyzed.processed) || 0
+        analysisDone = analyzedCount
+        analysisPending = Number(analyzed.failures) || 0
+        notes.push('AI 识别处理 ' + analyzedCount + ' 条' + (analyzed.failures ? ('，失败 ' + analyzed.failures) : ''))
+        if (analyzed.status !== 'ok' && analyzed.status !== 'disabled') {
+          status = status === 'ok' ? 'partial' : status
+          notes.push(analyzed.note || analyzed.status)
+        }
+      } catch (e) {
+        status = 'partial'
+        analysisFailed = true
+        notes.push('AI 识别失败：' + String((e && e.message) || e).slice(0, 120))
+      }
+    }
   } finally {
     automationInFlight = false
   }
@@ -4678,14 +4746,24 @@ async function runAutomationTick(ctx) {
       at: at,
       radarAdded: radarAdded,
       mentionsAdded: mentionsAdded,
+      analysisDone: analysisDone,
+      analysisFailedAttempts: analysisPending,
+      analysisErrored: analysisFailed,
       status: status,
       note: notes.join('；').slice(0, 300),
     }
-    auditEntry(current, 'automation.tick', '自动执行：资讯 +' + radarAdded + '，@我 +' + mentionsAdded)
+    auditEntry(current, 'automation.tick', '自动执行：资讯 +' + radarAdded + '，@我 +' + mentionsAdded + '，AI 识别 ' + analysisDone)
     return current
   })
 
-  return { ran: true, status: status, radarAdded: radarAdded, mentionsAdded: mentionsAdded, note: notes.join('；') }
+  return {
+    ran: true,
+    status: status,
+    radarAdded: radarAdded,
+    mentionsAdded: mentionsAdded,
+    analysisDone: analysisDone,
+    note: notes.join('；'),
+  }
 }
 
 /** 启动后台检查循环（每 60s 判断是否到期）；返回清理函数。 */
@@ -5713,6 +5791,177 @@ async function confirmAnalysis(ctx, entryId) {
     auditEntry(current, 'analysis.confirmed', entry.sourceId)
     return current
   })
+}
+
+// ===== 48-radar-summarize.js =====
+/* ============================================================================
+ * dev-workbench host — 资讯四段摘要批处理（TODO 20）
+ *
+ * 流程与 15 的分析批处理一致（复用 19 的执行纪律）：
+ *   挑四段为空的资讯 → web.fetch 读原文（每条独立容错）→ 严格 JSON 提示 →
+ *   原生会话 → 解析/校验 → writeRadarSummary（不改动来源/发布时间）→
+ *   lastRadarSummarize 如实记录 done/failed。
+ *
+ * 纪律：
+ *   - 单条失败不影响其余批次（partial 如实）；
+ *   - 原文超过 4000 字截断，提示词明确「不在原文中的不得编造」；
+ *   - 每条独立 muted failure 保留原因。
+ * ========================================================================== */
+
+const SUMMARY_TURN_TIMEOUT_MS = 120000
+
+function radarNeedsSummary(item) {
+  const summary = item.summary || {}
+  return !(summary.change || summary.usage || summary.risk || summary.practice)
+}
+
+/** 读取原文文本：剥掉标签，压空白；失败/长度不足都如实报告。 */
+function stripHtmlToText(html) {
+  return String(html || '')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function summaryPrompt(item, articleText) {
+  const lines = []
+  lines.push('请阅读下面这篇资讯原文，输出一个 JSON 对象，不要输出其它文字。')
+  lines.push('')
+  lines.push('标题：' + (item.title || ''))
+  lines.push('发布时间：' + (item.publishedAt ? item.publishedAt : '原文未注明'))
+  lines.push('')
+  lines.push('原文（节选）：')
+  lines.push(String(articleText || '').slice(0, 4000))
+  lines.push('')
+  lines.push('输出 JSON：')
+  lines.push('{')
+  lines.push('  "change": "技术变化：这次变化的关键事实",')
+  lines.push('  "usage": "应用场景：适合用在哪里",')
+  lines.push('  "risk": "采用风险：可能踩的坑",')
+  lines.push('  "practice": "推荐实践：怎么落地"')
+  lines.push('}')
+  lines.push('规则：结论必须来自原文；原文没讲就不写，宁缺毋滥。')
+  return lines.join('\n')
+}
+
+/**
+ * 批量生成四段摘要。单条失败聚合到 partial；最多处理 limit 条。
+ */
+async function runRadarSummarizeBatch(ctx, request) {
+  const controller = hostService(ctx, 'sessionController')
+  if (!controller || typeof controller.prompt !== 'function') {
+    return { status: 'unavailable', note: '宿主没有 sessionController 服务，无法生成摘要。' }
+  }
+  const settings = loadWorkbenchState().settings
+  if (!settings.aiExtract || settings.aiExtract.enabled !== true) {
+    return { status: 'disabled', note: 'AI 识别未开启（设置 → 自动化 → AI 识别）。' }
+  }
+  const web = ctx && ctx.get ? ctx.get('web') : null
+  if (!web || typeof web.fetch !== 'function') {
+    return { status: 'unavailable', note: '当前 profile 没有 web 抓取服务，无法读取原文。' }
+  }
+
+  const input = request && typeof request === 'object' ? request : {}
+  const limit = Math.max(1, Math.min(10, Number(input.limit) || 3))
+
+  const state0 = loadWorkbenchState()
+  const onlyIds = ensureArray(input.onlyIds).map(function (id) { return String(id) })
+  const all = ensureArray(state0.radar).filter(function (item) {
+    return item.url && radarNeedsSummary(item)
+  })
+  const candidates = (onlyIds.length > 0
+    ? all.filter(function (item) { return onlyIds.indexOf(item.id) >= 0 })
+    : all
+  ).slice(0, limit)
+
+  if (candidates.length === 0) {
+    return { status: 'ok', done: 0, failed: 0, note: '没有待摘要的资讯（都有四段摘要或没有 url）。' }
+  }
+
+  const resolved = await ensureAssistantSession(ctx)
+  if (!resolved) return { status: 'unavailable', note: '当前宿主没有可用的 sessions / sessionController 服务。' }
+
+  let done = 0
+  let failed = 0
+  const perItem = []
+
+  for (const item of candidates) {
+    try {
+      const fetched = await web.fetch({ url: item.url, method: 'GET' }, AbortSignal.timeout(15000))
+      const bodyText =
+        fetched && fetched.body && typeof fetched.body.content === 'string'
+          ? stripHtmlToText(fetched.body.content)
+          : ''
+      if (bodyText.length < 40) {
+        throw new Error('原文内容不足（可能被反爬或需要登录）')
+      }
+
+      const submitted = await submitPrompt(ctx, controller, resolved, summaryPrompt(item, bodyText), false)
+      const deadline = Date.now() + SUMMARY_TURN_TIMEOUT_MS
+      let reply = ''
+      while (Date.now() < deadline) {
+        await sleepMs(ANALYSIS_POLL_MS)
+        const delta = transcriptDelta(submitted.session, submitted.fromSeq)
+        const assistantTexts = delta.entries
+          .filter(function (row) { return row.role === 'assistant' })
+          .map(function (row) { return row.text })
+        if (assistantTexts.length > 0) reply = assistantTexts.join('\n\n')
+        if (!delta.turnActive) break
+      }
+
+      const parsed = extractJsonFromReply(reply)
+      if (!parsed) throw new Error('模型回复无法解析为 JSON')
+
+      const wrote = await mutateWorkbenchState(function (current) {
+        const target = ensureArray(current.radar).find(function (row) {
+          return row.id === item.id
+        })
+        if (!target) throw new Error('资讯已被删除：' + item.id)
+        const index = current.radar.indexOf(target)
+        const next = normalizeRadarItem(
+          { summary: parsed },
+          target,
+        )
+        next.id = target.id
+        next.createdAt = target.createdAt
+        next.updatedAt = hostNowIso()
+        current.radar = current.radar.slice()
+        current.radar[index] = next
+        auditEntry(current, 'radar.summarized', target.title)
+        return current
+      })
+      done += 1
+      perItem.push({ id: item.id, ok: true })
+      void wrote
+    } catch (error) {
+      failed += 1
+      perItem.push({ id: item.id, ok: false, note: String((error && error.message) || error).slice(0, 160) })
+    }
+  }
+
+  await mutateWorkbenchState(function (current) {
+    current.lastRadarSummarize = {
+      at: hostNowIso(),
+      done: done,
+      failed: failed,
+      note: failed > 0 ? perItem.filter(function (row) { return !row.ok }).map(function (row) { return row.note }).slice(0, 3).join('；') : null,
+    }
+    auditEntry(current, 'radar.summarize', '摘要生成：成功 ' + done + ' / 失败 ' + failed)
+    return current
+  })
+
+  return {
+    status: failed > 0 ? 'partial' : 'ok',
+    done: done,
+    failed: failed,
+    note: failed > 0 ? '失败条目见 lastRadarSummarize' : null,
+  }
 }
 
 // ===== 50-tools.js =====

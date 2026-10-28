@@ -42,6 +42,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'analysisStatus', params: [] },
   { method: 'analyzeRun', params: ['request'] },
   { method: 'analyzeReset', params: [] },
+  { method: 'radarSummarize', params: ['request'] },
   { method: 'analyzeConfirm', params: ['entryId'] },
   { method: 'taskMarkHuman', params: ['id', 'mark'] },
   { method: 'assistantMessage', params: ['request'] },

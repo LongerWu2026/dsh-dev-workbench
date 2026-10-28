@@ -559,6 +559,11 @@ const workbenchApi = {
     return runAnalysisBatch(workbenchContext(), request || {})
   },
 
+  /** TODO 20：批量生成四段摘要（读原文 → 模型 → 写回卡片）。 */
+  async radarSummarize(request) {
+    return runRadarSummarizeBatch(workbenchContext(), request || {})
+  },
+
   /** TODO 14：清空分析队列（重新采集/重整时使用）。 */
   async analyzeReset() {
     return mutateWorkbenchState(function (state) {
