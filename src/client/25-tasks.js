@@ -842,7 +842,7 @@ function TaskCenterPage() {
           }),
         ),
       ),
-      hasDutyTasks
+      true
         ? h(
             'div',
             { className: 'wb-row wb-row--wrap', style: { gap: 6, marginBottom: 6 } },

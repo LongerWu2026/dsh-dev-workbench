@@ -28,6 +28,8 @@ function TaskFormHost() {
   const [projectId, setProjectId] = React.useState('')
   const [tags, setTags] = React.useState('')
   const [assignee, setAssignee] = React.useState('')
+  const [needsReply, setNeedsReply] = React.useState(false)
+  const [replyStage, setReplyStage] = React.useState('待答复')
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState(null)
 
@@ -42,6 +44,8 @@ function TaskFormHost() {
       setProjectId(task ? task.projectId || '' : defaults.projectId || '')
       setTags(task ? (task.tags || []).join(', ') : (defaults.tags || []).join(', '))
       setAssignee(task ? task.assignee || '' : defaults.assignee || '')
+      setNeedsReply(task ? task.needsReply === true : false)
+      setReplyStage(task && task.replyStage ? task.replyStage : '待答复')
       setError(null)
       setBusy(false)
     },
@@ -75,6 +79,9 @@ function TaskFormHost() {
         })
         .filter(Boolean),
       assignee: assignee.trim() || null,
+      needsReply: needsReply === true,
+      replyStage: needsReply ? replyStage : null,
+      eventType: task && task.eventType ? task.eventType : null,
     }
     setBusy(true)
     setError(null)
@@ -189,6 +196,26 @@ function TaskFormHost() {
             setAssignee(event.target.value)
           },
         })),
+        h(Field, { label: '待回复', hint: '标记后进入首页「待回复」面板跟踪' }, h(Toggle, {
+          checked: needsReply,
+          onChange: function (next) {
+            setNeedsReply(next)
+          },
+        })),
+        needsReply
+          ? h(Field, { label: '回复阶段' }, h(Select, {
+              options: [
+                { value: '待答复', label: '待答复' },
+                { value: '已确认收到', label: '已确认收到' },
+                { value: '已实质答复', label: '已实质答复' },
+                { value: '不需答复', label: '不需答复' },
+              ],
+              value: replyStage,
+              onChange: function (event) {
+                setReplyStage(event.target.value)
+              },
+            }))
+          : null,
       ),
       task && task.aiExtracted
         ? h(

@@ -3004,6 +3004,8 @@ window.__ModuleLoader__.load({
       const [projectId, setProjectId] = React.useState('')
       const [tags, setTags] = React.useState('')
       const [assignee, setAssignee] = React.useState('')
+      const [needsReply, setNeedsReply] = React.useState(false)
+      const [replyStage, setReplyStage] = React.useState('待答复')
       const [busy, setBusy] = React.useState(false)
       const [error, setError] = React.useState(null)
 
@@ -3018,6 +3020,8 @@ window.__ModuleLoader__.load({
           setProjectId(task ? task.projectId || '' : defaults.projectId || '')
           setTags(task ? (task.tags || []).join(', ') : (defaults.tags || []).join(', '))
           setAssignee(task ? task.assignee || '' : defaults.assignee || '')
+          setNeedsReply(task ? task.needsReply === true : false)
+          setReplyStage(task && task.replyStage ? task.replyStage : '待答复')
           setError(null)
           setBusy(false)
         },
@@ -3051,6 +3055,9 @@ window.__ModuleLoader__.load({
             })
             .filter(Boolean),
           assignee: assignee.trim() || null,
+          needsReply: needsReply === true,
+          replyStage: needsReply ? replyStage : null,
+          eventType: task && task.eventType ? task.eventType : null,
         }
         setBusy(true)
         setError(null)
@@ -3165,6 +3172,26 @@ window.__ModuleLoader__.load({
                 setAssignee(event.target.value)
               },
             })),
+            h(Field, { label: '待回复', hint: '标记后进入首页「待回复」面板跟踪' }, h(Toggle, {
+              checked: needsReply,
+              onChange: function (next) {
+                setNeedsReply(next)
+              },
+            })),
+            needsReply
+              ? h(Field, { label: '回复阶段' }, h(Select, {
+                  options: [
+                    { value: '待答复', label: '待答复' },
+                    { value: '已确认收到', label: '已确认收到' },
+                    { value: '已实质答复', label: '已实质答复' },
+                    { value: '不需答复', label: '不需答复' },
+                  ],
+                  value: replyStage,
+                  onChange: function (event) {
+                    setReplyStage(event.target.value)
+                  },
+                }))
+              : null,
           ),
           task && task.aiExtracted
             ? h(
@@ -4706,6 +4733,95 @@ window.__ModuleLoader__.load({
           : null,
       )
 
+      // ---- 待回复面板（TODO 16 可见性）：常驻，AI 判定的需回复事项在这里跟踪推进
+      const replyTasks = tasks
+        .filter(function (task) {
+          return task.needsReply === true
+        })
+        .sort(function (left, right) {
+          const leftAt = left.dueAt ? new Date(left.dueAt).getTime() : Infinity
+          const rightAt = right.dueAt ? new Date(right.dueAt).getTime() : Infinity
+          return leftAt - rightAt
+        })
+      const stageChips = [
+        { id: '已确认收到', hint: '已回应对方，事项本身待交付' },
+        { id: '已实质答复', hint: '已给出实质交付/答复' },
+        { id: '不需答复', hint: '无需回复（例：对方自行解决）' },
+      ]
+      const replyPanel = h(
+        Panel,
+        {
+          icon: 'link',
+          title: '待回复',
+          sub:
+            replyTasks.length > 0
+              ? ' click 点击阶段 chip 推进；或到任务中心筛选与手动标记'
+              : null,
+          badge: replyTasks.length > 0 ? h(Badge, { tone: 'warn' }, String(replyTasks.length)) : null,
+          actions: h(Btn, {
+            size: 'sm',
+            kind: 'subtle',
+            icon: 'tasks',
+            onClick: function () {
+              dashStoreNavigate({ status: 'open' })
+              setTimeout(function () {
+                if (WB.go) WB.go('tasks')
+              }, 0)
+            },
+            children: '到任务中心',
+          }),
+        },
+        replyTasks.length === 0
+          ? h(Empty, {
+              icon: 'tasks',
+              title: '没有待回复的事项',
+              hint: 'AI 识别判定的需回复事项会在这里跟踪；也可在新建/编辑待办时打开「待回复」手动标记。',
+            })
+          : h(
+              'div',
+              { className: 'wb-list' },
+              replyTasks.slice(0, 6).map(function (task) {
+                return h(
+                  'div',
+                  { key: task.id, className: 'wb-item' },
+                  h(
+                    'button',
+                    {
+                      type: 'button',
+                      className: 'wb-item-main',
+                      style: { background: 'transparent', border: 0, padding: 0, textAlign: 'left', cursor: 'pointer' },
+                      onClick: function () {
+                        WB.focusTask(task.id)
+                      },
+                    },
+                    h('div', { className: 'wb-item-title' }, task.title),
+                    h(
+                      'div',
+                      { className: 'wb-item-sub' },
+                      task.replyStage || '待标记',
+                      task.dueAt ? ' · ' + WB.fmt.due(task.dueAt).text : '',
+                    ),
+                  ),
+                  h(
+                    'div',
+                    { className: 'wb-row', style: { gap: 5, flex: 'none' } },
+                    stageChips.map(function (chip) {
+                      return h(Chip, {
+                        key: chip.id,
+                        active: task.replyStage === chip.id,
+                        title: chip.hint,
+                        onClick: function () {
+                          WB.actions.setReplyStage(task.id, chip.id).catch(function () {})
+                        },
+                        children: chip.id,
+                      })
+                    }),
+                  ),
+                )
+              }),
+            ),
+      )
+
       // ---- 快捷操作：把高频入口与本地小工具收在一张卡里（§2.1 首页应有快捷操作）
       const quickActionsPanel = h(
         Panel,
@@ -4988,6 +5104,7 @@ window.__ModuleLoader__.load({
           : null,
         statStrip,
         h('div', { className: 'wb-split', style: { gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)', marginBottom: 16 } }, taskPanel, radarPanel),
+        replyPanel,
         h('div', { style: { marginBottom: 16 } }, quickActionsPanel),
         connectorsPanel,
         h(DashRadarModal, {
@@ -5848,7 +5965,7 @@ window.__ModuleLoader__.load({
               }),
             ),
           ),
-          hasDutyTasks
+          true
             ? h(
                 'div',
                 { className: 'wb-row wb-row--wrap', style: { gap: 6, marginBottom: 6 } },
