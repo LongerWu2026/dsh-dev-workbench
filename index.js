@@ -1919,6 +1919,32 @@ const workbenchApi = {
     return confirmAnalysis(workbenchContext(), entryId)
   },
 
+  /** TODO 16：人工推进回复阶段（待答复 → 已确认收到 / 已实质答复 / 不需答复）。
+   *  这是人工动作：replyStage 记入 humanGuard.editedFields，后续 AI 不得覆盖。 */
+  async setReplyStage(id, stage) {
+    const STAGES = ['待答复', '已确认收到', '已实质答复', '不需答复']
+    return mutateWorkbenchState(function (state) {
+      const index = ensureArray(state.tasks).findIndex(function (task) {
+        return task.id === id
+      })
+      if (index < 0) throw new Error('找不到该待办：' + String(id))
+      const stageText = asString(stage, 20)
+      if (STAGES.indexOf(stageText) < 0) throw new Error('未知的回复阶段：' + stageText)
+      const task = state.tasks[index]
+      const guard = normalizeHumanGuard(
+        Object.assign({}, normalizeHumanGuard(task.humanGuard), {
+          editedFields: normalizeHumanGuard({ editedFields: normalizeHumanGuard(task.humanGuard).editedFields.concat(['replyStage']) }).editedFields,
+        }),
+      )
+      const next = normalizeTask({ replyStage: stageText }, task)
+      next.humanGuard = guard
+      state.tasks = state.tasks.slice()
+      state.tasks[index] = next
+      auditEntry(state, 'task.replyStage', task.title + ' → ' + stageText)
+      return state
+    })
+  },
+
   /** TODO 17：人工处置（保护字段）。ignore/snooze/handled 不改任务 status，仅写 humanGuard。 */
   async taskMarkHuman(id, mark) {
     const payload = mark && typeof mark === 'object' ? mark : {}
@@ -4578,6 +4604,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'exportMigration', params: [] },
   { method: 'importMigration', params: ['request'] },
   { method: 'analyzeConfirm', params: ['entryId'] },
+  { method: 'setReplyStage', params: ['id', 'stage'] },
   { method: 'taskMarkHuman', params: ['id', 'mark'] },
   { method: 'assistantMessage', params: ['request'] },
   { method: 'deleteSource', params: ['id'] },

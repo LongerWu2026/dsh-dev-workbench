@@ -46,6 +46,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'exportMigration', params: [] },
   { method: 'importMigration', params: ['request'] },
   { method: 'analyzeConfirm', params: ['entryId'] },
+  { method: 'setReplyStage', params: ['id', 'stage'] },
   { method: 'taskMarkHuman', params: ['id', 'mark'] },
   { method: 'assistantMessage', params: ['request'] },
   { method: 'deleteSource', params: ['id'] },

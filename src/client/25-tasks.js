@@ -673,6 +673,8 @@ function TaskCenterPage() {
     if (typeFilter !== 'all' && task.eventType !== typeFilter) return false
     return true
   }
+  const replyCount = filterBase.filter(function (task) { return task.needsReply === true }).length
+  const replyStages = { '待答复': 'warn', '已确认收到': 'idle', '已实质答复': 'ok', '不需答复': 'idle' }
   const visible = tcSortTasks(tcFilterList(filterBase, { status: status })).filter(dutyTypeFilter)
   const tabCounts = tcTabCounts(filterBase)
   const tagCounts = tcTagCounts(tasks)
@@ -833,7 +835,7 @@ function TaskCenterPage() {
             h('span', { className: 'wb-tiny wb-muted' }, '义务：'),
             [
               { id: 'all', label: '全部' },
-              { id: 'reply', label: '待回复' },
+              { id: 'reply', label: '待回复 ' + replyCount },
               { id: 'action', label: '待处理' },
             ].map(function (option) {
               return h(Chip, {

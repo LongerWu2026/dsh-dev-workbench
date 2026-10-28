@@ -211,7 +211,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 53 个 Remote 描述符', invocations.length === 53, '实际 ' + invocations.length)
+check('注册了 54 个 Remote 描述符', invocations.length === 54, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -1561,6 +1561,26 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
   const afterMap = await api.snapshot()
   const mappedProject = afterMap.projects.find((project) => project.id === migProjectId)
   check('TODO21 repoPath 已映射', !!mappedProject && mappedProject.repoPath === '/Users/me/work/mig', JSON.stringify({ repoPath: mappedProject && mappedProject.repoPath, name: mappedProject && mappedProject.name }))
+}
+
+// TODO 16：回复阶段人工推进（徽标背后的端到端）
+{
+  const stageTask = await api.createTask({ title: '回复阶段验证', needsReply: true, replyStage: '待答复' })
+  const stageId = stageTask.tasks.slice(-1)[0].id
+  await api.setReplyStage(stageId, '已确认收到')
+  const mid = (await api.snapshot()).tasks.find((task) => task.id === stageId)
+  check('TODO16 回复阶段可推进', mid.replyStage === '已确认收到', mid.replyStage)
+  check('TODO16 推进记入人工保护', (mid.humanGuard.editedFields || []).indexOf('replyStage') >= 0, JSON.stringify(mid.humanGuard))
+  await api.setReplyStage(stageId, '已实质答复')
+  const done = (await api.snapshot()).tasks.find((task) => task.id === stageId)
+  check('TODO16 已实质答复阶段可达成', done.replyStage === '已实质答复')
+  let badStage = false
+  try {
+    await api.setReplyStage(stageId, '随便写写')
+  } catch (e) {
+    badStage = /未知的回复阶段/.test(String((e && e.message) || e))
+  }
+  check('TODO16 非法阶段被拒绝', badStage)
 }
 
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖

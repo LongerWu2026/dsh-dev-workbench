@@ -149,6 +149,13 @@ function dashTagPill(topic, key) {
 
 /* ------------------------------------------------------------- dashboard UI */
 
+/** 回复阶段的展示色。 */
+function replyStageTone(stage) {
+  if (stage === '已实质答复') return 'ok'
+  if (stage === '待答复') return 'warn'
+  return 'idle'
+}
+
 function DashTaskRow(props) {
   const task = props.task
   const data = props.data
