@@ -1195,6 +1195,15 @@ const wbActions = {
     return wbRpc('workbench/assistantReset', {})
   },
 
+  analysisStatus() {
+    return wbRpc('workbench/analysisStatus', {})
+  },
+  analyzeRun(limit) {
+    return wbRpc('workbench/analyzeRun', { request: { limit: limit || 5 } })
+  },
+  analyzeConfirm(entryId) {
+    return settle(wbRpc('workbench/analyzeConfirm', { entryId: entryId }), '已按分析登记待办')
+  },
   automationRun() {
     return wbRpc('workbench/automationRun', {})
   },

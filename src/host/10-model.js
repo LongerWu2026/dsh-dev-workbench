@@ -43,6 +43,8 @@ function emptyWorkbenchState() {
     radar: [],
     connectors: [],
     candidates: [],
+    /** TODO 14：分析队列（采集已入库、等待/正在/失败 AI 识别的消息） */
+    analysisQueue: [],
     syncCursors: {},
     lastAutomation: null,
     audit: [],
@@ -64,6 +66,18 @@ function normalizeFeed(raw) {
   }
 }
 
+function normalizeAiExtract(raw) {
+  const input = raw && typeof raw === 'object' ? raw : {}
+  return {
+    enabled: input.enabled === true,
+    autoRegister: input.autoRegister === true,
+    batchSize: (function () {
+      const n = Number(input.batchSize)
+      return Number.isFinite(n) ? Math.max(1, Math.min(20, Math.round(n))) : 5
+    })(),
+  }
+}
+
 function normalizeAutomation(raw) {
   const input = raw && typeof raw === 'object' ? raw : {}
   const minutes = Number(input.intervalMinutes)
@@ -73,6 +87,51 @@ function normalizeAutomation(raw) {
     radar: input.radar !== false,
     mentions: input.mentions !== false,
   }
+}
+
+const ANALYSIS_STATUSES = ['pending', 'running', 'failed', 'done', 'awaiting_human']
+
+/** TODO 14：分析队列条目（按 msgId 幂等；失败保留 attempts/lastError 以便重放） */
+function normalizeAnalysisQueue(raw) {
+  const list = ensureArray(raw)
+    .map(function (item) {
+      const row = item && typeof item === 'object' ? item : {}
+      const sourceId = asString(row.sourceId, 80)
+      if (!sourceId) return null
+      const analysis = row.analysis && typeof row.analysis === 'object' ? row.analysis : null
+      return {
+        id: asString(row.id, 80) || newId('aq'),
+        sourceId: sourceId,
+        msgId: asString(row.msgId, 80) || null,
+        groupId: asString(row.groupId, 80) || null,
+        status: ANALYSIS_STATUSES.indexOf(row.status) >= 0 ? row.status : 'pending',
+        attempts: Number(row.attempts) || 0,
+        lastError: asString(row.lastError, 200) || null,
+        at: asIso(row.at) || hostNowIso(),
+        analyzedAt: asIso(row.analyzedAt) || null,
+        analysis: analysis
+          ? {
+              noise: analysis.noise === true,
+              items: (ensureArray(analysis.items).slice(0, 6).map(function (item) {
+                const one = item && typeof item === 'object' ? item : {}
+                return {
+                  needsReply: one.needsReply === true,
+                  needsAction: one.needsAction === true,
+                  eventType: EVENT_TYPES.indexOf(one.eventType) >= 0 ? one.eventType : null,
+                  title: asString(one.title, 200) || null,
+                  dueAt: asIso(one.dueAt) || null,
+                  deliverable: asString(one.deliverable, 300) || null,
+                  replyStage: REPLY_STAGES.indexOf(one.replyStage) >= 0 ? one.replyStage : null,
+                }
+              })).filter(function (item) { return item.title }),
+              summary: asString(analysis.summary, 400) || null,
+            }
+          : null,
+        taskIds: ensureArray(row.taskIds).slice(0, 6).map(function (id) { return asString(id, 80) }).filter(Boolean),
+      }
+    })
+    .filter(Boolean)
+  return list.slice(-300)
 }
 
 function normalizeSyncCursors(raw) {
@@ -150,6 +209,8 @@ function normalizeSettings(raw) {
     mentionKeywords: asTags(input.mentionKeywords, 6),
     /** 工作台助手复用的原生会话 id（侧栏聊天） */
     assistantSessionId: asString(input.assistantSessionId, 120) || null,
+    /** TODO 15：AI 结构化识别配置（默认全关；自动运行另由 automation/19 控制） */
+    aiExtract: normalizeAiExtract(input.aiExtract),
     /** 助手侧栏宽度（px）：拖拽分栏后持久化，重启/刷新保持 */
     assistantWidth: (function () {
       const width = Number(input.assistantWidth)
@@ -454,6 +515,7 @@ function normalizeState(raw) {
       .filter(function (operation) {
         return operation.key.length > 0
       }),
+    analysisQueue: normalizeAnalysisQueue(raw.analysisQueue),
     syncCursors: normalizeSyncCursors(raw.syncCursors),
     lastAutomation: raw.lastAutomation && typeof raw.lastAutomation === 'object'
       ? {

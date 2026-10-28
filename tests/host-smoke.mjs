@@ -211,7 +211,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 46 个 Remote 描述符', invocations.length === 46, '实际 ' + invocations.length)
+check('注册了 50 个 Remote 描述符', invocations.length === 50, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -1237,6 +1237,118 @@ check(
   yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
 }
 
+
+// TODO 14/15：分析队列 + AI 结构化识别 + 合并 + 人工确认 + 重启持久
+{
+  function makeAnalysisWorld(replies) {
+    // replies: 数组，按次序返回 JSON 文本
+    const events = []
+    const session = {
+      id: 'session-analysis-fake',
+      get seq() { return events.length },
+      snapshotEvents(from, to) {
+        return events.slice(from === undefined ? 0 : from, to === undefined ? events.length : to)
+      },
+    }
+    const registry = new Map([[session.id, session]])
+    let call = -1
+    return {
+      events: events,
+      session: session,
+      sessions: { get: (id) => registry.get(id), create() { return session }, list: () => [session] },
+      controller: {
+        createSession: async () => ({ agent: { session: session }, agentPreset: 'default' }),
+        prompt: async () => {
+          call += 1
+          const replyText = replies[Math.min(call, replies.length - 1)]
+          setTimeout(() => {
+            events.push({ type: 'assistant/message', seq: events.length + 1, time: Date.now(), data: { message: { id: 'an-' + events.length, content: [{ type: 'text', text: replyText }] } } })
+            events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
+          }, 15)
+          return { accepted: true }
+        },
+      },
+    }
+  }
+
+  // 采集两条 @我 消息 → 队列两条 pending
+  const world = makeAnalysisWorld([
+    '```json\n{"noise":false,"summary":"两条交办","items":[{"needsReply":true,"needsAction":true,"eventType":"feature","title":"压测网关限流","dueAt":"2026-10-29T18:00:00.000Z","deliverable":"压测报告","replyStage":"待答复"},{"needsReply":true,"needsAction":false,"eventType":"meeting","title":"周五对齐会","dueAt":null,"deliverable":null,"replyStage":"待答复"}]}\n```',
+    '```json\n{"noise":true,"summary":"问候","items":[]}\n```',
+  ])
+  fakeSessions = world.sessions
+  fakeSessionController = world.controller
+  await api.analyzeReset()
+  await api.saveSettings({ aiExtract: { enabled: true, autoRegister: true, batchSize: 5 }, assistantSessionId: null })
+
+  const yzj = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let text = JSON.stringify({ success: true, data: {} });
+    if (/whoami/.test(cmd)) text = JSON.stringify(WHOAMI)
+    else if (/im group recent/.test(cmd)) text = JSON.stringify({ success: true, data: { list: [{ groupId: 'g-an', groupName: '分析群' }] } })
+    else if (/im message list/.test(cmd)) text = JSON.stringify({ success: true, data: { list: list } })
+    else if (/contact user get/.test(cmd)) text = JSON.stringify({ success: true, data: { list: [{ name: '发起人', openId: 'other-an' }] } })
+    return { collected: { stdout: { readFrom: () => ({ text: text, nextOffset: text.length, lossy: false }) }, stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) } }, done: Promise.resolve({ exitCode: 0, signal: null }), terminate() {} } },
+    resolveExecutable: async () => '/fake/yzj-cli' })
+  yzjSpawner = yzj([
+    { message: { msgId: 'an-1', content: '请把压测网关限流的结论在明天下班前给我，另外周五对齐会参加一下', fromOpenId: 'other-an', sendTime: '2026-10-28 10:00:00', param: { notifyType: 1 } } },
+    { message: { msgId: 'an-2', content: '你好呀，辛苦啦 🎉', fromOpenId: 'other-an', sendTime: '2026-10-28 10:05:00', param: { notifyType: 1 } } },
+  ])
+
+  await api.fetchMentions()
+  let status = await api.analysisStatus()
+  check('TODO14 新来源进入分析队列（采集/识别解耦）', status.pending === 2, JSON.stringify({ pending: status.pending }))
+
+  // 第一批分析：两条消息 → 建两个待办（autoRegister 开）+ 噪声不建
+  const run = await api.analyzeRun({})
+  check('TODO15 AI 分析执行成功', run.status === 'ok' && run.processed === 2, JSON.stringify(run).slice(0, 140))
+  status = await api.analysisStatus()
+  check('TODO15 分析完成入队 done', status.done === 2 && status.pending === 0, JSON.stringify({ done: status.done, pending: status.pending }))
+  const after = await api.snapshot()
+  const aiTasks = after.tasks.filter((task) => task.aiExtracted === true)
+  check(
+  'TODO15 结构化识别建待办（拆两事项）',
+  aiTasks.filter((task) => task.title === '压测网关限流' || task.title === '周五对齐会').length === 2 &&
+    !aiTasks.some((task) => task.title.indexOf('你好') >= 0),
+  aiTasks.map((task) => task.title).join(' | '),
+)
+  const stress = aiTasks.find((task) => task.title.indexOf('压测网关限流') >= 0)
+  check('TODO15 契约字段写入', !!stress && stress.needsReply === true && stress.needsAction === true && stress.eventType === 'feature' && stress.replyStage === '待答复' && !!stress.dueAt)
+  check('TODO15 多来源引用落在任务上', !!stress && (stress.sourceRefs || []).some((ref) => ref.msgId === 'an-1'))
+  check('TODO15 噪声（问候）不建待办', !aiTasks.some((task) => task.title.indexOf('你好') >= 0))
+
+  // 重跑：队列已 done，不重复建
+  const again = await api.analyzeRun({})
+  const afterAgain = await api.snapshot()
+  const dupTitles = afterAgain.tasks.filter((task) => task.title === '压测网关限流' || task.title === '周五对齐会').length
+  check('TODO15 重复分析不重复建任务', dupTitles === 2, JSON.stringify({ dupTitles: dupTitles }))
+
+  // 重启（reload）：队列与分析结果仍在
+  const { apply: applyReload } = await import('../index.js?analysis=' + Date.now())
+  const reloadedServices = {}
+  applyReload({ provide: (name, value) => (reloadedServices[name] = value), inject: () => {}, effect: (fn) => fn(), get: () => undefined, logger: { info() {} } })
+  const reloaded = await reloadedServices.workbench.snapshot()
+  check('TODO14 队列与结果重启后保持', (reloaded.analysisQueue || []).filter((row) => row.status === 'done').length === 2)
+
+  // autoRegister 关：新来源分析后停在 awaiting_human，人工确认才建
+  const world2 = makeAnalysisWorld(['```json\n{"noise":false,"summary":"一条交办","items":[{"needsReply":true,"needsAction":true,"eventType":"logging","title":"登记差旅报销","dueAt":null,"deliverable":null,"replyStage":null}]}\n```'])
+  fakeSessions = world2.sessions
+  fakeSessionController = world2.controller
+  await api.analyzeReset()
+  await api.saveSettings({ aiExtract: { enabled: true, autoRegister: false } })
+  yzjSpawner = yzj([{ message: { msgId: 'an-9', content: '记得登记一下上周的差旅报销', fromOpenId: 'other-an', sendTime: '2026-10-28 11:00:00', param: { notifyType: 1 } } }])
+  await api.fetchMentions()
+  const run2 = await api.analyzeRun({})
+  const status2 = await api.analysisStatus()
+  check('TODO15 autoRegister 关：停在待人工确认', status2.awaitingHuman === 1 && run2.status === 'ok', JSON.stringify(status2))
+  const beforeConfirm = (await api.snapshot()).tasks.filter((task) => task.title.indexOf('差旅') >= 0).length
+  const awaitingEntry = status2.entries.find((row) => row.status === 'awaiting_human')
+  await api.analyzeConfirm(awaitingEntry.id)
+  const afterConfirm = (await api.snapshot()).tasks.filter((task) => task.title.indexOf('差旅') >= 0).length
+  check('TODO15 人工确认后建待办', beforeConfirm === 0 && afterConfirm === 1)
+
+  fakeSessions = null
+  fakeSessionController = null
+  yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
+}
 
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖
 {

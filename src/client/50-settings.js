@@ -662,6 +662,26 @@ function SettingsPage() {
               }),
             }),
             h(SettingsRow, {
+              title: 'AI 识别新消息（结构化提炼）',
+              hint: '消息先入库；识别单独运行，失败可重放，不调模型不扣时限外额度',
+              control: h(Toggle, {
+                checked: !!(settings.aiExtract && settings.aiExtract.enabled),
+                onChange: function (next) {
+                  patchSettings({ aiExtract: { enabled: next } })
+                },
+              }),
+            }),
+            h(SettingsRow, {
+              title: '识别后自动登记待办',
+              hint: '开启后明确交办直接建档；关闭则进入待确认，由你确认后创建',
+              control: h(Toggle, {
+                checked: !!(settings.aiExtract && settings.aiExtract.autoRegister),
+                onChange: function (next) {
+                  patchSettings({ aiExtract: { autoRegister: next } })
+                },
+              }),
+            }),
+            h(SettingsRow, {
               title: '拉取 @我 消息',
               hint: '增量游标优先；云之家不可用时自动跳过',
               control: h(Toggle, {

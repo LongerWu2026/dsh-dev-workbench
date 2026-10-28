@@ -535,6 +535,44 @@ const workbenchApi = {
     return readAssistantMessage(workbenchContext(), request || {})
   },
 
+  /** TODO 15：AI 识别状态（队列概览）。 */
+  async analysisStatus() {
+    const state = loadWorkbenchState()
+    const queue = ensureArray(state.analysisQueue)
+    const by = function (status) {
+      return queue.filter(function (row) { return row.status === status }).length
+    }
+    return {
+      enabled: !!(state.settings.aiExtract && state.settings.aiExtract.enabled),
+      autoRegister: !!(state.settings.aiExtract && state.settings.aiExtract.autoRegister),
+      pending: by('pending'),
+      failed: by('failed'),
+      awaitingHuman: by('awaiting_human'),
+      done: by('done'),
+      entries: queue.slice(-12).reverse(),
+      note: '采集与识别解耦：消息先入库，AI 识别单独运行、失败可重放。',
+    }
+  },
+
+  /** TODO 15：运行一批 AI 识别（手动触发；自动运行由 19 接管）。 */
+  async analyzeRun(request) {
+    return runAnalysisBatch(workbenchContext(), request || {})
+  },
+
+  /** TODO 14：清空分析队列（重新采集/重整时使用）。 */
+  async analyzeReset() {
+    return mutateWorkbenchState(function (state) {
+      state.analysisQueue = []
+      auditEntry(state, 'analysis.reset', '清空分析队列')
+      return state
+    })
+  },
+
+  /** TODO 15：人工确认——把 awaiting_human 的条目按已保存分析建待办。 */
+  async analyzeConfirm(entryId) {
+    return confirmAnalysis(workbenchContext(), entryId)
+  },
+
   /** TODO 17：人工处置（保护字段）。ignore/snooze/handled 不改任务 status，仅写 humanGuard。 */
   async taskMarkHuman(id, mark) {
     const payload = mark && typeof mark === 'object' ? mark : {}

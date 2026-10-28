@@ -525,25 +525,38 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
     const externalId = 'yzj:msg:' + mention.msgId
     if (existing.has(externalId)) continue
     existing.add(externalId)
-    state.sources = ensureArray(state.sources).concat([
-      normalizeSource({
-        provider: 'yunzhijia',
-        externalId: externalId,
-        url: null,
-        title: '@我 · ' + mention.groupName,
-        excerpt: mention.content,
-        fetchedAt: mention.sendTime || at,
-        sender:
-          (mention.fromOpenId && senderNames.get(mention.fromOpenId)) ||
-          (mention.fromOpenId ? mention.fromOpenId.slice(0, 8) + '…' : null),
-        locator: {
-          groupId: mention.groupId,
-          msgId: mention.msgId,
-          groupName: mention.groupName,
-        },
-      }),
-    ])
+    const createdSource = normalizeSource({
+      provider: 'yunzhijia',
+      externalId: externalId,
+      url: null,
+      title: '@我 · ' + mention.groupName,
+      excerpt: mention.content,
+      fetchedAt: mention.sendTime || at,
+      sender:
+        (mention.fromOpenId && senderNames.get(mention.fromOpenId)) ||
+        (mention.fromOpenId ? mention.fromOpenId.slice(0, 8) + '…' : null),
+      locator: {
+        groupId: mention.groupId,
+        msgId: mention.msgId,
+        groupName: mention.groupName,
+      },
+    })
+    state.sources = ensureArray(state.sources).concat([createdSource])
     added += 1
+    // TODO 14：新来源进入分析队列（AI 识别）；采集游标照常推进，互不阻塞
+    if (!ensureArray(state.analysisQueue).some(function (row) { return row.sourceId === createdSource.id })) {
+      state.analysisQueue = ensureArray(state.analysisQueue).concat([
+        {
+          id: newId('aq'),
+          sourceId: createdSource.id,
+          msgId: mention.msgId,
+          groupId: mention.groupId,
+          status: 'pending',
+          attempts: 0,
+          at: hostNowIso(),
+        },
+      ]).slice(-300)
+    }
   }
 
   const mode = incremental

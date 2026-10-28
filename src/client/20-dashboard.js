@@ -1509,6 +1509,7 @@ function DashboardPage() {
                 { key: 'agents', icon: 'agent', label: 'Agent 中心', run: function () { WB.go('agents') } },
                 { key: 'mentions', icon: 'sparkles', label: mentionsBusy ? '拉取 @我…' : '拉取 @我', run: runMentionsFetch, disabled: mentionsBusy },
                 { key: 'radar', icon: 'refresh', label: radarFetching ? '抓取中…' : '抓取资讯', run: runRadarFetch, disabled: radarFetching },
+                { key: 'aiextract', icon: 'sparkles', label: '运行 AI 分析', run: function () { WB.actions.analyzeRun(8) } },
               ].map(function (item) {
                 return h(
                   'button',

@@ -1221,6 +1221,15 @@ window.__ModuleLoader__.load({
         return wbRpc('workbench/assistantReset', {})
       },
 
+      analysisStatus() {
+        return wbRpc('workbench/analysisStatus', {})
+      },
+      analyzeRun(limit) {
+        return wbRpc('workbench/analyzeRun', { request: { limit: limit || 5 } })
+      },
+      analyzeConfirm(entryId) {
+        return settle(wbRpc('workbench/analyzeConfirm', { entryId: entryId }), '已按分析登记待办')
+      },
       automationRun() {
         return wbRpc('workbench/automationRun', {})
       },
@@ -4688,6 +4697,7 @@ window.__ModuleLoader__.load({
                     { key: 'agents', icon: 'agent', label: 'Agent 中心', run: function () { WB.go('agents') } },
                     { key: 'mentions', icon: 'sparkles', label: mentionsBusy ? '拉取 @我…' : '拉取 @我', run: runMentionsFetch, disabled: mentionsBusy },
                     { key: 'radar', icon: 'refresh', label: radarFetching ? '抓取中…' : '抓取资讯', run: runRadarFetch, disabled: radarFetching },
+                    { key: 'aiextract', icon: 'sparkles', label: '运行 AI 分析', run: function () { WB.actions.analyzeRun(8) } },
                   ].map(function (item) {
                     return h(
                       'button',
@@ -11797,6 +11807,26 @@ window.__ModuleLoader__.load({
                     onChange: function (next) {
                       patchSettings({ automation: { radar: next } })
                       setAutomation(Object.assign({}, automation, { radar: next }))
+                    },
+                  }),
+                }),
+                h(SettingsRow, {
+                  title: 'AI 识别新消息（结构化提炼）',
+                  hint: '消息先入库；识别单独运行，失败可重放，不调模型不扣时限外额度',
+                  control: h(Toggle, {
+                    checked: !!(settings.aiExtract && settings.aiExtract.enabled),
+                    onChange: function (next) {
+                      patchSettings({ aiExtract: { enabled: next } })
+                    },
+                  }),
+                }),
+                h(SettingsRow, {
+                  title: '识别后自动登记待办',
+                  hint: '开启后明确交办直接建档；关闭则进入待确认，由你确认后创建',
+                  control: h(Toggle, {
+                    checked: !!(settings.aiExtract && settings.aiExtract.autoRegister),
+                    onChange: function (next) {
+                      patchSettings({ aiExtract: { autoRegister: next } })
                     },
                   }),
                 }),
