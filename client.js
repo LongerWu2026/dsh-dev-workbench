@@ -5435,6 +5435,9 @@ window.__ModuleLoader__.load({
       const [pendingFocusId, setPendingFocusId] = React.useState(null)
       const [candidateBusy, setCandidateBusy] = React.useState(false)
       const [dragStatus, setDragStatus] = React.useState(null)
+      // TODO 17：事项义务与类型筛选（对齐新任务字段契约）
+      const [dutyFilter, setDutyFilter] = React.useState('all')
+      const [typeFilter, setTypeFilter] = React.useState('all')
       const focusRowRef = React.useRef(null)
 
       const preset = state.taskPreset
@@ -5516,7 +5519,13 @@ window.__ModuleLoader__.load({
         dueFilter: dueFilter,
         status: 'all',
       })
-      const visible = tcSortTasks(tcFilterList(filterBase, { status: status }))
+      const dutyTypeFilter = function (task) {
+        if (dutyFilter === 'reply' && task.needsReply !== true) return false
+        if (dutyFilter === 'action' && task.needsAction !== true) return false
+        if (typeFilter !== 'all' && task.eventType !== typeFilter) return false
+        return true
+      }
+      const visible = tcSortTasks(tcFilterList(filterBase, { status: status })).filter(dutyTypeFilter)
       const tabCounts = tcTabCounts(filterBase)
       const tagCounts = tcTagCounts(tasks)
       const activeTagCount =
@@ -5527,6 +5536,9 @@ window.__ModuleLoader__.load({
           : []
       const tagList = activeTagCount.concat(tagCounts)
       const tagsShown = showAllTags ? tagList : tagList.slice(0, 8)
+      const hasDutyTasks = tasks.some(function (task) {
+        return task.needsReply === true || task.needsAction === true || task.eventType
+      })
       const filtersActive =
         search.trim().length > 0 ||
         status !== 'all' ||
@@ -5666,6 +5678,44 @@ window.__ModuleLoader__.load({
               }),
             ),
           ),
+          hasDutyTasks
+            ? h(
+                'div',
+                { className: 'wb-row wb-row--wrap', style: { gap: 6, marginBottom: 6 } },
+                h('span', { className: 'wb-tiny wb-muted' }, '义务：'),
+                [
+                  { id: 'all', label: '全部' },
+                  { id: 'reply', label: '待回复' },
+                  { id: 'action', label: '待处理' },
+                ].map(function (option) {
+                  return h(Chip, {
+                    key: 'duty-' + option.id,
+                    active: dutyFilter === option.id,
+                    onClick: function () {
+                      setDutyFilter(option.id)
+                    },
+                    children: option.label,
+                  })
+                }),
+                h('span', { className: 'wb-tiny wb-muted', style: { marginLeft: 10 } }, '事项类型：'),
+                [
+                  { id: 'all', label: '全部' },
+                  { id: 'meeting', label: '会议' },
+                  { id: 'feature', label: '功能开发' },
+                  { id: 'logging', label: '登记填报' },
+                  { id: 'other', label: '其他' },
+                ].map(function (option) {
+                  return h(Chip, {
+                    key: 'type-' + option.id,
+                    active: typeFilter === option.id,
+                    onClick: function () {
+                      setTypeFilter(option.id)
+                    },
+                    children: option.label,
+                  })
+                }),
+              )
+            : null,
           tagList.length > 0
             ? h(
                 'div',

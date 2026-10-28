@@ -52,6 +52,14 @@ function applyUpdateTask(state, id, patch) {
   })
   if (index < 0) throw new Error('找不到该待办：' + String(id))
   const next = normalizeTask(patch || {}, state.tasks[index])
+  // TODO 17 人工保护：记录人工实际修改的字段，后台/AI 不得直接覆盖它们
+  const watched = ['title', 'description', 'status', 'priority', 'dueAt', 'assignee', 'projectId', 'replyStage', 'needsReply', 'needsAction', 'eventType']
+  const previous = state.tasks[index]
+  const edited = watched.filter(function (field) {
+    return JSON.stringify(next[field] === undefined ? null : next[field]) !== JSON.stringify(previous[field] === undefined ? null : previous[field])
+  })
+  const guard = Object.assign({}, next.humanGuard, { editedFields: edited })
+  next.humanGuard = guard
   next.id = state.tasks[index].id
   next.createdAt = state.tasks[index].createdAt
   state.tasks = state.tasks.slice()
@@ -525,6 +533,31 @@ const workbenchApi = {
   /** 按消息 id 取助手回复正文（原生聊天内嵌动作使用）。 */
   async assistantMessage(request) {
     return readAssistantMessage(workbenchContext(), request || {})
+  },
+
+  /** TODO 17：人工处置（保护字段）。ignore/snooze/handled 不改任务 status，仅写 humanGuard。 */
+  async taskMarkHuman(id, mark) {
+    const payload = mark && typeof mark === 'object' ? mark : {}
+    return mutateWorkbenchState(function (state) {
+      const index = ensureArray(state.tasks).findIndex(function (task) {
+        return task.id === id
+      })
+      if (index < 0) throw new Error('找不到该待办：' + String(id))
+      const task = state.tasks[index]
+      const guard = normalizeHumanGuard(
+        Object.assign({}, normalizeHumanGuard(task.humanGuard), {
+          ignored: payload.ignored === true ? true : normalizeHumanGuard(task.humanGuard).ignored && payload.ignored !== false,
+          handledConfirmed: payload.handledConfirmed === true ? true : normalizeHumanGuard(task.humanGuard).handledConfirmed && payload.handledConfirmed !== false,
+          snoozeUntil: payload.snoozeUntil === undefined ? normalizeHumanGuard(task.humanGuard).snoozeUntil : asIso(payload.snoozeUntil) || null,
+        }),
+      )
+      const next = normalizeTask({ status: task.status }, task)
+      next.humanGuard = guard
+      state.tasks = state.tasks.slice()
+      state.tasks[index] = next
+      auditEntry(state, 'task.humanMarked', task.title + '（' + JSON.stringify(payload).slice(0, 80) + '）')
+      return state
+    })
   },
 
   /** 删除来源证据：同时清理派生候选，并把引用它的待办解除来源关联。 */

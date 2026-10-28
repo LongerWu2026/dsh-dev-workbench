@@ -15,6 +15,11 @@ const AUDIT_LIMIT = 200
 const CANDIDATE_LIMIT = 200
 
 const CANDIDATE_STATUSES = ['pending', 'accepted', 'rejected']
+
+/** TODO 17 可选字段契约（全部可选；旧数据缺省 = 旧行为，不破坏原状态机） */
+const REPLY_STAGES = ['待答复', '已确认收到', '已实质答复', '不需答复']
+const EVENT_TYPES = ['meeting', 'feature', 'logging', 'other']
+const HUMAN_GUARD_STATUSES = ['ignored', 'snoozed', null]
 const OPERATION_LIMIT = 200
 
 const DEFAULT_TOPICS = ['Agent', 'LLM', 'RAG', 'Java', 'Python', '数据库']
@@ -208,9 +213,68 @@ function normalizeTask(raw, existing) {
     aiExtracted: input.aiExtracted === undefined ? base.aiExtracted === true : input.aiExtracted === true,
     demo: input.demo === undefined ? base.demo === true : input.demo === true,
     runIds: ensureArray(base.runIds).slice(),
+    // ---- TODO 17 可选契约字段（旧数据缺省 = 旧行为） ----
+    needsReply: input.needsReply === undefined ? base.needsReply === true : input.needsReply === true,
+    needsAction: input.needsAction === undefined ? base.needsAction === true : input.needsAction === true,
+    replyStage:
+      input.replyStage === undefined
+        ? base.replyStage || null
+        : REPLY_STAGES.indexOf(input.replyStage) >= 0
+          ? input.replyStage
+          : null,
+    eventType:
+      input.eventType === undefined
+        ? base.eventType || null
+        : EVENT_TYPES.indexOf(input.eventType) >= 0
+          ? input.eventType
+          : null,
+    deliverable: input.deliverable === undefined ? base.deliverable || null : asString(input.deliverable, 300) || null,
+    meetingStart: input.meetingStart === undefined ? base.meetingStart || null : asIso(input.meetingStart),
+    meetingEnd: input.meetingEnd === undefined ? base.meetingEnd || null : asIso(input.meetingEnd),
+    meetingLocation: input.meetingLocation === undefined ? base.meetingLocation || null : asString(input.meetingLocation, 160) || null,
+    registrationTarget: input.registrationTarget === undefined ? base.registrationTarget || null : asString(input.registrationTarget, 200) || null,
+    // 多来源引用（兼容单条 sourceRefId 的读取）
+    sourceRefs: normalizeSourceRefs(input.sourceRefs === undefined ? base.sourceRefs : input.sourceRefs),
+    // 人工保护：后台/AI 不得覆盖人工判断；updateTask 自动记录被人工改过的字段
+    humanGuard:
+      input.humanGuard === undefined
+        ? normalizeHumanGuard(base.humanGuard)
+        : normalizeHumanGuard(
+            Object.assign({}, normalizeHumanGuard(base.humanGuard), input.humanGuard || {}),
+          ),
     createdAt: createdAt,
     updatedAt: hostNowIso(),
     completedAt: completedAt,
+  }
+}
+
+/** TODO 17：多来源引用条目（sourceId/msgId 必须有其一，snippet 截断）。 */
+function normalizeSourceRefs(raw) {
+  const list = ensureArray(raw)
+    .map(function (item) {
+      const row = item && typeof item === 'object' ? item : {}
+      const sourceId = asString(row.sourceId, 80) || null
+      const msgId = asString(row.msgId, 80) || null
+      if (!sourceId && !msgId) return null
+      return {
+        sourceId: sourceId,
+        msgId: msgId,
+        snippet: asString(row.snippet, 240) || null,
+      }
+    })
+    .filter(Boolean)
+  return list.slice(0, 12)
+}
+
+/** TODO 17：人工保护标记（ignored/handled 等由后续端点写入，AI 不得清除）。 */
+function normalizeHumanGuard(raw) {
+  const input = raw && typeof raw === 'object' ? raw : {}
+  const snoozeUntil = asIso(input.snoozeUntil)
+  return {
+    editedFields: asTags(input.editedFields, 12),
+    ignored: input.ignored === true,
+    handledConfirmed: input.handledConfirmed === true,
+    snoozeUntil: snoozeUntil,
   }
 }
 

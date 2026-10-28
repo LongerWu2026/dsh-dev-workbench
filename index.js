@@ -174,6 +174,11 @@ const AUDIT_LIMIT = 200
 const CANDIDATE_LIMIT = 200
 
 const CANDIDATE_STATUSES = ['pending', 'accepted', 'rejected']
+
+/** TODO 17 可选字段契约（全部可选；旧数据缺省 = 旧行为，不破坏原状态机） */
+const REPLY_STAGES = ['待答复', '已确认收到', '已实质答复', '不需答复']
+const EVENT_TYPES = ['meeting', 'feature', 'logging', 'other']
+const HUMAN_GUARD_STATUSES = ['ignored', 'snoozed', null]
 const OPERATION_LIMIT = 200
 
 const DEFAULT_TOPICS = ['Agent', 'LLM', 'RAG', 'Java', 'Python', '数据库']
@@ -367,9 +372,68 @@ function normalizeTask(raw, existing) {
     aiExtracted: input.aiExtracted === undefined ? base.aiExtracted === true : input.aiExtracted === true,
     demo: input.demo === undefined ? base.demo === true : input.demo === true,
     runIds: ensureArray(base.runIds).slice(),
+    // ---- TODO 17 可选契约字段（旧数据缺省 = 旧行为） ----
+    needsReply: input.needsReply === undefined ? base.needsReply === true : input.needsReply === true,
+    needsAction: input.needsAction === undefined ? base.needsAction === true : input.needsAction === true,
+    replyStage:
+      input.replyStage === undefined
+        ? base.replyStage || null
+        : REPLY_STAGES.indexOf(input.replyStage) >= 0
+          ? input.replyStage
+          : null,
+    eventType:
+      input.eventType === undefined
+        ? base.eventType || null
+        : EVENT_TYPES.indexOf(input.eventType) >= 0
+          ? input.eventType
+          : null,
+    deliverable: input.deliverable === undefined ? base.deliverable || null : asString(input.deliverable, 300) || null,
+    meetingStart: input.meetingStart === undefined ? base.meetingStart || null : asIso(input.meetingStart),
+    meetingEnd: input.meetingEnd === undefined ? base.meetingEnd || null : asIso(input.meetingEnd),
+    meetingLocation: input.meetingLocation === undefined ? base.meetingLocation || null : asString(input.meetingLocation, 160) || null,
+    registrationTarget: input.registrationTarget === undefined ? base.registrationTarget || null : asString(input.registrationTarget, 200) || null,
+    // 多来源引用（兼容单条 sourceRefId 的读取）
+    sourceRefs: normalizeSourceRefs(input.sourceRefs === undefined ? base.sourceRefs : input.sourceRefs),
+    // 人工保护：后台/AI 不得覆盖人工判断；updateTask 自动记录被人工改过的字段
+    humanGuard:
+      input.humanGuard === undefined
+        ? normalizeHumanGuard(base.humanGuard)
+        : normalizeHumanGuard(
+            Object.assign({}, normalizeHumanGuard(base.humanGuard), input.humanGuard || {}),
+          ),
     createdAt: createdAt,
     updatedAt: hostNowIso(),
     completedAt: completedAt,
+  }
+}
+
+/** TODO 17：多来源引用条目（sourceId/msgId 必须有其一，snippet 截断）。 */
+function normalizeSourceRefs(raw) {
+  const list = ensureArray(raw)
+    .map(function (item) {
+      const row = item && typeof item === 'object' ? item : {}
+      const sourceId = asString(row.sourceId, 80) || null
+      const msgId = asString(row.msgId, 80) || null
+      if (!sourceId && !msgId) return null
+      return {
+        sourceId: sourceId,
+        msgId: msgId,
+        snippet: asString(row.snippet, 240) || null,
+      }
+    })
+    .filter(Boolean)
+  return list.slice(0, 12)
+}
+
+/** TODO 17：人工保护标记（ignored/handled 等由后续端点写入，AI 不得清除）。 */
+function normalizeHumanGuard(raw) {
+  const input = raw && typeof raw === 'object' ? raw : {}
+  const snoozeUntil = asIso(input.snoozeUntil)
+  return {
+    editedFields: asTags(input.editedFields, 12),
+    ignored: input.ignored === true,
+    handledConfirmed: input.handledConfirmed === true,
+    snoozeUntil: snoozeUntil,
   }
 }
 
@@ -1237,6 +1301,14 @@ function applyUpdateTask(state, id, patch) {
   })
   if (index < 0) throw new Error('找不到该待办：' + String(id))
   const next = normalizeTask(patch || {}, state.tasks[index])
+  // TODO 17 人工保护：记录人工实际修改的字段，后台/AI 不得直接覆盖它们
+  const watched = ['title', 'description', 'status', 'priority', 'dueAt', 'assignee', 'projectId', 'replyStage', 'needsReply', 'needsAction', 'eventType']
+  const previous = state.tasks[index]
+  const edited = watched.filter(function (field) {
+    return JSON.stringify(next[field] === undefined ? null : next[field]) !== JSON.stringify(previous[field] === undefined ? null : previous[field])
+  })
+  const guard = Object.assign({}, next.humanGuard, { editedFields: edited })
+  next.humanGuard = guard
   next.id = state.tasks[index].id
   next.createdAt = state.tasks[index].createdAt
   state.tasks = state.tasks.slice()
@@ -1710,6 +1782,31 @@ const workbenchApi = {
   /** 按消息 id 取助手回复正文（原生聊天内嵌动作使用）。 */
   async assistantMessage(request) {
     return readAssistantMessage(workbenchContext(), request || {})
+  },
+
+  /** TODO 17：人工处置（保护字段）。ignore/snooze/handled 不改任务 status，仅写 humanGuard。 */
+  async taskMarkHuman(id, mark) {
+    const payload = mark && typeof mark === 'object' ? mark : {}
+    return mutateWorkbenchState(function (state) {
+      const index = ensureArray(state.tasks).findIndex(function (task) {
+        return task.id === id
+      })
+      if (index < 0) throw new Error('找不到该待办：' + String(id))
+      const task = state.tasks[index]
+      const guard = normalizeHumanGuard(
+        Object.assign({}, normalizeHumanGuard(task.humanGuard), {
+          ignored: payload.ignored === true ? true : normalizeHumanGuard(task.humanGuard).ignored && payload.ignored !== false,
+          handledConfirmed: payload.handledConfirmed === true ? true : normalizeHumanGuard(task.humanGuard).handledConfirmed && payload.handledConfirmed !== false,
+          snoozeUntil: payload.snoozeUntil === undefined ? normalizeHumanGuard(task.humanGuard).snoozeUntil : asIso(payload.snoozeUntil) || null,
+        }),
+      )
+      const next = normalizeTask({ status: task.status }, task)
+      next.humanGuard = guard
+      state.tasks = state.tasks.slice()
+      state.tasks[index] = next
+      auditEntry(state, 'task.humanMarked', task.title + '（' + JSON.stringify(payload).slice(0, 80) + '）')
+      return state
+    })
   },
 
   /** 删除来源证据：同时清理派生候选，并把引用它的待办解除来源关联。 */
@@ -3010,7 +3107,7 @@ async function runRadarFetchOrDiscover(ctx) {
 
 const YZJ_TIMEOUT_MS = 15000
 const YZJ_MAX_BYTES = 512 * 1024
-const MENTIONS_FETCH_LIMIT = 20
+const MENTIONS_FETCH_LIMIT = 80
 
 /** Read-only command prefixes; anything else is refused before spawn. */
 const YZJ_READ_ONLY = [
@@ -3310,34 +3407,76 @@ function yzjParseMentionSearch(json, myOpenId) {
  * 返回 null 表示这条路不可用，调用方回退到关键词检索。
  */
 async function fetchMentionsIncremental(ctx, probe, cursors) {
-  const recent = await runYzj(ctx, ['im', 'group', 'recent', '--limit', '12', '--page', '1'])
-  if (recent.status !== 'ok') return { error: { status: recent.status, note: recent.note } }
-  const groups = recent.json && recent.json.data && Array.isArray(recent.json.data.list) ? recent.json.data.list : []
+  // 会话发现翻页：直到取回不足一页（支持 >12 个最近会话，TODO 13）
+  const groups = []
+  for (let pageIndex = 1; pageIndex <= 6; pageIndex += 1) {
+    const listed = await runYzj(ctx, ['im', 'group', 'recent', '--limit', '12', '--page', String(pageIndex)])
+    if (listed.status !== 'ok') {
+      // 会话页失败：已拿到的会话继续处理，失败如实记录（单群仍可各自补采）
+      groups.push({ __error: { status: listed.status, note: listed.note } })
+      break
+    }
+    const batch = listed.json && listed.json.data && Array.isArray(listed.json.data.list) ? listed.json.data.list : []
+    for (const group of batch) {
+      if (group && group.groupId && !groups.some(function (row) { return row.groupId === group.groupId })) groups.push(group)
+    }
+    if (batch.length < 12) break
+  }
+  const pageErrors = groups.filter(function (row) { return row && row.__error }).map(function (row) { return row.__error })
+  const usableGroups = groups.filter(function (row) { return row && row.groupId })
   if (groups.length === 0) return null
 
   const mentions = []
   const nextCursors = Object.assign({}, cursors || {})
+  const pageFailures = []
   let scannedGroups = 0
   let scannedMessages = 0
 
-  for (const group of groups.slice(0, 10)) {
+  // TODO 13：不再有「前 10 个会话」的旧硬上限——翻页拿到的会话全部处理，上限放宽到 40
+  // （每群的排空翻页与单群失败保护独立生效，尽量在单次同步内覆盖真实活跃群）
+  for (const group of groups.slice(0, 40)) {
     const groupId = asString(group && group.groupId, 80)
     const groupName = asString(group && group.groupName, 120) || '未知会话'
     if (!groupId) continue
+    // 排空翻页（TODO 13，真实 CLI 语义验证）：
+    //   第一页 --type newest（最新 20 条，时间升序 list[0] 最旧、list[last] 最新）
+    //   翻页 --type old --msg-id <本页最旧 list[0]>（往前翻历史）
+    //   游标只推进「该群已见过的最新一条」 = list[last]，且仅当该群所有页都成功
     const cursor = nextCursors[groupId]
-    const args = ['im', 'message', 'list', '--group-id', groupId, '--limit', '20']
-    if (cursor && cursor.lastMsgId) {
-      args.push('--type', 'new', '--msg-id', cursor.lastMsgId)
-    } else {
-      args.push('--type', 'newest')
+    const fetched = []
+    let drainPage = 0
+    let drainAnchor = null
+    let failedPage = null
+    while (drainPage < 6) {
+      const args = ['im', 'message', 'list', '--group-id', groupId, '--limit', '20']
+      if (drainPage === 0) {
+        args.push('--type', 'newest')
+      } else {
+        args.push('--type', 'old', '--msg-id', drainAnchor)
+      }
+      const listed = await runYzj(ctx, args)
+      if (listed.status !== 'ok') {
+        failedPage = { group: groupId, at: drainAnchor || null, status: listed.status, note: listed.note }
+        break
+      }
+      const rows = listed.json && listed.json.data && Array.isArray(listed.json.data.list) ? listed.json.data.list : []
+      // 遇到上次已见的游标（该消息已采集过）→ 停止向更旧展开
+      if (cursor && cursor.lastMsgId && rows.some(function (row) {
+        const inner = row && row.message ? row.message : row
+        return String((inner && inner.msgId) || '') === String(cursor.lastMsgId)
+      })) break
+      scannedMessages += rows.length
+      fetched.push.apply(fetched, rows)
+      if (rows.length > 0) {
+        const oldestRow = rows[0]
+        const inner = oldestRow && oldestRow.message ? oldestRow.message : oldestRow
+        drainAnchor = asString((inner && inner.msgId) || '', 60) || null
+      }
+      if (rows.length < 20) break
+      drainPage += 1
     }
-    const listed = await runYzj(ctx, args)
-    if (listed.status !== 'ok') continue
-    const list = listed.json && listed.json.data && Array.isArray(listed.json.data.list) ? listed.json.data.list : []
     scannedGroups += 1
-    scannedMessages += list.length
-    for (const wrapper of list) {
-      // im message list 的每条可能是 { message: {...} } 包装；两种形状都要兼容
+    for (const wrapper of fetched) {
       const message = wrapper && wrapper.message ? wrapper.message : wrapper
       if (!message || typeof message !== 'object') continue
       if (!yzjMentionTargetsMe(message, probe.openId)) continue
@@ -3351,18 +3490,33 @@ async function fetchMentionsIncremental(ctx, probe, cursors) {
         sendTime: asIso(message.sendTime) || null,
       })
     }
-    const firstWrapper = list[0]
-    const newest = firstWrapper && firstWrapper.message ? firstWrapper.message : firstWrapper
-    if (newest && newest.msgId) {
-      nextCursors[groupId] = {
-        lastMsgId: asString(newest.msgId, 60),
-        lastSendTime: asIso(newest.sendTime) || null,
-        groupName: groupName,
-        at: hostNowIso(),
+    const drained = fetched.length > 0
+    if (drained) {
+      // 升序列表：list[last] 才是本群最新一条
+      const newestInner = fetched[fetched.length - 1]
+      const inner = newestInner && newestInner.message ? newestInner.message : newestInner
+      if (inner && inner.msgId) {
+        nextCursors[groupId] = {
+          lastMsgId: asString(inner.msgId, 60),
+          lastSendTime: asIso(inner.sendTime) || null,
+          groupName: groupName,
+          at: hostNowIso(),
+        }
       }
     }
+    if (failedPage) {
+      // 单群失败：不推进游标（保留补采位），错误只进报告
+      pageFailures.push(failedPage)
+    }
   }
-  return { mentions: mentions, cursors: nextCursors, scannedGroups: scannedGroups, scannedMessages: scannedMessages }
+  return {
+    mentions: mentions,
+    cursors: nextCursors,
+    scannedGroups: scannedGroups,
+    scannedMessages: scannedMessages,
+    pageFailures: pageFailures,
+    sessionPageErrors: pageErrors,
+  }
 }
 
 /**
@@ -3475,12 +3629,31 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
   }
 
   const mode = incremental
-    ? '增量游标（最近 ' +
+    ? '增量排空（最近 ' +
       incremental.scannedGroups +
       ' 个群 / ' +
       incremental.scannedMessages +
-      ' 条新消息，notifyType 判据可覆盖昵称 @）'
+      ' 条新消息，notifyType 判据可覆盖昵称 @' +
+      (incremental.pageFailures && incremental.pageFailures.length
+        ? '；' + incremental.pageFailures.length + ' 个群待补采'
+        : '') +
+      (incremental.sessionPageErrors && incremental.sessionPageErrors.length
+        ? '；会话翻页失败 ' + incremental.sessionPageErrors.length
+        : '') +
+      '）'
     : '关键词检索（' + keywords.slice(0, 3).join(' / ') + '）'
+  const failureNote = incremental
+    ? [
+        incremental.pageFailures && incremental.pageFailures.length
+          ? '失败保留补采位：' + incremental.pageFailures.map(function (row) { return String(row.group).slice(0, 6) + '…(' + (row.note || row.status) + ')' }).slice(0, 4).join('、')
+          : null,
+        incremental.sessionPageErrors && incremental.sessionPageErrors.length
+          ? '会话翻页失败：' + incremental.sessionPageErrors[0].note
+          : null,
+      ]
+        .filter(Boolean)
+        .join('；')
+    : null
   state.lastMentionsFetch = {
     at: at,
     status: 'ok',
@@ -3488,9 +3661,11 @@ async function fetchYunzhijiaMentionsInto(ctx, state) {
     added: added,
     user: probe.name,
     mode: incremental ? 'incremental' : 'keyword',
+    status: incremental && failureNote ? 'partial' : 'ok',
     note:
       mode +
       (probe.expiresAt ? '；token 至 ' + probe.expiresAt.slice(0, 16).replace('T', ' ') + ' 有效' : '') +
+      (failureNote ? '。' + failureNote : '') +
       (incremental ? '。' : '。昵称 @ 可能漏采，可在「连接与设置」补充关键词。'),
   }
   auditEntry(state, 'mentions.fetch', '发现 ' + mentions.length + ' 条 @我，新增来源 ' + added + ' 条（' + (incremental ? '增量' : '关键词') + '）')
@@ -4244,6 +4419,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'github', params: [] },
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
+  { method: 'taskMarkHuman', params: ['id', 'mark'] },
   { method: 'assistantMessage', params: ['request'] },
   { method: 'deleteSource', params: ['id'] },
   { method: 'deleteRun', params: ['id'] },

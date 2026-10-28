@@ -159,6 +159,13 @@ const fixture = {
       tags: ['后端', '限流'],
       assignee: '我',
       sourceRefId: 'src-1',
+      needsReply: true,
+      needsAction: false,
+      replyStage: '待答复',
+      eventType: 'meeting',
+      meetingLocation: '会议室 B',
+      sourceRefs: [{ sourceId: 'src-1', msgId: 'yzj:msg:m1', snippet: '明天下班前给结论' }],
+      humanGuard: { editedFields: [], ignored: false, handledConfirmed: false, snoozeUntil: null },
       confidence: 0.82,
       aiExtracted: true,
       runIds: ['run-1'],
@@ -732,7 +739,7 @@ if (!registrations.panellist.length) problems.push('没有注册 sidebar.panelli
 
 const pageSpecs = [
   ['今日简报', 'dashboard', ['技术雷达', '抓取资讯', '快捷操作', '专注', '复制今日简报']],
-  ['任务中心', 'tasks', ['看板', '待确认', '提取候选']],
+  ['任务中心', 'tasks', ['看板', '待确认', '提取候选', '义务：', '事项类型：']],
   ['搜索', 'search', ['一个入口搜全部', '企业（云之家）', '本地', '互联网']],
   ['Agent 中心', 'agents', ['执行队列']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],

@@ -39,6 +39,7 @@ const WORKBENCH_REMOTE_SIGNATURES = [
   { method: 'github', params: [] },
   { method: 'reset', params: ['scope'] },
   { method: 'seedDemo', params: [] },
+  { method: 'taskMarkHuman', params: ['id', 'mark'] },
   { method: 'assistantMessage', params: ['request'] },
   { method: 'deleteSource', params: ['id'] },
   { method: 'deleteRun', params: ['id'] },

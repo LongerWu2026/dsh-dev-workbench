@@ -211,7 +211,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 45 个 Remote 描述符', invocations.length === 45, '实际 ' + invocations.length)
+check('注册了 46 个 Remote 描述符', invocations.length === 46, '实际 ' + invocations.length)
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -645,9 +645,9 @@ try {
   const GROUP = { groupId: 'g-inc', groupName: '增量群' }
   const pages = {
     first: [
-      // 昵称 @：正文里没有「@测试用户」，只能靠 notifyType 判定
-      { message: { msgId: 'inc-2', content: '小王 这个今天看下', fromOpenId: 'other-9', sendTime: '2026-10-27 11:00:00', param: { notifyType: 1 } } },
+      // 升序（list[0] 最旧）：inc-1 普通、inc-2 是新的一条（notifyType 覆盖昵称 @）
       { message: { msgId: 'inc-1', content: '普通闲聊', fromOpenId: 'other-9', sendTime: '2026-10-27 10:00:00', param: null } },
+      { message: { msgId: 'inc-2', content: '小王 这个今天看下', fromOpenId: 'other-9', sendTime: '2026-10-27 11:00:00', param: { notifyType: 1 } } },
     ],
     second: [
       { message: { msgId: 'inc-3', content: '再看一个新事项', fromOpenId: 'other-9', sendTime: '2026-10-27 12:00:00', param: { notifyType: 1 } } },
@@ -660,9 +660,8 @@ try {
     if (/whoami/.test(cmd)) text = JSON.stringify(WHOAMI)
     else if (/im group recent/.test(cmd)) text = JSON.stringify({ success: true, data: { list: [GROUP] } })
     else if (/im message list/.test(cmd)) {
-      // 第一次取最新一页；带 --msg-id 的增量请求返回第二页
-      const useSecond = /--msg-id/.test(cmd) && phase === 'second'
-      text = JSON.stringify({ success: true, data: { list: useSecond ? pages.second : pages.first } })
+      // 真实语义：每次都取当前最新一页；新消息以新 msgId 出现在该页
+      text = JSON.stringify({ success: true, data: { list: phase === 'second' ? pages.second : pages.first } })
     } else if (/contact user get/.test(cmd)) text = JSON.stringify({ success: true, data: { list: [{ name: '同事', openId: 'other-9' }] } })
     return {
       collected: {
@@ -678,14 +677,14 @@ try {
   const incState1 = await api.fetchMentions()
   const incSources = incState1.sources.filter((row) => String(row.externalId || '').indexOf('yzj:msg:inc-') === 0)
   check('增量同步按 notifyType 捕获昵称 @', incSources.some((row) => row.externalId === 'yzj:msg:inc-2'), JSON.stringify(incSources.map((r) => r.externalId)))
-  check('增量同步不把普通消息当 @', !incSources.some((row) => row.externalId === 'yzj:msg:inc-1'))
+  check('增量同步不把普通消息当 @', !incSources.some((row) => row.externalId === 'yzj:msg:inc-1') && incSources.every((row) => row.externalId !== 'yzj:msg:inc-0'))
   check('增量同步写入群游标', !!incState1.syncCursors['g-inc'] && incState1.syncCursors['g-inc'].lastMsgId === 'inc-2', JSON.stringify(incState1.syncCursors))
   check('增量同步如实标注模式', incState1.lastMentionsFetch.mode === 'incremental', String(incState1.lastMentionsFetch.mode))
 
   phase = 'second'
   const incState2 = await api.fetchMentions()
   const incNew = incState2.sources.filter((row) => row.externalId === 'yzj:msg:inc-3')
-  check('增量同步只取游标之后的新消息', incNew.length === 1, JSON.stringify(incState2.sources.filter((r) => String(r.externalId || '').indexOf('inc-') >= 0).map((r) => r.externalId)))
+  check('增量同步只取游标之后的新消息', incNew.length === 1 && incState2.sources.every((row) => String(row.externalId || '').indexOf('inc-1') !== 0 || row.externalId !== 'yzj:msg:inc-2-x'), JSON.stringify(incState2.sources.filter((r) => String(r.externalId || '').indexOf('inc-') >= 0).map((r) => r.externalId)))
   check('增量同步推进游标', !!incState2.syncCursors['g-inc'] && incState2.syncCursors['g-inc'].lastMsgId === 'inc-3', JSON.stringify(incState2.syncCursors))
   // 恢复默认 spawner，供后续企业搜索断言使用
   yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
@@ -1144,6 +1143,100 @@ check(
     check('重复删除候选如实报错', false, '没有可删除的候选样本')
   }
 }
+
+// TODO 13 验收：会话翻页发现 + 每群消息排空 + 单批 >20 来源 + 重复同步不重复
+{
+  // 三页会话清单（page3 为空结束翻页）；g-drain-1 排空两页（每页 10，足 20 条）
+  // 翻页：每页须是「整页」才会继续；用 g-fill-N 静默会话占满 12
+  const fill = function (n, prefix) {
+    return Array.from({ length: n }).map(function (_, k) {
+      return { groupId: 'g-fill-' + prefix + '-' + k, groupName: '填充' }
+    })
+  }
+  const groupPages = [
+    [{ groupId: 'g-drain-1', groupName: '排空群一' }].concat(fill(11, 'a')),
+    [{ groupId: 'g-drain-2', groupName: '排空群二' }].concat(fill(11, 'b')),
+    [],
+  ]
+  function drainMake(gid, page, n) {
+    return Array.from({ length: n }).map(function (_, k) {
+      return { message: {
+        msgId: 'dr-' + gid + '-' + page + '-' + k,
+        content: '@测试用户 排空事项 ' + gid + '/' + page + '/' + k,
+        fromOpenId: 'other-drain',
+        sendTime: '2026-10-28 09:' + String(10 + page).slice(-2) + ':' + String(k).padStart(2, '0'),
+        param: { notifyType: 1 },
+      } }
+    })
+  }
+  // 服务端尊重 --limit 20：g-drain-1 共 29 条（页1=20，页2=9，触发排空结束）
+  // 真实语义（升序 + 服务端尊重 limit 20）：g1 总 29 条（m-000..m-028）
+  //   newest 页 = 最后 20 条；old(anchor) = anchor 之前更旧的 20 条
+  // g-drain-2 总 9 条：newest 页全返（<20 → 停）
+  function groupMessages(cmd) {
+    const gid = /--group-id ([a-z0-9\-]+)/.exec(cmd)[1]
+    const total = gid === 'g-drain-1' ? 29 : gid === 'g-drain-2' ? 9 : 0
+    if (total === 0) return []
+    const all = Array.from({ length: total }).map(function (_, i) {
+      return { message: {
+        msgId: 'dr-' + gid + '-m-' + String(i).padStart(3, '0'),
+        content: '@测试用户 排空事项 ' + gid + '/' + i,
+        fromOpenId: 'other-drain',
+        sendTime: '2026-10-28 09:' + String(10 + (i % 40)).slice(-2) + ':' + String(i % 60).padStart(2, '0'),
+        param: { notifyType: 1 },
+      } }
+    })
+    const isOld = /--type old/.test(cmd)
+    const anchorMatch = /--msg-id ([\w\-]+)/.exec(cmd)
+    if (isOld && anchorMatch) {
+      const anchorIndex = all.findIndex(function (row) {
+        return row.message.msgId === anchorMatch[1]
+      })
+      if (anchorIndex <= 0) return []
+      return all.slice(Math.max(0, anchorIndex - 20), anchorIndex)
+    }
+    return all.slice(Math.max(0, total - 20))
+  }
+  const spawn = function (spec) {
+    const cmd = spec.argv.join(' ')
+    let text = JSON.stringify({ success: true, data: {} })
+    if (/whoami/.test(cmd)) {
+      text = JSON.stringify(WHOAMI)
+    } else if (/im group recent/.test(cmd)) {
+      const page = Number((/--page ([0-9]+)/.exec(cmd) || [])[1])
+      text = JSON.stringify({ success: true, data: { list: groupPages[page - 1] || [] } })
+    } else if (/im message list/.test(cmd)) {
+      text = JSON.stringify({ success: true, data: { list: groupMessages(cmd) } })
+    } else if (/contact user get/.test(cmd)) {
+      text = JSON.stringify({ success: true, data: { list: [{ name: '同事', openId: 'other-drain' }] } })
+    }
+    return {
+      collected: {
+        stdout: { readFrom: () => ({ text: text, nextOffset: text.length, lossy: false }) },
+        stderr: { readFrom: () => ({ text: '', nextOffset: 0, lossy: false }) },
+      },
+      done: Promise.resolve({ exitCode: 0, signal: null }),
+      terminate() {},
+    }
+  }
+  yzjSpawner = { spawn: spawn, resolveExecutable: async () => '/fake/yzj-cli' }
+
+  const first = await api.fetchMentions()
+  const drained = first.sources.filter(function (row) {
+    return String(row.externalId || '').indexOf('yzj:msg:dr-') === 0
+  })
+  check('TODO13 每群排空 + 单批 20+ 来源', drained.length === 38, String(drained.length) + '（29 群一 + 9 群二）')
+  check('TODO13 扫描记录如实标注', String(first.lastMentionsFetch.note || '').indexOf('增量排空') >= 0, String(first.lastMentionsFetch.note).slice(0, 120))
+  const second = await api.fetchMentions()
+  const deduped = second.sources.filter(function (row) {
+    return String(row.externalId || '').indexOf('yzj:msg:dr-') === 0
+  })
+  check('TODO13 重复同步不重复入库', deduped.length === 38, String(deduped.length))
+  check('TODO13 游标推进到位', !!second.syncCursors['g-drain-1'] && String(second.syncCursors['g-drain-1'].lastMsgId).indexOf('dr-g-drain-1-m-028') === 0, second.syncCursors['g-drain-1'] && second.syncCursors['g-drain-1'].lastMsgId)
+  check('TODO13 游标 g2 推进 9 条页', !!second.syncCursors['g-drain-2'] && String(second.syncCursors['g-drain-2'].lastMsgId).indexOf('dr-g-drain-2-m-008') === 0, second.syncCursors['g-drain-2'] && second.syncCursors['g-drain-2'].lastMsgId)
+  yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
+}
+
 
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖
 {
