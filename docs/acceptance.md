@@ -268,7 +268,11 @@ node tests/client-render.mjs
 - 左边缘有 6px 拖拽手柄（`role="separator"`），范围 240–760px，同时 `max-width: 62%` 防止把主区挤没。
 - 宽度持久化在 `settings.assistantWidth`（Host 侧归一化 240–760），刷新页面与重启后保持。
 
-## 17. 生效条件
+## 17. 真实业务验收
+
+按 [REAL-VALIDATION-RUNBOOK.md](REAL-VALIDATION-RUNBOOK.md) 的五个步骤执行（0 前置 → 1 消息闭环 → 2 后台自动 → 3 资讯 → 4 迁移备份），每步把时间 / 样本值 / 证据回填清单，完成后回填 TODO 18。
+
+## 18. 生效条件
 
 - 只改 `src/client/**`：重新构建后刷新 GUI 窗口即可。
 - 改 `src/host/**`（新增 Remote 端点或工具）：必须**重启 DSH**；重新安装 bundle 不会替换已加载的
