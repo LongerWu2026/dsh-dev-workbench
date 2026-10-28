@@ -138,7 +138,8 @@ node scripts/build.mjs            # 生成 index.js 与 client.js
 node scripts/build.mjs --check    # 只做跨文件重名检查
 node --check index.js && node --check client.js
 node tests/host-smoke.mjs         # Host 半自测（146 项：含 PR/CI、进程、本地文件搜索、语义去重、候选采纳/忽略、三路意图搜索）
-node tests/client-render.mjs      # Client 全页面渲染（8 页 + 空态 + 6 个新增工具面板；真实驱动搜索/抓取/@我 按钮）
+node tests/client-render.mjs      # Client 全页面渲染
+cd ../plugin-tests && pnpm test   # 真实 React 18 + Testing Library（vitest）（8 页 + 空态 + 6 个新增工具面板；真实驱动搜索/抓取/@我 按钮）
 ```
 
 `tests/client-render.mjs` 不是 mock 预览：它加载**真实的** `client.js`，用最小 React 渲染器
