@@ -402,7 +402,7 @@ async function runAnalysisBatch(ctx?: any, request?: any): Promise<any> {
                 if(row.status!=='pending')continue;
                 const source=state.sources.find((source:any)=>source.id===row.sourceId),reason=source && historicalReviewReason(state,source);
                 if(reason)Object.assign(row,{status:'historical',reviewReason:reason,leaseUntil:null});
-                
+
             }
             entries=selectQueueEntries(state.analysisQueue.filter((row:any)=>(!onlyIds.size||onlyIds.has(row.id)||onlyIds.has(row.sourceId)) &&
                 (row.status==='pending'||row.status==='failed'&&row.attempts<3&&(!row.nextRetryAt||Date.parse(row.nextRetryAt)<=Date.now())||row.status==='running'&&(!row.leaseUntil||Date.parse(row.leaseUntil)<Date.now())) && state.sources.some((source:any)=>source.id===row.sourceId))
@@ -518,4 +518,3 @@ async function confirmAnalysis(ctx?: any, entryId?: any): Promise<any> {
 }
 
 export { ANALYSIS_TURN_TIMEOUT_MS, ANALYSIS_POLL_MS, analysisBatchInFlight, analysisScope, analysisPrompt, extractJsonFromReply, validateAnalysis, findTaskBySourceRef, upsertReply, mergeAnalysisIntoState, waitStructuredReply, runAnalysisBatch, confirmAnalysis }
-

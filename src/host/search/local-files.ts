@@ -187,4 +187,3 @@ async function searchLocalFiles(ctx?: any, query?: any): Promise<any> {
 }
 
 export { FILE_SEARCH_MAX_ENTRIES, FILE_SEARCH_MAX_CONTENT_READS, FILE_SEARCH_MAX_RESULTS, FILE_SEARCH_MAX_DEPTH, FILE_SEARCH_MAX_BYTES, FILE_SEARCH_SKIP_DIRS, FILE_SEARCH_TEXT_EXT, fileIndexCache, fileSearchRoots, fileExtOf, indexRoot, readTextSnippet, searchLocalFiles }
-

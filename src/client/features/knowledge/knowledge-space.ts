@@ -482,4 +482,3 @@ function knowPage(): any {
 WB.pages.knowledge = knowPage;
 
 export { knowKindMeta, knowKindOf, knowSearchBlob, knowTagList, knowCopyText, knowSortItems, knowPage }
-

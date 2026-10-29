@@ -734,4 +734,3 @@ WB.apply = function apply(ctx?: any): any {
 };
 
 export { WorkbenchIcon, Toaster, ASSISTANT_KIND_LABEL, AssistantDrawer, LoadingScreen, ErrorScreen, NavRail, Toolbar, MissingPage, WorkbenchApp }
-

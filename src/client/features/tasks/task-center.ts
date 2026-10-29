@@ -978,4 +978,3 @@ function TaskCenterPage(): any {
 WB.pages.tasks = TaskCenterPage;
 
 export { tcToneColor, tcPriorityOf, tcDueValue, tcEndOfToday, tcProjectName, tcProjectColor, tcProviderLabel, tcFindSource, tcBoardStatuses, tcSortTasks, tcFilterList, tcTabCounts, tcTagCounts, TaskCenterEvidence, TaskCenterRow, TaskCenterBoardCard, TaskCenterPage }
-

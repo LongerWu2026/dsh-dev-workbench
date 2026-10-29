@@ -80,5 +80,3 @@ export function apply(ctx?: any, config?: any): any {
         };
     });
 }
-
-

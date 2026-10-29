@@ -65,4 +65,3 @@ function officeToolDefinitions(): any {
 }
 
 export { officeToolDefinitions }
-

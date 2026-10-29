@@ -195,4 +195,3 @@ WB.TaskForm = TaskFormHost;
 WB.TaskFormHost = TaskFormHost;
 
 export { taskFormToLocalInput, taskFormFromLocalInput, TaskFormHost }
-

@@ -209,4 +209,3 @@ async function buildEnvironment(ctx?: any): Promise<any> {
 }
 
 export { ENVIRONMENT_TTL_MS, environmentCache, cwdForHostCommands, readGitRepository, readDockerState, invalidateEnvironmentCache, readListeningPorts, readTopProcesses, buildEnvironment }
-

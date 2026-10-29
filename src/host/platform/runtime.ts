@@ -158,4 +158,3 @@ function asSteps(value?: any): any {
 const HOST_META: any = { platform: platform(), arch: arch(), nodeVersion: process.version };
 
 export { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, statSync, writeFileSync, join, homedir, platform, arch, createHash, randomUUID, HOST_STATE_VERSION, PLUGIN_NAME, hostNowIso, dshHomeDir, workbenchDir, workbenchStatePath, readJsonFile, writeJsonAtomic, fileSizeOf, hashText, newId, asString, asIso, asTags, asUrl, asEvidence, asSteps, HOST_META }
-

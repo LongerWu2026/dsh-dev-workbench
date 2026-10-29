@@ -206,4 +206,3 @@ function startAutomation(ctx?: any): any {
 }
 
 export { automationInFlight, automationTimer, automationDue, runAutomationTick, startAutomation }
-

@@ -251,4 +251,3 @@ WB.registerChatEmbed = function (ctx?: any): any {
 };
 
 export { WB_CHAT_ACTIONS_CSS, CHAT_EMBED_ACTIONS, chatEmbedTitle, ChatAssistantActions, chatEmbedBlockSummary, WorkbenchToolView }
-

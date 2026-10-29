@@ -252,4 +252,3 @@ function CollabPage(): any {
 WB.pages.collab = CollabPage;
 
 export { collabGitTone, collabNormalizePath, collabRepoCard, CollabPage }
-

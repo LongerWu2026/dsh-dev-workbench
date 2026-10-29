@@ -297,4 +297,3 @@ function extractCandidatesInto(state?: any): any {
 }
 
 export { CANDIDATE_ACTION_WORDS, candidateStartOfDay, candidateEndOfMonth, candidateNextWeekday, candidateNextWeek, candidateDueFromText, CANDIDATE_CLOSED_PATTERNS, candidateIsClosed, candidateTitleFromText, candidateSentences, candidateFromSentence, candidatesFromSource, extractCandidatesInto }
-

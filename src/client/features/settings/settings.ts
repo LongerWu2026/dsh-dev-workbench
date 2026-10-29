@@ -698,4 +698,3 @@ function SettingsPage(): any {
 WB.pages.settings = SettingsPage;
 
 export { SettingsRow, SettingsPage }
-

@@ -628,4 +628,3 @@ async function readAssistantMessage(ctx?: any, request?: any): Promise<any> {
 }
 
 export { ASSISTANT_TIMEOUT_MS, ASSISTANT_POLL_MS, sleepMs, hostService, stripAssistantBoilerplate, isSystemInjectedText, assistantTextOf, assistantHistoryFrom, sessionTitleOf, sessionLastAt, transcriptOf, isLegacySessionId, createPersistedSession, rememberAssistantSession, ensureAssistantSession, backgroundSessionPromises, ensureBackgroundSession, listAssistantSessions, readAssistantTranscript, transcriptDelta, userFacingAssistantError, submitPrompt, sendAssistantPrompt, readAssistantDelta, runAssistantAsk, readAssistantHistory, resetAssistantSession, readAssistantMessage }
-

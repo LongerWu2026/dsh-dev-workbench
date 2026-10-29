@@ -412,4 +412,3 @@ function SearchPage(): any {
 WB.pages.search = SearchPage;
 
 export { searchKindMeta, searchStatusMeta, SearchResultRow, SearchPage }
-

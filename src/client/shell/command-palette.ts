@@ -310,4 +310,3 @@ function Palette(props?: any): any {
 WB.Palette = Palette;
 
 export { paletteCommands, paletteMatch, Palette }
-

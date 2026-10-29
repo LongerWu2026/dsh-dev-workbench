@@ -89,4 +89,3 @@ export const WB_LAYOUT_CSS = `
  .wb-page-head .wb-ph-actions { flex-wrap:wrap; }
 }
 `;
-

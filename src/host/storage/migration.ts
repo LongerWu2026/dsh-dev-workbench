@@ -204,4 +204,3 @@ async function applyMigration(request?: any): Promise<any> {
 }
 
 export { MIGRATION_FORMAT, MIGRATION_FORMAT_VERSION, MIGRATION_COLUMNS, PLUGIN_EXPORT_VERSION, migrationStableStringify, migrationChecksum, buildMigrationPackage, migrationPrecheck, migrationNormalizeRow, composeMigration, applyMigration }
-
