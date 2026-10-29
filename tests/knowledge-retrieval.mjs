@@ -39,7 +39,7 @@ try{
  check('待办方案冻结知识版本与片段，而非只保留事项文本',()=>assert.equal(step.input.knowledge.hits[0].documentId,saved.id))
  await h.enqueueOfficeWorkflow('task_assist',{taskId:task.id});await h.enqueueOfficeWorkflow('task_assist',{taskId:task.id});check('检索请求ID变化不打破同输入作业去重',()=>assert.equal(h.loadWorkbenchState().jobs.filter(j=>j.kind==='task_assist').length,1))
  const pack=await api.exportMigration();check('迁移含知识状态与检索记录',()=>{assert.equal(pack.data.knowledge[0].reviewState,'confirmed');assert.ok(pack.data.retrievalTraces.length)})
- const originalFetch=globalThis.fetch
+ const originalFetch=globalThis.fetch,embeddingEnv=Object.fromEntries(['AWB_EMBEDDING_URL','AWB_EMBEDDING_MODEL','AWB_EMBEDDING_TOKEN'].map(key=>[key,process.env[key]]))
  try{
  process.env.AWB_EMBEDDING_URL='http://127.0.0.1:11434/api/embed';process.env.AWB_EMBEDDING_MODEL='isolated-test'
  let embeddedTexts=[];globalThis.fetch=async(_url,options)=>{const body=JSON.parse(options.body);embeddedTexts.push(body.input);assert.equal(body.truncate,false);return new Response(JSON.stringify({embeddings:body.input.map((t,i)=>i===0||t.includes('扩容')?[1,0]:[0,1])}),{status:200})}
@@ -48,7 +48,24 @@ try{
  await h.retrieveKnowledgeAsync(s,'容量如何处理',{scope:{projectId:'A'}});check('同版本向量复用缓存，后续只向量化新问题',()=>assert.equal(embeddedTexts.at(-1).length,1))
  globalThis.fetch=async()=>new Response('{"embeddings":[[1,"bad"]]}',{status:200});const fallback=await h.retrieveKnowledgeAsync(s,'内存不足')
  check('向量错误保留本地全文结果并显示降级原因',()=>{assert.equal(fallback.hits[0].documentId,'general');assert.match(fallback.note,/语义检索不可用/)})
- }finally{globalThis.fetch=originalFetch;delete process.env.AWB_EMBEDDING_URL;delete process.env.AWB_EMBEDDING_MODEL}
+ process.env.AWB_EMBEDDING_TOKEN='synthetic-transport-test-only'
+ let transportCalls=[];globalThis.fetch=async(url,options)=>{transportCalls.push({url,options});const body=JSON.parse(options.body);return new Response(JSON.stringify({embeddings:body.input.map(()=>[1,0])}),{status:200})}
+ for(const endpoint of ['https://embedding.example.com/api/embed','https://192.168.1.20/api/embed','http://localhost:11434/api/embed','http://127.0.0.1:11434/api/embed','http://127.0.0.2:11434/api/embed','http://[::1]:11434/api/embed']){
+  process.env.AWB_EMBEDDING_URL=endpoint;transportCalls=[]
+  const result=await h.retrieveKnowledgeAsync(s,'内存不足',{scope:{projectId:'A'}})
+  check('HTTPS及本机回环HTTP可用：'+endpoint,()=>{assert.equal(result.strategy,'hybrid-bm25-vector-rrf');assert.equal(transportCalls.length,1);assert.equal(transportCalls[0].options.headers.Authorization,'Bearer synthetic-transport-test-only');assert.equal(transportCalls[0].options.redirect,'error')})
+ }
+ for(const endpoint of ['http://embedding.example.com/api/embed','http://203.0.113.10:11434/api/embed','http://192.168.1.20/api/embed','http://localhost.example.com/api/embed','http://127.0.0.1.example.com/api/embed','http://[2001:db8::1]/api/embed','http://[::ffff:203.0.113.10]/api/embed']){
+  process.env.AWB_EMBEDDING_URL=endpoint;transportCalls=[]
+  const result=await h.retrieveKnowledgeAsync(s,'内存不足')
+  check('远程HTTP在发送令牌与正文前阻断：'+endpoint,()=>{assert.equal(transportCalls.length,0);assert.equal(result.hits[0].documentId,'general');assert.match(result.note,/必须使用HTTPS/);assert.ok(!result.note.includes(process.env.AWB_EMBEDDING_TOKEN))})
+ }
+ for(const endpoint of ['http://localhost@embedding.example.com/api/embed','https://user:synthetic@example.com/api/embed','http://127.0.0.1:11434/api/embed?token=synthetic']){
+  process.env.AWB_EMBEDDING_URL=endpoint;transportCalls=[]
+  const result=await h.retrieveKnowledgeAsync(s,'内存不足')
+  check('URL内凭据与查询参数继续拒绝：'+new URL(endpoint).hostname,()=>{assert.equal(transportCalls.length,0);assert.match(result.note,/地址格式无效/);assert.ok(!result.note.includes('synthetic'))})
+ }
+ }finally{globalThis.fetch=originalFetch;for(const [key,value] of Object.entries(embeddingEnv)){if(value===undefined)delete process.env[key];else process.env[key]=value}}
  const corpus={...base,knowledge:Array.from({length:1000},(_,i)=>doc('perf-'+i,'项目规范文档。接口发布前验收，失败先回滚。'+i))};const began=performance.now();const perf=h.retrieveKnowledge(corpus,'接口发布验收');check('千条知识检索有界并保留结果',()=>{assert.ok(perf.hits.length<=5&&perf.hits.length>0);assert.ok(performance.now()-began<5000)});console.log('knowledge retrieval benchmark ms:',Math.round(performance.now()-began))
  const evaluation=JSON.parse(readFileSync('tests/fixtures/knowledge-evaluation.json','utf8'));const quality={...base,knowledge:evaluation.documents};let correct=0;for(const sample of evaluation.queries){const hits=h.retrieveKnowledge(quality,sample.query).hits;if(sample.expected?hits.some(h=>h.documentId===sample.expected):!hits.length)correct++;else console.log('evaluation miss',sample.query,hits.map(h=>h.documentId))};check('30条标注合成问题与无答案检索评测',()=>assert.equal(correct,30));console.log('retrieval evaluation: '+correct+'/30 synthetic cases');
  const pendingOnly=await api.assistantSend({text:'接口发布前如何验收',knowledgeMode:'only'});

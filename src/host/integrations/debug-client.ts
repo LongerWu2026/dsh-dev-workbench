@@ -76,7 +76,7 @@ export async function sendHttpRequest(request:any) {
 let sequence=0
 async function mcpRpc(session:Session,method:string,params:any,signal:AbortSignal,notification=false) {
     const id=++sequence,modern=session.version==='2026-07-28'
-    if(modern)params={...params,_meta:{'io.modelcontextprotocol/protocolVersion':session.version,'io.modelcontextprotocol/clientInfo':{name:'dsh-dev-workbench-debugger',version:'0.2.0'},'io.modelcontextprotocol/clientCapabilities':{}}}
+    if(modern)params={...params,_meta:{'io.modelcontextprotocol/protocolVersion':session.version,'io.modelcontextprotocol/clientInfo':{name:'dsh-dev-workbench-debugger',version:'0.2.1'},'io.modelcontextprotocol/clientCapabilities':{}}}
     const headers=new Headers(session.headers)
     headers.set('Content-Type','application/json');headers.set('Accept','application/json, text/event-stream')
     headers.set('MCP-Protocol-Version',session.version)
@@ -116,7 +116,7 @@ export async function connectMcp(request:any) {
     const session:Session={url:debugUrl(request.url),headers:debugHeaders(request.headers),version,busy:false,at:Date.now(),tools:[]}
     return operation(request,async signal=>{
         const start=Date.now(),modern=version==='2026-07-28'
-        const hello=await mcpRpc(session,modern?'server/discover':'initialize',modern?{}:{protocolVersion:version,capabilities:{},clientInfo:{name:'dsh-dev-workbench-debugger',version:'0.2.0'}},signal)
+        const hello=await mcpRpc(session,modern?'server/discover':'initialize',modern?{}:{protocolVersion:version,capabilities:{},clientInfo:{name:'dsh-dev-workbench-debugger',version:'0.2.1'}},signal)
         if(!hello)throw new Error('MCP连接未返回结果')
         if(!modern)await mcpRpc(session,'notifications/initialized',{},signal,true)
         let cursor:string|undefined;const seen=new Set<string>();let listed:any

@@ -28,7 +28,7 @@
 
 默认不请求向量服务，也不新增模型配置或下载模型。实现了可选的Ollama `/api/embed` 协议适配器：
 
-- `AWB_EMBEDDING_URL`：显式配置的完整接口地址，例如本机服务的 `http://127.0.0.1:11434/api/embed`。
+- `AWB_EMBEDDING_URL`：显式配置的完整接口地址。远程服务必须使用 HTTPS，例如 `https://embedding.example.com/api/embed`；HTTP 仅允许 `localhost`、IPv4 回环地址（`127.0.0.0/8`）及 IPv6 回环地址 `[::1]`，例如本机服务的 `http://127.0.0.1:11434/api/embed`。其他 HTTP 地址在发送凭据和知识正文前阻断，并回退到本地全文检索。
 - `AWB_EMBEDDING_MODEL`：该服务已安装的向量模型名。
 - `AWB_EMBEDDING_TOKEN`：可选Bearer凭据，只从进程环境读取，不保存到业务数据/迁移包。
 

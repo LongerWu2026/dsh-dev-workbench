@@ -627,7 +627,7 @@ function SettingsPage(): any {
             setConfirmReset(true);
         },
         children: '重置',
-    })))), h(Panel, { title: '关于', sub: '智能工作台 0.2.0（dsh-dev-workbench）', icon: 'info' }, h('div', { className: 'wb-stack wb-tiny wb-muted', style: { gap: 5 } }, h('span', null, 'Cordis Host + Client 双半插件：Host 持有状态并通过 workbench/* Remote 暴露，Client 通过 main 与 sidebar.panellist 插槽渲染页面。'), h('span', null, '工具箱中的计算全部在浏览器内完成；企业消息摘录保存在宿主本地，凭据由 CLI / 宿主管理。'), h('span', null, '数据文件位于 ', h('code', { className: 'wb-mono' }, diag ? diag.dataPath : '~/.dsh/storages/dev-workbench/state.json')))))), h(Modal, {
+    })))), h(Panel, { title: '关于', sub: '智能工作台 0.2.1（dsh-dev-workbench）', icon: 'info' }, h('div', { className: 'wb-stack wb-tiny wb-muted', style: { gap: 5 } }, h('span', null, 'Cordis Host + Client 双半插件：Host 持有状态并通过 workbench/* Remote 暴露，Client 通过 main 与 sidebar.panellist 插槽渲染页面。'), h('span', null, '工具箱中的计算全部在浏览器内完成；企业消息摘录保存在宿主本地，凭据由 CLI / 宿主管理。'), h('span', null, '数据文件位于 ', h('code', { className: 'wb-mono' }, diag ? diag.dataPath : '~/.dsh/storages/dev-workbench/state.json')))))), h(Modal, {
         open: !!projectEdit,
         title: '编辑项目',
         sub: projectEdit ? projectEdit.name : '',

@@ -1,12 +1,14 @@
 # 智能工作台
 
-DeepSeek Harness 原生 Cordis 插件。0.2.0 工作树已迁移为 TypeScript 模块与 React/TSX 组件，以消息理解、独立待回复和待办、AI 资讯及上下文助手构成办公流程。
+DeepSeek Harness 原生 Cordis 插件。0.2.1 使用 TypeScript 模块与 React/TSX 组件，以消息理解、独立待回复和待办、AI 资讯及上下文助手构成办公流程。
 
-当前为已在 DeepSeek Harness 桌面验证主要办公闭环的 0.2.0 候选版：复用软件已有 GLM-5.3-Flash 配置，实际执行聊天建改待办、消息识别、独立待回复、资讯搜索和四段摘要。工程回归及十页走查通过；短时休眠恢复和未读对照已有验证，多日运行及第二账号仍需观察。详细证据见 [桌面验收记录](docs/DESKTOP-VALIDATION-2026-10-28.md) 和 [实施记录](docs/IMPLEMENTATION-STATUS-0.2.0.md)。
+0.2.1 基于已在 DeepSeek Harness 桌面验证主要办公闭环的 0.2.0 版本：复用软件已有 GLM-5.3-Flash 配置，实际执行聊天建改待办、消息识别、独立待回复、资讯搜索和四段摘要。工程回归及十页走查通过；短时休眠恢复和未读对照已有验证，多日运行及第二账号仍需观察。详细证据见 [桌面验收记录](docs/DESKTOP-VALIDATION-2026-10-28.md) 和 [实施记录](docs/IMPLEMENTATION-STATUS-0.2.0.md)。
 
 源码与新增功能入口见 [源码模块导航](src/README.md)，本轮深化拆分与原生归档见 [模块边界记录](docs/MODULE-BOUNDARIES-AND-SESSION-ARCHIVE-2026-10-28.md)。
 
 源码仓库：[LongerWu2026/dsh-dev-workbench](https://github.com/LongerWu2026/dsh-dev-workbench)。本机验收截图与原始观测记录保留在本地 `docs/evidence/`，不随源码或 npm 包公开；文档中相关路径用于本地复验。
+
+0.2.1 安全修订：远程 Embedding 服务必须使用 HTTPS，HTTP 仅允许 `localhost`、IPv4 回环地址和 `[::1]`；不安全的地址在发送凭据及正文前阻断，保留本地全文检索。文档使用可移植的安装路径示例。
 
 ## 文档
 
@@ -58,10 +60,10 @@ pnpm test
 
 `pnpm check` 包含严格类型检查、重新构建与产物一致性检查及产物语法检查。`pnpm test` 包含 Host、可靠性、批量分析、办公增强、十页渲染与 React 交互测试。修改源码后先构建，不直接编辑生成产物。
 
-本机 desktop profile 已通过本地链接指向当前仓库。安装其他测试 profile 可执行：
+在插件仓库根目录执行本地开发安装；将 `desktop` 替换为宿主实际使用的 profile：
 
 ```bash
-dsh plugin --profile desktop add /Users/wulonglong/Documents/AIWorkBench/dsh-dev-workbench
+dsh plugin --profile desktop add .
 ```
 
 Host 更新后需重新加载宿主进程，Client 更新后需刷新界面。本轮通过原生软件操作完成桌面验收与正常退出重启；Playwright GUI 脚本未执行，使用时须连接明确的隔离 DSH 调试目标，详见验收手册。

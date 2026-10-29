@@ -10,6 +10,8 @@ export async function retrieveKnowledgeAsync(state:any,query:string,request:any=
  const began=performance.now(),controller=new AbortController();let timer:any
  try{
   const url=new URL(endpoint);if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search)throw new Error('Embedding地址格式无效')
+  const loopback=url.hostname==='localhost'||url.hostname==='[::1]'||/^127(?:\.\d{1,3}){3}$/.test(url.hostname)
+  if(url.protocol==='http:'&&!loopback)throw new Error('远程Embedding必须使用HTTPS；HTTP仅允许localhost或回环IP')
   const all=(state.knowledge||[]).filter((d:any)=>knowledgeAllowed(d,local.scope)&&d.body?.trim()).flatMap(chunkKnowledge)
   if(all.length>200)return {...local,note:'当前范围超过200片段，保留本地全文检索；请缩小项目范围再使用语义检索'}
   if(!all.length)return local

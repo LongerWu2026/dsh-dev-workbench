@@ -9,7 +9,7 @@ import { auditEntry, ensureArray, normalizeAnalysisQueue, normalizeCandidate, no
 const MIGRATION_FORMAT = 'dsh-dev-workbench-migration';
 const MIGRATION_FORMAT_VERSION = 2;
 const MIGRATION_COLUMNS: any = ['projects', 'tasks', 'sources', 'runs', 'knowledge', 'radar', 'candidates', 'replies', 'analysisQueue', 'operations', 'jobs', 'retrievalTraces', 'changeHistory', 'qualityReviews'];
-const PLUGIN_EXPORT_VERSION = '0.2.0';
+const PLUGIN_EXPORT_VERSION = '0.2.1';
 function migrationStableStringify(value?: any): any {
     return JSON.stringify(value, function (key?: any, inner?: any): any {
         if (inner && typeof inner === 'object' && !Array.isArray(inner)) {

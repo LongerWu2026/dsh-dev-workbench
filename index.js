@@ -3146,7 +3146,7 @@ async function sendHttpRequest(request) {
 var sequence = 0;
 async function mcpRpc(session, method, params, signal, notification = false) {
   const id = ++sequence, modern = session.version === "2026-07-28";
-  if (modern) params = { ...params, _meta: { "io.modelcontextprotocol/protocolVersion": session.version, "io.modelcontextprotocol/clientInfo": { name: "dsh-dev-workbench-debugger", version: "0.2.0" }, "io.modelcontextprotocol/clientCapabilities": {} } };
+  if (modern) params = { ...params, _meta: { "io.modelcontextprotocol/protocolVersion": session.version, "io.modelcontextprotocol/clientInfo": { name: "dsh-dev-workbench-debugger", version: "0.2.1" }, "io.modelcontextprotocol/clientCapabilities": {} } };
   const headers = new Headers(session.headers);
   headers.set("Content-Type", "application/json");
   headers.set("Accept", "application/json, text/event-stream");
@@ -3196,7 +3196,7 @@ async function connectMcp(request) {
   const session = { url: debugUrl(request.url), headers: debugHeaders(request.headers), version, busy: false, at: Date.now(), tools: [] };
   return operation(request, async (signal) => {
     const start = Date.now(), modern = version === "2026-07-28";
-    const hello = await mcpRpc(session, modern ? "server/discover" : "initialize", modern ? {} : { protocolVersion: version, capabilities: {}, clientInfo: { name: "dsh-dev-workbench-debugger", version: "0.2.0" } }, signal);
+    const hello = await mcpRpc(session, modern ? "server/discover" : "initialize", modern ? {} : { protocolVersion: version, capabilities: {}, clientInfo: { name: "dsh-dev-workbench-debugger", version: "0.2.1" } }, signal);
     if (!hello) throw new Error("MCP连接未返回结果");
     if (!modern) await mcpRpc(session, "notifications/initialized", {}, signal, true);
     let cursor;
@@ -3453,6 +3453,8 @@ async function retrieveKnowledgeAsync(state, query, request = {}) {
   try {
     const url = new URL(endpoint);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search) throw new Error("Embedding地址格式无效");
+    const loopback = url.hostname === "localhost" || url.hostname === "[::1]" || /^127(?:\.\d{1,3}){3}$/.test(url.hostname);
+    if (url.protocol === "http:" && !loopback) throw new Error("远程Embedding必须使用HTTPS；HTTP仅允许localhost或回环IP");
     const all = (state.knowledge || []).filter((d) => knowledgeAllowed(d, local.scope) && d.body?.trim()).flatMap(chunkKnowledge);
     if (all.length > 200) return { ...local, note: "当前范围超过200片段，保留本地全文检索；请缩小项目范围再使用语义检索" };
     if (!all.length) return local;
@@ -8391,7 +8393,7 @@ async function runUnifiedSearch(ctx, request) {
 var MIGRATION_FORMAT = "dsh-dev-workbench-migration";
 var MIGRATION_FORMAT_VERSION = 2;
 var MIGRATION_COLUMNS = ["projects", "tasks", "sources", "runs", "knowledge", "radar", "candidates", "replies", "analysisQueue", "operations", "jobs", "retrievalTraces", "changeHistory", "qualityReviews"];
-var PLUGIN_EXPORT_VERSION = "0.2.0";
+var PLUGIN_EXPORT_VERSION = "0.2.1";
 function migrationStableStringify(value) {
   return JSON.stringify(value, function(key, inner) {
     if (inner && typeof inner === "object" && !Array.isArray(inner)) {
