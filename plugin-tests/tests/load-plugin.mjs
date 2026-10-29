@@ -16,8 +16,8 @@ export function loadClientBundle() {
         factory = entry.factory
       },
     },
-    addEventListener() {},
-    removeEventListener() {},
+    addEventListener(...args) { globalThis.window?.addEventListener(...args) },
+    removeEventListener(...args) { globalThis.window?.removeEventListener(...args) },
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
     navigator: { platform: 'Mac' },
     setTimeout,
@@ -25,7 +25,7 @@ export function loadClientBundle() {
   }
   const source = readFileSync(BUNDLE, 'utf8')
   // eslint-disable-next-line no-new-func
-  new Function('window', 'navigator', 'document', source)(window, window.navigator, { createElement: () => ({ style: {} }) })
+  new Function('window', 'navigator', 'document', source)(window, window.navigator, globalThis.document || { createElement: () => ({ style: {} }) })
   if (!factory) throw new Error('bundle did not call __ModuleLoader__.load')
   const plugin = factory((id) => {
     if (id === 'react') return require('react')

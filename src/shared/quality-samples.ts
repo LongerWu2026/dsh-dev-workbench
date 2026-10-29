@@ -1,0 +1,110 @@
+/** Synthetic labels, no enterprise messages. Also used by the offline evaluator. */
+export const QUALITY_SAMPLES = [
+  {
+    "id": "noise",
+    "text": "谢谢，辛苦了",
+    "at": "2026-10-28T09:00:00+08:00",
+    "expected": {
+      "action": false,
+      "reply": false,
+      "completed": false
+    }
+  },
+  {
+    "id": "question",
+    "text": "接口现在进展怎么样，请回复一下",
+    "at": "2026-10-28T09:00:00+08:00",
+    "expected": {
+      "action": false,
+      "reply": true,
+      "completed": false
+    }
+  },
+  {
+    "id": "delivery",
+    "text": "请明天下班前完成登录接口开发，完成后回复我",
+    "at": "2026-10-28T09:00:00+08:00",
+    "expected": {
+      "action": true,
+      "reply": true,
+      "completed": false,
+      "dueDate": "2026-10-29"
+    }
+  },
+  {
+    "id": "meeting",
+    "text": "明天14点在A会议室参加评审，不用回复",
+    "at": "2026-10-28T09:00:00+08:00",
+    "expected": {
+      "action": true,
+      "reply": false,
+      "completed": false,
+      "eventType": "meeting",
+      "dueDate": "2026-10-29"
+    }
+  },
+  {
+    "id": "logging",
+    "text": "请把这个问题登记到缺陷表",
+    "at": "2026-10-28T09:00:00+08:00",
+    "expected": {
+      "action": true,
+      "reply": false,
+      "completed": false,
+      "eventType": "logging"
+    }
+  },
+  {
+    "id": "ack",
+    "text": "收到，我安排一下",
+    "at": "2026-10-28T09:00:00+08:00",
+    "direction": "outbound",
+    "expected": {
+      "action": false,
+      "reply": false,
+      "completed": false
+    }
+  },
+  {
+    "id": "promise",
+    "text": "我下周会完成这个功能",
+    "at": "2026-10-28T09:00:00+08:00",
+    "direction": "outbound",
+    "expected": {
+      "action": false,
+      "reply": false,
+      "completed": false
+    }
+  },
+  {
+    "id": "cancel",
+    "text": "不用处理，这个需求已经取消",
+    "at": "2026-10-28T09:00:00+08:00",
+    "expected": {
+      "action": false,
+      "reply": false,
+      "completed": false
+    }
+  },
+  {
+    "id": "no-task",
+    "text": "不安排新任务，仅问一下现有工作进展，请回复",
+    "at": "2026-10-28T09:00:00+08:00",
+    "expected": {
+      "action": false,
+      "reply": true,
+      "completed": false
+    }
+  },
+  {
+    "id": "uncertain",
+    "text": "周五能否交付？请确认一下",
+    "at": "2026-10-28T09:00:00+08:00",
+    "expected": {
+      "action": false,
+      "reply": true,
+      "completed": false,
+      "dueDate": null
+    }
+  }
+]

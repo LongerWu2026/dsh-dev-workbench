@@ -1,0 +1,55 @@
+{
+  "upstream": "deepseek-ai/deepseek-harness",
+  "revision": "1f81c047fc48fa190a683e469daa699857e9afe8",
+  "version": "0.2.1-rc.3",
+  "files": [
+    {
+      "path": "apps/desktop/src/browser-guests.ts",
+      "sha256": "a04dafebd97deb2960fb286f7b8252d1957ca66579161a32a8e3d818c6c23114"
+    },
+    {
+      "path": "apps/desktop/src/preload-browser.ts",
+      "sha256": "c10ddfaa9ee92e6a2b5cacb3e9cc4c7d7c576bcc06b76534cac3e26c0ebe7348"
+    },
+    {
+      "path": "apps/desktop/src/ipc.ts",
+      "sha256": "e670512d1f51695efd10391b7d9c330e1d80aeb2ba27abc5d0e5375001044203"
+    },
+    {
+      "path": "packages/client/ui-sidebar-browser/src/types.ts",
+      "sha256": "a68541fe5950bfdb6f3d92c13647c39d941c9c48f46b97df6d098ab126272508"
+    },
+    {
+      "path": "apps/desktop/src/main.ts",
+      "sha256": "a322f925bbbacd60afaef42f4564667a024c462897776cb634b952d449582ef7"
+    },
+    {
+      "path": "tsconfig.client.json",
+      "sha256": "d58a7583955f18ce868e96389c6f76eb99b2baf7b81770a62d9acf904da6173c"
+    },
+    {
+      "path": "apps/desktop/src/welcome-backend.ts",
+      "sha256": "e2e7428702237a930bb3d1f578717ad6c3895d7b53bb05ca56db960b520c22f1"
+    },
+    {
+      "path": "packages/client/ui-sidebar-browser/README.md",
+      "sha256": "fb40e404231111115f31db2d3e39f5f6fc749f1917382d3d1892d7ba792c97a2"
+    },
+    {
+      "path": "packages/client/ui-sidebar-browser/README.zh.md",
+      "sha256": "5115da671358713c53fd403d1fcaad4cd3afb4a24073329a6eaf1b16df2f9abf"
+    },
+    {
+      "path": "apps/desktop/src/browser-persistence.ts",
+      "sha256": "48e0fe8ac300a104884bd841fc74420eaf146ccd85e2c1099dd01c7e7bb39f3e"
+    },
+    {
+      "path": "apps/desktop/src/workbench-browser-policy.ts",
+      "sha256": "b263a34674012db6f33fa9b87dcd5f1bafb8a89d6bef354eecac5642699b5b54"
+    },
+    {
+      "path": "apps/desktop/src/host-fetch.ts",
+      "sha256": "2106561b29f89e2668d308865fd4c335946321813d3c2ab209351da36dca9a75"
+    }
+  ]
+}

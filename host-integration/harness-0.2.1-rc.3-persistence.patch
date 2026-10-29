@@ -1,0 +1,494 @@
+--- a/apps/desktop/src/browser-guests.ts
++++ b/apps/desktop/src/browser-guests.ts
+@@ -3,10 +3,12 @@
+ import { app, session, type BrowserWindow, type Session, type WebContents } from 'electron'
+ import type { DesktopBrowserLeaseId, DesktopBrowserOpenRequest, DesktopBrowserReservation } from '@deepseek-ai/dsh-client-ui-sidebar-browser/types'
+ import { DESKTOP_IPC } from './ipc.ts'
++import { DesktopBrowserPersistence, type PersistentBrowserAccount } from './browser-persistence.ts'
+ 
+ interface GuestLease {
+   readonly owner: WebContents
+   readonly partition: string
++  readonly persistent?: PersistentBrowserAccount
+   attached: boolean
+   guest?: WebContents
+   releaseInput?: () => void
+@@ -17,9 +19,14 @@
+   private readonly partitions = new Map<string, string>()
+   private readonly leases = new Map<DesktopBrowserLeaseId, GuestLease>()
+ 
+-  /** @param hostUrl - current authenticated DSH Host, which guests cannot request. */
+-  constructor(private readonly hostUrl: () => string | undefined) {}
++  private readonly persistentPartitions = new Set<string>()
++  private readonly releases = new Map<DesktopBrowserLeaseId, { owner: WebContents; operation: Promise<void> }>()
++  private closing = false
++  private shutdownOperation?: Promise<void>
+ 
++  /** @param hostUrl - application endpoint. @param persistence - trusted accounts, or absent for memory-only mode. */
++  constructor(private readonly hostUrl: () => string | undefined, private readonly persistence?: DesktopBrowserPersistence) {}
++
+   /**
+    * Reserve one guest in a workspace's process-lifetime partition.
+    * @param owner - authenticated primary application WebContents.
+@@ -27,6 +34,7 @@
+    * @returns opaque lease and the partition approved for it.
+    */
+   acquire(owner: WebContents, workspace: unknown): DesktopBrowserReservation {
++    if (this.closing) throw new Error('desktop browser: shutting down')
+     if (typeof workspace !== 'string' || workspace.length === 0 || workspace.length > 4096) {
+       throw new Error('desktop browser: a workspace storage identity is required')
+     }
+@@ -41,6 +49,51 @@
+     return { lease, partition }
+   }
+ 
++  /** @param owner - authenticated main renderer. @param request - fixed namespace and provider. @returns approved persistent lease. */
++  acquirePersistent(owner: WebContents, request: unknown): DesktopBrowserReservation & { persistence: 'persistent'; providerId: string } {
++    if (this.closing || this.persistence === undefined) throw new Error('desktop browser: persistent storage unavailable')
++    const account = this.persistence.resolve(request)
++    if (!this.persistentPartitions.has(account.partition)) {
++      const value = session.fromPartition(account.partition)
++      this.configureSession(value, account)
++      this.persistence.register(account.partition, value)
++      this.persistentPartitions.add(account.partition)
++    }
++    const lease = randomUUID() as DesktopBrowserLeaseId
++    this.leases.set(lease, { owner, partition: account.partition, persistent: account, attached: false })
++    return { lease, partition: account.partition, persistence: 'persistent', providerId: account.providerId }
++  }
++
++  /** @returns after bounded flush of all persistent accounts; rejects on failure or deadline. */
++  async flushPersistent(): Promise<void> {
++    let timer: ReturnType<typeof setTimeout> | undefined
++    try {
++      const failures = await Promise.race([
++        this.persistence?.flushAll() ?? Promise.resolve(0),
++        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('desktop browser: storage flush deadline')), 3000) }),
++      ])
++      if (failures > 0) throw new Error('desktop browser: storage flush failed')
++    } finally { clearTimeout(timer) }
++  }
++
++  /** @returns after guest destruction and bounded storage drain; no new leases are accepted. */
++  shutdown(): Promise<void> {
++    if (this.shutdownOperation !== undefined) return this.shutdownOperation
++    this.closing = true
++    const drain = async (): Promise<void> => {
++      const tasks = new Set([...this.releases.values()].map(value => value.operation))
++      for (const [id, lease] of this.leases) tasks.add(this.release(lease.owner, id))
++      const results = await Promise.allSettled(tasks)
++      await this.flushPersistent()
++      if (results.some(value => value.status === 'rejected')) throw new Error('desktop browser: guest release failed')
++    }
++    let timer: ReturnType<typeof setTimeout> | undefined
++    this.shutdownOperation = Promise.race([drain(), new Promise<never>((_resolve, reject) => {
++      timer = setTimeout(() => reject(new Error('desktop browser: shutdown deadline')), 4000)
++    })]).finally(() => { clearTimeout(timer) })
++    return this.shutdownOperation
++  }
++
+   /**
+    * Release only a lease issued to this application window; workspace storage survives.
+    * @param owner - authenticated IPC sender.
+@@ -49,17 +102,29 @@
+   async release(owner: WebContents, id: unknown): Promise<void> {
+     if (typeof id !== 'string') throw new Error('desktop browser: invalid guest lease')
+     const key = id as DesktopBrowserLeaseId
++    const pending = this.releases.get(key)
++    if (pending !== undefined) {
++      if (pending.owner !== owner) throw new Error('desktop browser: guest belongs to another window')
++      return pending.operation
++    }
+     const lease = this.leases.get(key)
+     if (lease === undefined) return
+     if (lease.owner !== owner) throw new Error('desktop browser: guest belongs to another window')
+-    lease.releaseInput?.()
+-    this.leases.delete(key)
+-    const guest = lease.guest
+-    if (guest !== undefined && !guest.isDestroyed()) {
+-      const destroyed = new Promise<void>((resolve) => { guest.once('destroyed', resolve) })
+-      guest.close({ waitForBeforeUnload: false })
+-      await destroyed
++    const release = async (): Promise<void> => {
++      lease.releaseInput?.()
++      delete lease.releaseInput
++      this.leases.delete(key)
++      const guest = lease.guest
++      if (guest !== undefined && !guest.isDestroyed()) {
++        const destroyed = new Promise<void>((resolve) => { guest.once('destroyed', resolve) })
++        guest.close({ waitForBeforeUnload: false })
++        await destroyed
++      }
++      if (lease.persistent !== undefined) await this.persistence?.flush(lease.partition)
+     }
++    const operation = release()
++    this.releases.set(key, { owner, operation })
++    try { await operation } finally { this.releases.delete(key) }
+   }
+ 
+   /**
+@@ -106,22 +171,28 @@
+         lease.guest = guest
+         attachedLease = id
+         lease.releaseInput = attachInput(guest, id)
+-        guest.once('destroyed', () => { lease.releaseInput?.(); this.leases.delete(id) })
++        guest.once('destroyed', () => {
++          lease.releaseInput?.()
++          delete lease.releaseInput
++          this.leases.delete(id)
++          if (lease.persistent !== undefined) void this.persistence?.flush(lease.partition)
++            .catch((_error: unknown) => { console.error('desktop browser: persistent storage flush failed') })
++        })
+       })
+       guest.setWindowOpenHandler(({ url, postBody }) => {
+         const lease = attachedLease === undefined ? undefined : this.leases.get(attachedLease)
+         if (attachedLease !== undefined && lease?.guest === guest && lease.owner === owner && !owner.isDestroyed()
+-          && postBody === undefined && this.allowedNavigation(url)) {
++          && postBody === undefined && this.allowedNavigation(url, lease.persistent)) {
+           const request: DesktopBrowserOpenRequest = { lease: attachedLease, url: new URL(url).href }
+           owner.send(DESKTOP_IPC.browserOpenRequested, request)
+         }
+         return { action: 'deny' }
+       })
+       guest.on('will-frame-navigate', (event) => {
+-        if (event.isMainFrame && !this.allowedNavigation(event.url)) event.preventDefault()
++        if (event.isMainFrame && !this.allowedNavigation(event.url, attachedLease === undefined ? undefined : this.leases.get(attachedLease)?.persistent)) event.preventDefault()
+       })
+       guest.on('will-redirect', (event, url, _inPlace, mainFrame) => {
+-        if (mainFrame && !this.allowedNavigation(url)) event.preventDefault()
++        if (mainFrame && !this.allowedNavigation(url, attachedLease === undefined ? undefined : this.leases.get(attachedLease)?.persistent)) event.preventDefault()
+       })
+       guest.on('will-attach-webview', (event) => { event.preventDefault() })
+       guest.on('login', (event, _details, _authInfo, callback) => { event.preventDefault(); callback() })
+@@ -138,7 +209,7 @@
+     owner.once('destroyed', releaseAll)
+   }
+ 
+-  private configureSession(browserSession: Session): void {
++  private configureSession(browserSession: Session, account?: PersistentBrowserAccount): void {
+     browserSession.setPermissionRequestHandler((_contents, _permission, callback) => { callback(false) })
+     browserSession.setPermissionCheckHandler(() => false)
+     browserSession.setDevicePermissionHandler(() => false)
+@@ -149,15 +220,16 @@
+       const network = ['http:', 'https:', 'ws:', 'wss:'].includes(url.protocol)
+       callback({ cancel: network
+         ? url.username !== '' || url.password !== '' || this.isApplicationHost(url)
++          || account !== undefined && details.resourceType === 'mainFrame' && !account.allowsNavigation(details.url)
+         : !['about:', 'data:', 'blob:'].includes(url.protocol) })
+     })
+   }
+ 
+-  private allowedNavigation(value: string): boolean {
++  private allowedNavigation(value: string, account?: PersistentBrowserAccount): boolean {
+     if (!URL.canParse(value)) return false
+     const url = new URL(value)
+     return ['http:', 'https:'].includes(url.protocol) && url.username === '' && url.password === ''
+-      && !this.isApplicationHost(url)
++      && !this.isApplicationHost(url) && (account === undefined || account.allowsNavigation(value))
+   }
+ 
+   private isApplicationHost(url: URL): boolean {
+--- a/apps/desktop/src/preload-browser.ts
++++ b/apps/desktop/src/preload-browser.ts
+@@ -17,6 +17,10 @@
+     }
+   })
+   return {
++    persistence: {
++      protocolVersion: 1,
++      acquire: request => ipcRenderer.invoke(DESKTOP_IPC.browserAcquirePersistent, request) as Promise<import('@deepseek-ai/dsh-client-ui-sidebar-browser/types').DesktopPersistentBrowserReservation>,
++    },
+     acquire: workspace => ipcRenderer.invoke(DESKTOP_IPC.browserAcquire, workspace) as ReturnType<DesktopBrowserBridge['acquire']>,
+     release: lease => ipcRenderer.invoke(DESKTOP_IPC.browserRelease, lease) as Promise<void>,
+     onOpenRequested(lease, listener) {
+--- a/apps/desktop/src/ipc.ts
++++ b/apps/desktop/src/ipc.ts
+@@ -18,6 +18,7 @@
+   onboardingApiKey: 'dsh-desktop:onboarding-api-key',
+   bootFailed: 'dsh-desktop:boot-failed',
+   browserAcquire: 'dsh-desktop:browser-acquire',
++  browserAcquirePersistent: 'dsh-desktop:browser-acquire-persistent',
+   browserRelease: 'dsh-desktop:browser-release',
+   browserOpenRequested: 'dsh-desktop:browser-open-requested',
+   directoryPick: 'dsh-desktop:directory-pick',
+--- a/packages/client/ui-sidebar-browser/src/types.ts
++++ b/packages/client/ui-sidebar-browser/src/types.ts
+@@ -4,12 +4,18 @@
+ /** Main-issued identity of one guest reservation. */
+ export type DesktopBrowserLeaseId = Branded<'DesktopBrowserLeaseId'>
+ 
+-/** A guest's approved, process-local storage partition. */
++/** A guest's main-approved storage partition; persistence is declared separately. */
+ export interface DesktopBrowserReservation {
+   readonly lease: DesktopBrowserLeaseId
+   readonly partition: string
+ }
+ 
++/** Persistent account selected from the main process's registered namespaces. */
++export interface DesktopPersistentBrowserReservation extends DesktopBrowserReservation {
++  readonly persistence: 'persistent'
++  readonly providerId: string
++}
++
+ /** Main-approved request to open an HTTP(S) page from an existing guest. */
+ export interface DesktopBrowserOpenRequest {
+   readonly lease: DesktopBrowserLeaseId
+@@ -18,6 +24,12 @@
+ 
+ /** Origin-scoped operations; no Electron objects or arbitrary IPC cross this interface. */
+ export interface DesktopBrowserBridge {
++  /** Absent on legacy hosts; persistent storage requires a registered main-process policy. */
++  readonly persistence?: {
++    readonly protocolVersion: 1
++    /** @param request - registered namespace and provider. @returns main-approved persistent guest lease. */
++    acquire(request: { readonly namespace: string; readonly providerId: string }): Promise<DesktopPersistentBrowserReservation>
++  }
+   /** @param workspace - resolved storage account. @returns one approved guest reservation. */
+   acquire(workspace: string): Promise<DesktopBrowserReservation>
+   /** @param lease - the caller's reservation. @returns after its guest has been destroyed. */
+--- a/apps/desktop/src/main.ts
++++ b/apps/desktop/src/main.ts
+@@ -15,7 +15,6 @@
+   powerMonitor,
+   nativeImage,
+   nativeTheme,
+-  net,
+   protocol,
+   session,
+   shell,
+@@ -42,6 +41,7 @@
+ import { openWelcomeWindow } from './welcome-window.ts'
+ import { WELCOME_IPC, needsWelcome, type WelcomeNotice } from './welcome-api.ts'
+ import { connectDesktopWelcome, type DesktopWelcomeBackend } from './welcome-backend.ts'
++import { desktopHostFetch } from './host-fetch.ts'
+ import { DesktopUpdateJournal } from './update-journal.ts'
+ import { DesktopUpdatePreparationError } from './update-error.ts'
+ import { DesktopUpdateSchedule, resolveDesktopUpdateScheduleConfig } from './update-schedule.ts'
+@@ -56,6 +56,8 @@
+ import { DesktopUpdateDialog, type UpdateDialogOptions } from './update-dialog.ts'
+ import { readDesktopRuntime } from './runtime-tree.ts'
+ import { DesktopBrowserGuests } from './browser-guests.ts'
++import { DesktopBrowserPersistence } from './browser-persistence.ts'
++import { workbenchBrowserPolicy } from './workbench-browser-policy.ts'
+ import { installDesktopShortcuts } from './keyboard.ts'
+ import { DesktopUpdateOverlays } from './update-overlay.ts'
+ import { DesktopQuitConfirmation } from './quit-confirmation.ts'
+@@ -402,7 +404,7 @@
+   const applicationUrl = `${SCHEME}://app/`
+   let hostUrl: string | undefined
+   let hostCookie: string | undefined
+-  const browserGuests = new DesktopBrowserGuests(() => hostUrl)
++  const browserGuests = new DesktopBrowserGuests(() => hostUrl, new DesktopBrowserPersistence(paths.profile, [workbenchBrowserPolicy]))
+   let injections: readonly unknown[] = []
+   let welcomeBackend: DesktopWelcomeBackend | undefined
+   let reportedLaunch = false
+@@ -451,11 +453,12 @@
+     return {
+       start: async () => {
+         const ready = await host.start()
+-        hostCookie = await authenticateWebHost(ready.url)
++        const activeCookie = await authenticateWebHost(ready.url)
++        hostCookie = activeCookie
+         hostUrl = ready.url
+         if (ready.injections === undefined) throw new Error('Desktop Host did not provide boot injections')
+         injections = ready.injections
+-        welcomeBackend = await connectDesktopWelcome(ready.url, (input, init) => net.fetch(input, init), async () => (await session.defaultSession.cookies.get({ url: ready.url })).map(cookie => `${cookie.name}=${cookie.value}`).join('; '))
++        welcomeBackend = await connectDesktopWelcome(new URL('./', ready.url).href, desktopHostFetch(ready.url, activeCookie), async () => activeCookie)
+         analyticsEnabled = await welcomeBackend.analyticsEnabled().catch(() => false)
+         if (!reportedLaunch) { reportedLaunch = true; void track('desktop_app_launch', {}) }
+         stopAccount?.()
+@@ -628,6 +631,7 @@
+         const stopFailure = updateStopFailure as DesktopHostUncleanExitError | undefined
+         if (stopFailure !== undefined) throw new DesktopUpdatePreparationError('stop-failed', locale.messages.updateStopFailed, stopFailure.message)
+         updateJournal?.action('install-confirmed')
++        await browserGuests.flushPersistent()
+         shellInstallerOwnsQuit = true
+       } catch (error) {
+         if (!updateStoppedHost) await host.updateTasks('unlock').catch((unlockError: unknown) => { console.error(unlockError) })
+@@ -706,6 +710,10 @@
+   ipcMain.handle(DESKTOP_IPC.browserAcquire, (event, workspace: unknown) => {
+     assertProductSender(event)
+     return browserGuests.acquire(event.sender, workspace)
++  })
++  ipcMain.handle(DESKTOP_IPC.browserAcquirePersistent, (event, request: unknown) => {
++    assertProductSender(event)
++    return browserGuests.acquirePersistent(event.sender, request)
+   })
+   ipcMain.handle(DESKTOP_IPC.browserRelease, (event, lease: unknown) => {
+     assertProductSender(event)
+@@ -1259,6 +1267,7 @@
+     updateDialog.dispose()
+     mandatoryUI?.dispose()
+     void Promise.all([Promise.resolve(mandatoryPolicy?.dispose()).then(() => policyAuth?.dispose()), backend.close(),
++      browserGuests.shutdown().catch((_error: unknown) => { console.error('desktop browser: persistent shutdown did not complete') }),
+       // A Platform cleanup failure is logged without cutting the remaining Host shutdown short.
+       platformView.dispose().catch((error: unknown) => { console.error(error) })])
+       .catch((error: unknown) => { console.error(error) }).finally(() => { app.quit() })
+--- a/tsconfig.client.json
++++ b/tsconfig.client.json
+@@ -19,6 +19,7 @@
+     "apps/desktop/src/keyboard.ts",
+     "apps/desktop/src/keybindings.ts",
+     "apps/desktop/src/browser-guests.ts",
++    "apps/desktop/src/browser-persistence.ts",
+     "apps/desktop/src/ipc.ts",
+     "apps/desktop/src/update-overlay.ts",
+     "apps/desktop/tests/**/*.client.spec.tsx",
+--- a/apps/desktop/src/welcome-backend.ts
++++ b/apps/desktop/src/welcome-backend.ts
+@@ -48,7 +48,7 @@
+   const origin = new URL(authenticatedUrl).origin
+   const authenticated = await send(authenticatedUrl, { credentials: 'include' })
+   await authenticated.body?.cancel()
+-  if (!authenticated.ok) throw new Error('desktop welcome: Web authentication failed')
++  if (!authenticated.ok) throw new Error(`desktop welcome: Web authentication failed (HTTP ${authenticated.status})`)
+   const invoke = async (
+     request: { namespace: string; method: string; args: Record<string, unknown> },
+     signal?: AbortSignal,
+--- a/packages/client/ui-sidebar-browser/README.md
++++ b/packages/client/ui-sidebar-browser/README.md
+@@ -107,7 +107,7 @@
+ - Browsers conceal many iframe failures for security: DNS, TLS, mixed-content, CSP, and `X-Frame-Options` failures may emit `load` or no actionable event instead of `error`. The load-failure notice is best-effort.
+ - Saved title and URL survive reloads and plugin unload while the tab remains in Sidebar's layout. Closing the tab removes its checkpoint. Restart restoration does not recover page memory, unsaved forms or Chromium's history stack.
+ - Local files are rejected and remain owned by Document Preview.
+-- Desktop shares process-local storage partitions by canonical workspace CWD; Sessions without a resolved Workspace are isolated separately. Cookies and Web storage do not survive application restart. Guest permissions, downloads and native popups are denied; approved HTTP(S) popup requests open Sidebar tabs. Host-address filtering is not a general private-network or DNS-rebinding firewall.
++- Default Desktop Browser tabs share process-local storage partitions by canonical workspace CWD; Sessions without a resolved Workspace are isolated separately. Default Browser cookies and Web storage do not survive application restart. Main-registered consumers can acquire persistent accounts through the optional `browser.persistence` bridge; account storage survives guest release and application restart, while website expiry and logout still apply. Guest permissions, downloads and native popups are denied; approved HTTP(S) popup requests open Sidebar tabs. Host-address filtering is not a general private-network or DNS-rebinding firewall.
+ 
+ <a id="dev-note"></a>
+ ### Dev Note
+--- a/packages/client/ui-sidebar-browser/README.zh.md
++++ b/packages/client/ui-sidebar-browser/README.zh.md
+@@ -107,7 +107,7 @@
+ - 出于安全原因，浏览器会隐藏很多 iframe 失败：DNS、TLS、mixed-content、CSP 与 `X-Frame-Options` 失败可能触发 `load`，也可能不提供可操作 event，而不是触发 `error`。加载失败 notice 只能作为 best-effort 提示。
+ - 只要 tab 仍在 Sidebar 布局中，保存的标题和 URL 就会跨刷新与插件卸载保留。关闭 tab 会删除其检查点。重启恢复不恢复页面内存、未保存的表单或 Chromium history 栈。
+ - 本地文件会被拒绝，并继续由 Document Preview 负责。
+-- Desktop 按规范化的工作区 CWD 共享进程内存储分区；没有解析到 Workspace 的 Session 单独隔离。Cookie 与 Web storage 不跨应用重启保留。guest 权限、下载与原生 popup 均被拒绝；通过检查的 HTTP(S) popup 请求会打开 Sidebar tab。Host 地址过滤不是通用私网或 DNS-rebinding 防火墙。
++- 默认 Desktop Browser tab 按规范化的工作区 CWD 共享进程内存储分区；没有解析到 Workspace 的 Session 单独隔离。默认 Browser 的 Cookie 与 Web storage 不跨应用重启保留。由主进程注册的消费者可通过可选 `browser.persistence` 接口申请持久化账号；释放 guest 和重启软件不清理账号存储，官网过期与退出规则仍然有效。guest 权限、下载与原生 popup 均被拒绝；通过检查的 HTTP(S) popup 请求会打开 Sidebar tab。Host 地址过滤不是通用私网或 DNS-rebinding 防火墙。
+ 
+ <a id="dev-note"></a>
+ ### 开发备注
+--- /dev/null
++++ b/apps/desktop/src/browser-persistence.ts
+@@ -0,0 +1,80 @@
++/** Main-owned persistent Browser accounts; renderer requests never choose filesystem paths. */
++import { createHash } from 'node:crypto'
++import { realpathSync } from 'node:fs'
++import type { Session } from 'electron'
++
++/** Namespace registered by trusted desktop composition. */
++export interface PersistentBrowserPolicy {
++  readonly namespace: string
++  readonly providers: readonly { readonly id: string; readonly origins: readonly string[] }[]
++}
++
++/** Internal account metadata; navigation policy never crosses IPC. */
++export interface PersistentBrowserAccount {
++  readonly partition: string
++  readonly providerId: string
++  readonly allowsNavigation: (value: string) => boolean
++}
++
++/** Stores stable identities and flush ownership independently from guest leases. */
++export class DesktopBrowserPersistence {
++  private readonly accounts = new Map<string, PersistentBrowserAccount>()
++  private readonly sessions = new Map<string, Session>()
++  private readonly flushing = new Map<string, Promise<void>>()
++
++  /** @param profile - profile selected by Desktop, never supplied by a renderer. @param policies - trusted registrations. */
++  constructor(private readonly profile: string, private readonly policies: readonly PersistentBrowserPolicy[]) {}
++
++  /** @param request - parsed at the IPC boundary. @returns approved persistent identity and navigation policy. */
++  resolve(request: unknown): PersistentBrowserAccount {
++    if (typeof request !== 'object' || request === null || Array.isArray(request)) throw new Error('desktop browser: invalid persistent request')
++    const input = request as Record<string, unknown>
++    if (Object.keys(input).sort().join(',') !== 'namespace,providerId'
++      || typeof input.namespace !== 'string' || typeof input.providerId !== 'string') throw new Error('desktop browser: invalid persistent fields')
++    const policy = this.policies.find(value => value.namespace === input.namespace)
++    const provider = policy?.providers.find(value => value.id === input.providerId)
++    if (policy === undefined || provider === undefined) throw new Error('desktop browser: unregistered persistent account')
++    const identity = JSON.stringify([realpathSync(this.profile), policy.namespace, provider.id, 'v1'])
++    let account = this.accounts.get(identity)
++    if (account === undefined) {
++      const origins = new Set(provider.origins)
++      account = {
++        partition: `persist:dsh-browser-v1-${createHash('sha256').update(identity).digest('hex')}`,
++        providerId: provider.id,
++        allowsNavigation(value) {
++          if (!URL.canParse(value)) return false
++          const url = new URL(value)
++          return url.username === '' && url.password === '' && origins.has(url.origin)
++        },
++      }
++      this.accounts.set(identity, account)
++    }
++    return account
++  }
++
++  /** @param partition - approved identity. @param value - Session configured by Browser guest ownership. */
++  register(partition: string, value: Session): void { this.sessions.set(partition, value) }
++
++  /** @param partition - approved identity. @returns shared in-flight flush; rejects on storage failure. */
++  flush(partition: string): Promise<void> {
++    const pending = this.flushing.get(partition)
++    if (pending !== undefined) return pending
++    const value = this.sessions.get(partition)
++    if (value === undefined) return Promise.resolve()
++    const operation = Promise.resolve().then(async () => {
++      value.flushStorageData()
++      await value.cookies.flushStore()
++    })
++    this.flushing.set(partition, operation)
++    // Both branches remove only their own entry and do not create an unhandled rejected promise.
++    const settled = (): void => { if (this.flushing.get(partition) === operation) this.flushing.delete(partition) }
++    void operation.then(settled, settled)
++    return operation
++  }
++
++  /** @returns number of failed persistent account flushes; no credential values are exposed. */
++  async flushAll(): Promise<number> {
++    const results = await Promise.allSettled([...this.sessions.keys()].map(partition => this.flush(partition)))
++    return results.filter(value => value.status === 'rejected').length
++  }
++}
+--- /dev/null
++++ b/apps/desktop/src/workbench-browser-policy.ts
+@@ -0,0 +1,15 @@
++/** Fixed consumer-site registration for the workbench's persistent embedded pages. */
++import type { PersistentBrowserPolicy } from './browser-persistence.ts'
++
++/** Main-owned allowlist; callers cannot add origins, directories, or providers over IPC. */
++export const workbenchBrowserPolicy: PersistentBrowserPolicy = {
++  namespace: 'dsh-dev-workbench.web-ai',
++  providers: [
++    { id: 'kimi', origins: ['https://www.kimi.com', 'https://kimi.com'] },
++    { id: 'glm', origins: ['https://chatglm.cn'] },
++    { id: 'doubao', origins: ['https://www.doubao.com'] },
++    { id: 'yuanbao', origins: ['https://yuanbao.tencent.com'] },
++    { id: 'qianwen', origins: ['https://www.qianwen.com', 'https://qianwen.com'] },
++    { id: 'chatgpt', origins: ['https://chatgpt.com'] },
++  ],
++}
+--- /dev/null
++++ b/apps/desktop/src/host-fetch.ts
+@@ -0,0 +1,21 @@
++/** Authority-scoped native HTTP transport; never uses Chromium's unrelated localhost cookies. */
++
++/**
++ * @param url - owned Host launch URL whose cookie was validated by authenticateWebHost.
++ * @param cookie - that Host's single authority-bound cookie header.
++ * @param send - Node fetch implementation; omitted uses the process HTTP client without a browser cookie jar.
++ * @param requestTimeoutMs - per-request deadline; omitted uses fifteen seconds for native metadata operations.
++ * @returns transport refusing credentials in URLs, cross-origin requests and redirects.
++ */
++export function desktopHostFetch(url: string, cookie: string, send: typeof fetch = fetch, requestTimeoutMs = 15000): (input: string, init?: RequestInit) => Promise<Response> {
++  const origin = new URL(url).origin
++  return async (input, init) => {
++    const target = new URL(input)
++    if (target.origin !== origin || target.username !== '' || target.password !== '') throw new Error('desktop host: cross-origin request refused')
++    const headers = new Headers(init?.headers)
++    headers.set('cookie', cookie)
++    headers.set('origin', origin)
++    const deadline = AbortSignal.timeout(requestTimeoutMs)
++    return send(target.href, { ...init, headers, redirect: 'error', signal: init?.signal ? AbortSignal.any([init.signal, deadline]) : deadline })
++  }
++}

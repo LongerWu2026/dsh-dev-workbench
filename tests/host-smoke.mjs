@@ -7,12 +7,14 @@
  *
  *   node tests/host-smoke.mjs
  */
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 const home = mkdtempSync(join(tmpdir(), 'wb-test-'))
 process.env.DSH_HOME = home
+mkdirSync(join(home,'storages/dev-workbench'),{recursive:true})
+writeFileSync(join(home,'storages/dev-workbench/state.json'),JSON.stringify({version:2,installedAt:'2020-01-01T00:00:00.000Z'}))
 
 const { apply } = await import('../index.js')
 
@@ -70,6 +72,20 @@ const checks = []
 function check(label, condition, detail) {
   checks.push({ label, ok: !!condition, detail })
   if (!condition) console.error('  FAIL ' + label + (detail ? ' — ' + detail : ''))
+}
+
+// Simulate the model's batch envelope while retaining each scenario's domain fixtures.
+function fixtureReply(request, nextReply) {
+  const text=request?.content?.find(block=>block.type==='text')?.text || ''
+  let packet;try {packet=JSON.parse(text.split('\n').at(-1))}catch{}
+  if(packet?.protocol!=='awb-message-batch-v3')return nextReply()
+  const results=[]
+  for(const message of packet.messages){
+    const reply=nextReply();let analysis
+    try{analysis=JSON.parse(reply.replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''))}catch{return reply}
+    results.push({sourceId:message.sourceId,analysis})
+  }
+  return JSON.stringify({batchId:packet.batchId,results})
 }
 
 /* ---------------------------------------------------------------------------
@@ -158,7 +174,7 @@ check('示例数据不重复叠加', state.tasks.length === 3, '实际 ' + state
 const diag = await api.diagnostics()
 check('诊断返回数据路径', typeof diag.dataPath === 'string' && diag.dataPath.indexOf('dev-workbench') >= 0)
 check('诊断统计到任务', diag.counts.tasks === 3)
-check('注册了 9 个 Agent 工具', tools.length === 9, '实际 ' + tools.length)
+check('注册了 16 个 Agent 工具', tools.length === 16, '实际 ' + tools.length)
 
 /* ---------------------------------------------------------------------------
  * P0-01：真实执行工具（不是只数注册数量）
@@ -187,10 +203,12 @@ check('注册了 9 个 Agent 工具', tools.length === 9, '实际 ' + tools.leng
     String(afterIdem.tasks.filter((task) => task.title === '幂等任务').length),
   )
 
-  const updated = await updateTool.execute({ id: created.taskId, status: 'completed' }, {})
+  check('工具 update_task 契约允许修改标签', updateTool.parameters.properties.tags?.type === 'array')
+  const updated = await updateTool.execute({ id: created.taskId, status: 'completed', tags: ['AI 识别'] }, {})
   check('工具 update_task 返回结果', /已更新/.test(updated.text), updated.text)
   const afterUpdate = await api.snapshot()
   check('工具 update_task 真实落库', afterUpdate.tasks.find((task) => task.id === created.taskId).status === 'completed')
+  check('工具标签按数组保存并记录人工保护', afterUpdate.tasks.find(task=>task.id===created.taskId).tags[0] === 'AI 识别' && afterUpdate.tasks.find(task=>task.id===created.taskId).humanGuard.editedFields.includes('tags'))
 
   const runCreated = await runTool.execute({ taskId: created.taskId, status: 'completed', summary: '工具登记验证' }, {})
   check('工具 record_run 返回 runId', typeof runCreated.runId === 'string', JSON.stringify(runCreated))
@@ -211,7 +229,9 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 54 个 Remote 描述符', invocations.length === 54, '实际 ' + invocations.length)
+check('注册了 102 个 Remote 描述符', invocations.length === 102, '实际 ' + invocations.length)
+check('回复发送只有显式页面入口，不暴露后台发送工具', invocations.some(entry => entry.method === 'sendReply') && !tools.some(tool => /send_reply|send_message/.test(tool.name)))
+check('待办原会话回复准备入口已接线',invocations.some(entry=>entry.method==='prepareTaskReply'))
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
 check('描述符 id 带包名前缀', invocations.every((entry) => entry.id.indexOf('dsh-dev-workbench#workbench/') === 0))
@@ -504,8 +524,8 @@ check('无 yzj-cli 时 @我 如实降级', state.lastMentionsFetch && state.last
 // 有 CLI：只采 notifyType/desc 命中且非自己发的
 yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
 state = await api.fetchMentions()
-const yzjSources = state.sources.filter((row) => String(row.externalId || '').indexOf('yzj:msg:') === 0)
-check('@我 拉取只采真@消息', yzjSources.length === 1 && yzjSources[0].externalId === 'yzj:msg:m1', JSON.stringify(yzjSources.map((r) => r.externalId)))
+const yzjSources = state.sources.filter((row) => row.provider === 'yunzhijia' && row.locator && row.locator.intake !== false)
+check('@我 拉取只采真@消息', yzjSources.length === 1 && yzjSources[0].locator.msgId === 'm1', JSON.stringify(yzjSources.map((r) => r.externalId)))
 check('@我 来源带原文与群名', yzjSources[0].excerpt.indexOf('限流') >= 0 && yzjSources[0].title.indexOf('网关组') >= 0)
 check('@我 报告记录用户与数量', state.lastMentionsFetch.user === '测试用户' && state.lastMentionsFetch.added === 1)
 check('@我 来源带发送人姓名', yzjSources[0].sender === '张三', String(yzjSources[0].sender))
@@ -515,7 +535,7 @@ check(
   JSON.stringify(yzjSources[0].locator),
 )
 state = await api.fetchMentions()
-check('@我 重复拉取去重', state.lastMentionsFetch.added === 0 && state.sources.filter((r) => String(r.externalId || '').indexOf('yzj:msg:') === 0).length === 1)
+check('@我 重复拉取去重', state.lastMentionsFetch.added === 0 && state.sources.filter((r) => r.provider === 'yunzhijia' && r.locator && r.locator.intake !== false).length === 1)
 
 // 规则候选：提取 → 人工确认 → 采纳建任务 / 忽略
 let candState = await api.extractCandidates()
@@ -553,35 +573,35 @@ check('再次提取不重复生成', candState.candidates.filter((c) => c.status
   expectedTomorrow.setHours(18, 0, 0, 0)
 
   await api.addSource({
-    provider: 'yunzhijia',
+    provider: 'yunzhijia',selection:{policy:'focused-v1',reasons:['mention_me'],unreadCount:null,observedAt:new Date().toISOString()},
     externalId: 'yzj:msg:p0-date',
     title: '@我 · 日期测试群',
     excerpt: '明天下班前给出限流结论',
     fetchedAt: threeDaysAgo.toISOString(),
   })
   await api.addSource({
-    provider: 'yunzhijia',
+    provider: 'yunzhijia',selection:{policy:'focused-v1',reasons:['mention_me'],unreadCount:null,observedAt:new Date().toISOString()},
     externalId: 'yzj:msg:p0-closed',
     title: '@我 · 收尾群',
     excerpt: '不用处理，问题已解决',
     fetchedAt: threeDaysAgo.toISOString(),
   })
   await api.addSource({
-    provider: 'yunzhijia',
+    provider: 'yunzhijia',selection:{policy:'focused-v1',reasons:['mention_me'],unreadCount:null,observedAt:new Date().toISOString()},
     externalId: 'yzj:msg:p0-question',
     title: '@我 · 询问群',
     excerpt: '请确认是否取消该任务',
     fetchedAt: threeDaysAgo.toISOString(),
   })
   await api.addSource({
-    provider: 'yunzhijia',
+    provider: 'yunzhijia',selection:{policy:'focused-v1',reasons:['mention_me'],unreadCount:null,observedAt:new Date().toISOString()},
     externalId: 'yzj:msg:p0-multi',
     title: '@我 · 多事项群',
     excerpt: '请补充压测报告。另外麻烦确认阈值是否合理。',
     fetchedAt: threeDaysAgo.toISOString(),
   })
   await api.addSource({
-    provider: 'yunzhijia',
+    provider: 'yunzhijia',selection:{policy:'focused-v1',reasons:['mention_me'],unreadCount:null,observedAt:new Date().toISOString()},
     externalId: 'yzj:msg:p0-nextweek',
     title: '@我 · 下周群',
     excerpt: '下周一把方案发我',
@@ -675,15 +695,15 @@ try {
   yzjSpawner = { spawn, resolveExecutable: () => Promise.resolve('/fake/yzj-cli') }
 
   const incState1 = await api.fetchMentions()
-  const incSources = incState1.sources.filter((row) => String(row.externalId || '').indexOf('yzj:msg:inc-') === 0)
-  check('增量同步按 notifyType 捕获昵称 @', incSources.some((row) => row.externalId === 'yzj:msg:inc-2'), JSON.stringify(incSources.map((r) => r.externalId)))
-  check('增量同步不把普通消息当 @', !incSources.some((row) => row.externalId === 'yzj:msg:inc-1') && incSources.every((row) => row.externalId !== 'yzj:msg:inc-0'))
+  const incSources = incState1.sources.filter((row) => row.locator && String(row.locator.msgId).startsWith('inc-') && row.locator.intake !== false)
+  check('增量同步按 notifyType 捕获昵称 @', incSources.some((row) => row.locator.msgId === 'inc-2'), JSON.stringify(incSources.map((r) => r.externalId)))
+  check('增量同步不把普通消息当 @', !incSources.some((row) => row.locator.msgId === 'inc-1') && incSources.every((row) => row.locator.msgId !== 'inc-0'))
   check('增量同步写入群游标', !!incState1.syncCursors['g-inc'] && incState1.syncCursors['g-inc'].lastMsgId === 'inc-2', JSON.stringify(incState1.syncCursors))
   check('增量同步如实标注模式', incState1.lastMentionsFetch.mode === 'incremental', String(incState1.lastMentionsFetch.mode))
 
   phase = 'second'
   const incState2 = await api.fetchMentions()
-  const incNew = incState2.sources.filter((row) => row.externalId === 'yzj:msg:inc-3')
+  const incNew = incState2.sources.filter((row) => row.locator && row.locator.msgId === 'inc-3')
   check('增量同步只取游标之后的新消息', incNew.length === 1 && incState2.sources.every((row) => String(row.externalId || '').indexOf('inc-1') !== 0 || row.externalId !== 'yzj:msg:inc-2-x'), JSON.stringify(incState2.sources.filter((r) => String(r.externalId || '').indexOf('inc-') >= 0).map((r) => r.externalId)))
   check('增量同步推进游标', !!incState2.syncCursors['g-inc'] && incState2.syncCursors['g-inc'].lastMsgId === 'inc-3', JSON.stringify(incState2.syncCursors))
   // 恢复默认 spawner，供后续企业搜索断言使用
@@ -828,38 +848,6 @@ const relIds = {
   check('快照携带 revision', Number.isFinite(Number(revState.revision)) && Number(revState.revision) === rev2.revision)
 }
 
-// 落盘后重新读取：验证持久化（对比重载前后的记录数，不写死数字）
-const preReload = await api.snapshot()
-const tasksBeforeReload = preReload.tasks.length
-const radarBeforeReload = preReload.radar.length
-const { apply: applyAgain } = await import('../index.js?reload=' + Date.now())
-services.workbench = null
-const fresh = {}
-applyAgain({
-  provide: (name, value) => (fresh[name] = value),
-  inject: () => {},
-  effect: (fn) => fn(),
-  get: () => undefined,
-  logger: { info() {} },
-})
-const reloaded = await fresh.workbench.snapshot()
-check('重启后数据仍在', reloaded.tasks.length === tasksBeforeReload && reloaded.radar.length === radarBeforeReload, '任务 ' + reloaded.tasks.length + '/' + tasksBeforeReload + '，雷达 ' + reloaded.radar.length + '/' + radarBeforeReload)
-
-// P0-02 断言：重载后 ID 与关联保持
-check('重载后项目 ID 不变', reloaded.projects.some((item) => item.id === relIds.project), '期望 ' + relIds.project)
-const reloadedTask = reloaded.tasks.find((item) => item.id === relIds.task)
-check('重载后任务 ID 不变', !!reloadedTask, '期望 ' + relIds.task)
-check('重载后任务仍归属项目', !!reloadedTask && reloadedTask.projectId === relIds.project, reloadedTask && reloadedTask.projectId)
-check('重载后任务仍指向来源证据', !!reloadedTask && reloadedTask.sourceRefId === relIds.source)
-check('重载后执行记录 ID 不变', reloaded.runs.some((item) => item.id === relIds.run), '期望 ' + relIds.run)
-check('重载后执行记录仍关联任务', reloaded.runs.find((item) => item.id === relIds.run).taskId === relIds.task)
-check('重载后任务 runIds 指向执行记录', !!reloadedTask && reloadedTask.runIds.indexOf(relIds.run) >= 0, reloadedTask && JSON.stringify(reloadedTask.runIds))
-check('重载后候选 ID 不变', !relIds.candidate || reloaded.candidates.some((item) => item.id === relIds.candidate))
-check(
-  '重载后候选仍指向来源',
-  !relIds.candidate || reloaded.candidates.find((item) => item.id === relIds.candidate).sourceRefId === relIds.source,
-)
-
 // TODO 07：插件侧后台自动化（定时器 + 单飞 + 补跑）
 {
   const before = await api.automationStatus()
@@ -955,7 +943,7 @@ check(
   fakeSessionController = world.controller
   await api.saveSettings({ assistantSessionId: null })
 
-  const asked = await api.assistantAsk({ text: '帮我看看今天要做什么', refs: [{ kind: 'task', id: 't1', title: '示例任务' }] })
+  const asked = await api.assistantAsk({ text: '帮我看看今天要做什么', refs: [{ kind: 'task', id: (await api.snapshot()).tasks[0].id, title: '示例任务' }] })
   check('助手问答返回回复', asked.status === 'ok' && asked.reply.indexOf('助手回复') >= 0, JSON.stringify(asked))
   check('助手回传本轮工具调用', Array.isArray(asked.toolCalls) && asked.toolCalls.indexOf('workbench_create_task') >= 0)
   check('助手会话经 createSession 建立', world.createCalls === 1, String(world.createCalls))
@@ -998,7 +986,7 @@ check(
       ugly.events.push({ type: 'turn/end', seq: ugly.events.length + 1, time: Date.now(), data: {} })
       return { accepted: true }
     }
-    const outcome = await api.assistantAsk({ text: '添加时区设置', refs: [{ kind: 'task', id: 't9' }] })
+    const outcome = await api.assistantAsk({ text: '添加时区设置', refs: [{ kind: 'task', id: (await api.snapshot()).tasks[0].id }] })
     check('问答成功（样板场景）', outcome.status === 'ok', JSON.stringify(outcome).slice(0, 120))
     const titles = await api.assistantSessions({ limit: 5 })
     const row = titles.sessions.find((item) => item.id === ugly.session.id)
@@ -1010,6 +998,9 @@ check(
       !!userEntry && userEntry.text.indexOf('添加时区设置') >= 0 && userEntry.text.indexOf('【工作台上下文】') < 0 && userEntry.text.indexOf('需要落库时') < 0,
       userEntry && userEntry.text,
     )
+    ugly.events.push({type:'user/message',seq:ugly.events.length+1,time:Date.now(),data:{content:[{type:'text',text:'Current runtime context. This snapshot supersedes earlier runtime-context snapshots.\nCurrent working directory: /fixture'}]}})
+    const withoutRuntime = await api.assistantTranscript({sessionId:ugly.session.id})
+    check('助手记录不展示宿主运行时注入提示', !withoutRuntime.messages.some(entry=>entry.text.includes('Current runtime context.')))
     // 恢复场景 1 的 fake，后续场景依赖它
     fakeSessions = world.sessions
     fakeSessionController = world.controller
@@ -1146,18 +1137,9 @@ check(
 
 // TODO 13 验收：会话翻页发现 + 每群消息排空 + 单批 >20 来源 + 重复同步不重复
 {
-  // 三页会话清单（page3 为空结束翻页）；g-drain-1 排空两页（每页 10，足 20 条）
-  // 翻页：每页须是「整页」才会继续；用 g-fill-N 静默会话占满 12
-  const fill = function (n, prefix) {
-    return Array.from({ length: n }).map(function (_, k) {
-      return { groupId: 'g-fill-' + prefix + '-' + k, groupName: '填充' }
-    })
-  }
-  const groupPages = [
-    [{ groupId: 'g-drain-1', groupName: '排空群一' }].concat(fill(11, 'a')),
-    [{ groupId: 'g-drain-2', groupName: '排空群二' }].concat(fill(11, 'b')),
-    [],
-  ]
+  // Focused collector: two real groups; large discovery/budget continuation is
+  // covered separately in focused-intake and reliability with valid headers.
+  const groupPages = [[{groupId:'g-drain-1',groupName:'排空群一',lastMsgId:'dr-g-drain-1-m-028'},{groupId:'g-drain-2',groupName:'排空群二',lastMsgId:'dr-g-drain-2-m-008'}]]
   function drainMake(gid, page, n) {
     return Array.from({ length: n }).map(function (_, k) {
       return { message: {
@@ -1204,7 +1186,7 @@ check(
       text = JSON.stringify(WHOAMI)
     } else if (/im group recent/.test(cmd)) {
       const page = Number((/--page ([0-9]+)/.exec(cmd) || [])[1])
-      text = JSON.stringify({ success: true, data: { list: groupPages[page - 1] || [] } })
+      text = JSON.stringify({ success: true, data: { list: groupPages[page - 1] || [],more:page<groupPages.length } })
     } else if (/im message list/.test(cmd)) {
       text = JSON.stringify({ success: true, data: { list: groupMessages(cmd) } })
     } else if (/contact user get/.test(cmd)) {
@@ -1223,13 +1205,13 @@ check(
 
   const first = await api.fetchMentions()
   const drained = first.sources.filter(function (row) {
-    return String(row.externalId || '').indexOf('yzj:msg:dr-') === 0
+    return row.locator && String(row.locator.msgId).startsWith('dr-')
   })
   check('TODO13 每群排空 + 单批 20+ 来源', drained.length === 38, String(drained.length) + '（29 群一 + 9 群二）')
   check('TODO13 扫描记录如实标注', String(first.lastMentionsFetch.note || '').indexOf('增量排空') >= 0, String(first.lastMentionsFetch.note).slice(0, 120))
   const second = await api.fetchMentions()
   const deduped = second.sources.filter(function (row) {
-    return String(row.externalId || '').indexOf('yzj:msg:dr-') === 0
+    return row.locator && String(row.locator.msgId).startsWith('dr-')
   })
   check('TODO13 重复同步不重复入库', deduped.length === 38, String(deduped.length))
   check('TODO13 游标推进到位', !!second.syncCursors['g-drain-1'] && String(second.syncCursors['g-drain-1'].lastMsgId).indexOf('dr-g-drain-1-m-028') === 0, second.syncCursors['g-drain-1'] && second.syncCursors['g-drain-1'].lastMsgId)
@@ -1257,10 +1239,11 @@ check(
       session: session,
       sessions: { get: (id) => registry.get(id), create() { return session }, list: () => [session] },
       controller: {
+        // Each isolated fixture only persists its own registry; previous worlds are absent.
+        resolveAgent: async (id) => registry.has(id) ? { agent: { session: registry.get(id), status: 'idle' } } : { error: new Error('session "' + id + '" not found') },
         createSession: async () => ({ agent: { session: session }, agentPreset: 'default' }),
-        prompt: async () => {
-          call += 1
-          const replyText = replies[Math.min(call, replies.length - 1)]
+        prompt: async (request) => {
+          const replyText = fixtureReply(request,()=>{call += 1;return replies[Math.min(call,replies.length-1)]})
           setTimeout(() => {
             events.push({ type: 'assistant/message', seq: events.length + 1, time: Date.now(), data: { message: { id: 'an-' + events.length, content: [{ type: 'text', text: replyText }] } } })
             events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
@@ -1273,7 +1256,7 @@ check(
 
   // 采集两条 @我 消息 → 队列两条 pending
   const world = makeAnalysisWorld([
-    '```json\n{"noise":false,"summary":"两条交办","items":[{"needsReply":true,"needsAction":true,"eventType":"feature","title":"压测网关限流","dueAt":"2026-10-29T18:00:00.000Z","deliverable":"压测报告","replyStage":"待答复"},{"needsReply":true,"needsAction":false,"eventType":"meeting","title":"周五对齐会","dueAt":null,"deliverable":null,"replyStage":"待答复"}]}\n```',
+    '```json\n{"noise":false,"summary":"两条交办","items":[{"needsReply":true,"needsAction":true,"eventType":"feature","title":"压测网关限流","dueAt":"2026-10-29T10:00:00.000Z","deliverable":"压测报告","replyStage":"待答复"},{"needsReply":true,"needsAction":false,"eventType":"meeting","title":"周五对齐会","dueAt":null,"deliverable":null,"replyStage":"待答复"}]}\n```',
     '```json\n{"noise":true,"summary":"问候","items":[]}\n```',
   ])
   fakeSessions = world.sessions
@@ -1328,10 +1311,9 @@ check(
   check('TODO15 重复分析不重复建任务', dupTitles === 1 && (afterAgain.replies || []).length >= 1, JSON.stringify({ dupTitles: dupTitles }))
 
   // 重启（reload）：队列与分析结果仍在
-  const { apply: applyReload } = await import('../index.js?analysis=' + Date.now())
-  const reloadedServices = {}
-  applyReload({ provide: (name, value) => (reloadedServices[name] = value), inject: () => {}, effect: (fn) => fn(), get: () => undefined, logger: { info() {} } })
-  const reloaded = await reloadedServices.workbench.snapshot()
+  const { execFileSync } = await import('node:child_process')
+  const childScript = `import {apply} from ${JSON.stringify(new URL('../index.js',import.meta.url).href)};let api;apply({provide:(k,v)=>{if(k==='workbench')api=v},inject(){},effect:fn=>fn(),get(){},logger:{info(){}}},{});console.log(JSON.stringify(await api.snapshot()))`
+  const reloaded = JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',childScript],{env:process.env,encoding:'utf8'}))
   check('TODO14 队列与结果重启后保持', (reloaded.analysisQueue || []).filter((row) => row.status === 'done').length === 2)
 
   // autoRegister 关：新来源分析后停在 awaiting_human，人工确认才建
@@ -1385,10 +1367,11 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
       session: session,
       sessions: { get: (id) => registry.get(id), create() { return session }, list: () => [session] },
       controller: {
+        // Each isolated fixture only persists its own registry; previous worlds are absent.
+        resolveAgent: async (id) => registry.has(id) ? { agent: { session: registry.get(id), status: 'idle' } } : { error: new Error('session "' + id + '" not found') },
         createSession: async () => ({ agent: { session: session }, agentPreset: 'default' }),
-        prompt: async () => {
-          call += 1
-          const replyText = replies[Math.min(call, replies.length - 1)]
+        prompt: async (request) => {
+          const replyText = fixtureReply(request,()=>{call += 1;return replies[Math.min(call,replies.length-1)]})
           setTimeout(() => {
             events.push({ type: 'assistant/message', seq: events.length + 1, time: Date.now(), data: { message: { id: 'an-' + events.length, content: [{ type: 'text', text: replyText }] } } })
             events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
@@ -1443,10 +1426,11 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
       session: session,
       sessions: { get: (id) => registry.get(id), create() { return session }, list: () => [session] },
       controller: {
+        // Each isolated fixture only persists its own registry; previous worlds are absent.
+        resolveAgent: async (id) => registry.has(id) ? { agent: { session: registry.get(id), status: 'idle' } } : { error: new Error('session "' + id + '" not found') },
         createSession: async () => ({ agent: { session: session }, agentPreset: 'default' }),
-        prompt: async () => {
-          call += 1
-          const replyText = replies[Math.min(call, replies.length - 1)]
+        prompt: async (request) => {
+          const replyText = fixtureReply(request,()=>{call += 1;return replies[Math.min(call,replies.length-1)]})
           setTimeout(() => {
             events.push({ type: 'assistant/message', seq: events.length + 1, time: Date.now(), data: { message: { id: 'sm-' + events.length, content: [{ type: 'text', text: replyText }] } } })
             events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
@@ -1489,10 +1473,32 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
   check('TODO20 失败条目保持空摘要', !!bad1 && !bad1.summary.change)
   const sumStatus = after.lastRadarSummarize
   check('TODO20 lastRadarSummarize 如实记录', !!sumStatus && sumStatus.done === 1 && sumStatus.failed === 1, JSON.stringify(sumStatus).slice(0, 160))
+  await api.radarSummarize({onlyIds:[target2.id],retryFailed:true})
+  const ignored=(await api.snapshot()).radar.find(row=>row.id===target2.id)
+  check('原文重试仍不可访问后忽略，保留原记录',ignored.availability==='ignored'&&ignored.summaryStatus==='ignored')
+  const skippedIgnored=await api.radarSummarize({onlyIds:[target2.id],retryFailed:true})
+  check('已忽略资讯不再自动重复请求',skippedIgnored.done===0&&skippedIgnored.failed===0)
+
 
   fakeSessions = null
   fakeSessionController = null
   webMock = { fetch: () => Promise.resolve({ statusCode: 200, url: 'x', body: { kind: 'text', content: FAKE_RSS } }), search: () => Promise.resolve({ sources: [], truncated: false }) }
+}
+
+// AI discovery lanes: repository URLs and current news have distinct provenance.
+{
+ const queries=[]
+ await api.saveSettings({feeds:[],topics:['Agent']})
+ webMock={search:async({query})=>{queries.push(query);return {sources:query.startsWith('site:github.com')?[
+  {url:'https://github.com/example/ai-release-project',title:'AI agent open source release',snippet:'LLM coding agent'},
+  {url:'https://github.com/example/ai-release-project/issues/1',title:'AI issue discussion',snippet:'LLM'},
+  {url:'https://other.example/ai-ranking',title:'AI ranking',snippet:'LLM'}
+ ]:[{url:'https://example.org/intro-rag',title:'What is retrieval augmented generation?',snippet:'tutorial'}]}},fetch:async()=>({statusCode:404})}
+ const discovered=await api.fetchRadar()
+ const repo=discovered.radar.find(row=>row.url==='https://github.com/example/ai-release-project')
+ check('AI资讯包含专用GitHub及前沿检索',queries.some(q=>q.startsWith('site:github.com'))&&queries.some(q=>q.includes('multimodal OR AI coding agent')))
+ check('GitHub发现仅收录仓库根地址并如实标为候选来源',!!repo&&repo.source==='GitHub 项目发现'&&repo.topics.includes('GitHub')&&!discovered.radar.some(row=>String(row.url||'').includes('/issues/1')||row.url==='https://other.example/ai-ranking'))
+ check('基础科普结果不冒充近期动态',!discovered.radar.some(row=>row.url==='https://example.org/intro-rag'))
 }
 
 // TODO 21：导出 → 重置 → 导入（替换/合并/损坏/校验失败/路径映射）
@@ -1516,7 +1522,7 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
 
   // 预检预览：替换模式
   const preview = await api.importMigration({ payload: pack, mode: 'replace', dryRun: true })
-  check('TODO21 预检通过且计数一致', preview.status === 'ok' && preview.counts.tasks > 0 && preview.conflicts.tasks !== undefined, JSON.stringify(preview).slice(0, 200))
+  check('TODO21 预检通过且计数一致', preview.status === 'preview' && preview.dryRun === true && preview.counts.tasks > 0 && preview.conflicts.tasks !== undefined, JSON.stringify(preview).slice(0, 200))
 
   // 重置后导入（replace）
   await api.reset()
@@ -1588,10 +1594,11 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
       session: session,
       sessions: { get: (id) => registry.get(id), create() { return session }, list: () => [session] },
       controller: {
+        // Each isolated fixture only persists its own registry; previous worlds are absent.
+        resolveAgent: async (id) => registry.has(id) ? { agent: { session: registry.get(id), status: 'idle' } } : { error: new Error('session "' + id + '" not found') },
         createSession: async () => ({ agent: { session: session }, agentPreset: 'default' }),
-        prompt: async () => {
-          call += 1
-          const replyText = replies[Math.min(call, replies.length - 1)]
+        prompt: async (request) => {
+          const replyText = fixtureReply(request,()=>{call += 1;return replies[Math.min(call,replies.length-1)]})
           setTimeout(() => {
             events.push({ type: 'assistant/message', seq: events.length + 1, time: Date.now(), data: { message: { id: 'rp-' + events.length, content: [{ type: 'text', text: replyText }] } } })
             events.push({ type: 'turn/end', seq: events.length + 1, time: Date.now(), data: {} })
@@ -1632,11 +1639,43 @@ const yzj_ = (list) => ({ spawn(spec) { const cmd = spec.argv.join(' '); let tex
   yzjSpawner = makeYzjSpawner(MENTION_SEARCH, DOC_SEARCH)
 }
 
+// 落盘后重新读取：验证持久化（对比重载前后的记录数，不写死数字）
+const preReload = await api.snapshot()
+const tasksBeforeReload = preReload.tasks.length
+const radarBeforeReload = preReload.radar.length
+const { apply: applyAgain } = await import('../index.js?reload=' + Date.now())
+services.workbench = null
+const fresh = {}
+applyAgain({
+  provide: (name, value) => (fresh[name] = value),
+  inject: () => {},
+  effect: (fn) => fn(),
+  get: () => undefined,
+  logger: { info() {} },
+})
+const reloaded = await fresh.workbench.snapshot()
+check('重启后数据仍在', reloaded.tasks.length === tasksBeforeReload && reloaded.radar.length === radarBeforeReload, '任务 ' + reloaded.tasks.length + '/' + tasksBeforeReload + '，雷达 ' + reloaded.radar.length + '/' + radarBeforeReload)
+
+// P0-02 断言：重载后 ID 与关联保持
+check('重载后项目 ID 不变', reloaded.projects.some((item) => item.id === relIds.project), '期望 ' + relIds.project)
+const reloadedTask = reloaded.tasks.find((item) => item.id === relIds.task)
+check('重载后任务 ID 不变', !!reloadedTask, '期望 ' + relIds.task)
+check('重载后任务仍归属项目', !!reloadedTask && reloadedTask.projectId === relIds.project, reloadedTask && reloadedTask.projectId)
+check('重载后任务仍指向来源证据', !!reloadedTask && reloadedTask.sourceRefId === relIds.source)
+check('重载后执行记录 ID 不变', reloaded.runs.some((item) => item.id === relIds.run), '期望 ' + relIds.run)
+check('重载后执行记录仍关联任务', reloaded.runs.find((item) => item.id === relIds.run).taskId === relIds.task)
+check('重载后任务 runIds 指向执行记录', !!reloadedTask && reloadedTask.runIds.indexOf(relIds.run) >= 0, reloadedTask && JSON.stringify(reloadedTask.runIds))
+check('重载后候选 ID 不变', !relIds.candidate || reloaded.candidates.some((item) => item.id === relIds.candidate))
+check(
+  '重载后候选仍指向来源',
+  !relIds.candidate || reloaded.candidates.find((item) => item.id === relIds.candidate).sourceRefId === relIds.source,
+)
+
 // TODO 11：备份可创建/可列出；损坏文件不被空状态覆盖
 {
-  const backupResult = await api.backup()
+  const backupResult = await fresh.workbench.backup()
   check('手动备份成功', typeof backupResult.created === 'string' && backupResult.created.length > 0, JSON.stringify(backupResult.created))
-  const listed = await api.backups()
+  const listed = await fresh.workbench.backups()
   check('备份列表可读', Array.isArray(listed.backups) && listed.backups.length >= 1)
 
   const fs = await import('node:fs')

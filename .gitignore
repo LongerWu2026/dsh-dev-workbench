@@ -6,5 +6,13 @@ node_modules/
 
 # 本地产物与临时目录
 .tmp/
+.local-host/
 coverage/
 *.tgz
+
+# GUI evidence can contain local business data
+plugin-tests/artifacts/
+plugin-tests/test-results/
+
+# 本机验收截图与原始观测记录仅在本地保留
+docs/evidence/

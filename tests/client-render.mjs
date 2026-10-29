@@ -213,7 +213,7 @@ const fixture = {
   sources: [
     {
       id: 'src-2',
-      provider: 'yunzhijia',
+      provider: 'yunzhijia',selection:{policy:'focused-v1',reasons:['mention_me'],unreadCount:null,observedAt:new Date().toISOString()},
       externalId: 'yzj:msg:m9',
       url: null,
       title: '@我 · 网关组',
@@ -225,7 +225,7 @@ const fixture = {
     },
     {
       id: 'src-1',
-      provider: 'yunzhijia',
+      provider: 'yunzhijia',selection:{policy:'focused-v1',reasons:['mention_me'],unreadCount:null,observedAt:new Date().toISOString()},
       externalId: 'demo-msg-1',
       url: null,
       title: '@我 · 网关压测群',
@@ -515,6 +515,7 @@ const ctx = {
     rpc: {
       call(channel, endpoint, payload) {
         rpcCalls.push({ endpoint: endpoint, args: (payload && payload.args) || {} })
+        if (endpoint === 'workbench/webAIState') return Promise.resolve({ok:true,value:{state:{topics:[],rounds:[],chatgptEnabled:false},capabilities:{chromeAvailable:false,storageScope:'synthetic'}}})
         if (endpoint === 'workbench/diagnostics') return Promise.resolve({ ok: true, value: diagnostics })
         if (endpoint === 'workbench/environment') return Promise.resolve({ ok: true, value: environmentFixture })
         if (endpoint === 'workbench/github') return Promise.resolve({ ok: true, value: githubFixture })
@@ -535,6 +536,7 @@ const ctx = {
               sessionId: 'session-fake',
               nextSeq: 3,
               turnActive: false,
+              turnEnded: true,
               entries: [
                 { role: 'tool', text: 'workbench_create_task', summary: '{"title":"限流结论"}' },
                 { role: 'toolResult', text: 'workbench_create_task', ok: true },
@@ -645,6 +647,7 @@ function countNodes(entries) {
 function treeText(entries) {
   let text = ''
   entries.forEach((entry) => {
+    if (entry.props?.hidden) return
     if (entry.tag === 'style') return
     if (entry.text !== undefined) text += entry.text + ' '
     else text += treeText(entry.children)
@@ -665,6 +668,7 @@ function findNavButtons(entries, out) {
 /** Any descendant button, with its visible text, for driving real handlers. */
 function findButtons(entries, out) {
   entries.forEach((item) => {
+    if (item.props?.hidden) return
     if (item.tag) {
       if (item.tag === 'button' && typeof (item.props || {}).onClick === 'function') {
         out.push({
@@ -683,6 +687,7 @@ function findButtons(entries, out) {
 /** Any descendant input, so a query can be typed through the real onChange. */
 function findInputs(entries, out) {
   entries.forEach((item) => {
+    if (item.props?.hidden) return
     if (item.tag) {
       if ((item.tag === 'input' || item.tag === 'textarea') && typeof (item.props || {}).onChange === 'function') {
         out.push(item.props)
@@ -741,14 +746,17 @@ if (entry && entry.key !== 'dev-workbench') problems.push('main key 不是 dev-w
 if (!registrations.panellist.length) problems.push('没有注册 sidebar.panellist')
 
 const pageSpecs = [
-  ['今日简报', 'dashboard', ['技术雷达', '抓取资讯', '快捷操作', '专注', '复制今日简报', '待回复', '张三', '已回复']],
-  ['任务中心', 'tasks', ['看板', '待确认', '提取候选', '义务：', '事项类型：', '待答复']],
+  ['今日简报', 'dashboard', ['AI 动态', '抓取资讯', '快捷操作', '专注', '复制今日简报', '待回复', '张三', '已回复']],
+  ['任务中心', 'tasks', ['看板', '规则候选（备用）', '提取候选', '事项类型：']],
+  ['待回复', 'replies', ['私聊未读先待识别']],
+  ['资讯', 'radar', ['生成摘要', '获取资讯']],
   ['搜索', 'search', ['一个入口搜全部', '企业（云之家）', '本地', '互联网']],
-  ['Agent 中心', 'agents', ['执行队列']],
+  ['Agent 中心', 'agents', ['办公执行', '历史执行记录']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
   ['研发协作', 'collab', ['添加仓库目录', '端口占用', 'PR 与 CI', '进程 CPU / 内存']],
   ['知识空间', 'knowledge', ['知识空间']],
   ['连接与设置', 'settings', ['仓库目录决定', '资讯源', '自动化', '补充 @ 关键词', '立即备份']],
+  ['多 AI 对话', 'web-ai', ['历史问答', '发送范围', '无需创建主题', '登录 / 查看原对话']],
 ]
 
 // 1) the shell on the default page
@@ -763,7 +771,7 @@ for (const [title, id, expected] of pageSpecs) {
     problems.push('导航项数量不符：期望 ' + pageSpecs.length + '，实际 ' + nav.length)
     break
   }
-  const index = pageSpecs.findIndex((item) => item[0] === title)
+  const index = nav.findIndex((item) => treeText(item.children).trim() === title)
   try {
     nav[index].props.onClick()
   } catch (e) {
@@ -810,7 +818,7 @@ for (const [title, id, expected] of pageSpecs) {
 {
   const navTree = await renderTree('工具箱·导航')
   const nav = findNavButtons(navTree, [])
-  const toolboxIndex = pageSpecs.findIndex((item) => item[0] === '开发工具箱')
+  const toolboxIndex = nav.findIndex((item) => treeText(item.children).trim() === '开发工具箱')
   if (nav[toolboxIndex]) nav[toolboxIndex].props.onClick()
   let tree = await renderTree('工具箱·入口')
   const tools = ['YAML', 'CSV', 'Markdown', 'HTTP 状态码', 'Shell / Docker', 'SQL 计划解读']
@@ -996,7 +1004,7 @@ for (const [title, id, expected] of pageSpecs) {
   if (actionIds.indexOf('workbench-actions') < 0) problems.push('缺少工作台动作下拉注册')
 
   const keys = registrations.toolViews.map((item) => item.key)
-  if (keys.length !== 9) problems.push('工具卡片应注册 9 个 key，实际 ' + keys.length)
+  if (keys.length !== 13) problems.push('工具卡片应注册 13 个 key，实际 ' + keys.length)
   if (keys.some((key) => String(key).indexOf('workbench_') !== 0)) problems.push('工具卡片注册了非工作台工具：' + keys.join(','))
 
   // 动作排组件真实渲染 + 点击「生成待办」
@@ -1099,23 +1107,17 @@ snapshotMode = 'empty'
   const text = treeText(tree).replace(/\s+/g, ' ')
   const size = countNodes(tree)
   if (size < 60) problems.push('空态首页渲染节点过少：' + size)
-  for (const marker of ['还没有待办', '技术雷达还没有内容', '抓取资讯', '手动添加资讯', '新建第一条待办']) {
+  for (const marker of ['还没有待办', '暂无 AI 动态', '抓取资讯', '手动添加资讯', '新建第一条待办']) {
     if (text.indexOf(marker) < 0) problems.push('空态首页缺少「' + marker + '」')
   }
-  // 空态要有引导内容（插画 + 三步），不能只是一句话
-  for (const marker of ['记一条手动待办', '拉取云之家 @我', '让会话帮你整理', '拉取 @我 消息']) {
-    if (text.indexOf(marker) < 0) problems.push('空态待办缺少引导「' + marker + '」')
+  // 紧凑空态保留明确下一步，避免旧版插画与三步指引占用整块首屏。
+  if (!text.includes('同步消息并开启 AI 后，可从待回复页确认识别出的事项。')) {
+    problems.push('空态待办缺少消息识别入口说明')
   }
-  let hasSvg = false
-  const findSvg = (list) => {
-    list.forEach((item) => {
-      if (!item.tag) return
-      if (item.tag === 'svg') hasSvg = true
-      findSvg(item.children || [])
-    })
+  const createFirstTask = findButtons(tree, []).find((button) => button.text === '新建第一条待办')
+  if (!createFirstTask || typeof createFirstTask.onClick !== 'function') {
+    problems.push('空态待办缺少可用的新建入口')
   }
-  findSvg(tree)
-  if (!hasSvg) problems.push('空态待办缺少插画（svg）')
   // 空态下雷达头部不应再渲染筛选 Chip（用户反馈 #2：头部信息在空态是冗余）
   if (text.indexOf('仅看关注主题') >= 0) problems.push('空态雷达头部不应出现「仅看关注主题」筛选')
   // 空态下不应出现上次抓取副标题
@@ -1137,9 +1139,9 @@ snapshotMode = 'full'
 // That is how `workbench/fetchRadar` broke in the shipped UI — the client sent
 // {request:{}} against a zero-param descriptor. Parse the host's signature
 // table (single source of truth) and verify every recorded call matches.
-const remoteSource = readFileSync(new URL('../src/host/40-remote.js', import.meta.url), 'utf8')
+const remoteSource = readFileSync(new URL('../src/host/api/remote.ts', import.meta.url), 'utf8')
 const descriptorParams = new Map()
-for (const match of remoteSource.matchAll(/\{ method: '(\w+)', params: \[([^\]]*)\] \}/g)) {
+for (const match of remoteSource.matchAll(/\{\s*method:\s*'(\w+)',\s*params:\s*\[([^\]]*)\]\s*\}/g)) {
   descriptorParams.set(match[1], [...match[2].matchAll(/'(\w+)'/g)].map((p) => p[1]).sort())
 }
 for (const call of rpcCalls) {

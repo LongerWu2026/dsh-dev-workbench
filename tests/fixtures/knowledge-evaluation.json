@@ -1,0 +1,169 @@
+{
+  "synthetic": true,
+  "documents": [
+    {
+      "id": "mem",
+      "title": "服务器容量方案",
+      "body": "服务器内存不足时先扩容，检查分区数据量。",
+      "reviewState": "confirmed",
+      "tags": []
+    },
+    {
+      "id": "auth",
+      "title": "接口身份规范",
+      "body": "接口鉴权要求认证身份，校验用户签名。",
+      "reviewState": "confirmed",
+      "tags": []
+    },
+    {
+      "id": "time",
+      "title": "请求超时处理",
+      "body": "请求超时 timeout 时检查服务链路与日志。",
+      "reviewState": "confirmed",
+      "tags": []
+    },
+    {
+      "id": "vector",
+      "title": "向量索引规范",
+      "body": "embedding 向量模型维度改变时需要重建向量索引。",
+      "reviewState": "confirmed",
+      "tags": []
+    },
+    {
+      "id": "deploy",
+      "title": "上线故障恢复",
+      "body": "部署发布上线失败，优先回滚到上一稳定版本。",
+      "reviewState": "confirmed",
+      "tags": []
+    },
+    {
+      "id": "locale",
+      "title": "繁体语言规范",
+      "body": "繁体中文界面资源使用 zh-TW.txt 文件，保留技能名称。",
+      "reviewState": "confirmed",
+      "tags": []
+    }
+  ],
+  "queries": [
+    {
+      "query": "服务器内存不够怎么办",
+      "expected": "mem"
+    },
+    {
+      "query": "内存不足需要怎么扩容",
+      "expected": "mem"
+    },
+    {
+      "query": "容量不足如何处理",
+      "expected": "mem"
+    },
+    {
+      "query": "服务器内存不足分区检查",
+      "expected": "mem"
+    },
+    {
+      "query": "接口鉴权要求是什么",
+      "expected": "auth"
+    },
+    {
+      "query": "接口认证要校验什么",
+      "expected": "auth"
+    },
+    {
+      "query": "api身份校验如何做",
+      "expected": "auth"
+    },
+    {
+      "query": "权限校验需要用户签名吗",
+      "expected": "auth"
+    },
+    {
+      "query": "请求超时怎么查",
+      "expected": "time"
+    },
+    {
+      "query": "timeout怎样定位",
+      "expected": "time"
+    },
+    {
+      "query": "服务链路超时需要什么日志",
+      "expected": "time"
+    },
+    {
+      "query": "请求timeout检查链路",
+      "expected": "time"
+    },
+    {
+      "query": "embedding维度改变怎么办",
+      "expected": "vector"
+    },
+    {
+      "query": "向量模型变化需要做什么",
+      "expected": "vector"
+    },
+    {
+      "query": "向量索引如何重建",
+      "expected": "vector"
+    },
+    {
+      "query": "embedding模型维度变了",
+      "expected": "vector"
+    },
+    {
+      "query": "上线失败如何回滚",
+      "expected": "deploy"
+    },
+    {
+      "query": "撤回发布需要什么版本",
+      "expected": "deploy"
+    },
+    {
+      "query": "部署失败如何恢复稳定版本",
+      "expected": "deploy"
+    },
+    {
+      "query": "发布上线失败怎么办",
+      "expected": "deploy"
+    },
+    {
+      "query": "繁体中文用什么资源文件",
+      "expected": "locale"
+    },
+    {
+      "query": "zh-TW.txt怎么命名",
+      "expected": "locale"
+    },
+    {
+      "query": "界面繁体语言如何处理",
+      "expected": "locale"
+    },
+    {
+      "query": "技能名称与繁体资源要求",
+      "expected": "locale"
+    },
+    {
+      "query": "蝴蝶标本颜色",
+      "expected": null
+    },
+    {
+      "query": "明天天气会下雨吗",
+      "expected": null
+    },
+    {
+      "query": "收到谢谢辛苦啦",
+      "expected": null
+    },
+    {
+      "query": "月球地质构造",
+      "expected": null
+    },
+    {
+      "query": "餐馆营业时间",
+      "expected": null
+    },
+    {
+      "query": "季度股票收益预测",
+      "expected": null
+    }
+  ]
+}

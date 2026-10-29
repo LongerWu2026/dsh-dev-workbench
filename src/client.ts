@@ -1,0 +1,21 @@
+import { WB } from './client/core/runtime.js'
+import './client/shell/workbench-shell.js'
+import './client/shell/layout.js'
+import './client/features/inbox/worklists.js'
+import './client/features/tasks/task-form.js'
+import './client/features/dashboard/dashboard.js'
+import './client/features/tasks/task-center.js'
+import './client/features/agents/agent-center.js'
+import './client/features/toolbox/toolbox.js'
+import './client/features/toolbox/tools-extra.js'
+import './client/features/knowledge/knowledge-space.js'
+import './client/features/collaboration/collaboration.js'
+import './client/features/settings/settings.js'
+import './client/assistant/chat-actions.js'
+import './client/shell/command-palette.js'
+import './client/features/search/search-page.js'
+import './client/features/web-ai/WebAIPage.js'
+export { WB }
+export const name = 'dsh-dev-workbench'
+export const inject = WB.inject
+export const apply = WB.apply

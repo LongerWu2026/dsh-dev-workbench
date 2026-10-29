@@ -1,0 +1,1 @@
+export function normalizeAiPolicy(raw: any = {}) { return { dailyCallLimit: Math.max(0, Math.min(10000, Math.floor(Number(raw.dailyCallLimit) || 0))), dailyTokenLimit: Math.max(0, Math.floor(Number(raw.dailyTokenLimit) || 0)) }; }

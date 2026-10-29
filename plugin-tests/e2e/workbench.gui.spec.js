@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 const CDP = process.env.DSH_CDP_URL || 'http://127.0.0.1:9222'
 const ARTIFACTS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../artifacts')
 
-const PAGES = ['今日简报', '任务中心', '搜索', 'Agent 中心', '开发工具箱', '研发协作', '知识空间', '连接与设置']
+const PAGES = ['今日简报', '任务中心', '待回复', '资讯', '搜索', 'Agent 中心', '开发工具箱', '研发协作', '知识空间', '连接与设置']
 
 let context = null
 let page = null
@@ -33,7 +33,10 @@ test.beforeAll(async () => {
     )
   }
   context = browser.contexts()[0]
-  page = context.pages()[0] || (await context.newPage())
+  const pages = context.pages()
+  const target = process.env.DSH_TARGET_URL
+  page = target ? pages.find(candidate=>candidate.url()===target) : pages.length===1 ? pages[0] : null
+  if(!page)throw new Error('无法唯一确定DSH目标，请设置DSH_TARGET_URL为目标窗口URL；不会选择其他标签页')
   page.on('console', (message) => {
     if (message.type() === 'error') consoleErrors.push(message.text().slice(0, 300))
   })
@@ -56,6 +59,7 @@ test.describe('工作台 GUI 走查', () => {
       await ensureWorkbenchOpen()
       // 二级导航（工作台内部）
       const nav = page.locator('nav[aria-label="工作台导航"] button', { hasText: name }).first()
+      if(!await nav.isVisible())await page.locator('nav[aria-label="工作台导航"] details summary').click()
       await nav.click()
       await page.waitForTimeout(400)
       // 页面标题存在
@@ -77,7 +81,9 @@ test.describe('工作台 GUI 走查', () => {
 
   test('搜索页输入关键词并走一次本地检索（不联网）', async () => {
     await ensureWorkbenchOpen()
-    await page.locator('nav[aria-label="工作台导航"] button', { hasText: '搜索' }).first().click()
+    const nav=page.locator('nav[aria-label="工作台导航"] button', { hasText: '搜索' }).first()
+    if(!await nav.isVisible())await page.locator('nav[aria-label="工作台导航"] details summary').click()
+    await nav.click()
     await page.waitForTimeout(300)
     const snapshotFile = path.join(ARTIFACTS, 'search-before-typing.png')
     await page.screenshot({ path: snapshotFile })

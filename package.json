@@ -1,8 +1,19 @@
 {
   "name": "dsh-dev-workbench",
-  "version": "0.1.0",
-  "private": true,
-  "description": "智能工作台 — DeepSeek Harness 原生插件：今日简报、任务中心、Agent 中心、技术雷达与离线开发工具箱。",
+  "version": "0.2.0",
+  "description": "智能工作台 — DeepSeek Harness 原生插件：待办、待回复、AI 资讯、知识空间、多 AI 对话与开发工具。",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LongerWu2026/dsh-dev-workbench.git"
+  },
+  "homepage": "https://github.com/LongerWu2026/dsh-dev-workbench#readme",
+  "bugs": {
+    "url": "https://github.com/LongerWu2026/dsh-dev-workbench/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -22,11 +33,20 @@
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
-    "check": "node --check index.js && node --check client.js"
+    "check": "pnpm typecheck && pnpm check:architecture && node scripts/build.mjs --check && node --check index.js && node --check client.js",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.contracts.json",
+    "test": "node tests/host-smoke.mjs && node tests/developer-tools.mjs && node tests/message-boundary.mjs && node tests/focused-intake.mjs && node tests/message-routing.mjs && node tests/reply-send.mjs && node tests/message-metadata.mjs && node tests/reply-reconciliation.mjs && node tests/reliability.mjs && node tests/batch-analysis.mjs && node tests/office-upgrade.mjs && node tests/office-workflows.mjs && node tests/knowledge-retrieval.mjs && node tests/background-history.mjs && node tests/lifecycle-soak.mjs && node tests/scheduler-lifecycle.mjs && node tests/message-schedule.mjs && node tests/web-ai.mjs && node tests/web-ai-session.mjs && node tests/client-render.mjs && pnpm --dir plugin-tests test",
+    "evaluate:quality": "node scripts/evaluate-quality.mjs",
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "test:layout": "node plugin-tests/layout/check-layout.mjs",
+    "test:suspend": "node tests/process-suspend.mjs",
+    "test:web-ai-browser": "node tests/web-ai-browser.mjs",
+    "test:host-persistence": "node host-integration/test-persistence.mjs"
   },
   "keywords": [
     "deepseek-harness",
     "dsh",
+    "dsh-plugin",
     "cordis",
     "plugin",
     "workbench",
@@ -43,8 +63,22 @@
       "inject": [
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-locale",
-        "@deepseek-ai/dsh-client-ui-slots"
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-workspace"
       ]
     }
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^18.3.31",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "yaml": "^2.9.1"
   }
 }
