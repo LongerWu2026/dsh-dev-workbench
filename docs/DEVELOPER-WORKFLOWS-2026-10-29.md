@@ -45,3 +45,18 @@
 - IDE/终端验证采用启动器参数夹具，未据此声称已经实机打开用户软件。未启动用户的真实项目，也未调用真实外部业务接口。
 
 源码入口：`src/client/features/collaboration/ProjectLauncher.tsx`、`src/host/integrations/project-runtime.ts`、`src/client/features/toolbox/tools/NetworkDebugger.tsx`、`src/host/integrations/debug-client.ts`。Host 更新后需要重启 Harness。
+
+## 2026-10-31：项目联动与运行反馈
+
+- 页面统一“当前项目”，Git、PR/CI、启动配置与运行日志使用同一项目ID；切换时丢弃旧项目迟到响应。保留无项目时的 Host 环境查看。
+- “重新探测”同时刷新环境、PR/CI与运行状态，并绕过对应缓存。PR和CI分别显示成功、空结果或失败，部分成功的数据继续保留；认证、仓库与网络错误分别提示。Git状态读取失败时不再显示“工作区干净”。
+- 启动配置改为名称、执行程序、逐行参数、常用标记和可选本机服务地址表单，可从已发现脚本添加。保存仍使用既有 argv 白名单，不执行 shell 字符串，不自动启动项目。已有配置和项目其他字段保留。
+- 常用启动项直接显示，其余脚本折叠；端口、Docker与CPU/内存归入折叠的“环境诊断（本机）”，这些列表仍为本机范围，不伪装成项目专属资源。
+- 进程状态与服务地址状态分别保留。配置地址的运行显示“启动中”，首次30秒后仍不可访问显示“服务未就绪，进程仍在运行”；未配置地址时不宣称已就绪。HTTP 2xx/3xx仅标记“服务地址可访问”，可手动打开；该检测不证明业务健康或端口由该进程独占。
+- 服务检测仅限显式配置的 localhost、127.0.0.1或IPv6回环 HTTP/HTTPS地址，使用HEAD、不跟随重定向，单次最长1.5秒；运行中查看状态时检查，常规检查至少间隔2秒且复用在途检查。退出后清除可访问状态，未配置地址不发请求。运行区常规轮询在页面隐藏时跳过，结束后停止。
+
+新增验证：`node tests/collaboration.mjs`（隔离项目、CLI夹具与真实本机HTTP子进程）、`plugin-tests/tests/collaboration.test.jsx`（项目切换、迟到响应、分路失败、表单与运行反馈）、`node plugin-tests/layout/collaboration.mjs`（四种宽度、两种主题，合成数据并拦截网络）。继续运行`pnpm build`、`pnpm check`、`pnpm test`和`pnpm test:layout`。
+
+本轮验证不启动用户实际项目，不实际打开IDE，也不证明真实GitHub账号或远端PR/CI可用；这些需在用户环境中单独验收。
+
+本轮结果：`pnpm build`、`pnpm check`、完整`pnpm test`通过（前端26个测试文件、356项测试；新增Host验证18项）；通用布局155个场景与研发协作专项8个场景通过，无页面错误或布局失败。最后调整独立加载与配置参数保留后，已重新构建并复验完整功能测试及专项布局。

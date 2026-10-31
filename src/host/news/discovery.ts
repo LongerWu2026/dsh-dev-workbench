@@ -1,3 +1,4 @@
+import { newsSearchError } from '../../shared/news-fetch.js'
 import { githubQuality } from './github-quality.js'
 import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store.js'
 import { auditEntry, ensureArray, normalizeRadarItem } from '../domain/model.js'
@@ -285,7 +286,7 @@ async function discoverRadarByTopics(ctx?: any): Promise<any> {
                 added: 0,
                 skipped: 0,
                 perFeed: [],
-                note: '未配置 RSS 且当前 profile 没有 web 搜索服务：无法自动发现资讯。',
+                note: '未配置 RSS 且宿主没有 web 联网搜索服务：请在宿主设置中启用搜索服务，或在工作台设置中添加 RSS 资讯源。',
             };
             auditEntry(current, 'radar.discover', '没有可用的联网能力');
             return current;
@@ -332,8 +333,12 @@ async function discoverRadarByTopics(ctx?: any): Promise<any> {
                 status: 'error',
                 added: 0,
                 skipped: 0,
-                note: String((e && e.message) || e).slice(0, 160),
+                note: newsSearchError(e),
             });
+            continue;
+        }
+        if (!Array.isArray(result?.sources)) {
+            perFeed.push({ id: 'topic:' + topic, label: '话题 ' + topic, status: 'error', added: 0, skipped: 0, note: '联网搜索未返回有效的资讯来源，请检查宿主搜索服务。' });
             continue;
         }
         let topicAdded = 0;
@@ -397,7 +402,7 @@ async function discoverRadarByTopics(ctx?: any): Promise<any> {
             status: topicAdded > 0 ? 'ok' : 'empty',
             added: topicAdded,
             skipped: topicSkipped,
-            note: '查询词：' + query,
+            note: result.sources.length ? '检索返回 ' + result.sources.length + ' 条，新增 ' + topicAdded + ' 条，重复或不符合筛选条件 ' + topicSkipped + ' 条。' : '搜索服务未返回资讯来源，可调整关注主题后重试。',
         });
         if (candidates.length >= RADAR_FETCH_TOTAL_LIMIT)
             break;

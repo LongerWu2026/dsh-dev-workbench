@@ -6,7 +6,7 @@ import {normalizeLaunchCommands, type LaunchCommand} from '../../shared/develope
 import {loadWorkbenchState} from '../storage/state-store.js'
 import {workbenchContext} from '../application/service-context.js'
 
-type Run={id:string;projectId:string;name:string;argv:string[];cwd:string;status:string;startedAt:string;endedAt?:string;exitCode?:number|null;error?:string;handle:any}
+type Run={id:string;projectId:string;name:string;argv:string[];cwd:string;status:string;startedAt:string;endedAt?:string;exitCode?:number|null;error?:string;handle:any;service:any;probe?:Promise<void>}
 const runs=new Map<string,Run>()
 function project(id:string) {
     const row=loadWorkbenchState().projects.find((p:any)=>p.id===id)
@@ -31,13 +31,32 @@ function commands(row:any,cwd:string):LaunchCommand[] {
 function snapshot(run:Run) {
     const read=(stream:any)=>{try{const out=stream?.readFrom(0);return {text:String(out?.text||''),truncated:out?.lossy===true}}catch{return {text:'',truncated:false}}}
     const stdout=read(run.handle?.collected?.stdout),stderr=read(run.handle?.collected?.stderr)
-    const {handle,...data}=run
-    return {...data,stdout:stdout.text,stderr:stderr.text,truncated:stdout.truncated||stderr.truncated}
+    const {handle,probe,...data}=run
+    return {...data,service:{...run.service},stdout:stdout.text,stderr:stderr.text,truncated:stdout.truncated||stderr.truncated}
+}
+async function checkService(run:Run, force=false) {
+    if(run.status!=='running'||!run.service.url)return
+    if(run.probe)return run.probe
+    if(!force&&Date.now()-Number(run.service.checkedMs||0)<2000)return
+    run.probe=(async()=>{
+        let reachable=false,note='',httpStatus:number|undefined
+        try {
+            const response=await fetch(run.service.url,{method:'HEAD',redirect:'manual',signal:AbortSignal.timeout(1500)})
+            httpStatus=response.status;reachable=response.status>=200&&response.status<400
+            note=reachable?'服务地址可访问':'HTTP '+response.status
+            await response.body?.cancel()
+        }catch {note='服务地址暂不可访问'}
+        if(run.status!=='running')return
+        run.service={url:run.service.url,status:reachable?'reachable':Date.now()-Date.parse(run.startedAt)<30000?'checking':'unreachable',note,httpStatus,checkedAt:new Date().toISOString(),checkedMs:Date.now()}
+    })().finally(()=>{run.probe=undefined})
+    return run.probe
 }
 export function hasActiveProjectRuns(projectId:string){return [...runs.values()].some(run=>run.projectId===projectId&&['running','stopping'].includes(run.status))}
-export function projectRuntimeState(projectId:string) {
+export async function projectRuntimeState(projectId:string,force=false) {
     const {row,cwd}=project(projectId)
-    return {projectId,cwd,commands:commands(row,cwd),runs:[...runs.values()].filter(run=>run.projectId===projectId).map(snapshot).reverse(),platform:platform()}
+    const projectRuns=[...runs.values()].filter(run=>run.projectId===projectId)
+    await Promise.all(projectRuns.map(run=>checkService(run,force)))
+    return {projectId,cwd,at:new Date().toISOString(),commands:commands(row,cwd),runs:projectRuns.map(snapshot).reverse(),platform:platform()}
 }
 export function startProject(projectId:string,commandId:string) {
     const {row,cwd}=project(projectId),command=commands(row,cwd).find(c=>c.id===commandId)
@@ -46,11 +65,11 @@ export function startProject(projectId:string,commandId:string) {
     if([...runs.values()].filter(run=>['running','stopping'].includes(run.status)).length>=4)throw new Error('最多同时运行4个项目命令')
     const subprocess=workbenchContext()?.get?.('subprocess')
     if(!subprocess?.spawn)throw new Error('宿主没有提供进程执行服务')
-    const run:Run={id:randomUUID(),projectId,name:command.name,argv:command.argv,cwd,status:'running',startedAt:new Date().toISOString(),handle:null}
+    const run:Run={id:randomUUID(),projectId,name:command.name,argv:command.argv,cwd,status:'running',startedAt:new Date().toISOString(),handle:null,service:command.serviceUrl?{url:command.serviceUrl,status:'checking',note:'等待服务启动'}:{status:'notConfigured'}}
     run.handle=subprocess.spawn({argv:run.argv,cwd,stdio:{stdin:'ignore',stdout:{maxBytes:64*1024},stderr:{maxBytes:64*1024}},graceMs:1500})
     runs.set(run.id,run)
     for(const [id,item] of runs)if(runs.size>8&&['completed','failed','stopped'].includes(item.status))runs.delete(id)
-    Promise.resolve(run.handle.done).then(out=>{run.exitCode=out?.exitCode??null;run.status=run.status==='stopping'?'stopped':out?.exitCode===0?'completed':'failed'},error=>{run.status='failed';run.error=String(error?.message||error)}).finally(()=>{run.endedAt=new Date().toISOString();for(const [id,item] of runs)if(runs.size>8&&['completed','failed','stopped'].includes(item.status))runs.delete(id)})
+    Promise.resolve(run.handle.done).then(out=>{run.exitCode=out?.exitCode??null;run.status=run.status==='stopping'?'stopped':out?.exitCode===0?'completed':'failed'},error=>{run.status='failed';run.error=String(error?.message||error)}).finally(()=>{run.endedAt=new Date().toISOString();run.service={...run.service,status:'stopped'};for(const [id,item] of runs)if(runs.size>8&&['completed','failed','stopped'].includes(item.status))runs.delete(id)})
     return snapshot(run)
 }
 export async function stopProject(runId:string) {

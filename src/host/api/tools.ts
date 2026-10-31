@@ -180,7 +180,7 @@ function workbenchToolDefinitions(): any {
         },
         {
             name: 'workbench_record_run',
-            description: '把一次 Agent 执行的结果登记到智能工作台的 Agent 中心，并在任务详情里留下执行记录。' +
+            description: '把一次 Agent 执行的结果登记到智能工作台“研发任务 → 办公与历史”，并在任务详情里留下执行记录。' +
                 '分析、诊断、代码审查这类工作完成后调用，让用户能在 UI 里回看结论与证据。' +
                 'evidence 里每条都要是可以回跳的来源（文件、URL 或报告章节）。',
             parameters: {

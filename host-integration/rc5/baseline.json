@@ -1,0 +1,37 @@
+{
+  "upstream": "https://github.com/deepseek-ai/deepseek-harness.git",
+  "tag": "dsh-v0.2.1-rc.5",
+  "revision": "b830ec950faba0a46dda564be3e2d854afed94f1",
+  "version": "0.2.1-rc.5",
+  "installedAsarSha256": "8dad52f295bdbe9fa71948fdf38ac2ce3c910213d3b89c37174b2af77db9fb31",
+  "files": [
+    {
+      "path": "apps/desktop/src/browser-guests.ts",
+      "sha256": "5911d6bcbce79b68bd951d27da40bf8b8c9ab57b7d715dd0586d5e74e8e515f4"
+    },
+    {
+      "path": "apps/desktop/src/preload-browser.ts",
+      "sha256": "17c386171796e77f6a2bfa3c86382a20cce36013275beca978f31b424ef25e9e"
+    },
+    {
+      "path": "apps/desktop/src/ipc.ts",
+      "sha256": "b7ee202112d7485c524741ffcfe257c5c4f6dca18281aa5ac01c4510b69c6a08"
+    },
+    {
+      "path": "packages/client/ui-sidebar-browser/src/types.ts",
+      "sha256": "8a5f9a5219091b4bb530edfae282e231cf489945d47813e007a2c8b8584b0f2f"
+    },
+    {
+      "path": "apps/desktop/src/main.ts",
+      "sha256": "e345eda0425f2df795d20413bb87bb9a3ddc46e71ceb1cec0755ad1cca3fb847"
+    },
+    {
+      "path": "tsconfig.client.json",
+      "sha256": "32309755337e3b6210c1735ed29bb004d4a24ddc08727f7f9dd56359a9828ad4"
+    }
+  ],
+  "addedFiles": [
+    "apps/desktop/src/browser-persistence.ts",
+    "apps/desktop/src/workbench-browser-policy.ts"
+  ]
+}

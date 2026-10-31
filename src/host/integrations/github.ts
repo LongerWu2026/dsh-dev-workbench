@@ -43,10 +43,20 @@ function parseGhJson(result?: any): any {
         return null;
     }
 }
-async function readPullRequests(ctx?: any, dir?: any): Promise<any> {
-    const result = await runReadOnlyCommand(ctx, ['gh', 'pr', 'list', '--json', 'number,title,state,isDraft,author,updatedAt,url', '--limit', '10'], dir);
+function githubFailure(result: any): any {
+    const detail = String(result.stderr || result.reason || '读取失败');
+    const kind = /auth login|not logged|authentication|HTTP 401|bad credentials/i.test(detail) ? 'auth'
+        : /not a git repository|no git remotes|not (?:a|on|in)\b.*github|none of the git remotes/i.test(detail) ? 'repository'
+        : result.status === 'unavailable' || /ENOENT|not found/i.test(detail) ? 'unavailable' : 'error';
+    const note = kind === 'auth' ? 'GitHub 未登录或登录已失效，请执行 gh auth login 后重试。'
+        : kind === 'repository' ? '当前项目不是可读取的 GitHub 仓库。'
+        : kind === 'unavailable' ? 'gh CLI 不可用，请检查安装和运行环境。' : detail.slice(0, 500);
+    return {status: kind === 'unavailable' ? 'unavailable' : 'error', kind, note, items: []};
+}
+async function readPullRequests(ctx?: any, dir?: any, executable='gh'): Promise<any> {
+    const result = await runReadOnlyCommand(ctx, [executable, 'pr', 'list', '--json', 'number,title,state,isDraft,author,updatedAt,url', '--limit', '10'], dir);
     if (result.status !== 'ok') {
-        return { status: result.status === 'unavailable' ? 'unavailable' : 'error', note: result.reason || result.stderr, items: [] };
+        return githubFailure(result);
     }
     const list = parseGhJson(result);
     if (!Array.isArray(list)) {
@@ -68,10 +78,10 @@ async function readPullRequests(ctx?: any, dir?: any): Promise<any> {
         }),
     };
 }
-async function readCiRuns(ctx?: any, dir?: any): Promise<any> {
-    const result = await runReadOnlyCommand(ctx, ['gh', 'run', 'list', '--json', 'databaseId,status,conclusion,workflowName,headBranch,createdAt,url', '--limit', '10'], dir);
+async function readCiRuns(ctx?: any, dir?: any, executable='gh'): Promise<any> {
+    const result = await runReadOnlyCommand(ctx, [executable, 'run', 'list', '--json', 'databaseId,status,conclusion,workflowName,headBranch,createdAt,url', '--limit', '10'], dir);
     if (result.status !== 'ok') {
-        return { status: result.status === 'unavailable' ? 'unavailable' : 'error', note: result.reason || result.stderr, items: [] };
+        return githubFailure(result);
     }
     const list = parseGhJson(result);
     if (!Array.isArray(list)) {
@@ -94,8 +104,13 @@ async function readCiRuns(ctx?: any, dir?: any): Promise<any> {
     };
 }
 /** 选择探测目录：优先项目里的 git 仓库，其次 Host 工作目录。 */
-function githubTargetDir(ctx?: any): any {
+function githubTargetDir(ctx?: any, projectId?: string): any {
     const state = loadWorkbenchState();
+    if (projectId) {
+        const selected = ensureArray(state.projects).find((row:any)=>row.id===projectId);
+        if (!selected?.repoPath) throw new Error('请选择已配置目录的项目');
+        return selected.repoPath;
+    }
     const project = ensureArray(state.projects).find(function (row?: any): any {
         return row.repoPath && existsSync(join(row.repoPath, '.git'));
     });
@@ -106,34 +121,37 @@ function githubTargetDir(ctx?: any): any {
         return cwd;
     return cwd;
 }
-async function buildGithubSnapshot(ctx?: any): Promise<any> {
-    if (githubCache.value && Date.now() - githubCache.at < GITHUB_TTL_MS)
+async function buildGithubSnapshot(ctx?: any, request?: any): Promise<any> {
+    const dir = githubTargetDir(ctx, request?.projectId);
+    const key = (request?.projectId || 'default') + ':' + dir;
+    if (!request?.force && githubCache.key === key && githubCache.value && Date.now() - githubCache.at < GITHUB_TTL_MS)
         return githubCache.value;
-    const dir = githubTargetDir(ctx);
     const ghPath = await resolveGhPath(ctx);
     if (!ghPath) {
         const value: any = {
             at: hostNowIso(),
+            projectId: request?.projectId || null,
             dir: dir,
             status: 'unavailable',
             note: '未找到 gh CLI：安装 GitHub CLI 并 `gh auth login` 后才能读取 PR 与 CI。',
             prs: { status: 'unavailable', items: [], note: null },
             runs: { status: 'unavailable', items: [], note: null },
         };
-        githubCache = { at: Date.now(), value: value };
+        githubCache = { key, at: Date.now(), value: value };
         return value;
     }
-    const prs = await readPullRequests(ctx, dir);
-    const runs = await readCiRuns(ctx, dir);
+    const [prs, runs] = await Promise.all([readPullRequests(ctx, dir, ghPath), readCiRuns(ctx, dir, ghPath)]);
+    const status = prs.status === 'ok' && runs.status === 'ok' ? 'ok' : prs.status === 'ok' || runs.status === 'ok' ? 'partial' : 'error';
     const value: any = {
         at: hostNowIso(),
+        projectId: request?.projectId || null,
         dir: dir,
-        status: 'ok',
-        note: '只读：gh pr list / gh run list。合并、关闭、重跑等写操作不在插件内。',
+        status,
+        note: status === 'ok' ? '只读：gh pr list / gh run list。' : [prs.status !== 'ok' ? 'PR：' + prs.note : '', runs.status !== 'ok' ? 'CI：' + runs.note : ''].filter(Boolean).join('；'),
         prs: prs,
         runs: runs,
     };
-    githubCache = { at: Date.now(), value: value };
+    githubCache = { key, at: Date.now(), value: value };
     return value;
 }
 

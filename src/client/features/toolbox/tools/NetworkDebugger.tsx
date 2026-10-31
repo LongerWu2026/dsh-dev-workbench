@@ -1,7 +1,8 @@
+import {importCurl,exportCurl} from './developer-utils.js'
 import * as React from 'react'
 import {WB,Btn,Field,Input,Textarea} from '../../../core/runtime.js'
 import {toolCopyButton as Copy} from '../shared-controls.js'
-function NetworkDebugger({value:v,patch,mode}:{value:any;patch:(value:any)=>void;mode:'http'|'mcp'}) {
+function NetworkDebugger({value:v,patch,mode,onTransfer}:{value:any;patch:(value:any)=>void;onTransfer?:(id:string,input:string)=>void;mode:'http'|'mcp'}) {
     const [busy,setBusy]=React.useState(false),[error,setError]=React.useState('')
     const live=React.useRef(true),request=React.useRef(''),connection=React.useRef(''),pending=React.useRef<Promise<any>|null>(null)
     const rpc=(method:string,data:any)=>WB.rpc('workbench/'+method,{request:data})
@@ -23,14 +24,16 @@ function NetworkDebugger({value:v,patch,mode}:{value:any;patch:(value:any)=>void
     const locked=busy||!!connection.current
     const tools=v.tools||[],selected=tools.find((t:any)=>t.name===v.toolName)
     const formatted=v.result?JSON.stringify(v.result,null,2):''
-    return <div className="wb-stack">
+    return <div className="wb-network-workspace"><section className="wb-stack wb-network-request">
         <p className="wb-tiny wb-muted">请求由宿主发送到你填写的地址。请求头、正文和响应不写入工作台数据文件；刷新会清空页面输入。{mode==='mcp'?'支持 Streamable HTTP；工具调用会真实执行服务端工具。':''}</p>
+        {mode==='http'&&<details><summary>导入 cURL</summary><Textarea aria-label="cURL 命令" rows={4} value={v.curl||''} disabled={busy} placeholder="curl 'https://example.com/api' -H 'Accept: application/json'" onChange={(e:any)=>patch({curl:e.target.value})}/><Btn disabled={busy} onClick={()=>{try{patch({...importCurl(v.curl||''),result:null});setError('')}catch(e){setError((e as Error).message)}}}>导入请求（不发送）</Btn></details>}
         <Field label={mode==='http'?'请求地址':'MCP 服务地址'}><Input aria-label={mode==='http'?'接口请求地址':'MCP 服务地址'} value={v.url||''} disabled={locked} placeholder={mode==='http'?'http://localhost:8080/api/health':'http://localhost:3000/mcp'} onChange={(e:any)=>patch({url:e.target.value})}/></Field>
         {mode==='http'?<label className="wb-label">HTTP 方法 <select className="wb-select" aria-label="HTTP 方法" value={v.method||'GET'} disabled={busy} onChange={e=>patch({method:e.target.value})}>{['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'].map(m=><option key={m}>{m}</option>)}</select></label>:<label className="wb-label">MCP 协议版本 <select className="wb-select" aria-label="MCP 协议版本" disabled={locked} value={v.version||'2025-11-25'} onChange={e=>patch({version:e.target.value})}>{['2025-11-25','2025-06-18','2025-03-26','2026-07-28'].map(version=><option key={version}>{version}</option>)}</select></label>}
         <Field label="请求头（JSON）"><Textarea aria-label="调试请求头" rows={3} value={v.headers??'{}'} disabled={locked} onChange={(e:any)=>patch({headers:e.target.value})}/></Field>
         <label className="wb-label">超时（毫秒，1000–60000）<Input type="number" aria-label="调试超时" min={1000} max={60000} disabled={busy} value={v.timeoutMs??30000} onChange={(e:any)=>patch({timeoutMs:e.target.value})}/></label>
         {mode==='http'&&<Field label="请求正文"><Textarea aria-label="接口请求正文" rows={5} disabled={busy} value={v.body||''} onChange={(e:any)=>patch({body:e.target.value})}/></Field>}
         <div className="wb-row wb-row--wrap" style={{gap:8}}>
+            {mode==='http'&&<Btn disabled={!v.url||busy} onClick={()=>{try{void WB.util.copy(exportCurl(v)).catch((e:Error)=>setError(e.message))}catch(e){setError((e as Error).message)}}}>复制 cURL</Btn>}
             {mode==='http'?<Btn kind="primary" disabled={busy||!v.url} onClick={()=>send('httpDebug',{url:v.url,method:v.method||'GET',headers:v.headers,body:v.body})}>{busy?'请求中…':'发送请求'}</Btn>:<>
                 <Btn kind="primary" disabled={locked||!v.url} onClick={()=>send('mcpConnect',{url:v.url,headers:v.headers,version:v.version||'2025-11-25'})}>{busy&&!connection.current?'连接中…':'连接并发现工具'}</Btn>
                 <Btn disabled={busy||!connection.current} onClick={async()=>{setBusy(true);setError('');try{const r=await rpc('mcpDisconnect',{connectionId:connection.current});connection.current='';patch({connectionId:null,tools:[],toolName:''});if(r.note)setError(r.note)}catch(e){setError((e as Error).message)}finally{setBusy(false)}}}>断开连接</Btn>
@@ -43,9 +46,11 @@ function NetworkDebugger({value:v,patch,mode}:{value:any;patch:(value:any)=>void
             <Field label="工具参数（JSON 对象）"><Textarea aria-label="MCP 工具参数" rows={5} disabled={busy} value={v.arguments??'{}'} onChange={(e:any)=>patch({arguments:e.target.value})}/></Field>
             <Btn kind="primary" disabled={busy||!selected} onClick={()=>send('mcpCall',{connectionId:connection.current,name:v.toolName,arguments:v.arguments||'{}'})}>调用所选工具</Btn>
         </>}
+        </section><section className="wb-stack wb-network-response"><strong>响应</strong>{!v.result&&!error&&<div className="wb-data-empty">发送请求后在此查看响应</div>}
         {error&&<p className="wb-tiny" role="alert" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{error}</p>}
+        {mode==='http'&&v.result?.text&&<div className="wb-row wb-row--wrap"><Btn onClick={()=>onTransfer?.('json',v.result.text)}>响应 → JSON</Btn><Btn onClick={()=>onTransfer?.('diff',v.result.text)}>响应 → Diff</Btn><Btn onClick={()=>onTransfer?.('types',v.result.text)}>响应 → 类型生成</Btn></div>}
         {v.result&&<><div className="wb-row wb-row--wrap" style={{gap:8}}><strong className="wb-tiny">{mode==='http'?'HTTP '+v.result.status:'MCP 返回'} · {v.result.durationMs} ms {v.result.result?.isError?' · 工具返回错误':''}</strong><Copy text={formatted}/></div><pre className="wb-code" aria-label="调试响应" style={{maxHeight:480,overflow:'auto',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{formatted}</pre>{v.result.truncated&&<p className="wb-tiny wb-muted">响应超过1MB，展示已截断。</p>}</>}
-    </div>
+    </section></div>
 }
 export function HttpDebugger(props:any){return <NetworkDebugger {...props} mode="http"/>}
 export function McpDebugger(props:any){return <NetworkDebugger {...props} mode="mcp"/>}

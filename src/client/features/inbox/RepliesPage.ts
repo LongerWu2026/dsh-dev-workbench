@@ -15,16 +15,38 @@ function RepliesPage(): any {
     const [filter, setFilter] = React.useState<any>('open');
     const [page,setPage]=React.useState(0);
     const [query, setQuery] = React.useState<any>('');
-    const replies = (data.replies || []).filter((row:any)=>!row.archivedAt).map((row:any) => ({...row, groupName: messageOrigin((data.sources || []).find((source:any) => source.id === row.sourceId), row), contact: messageSender((data.sources || []).find((source:any) => source.id === row.sourceId) || {locator:{groupId:row.groupId}}, row.contact)})).filter(function (row?: any): any {
-        return (filter === 'all' || filter === 'open' ? filter === 'all' || row.stage === '待回复' || row.stage === '已确认收到' : row.stage === filter)
+    const [selectedReply,setSelectedReply]=React.useState<string|null>(null);
+    const [focusVersion,setFocusVersion]=React.useState(0);
+    const [focusNotice,setFocusNotice]=React.useState('');
+    const listRef=React.useRef<HTMLDivElement>(null);
+    const orderedReplies = (data.replies || []).filter((row:any)=>!row.archivedAt).map((row:any) => ({...row, groupName: messageOrigin((data.sources || []).find((source:any) => source.id === row.sourceId), row), contact: messageSender((data.sources || []).find((source:any) => source.id === row.sourceId) || {locator:{groupId:row.groupId}}, row.contact)})).sort(function (a?: any, b?: any): any { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+
+    const replies = orderedReplies.filter(function (row?: any): any {
+        return (filter === 'all' || filter === 'open' ? filter === 'all' || row.stage === '待回复' || row.stage === '已确认收到' || row.stage === '已自动回复' : row.stage === filter)
             && (!query || [row.snippet, row.contact, row.groupName].join(' ').toLowerCase().includes(query.toLowerCase()));
-    }).sort(function (a?: any, b?: any): any { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
+    });
+    React.useEffect(()=>{
+        const id=state.focusReplyId;if(!id)return;
+        const target=orderedReplies.find((row:any)=>row.id===id);
+        const nextFilter=target&&!['待回复','已确认收到','已自动回复'].includes(target.stage)?'all':'open';
+        const matching=orderedReplies.filter((row:any)=>nextFilter==='all'||['待回复','已确认收到','已自动回复'].includes(row.stage));
+        setQuery('');setFilter(nextFilter);setPage(Math.max(0,Math.floor(matching.findIndex((row:any)=>row.id===id)/PAGE_SIZE)));
+        setSelectedReply(target?id:null);setFocusVersion(version=>version+1);
+        setFocusNotice(target?'':'这条待回复已归档或不存在，请查看当前列表。');
+        WB.store.set({focusReplyId:null});
+    },[state.focusReplyId]);
+    React.useLayoutEffect(()=>{
+        if(!selectedReply)return;
+        const node=Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-reply-id]')||[]).find(el=>el.dataset.replyId===selectedReply);
+        node?.scrollIntoView?.({block:'start'});node?.focus({preventScroll:true});
+    },[selectedReply,focusVersion]);
     return h('div', { className: 'wb-inbox' },
         h(PageHead, {
             icon: 'chat', title: '待回复',
             sub: '私聊未读先待识别；具体事项转入待办，需答复的消息按实际回复更新。',
             actions: h(Btn, { icon: 'refresh', onClick: () => WB.actions.fetchMentions().catch(() => {}), disabled: state.busy, children: '同步消息' }),
         }),
+        focusNotice?h('p',{role:'status',className:'wb-tiny wb-muted'},focusNotice):null,
         h('div', { className: 'wb-inbox-filters' },
             h('div', { className: 'wb-inbox-search' },
                 h(Icon, { name: 'search', size: 15 }),
@@ -35,11 +57,11 @@ function RepliesPage(): any {
             h('label', { className: 'wb-inbox-filter' }, h('span', null, '状态'), h(Select, {
                 title: '回复阶段', value: filter,
                 options: [{ value: 'open', label: '待处理' }, { value: 'all', label: '全部' }].concat(
-                    ['待回复', '已确认收到', '已回复', '不需回复'].map(value => ({ value, label: value }))),
+                    ['待回复', '已确认收到', '已自动回复', '已回复', '不需回复'].map(value => ({ value, label: value }))),
                 onChange: (event: any) => { setFilter(event.target.value); setPage(0); },
             })),
             h('span', { className: 'wb-inbox-count' }, '共 ' + replies.length + ' 条')),
-        replies.length ? h('div', { className: 'wb-reply-list' },
+        replies.length ? h('div', { className: 'wb-reply-list',ref:listRef },
             replies.slice(pageIndex(page, replies.length) * PAGE_SIZE, (pageIndex(page, replies.length) + 1) * PAGE_SIZE).map(function (reply: any): any {
                 const source = (data.sources || []).find((row: any) => row.id === reply.sourceId);
                 const statusActions = h('div', { className: 'wb-inbox-stage-actions', role: 'group', 'aria-label': '修改回复阶段' },
@@ -47,19 +69,20 @@ function RepliesPage(): any {
                     ['待回复', '已确认收到', '已回复', '不需回复'].filter(stage => stage !== reply.stage).map(stage =>
                         h(Btn, { key: stage, size: 'sm', disabled: state.busy, onClick: () => WB.actions.setReplyStage(reply.id, stage).catch(() => {}), children: stage })),
                     h(Btn, { icon: 'sparkles', size: 'sm', onClick: () => WB.assistant.add({ kind: 'source', id: reply.sourceId || reply.id, title: reply.contact || '待回复消息', body: reply.snippet, meta: '回复 ID：' + reply.id + '；阶段：' + reply.stage }), children: 'AI 协助' }));
-                return h('article', { key: reply.id, className: 'wb-reply-item wb-inbox-card' },
+                return h('article', { key: reply.id, 'data-reply-id':reply.id, tabIndex:-1, 'aria-current':selectedReply===reply.id?'true':undefined, className: 'wb-reply-item wb-inbox-card'+(selectedReply===reply.id?' is-selected':''),style:selectedReply===reply.id?{outline:'2px solid var(--wb-accent)',outlineOffset:2,scrollMarginTop:12}:undefined },
                     h('header', { className: 'wb-inbox-card-head' },
                         h('div', { className: 'wb-row wb-row--wrap' },
+                            selectedReply===reply.id?h(Badge,{tone:'accent'},'当前选中'):null,
                             h('strong', null, reply.contact || reply.groupName || '消息'),
                             h(Badge, { tone: reply.stage === '已回复' ? 'ok' : reply.stage === '不需回复' ? 'idle' : 'warn' }, reply.stage),
-                            reply.triage==='pending'&&['待回复','已确认收到'].includes(reply.stage)?h(Badge,{tone:'idle'},'待AI识别'):reply.triage==='task'?h(Badge,{tone:'idle'},reply.taskIds?.length?'已转待办':'待办待确认'):reply.triage==='noise'?h(Badge,{tone:'idle'},'无需处理'):null,
+                            reply.stage==='已自动回复'?h('span',{className:'wb-tiny wb-muted'},'仍需人工答复'):reply.triage==='pending'&&['待回复','已确认收到'].includes(reply.stage)?h(Badge,{tone:'idle'},'待AI识别'):reply.triage==='task'?h(Badge,{tone:'idle'},reply.taskIds?.length?'已转待办':'待办待确认'):reply.triage==='noise'?h(Badge,{tone:'idle'},'无需处理'):null,
                             reply.humanGuard ? h('span', { className: 'wb-tiny wb-muted' }, '人工标记已保护') : null),
                         h('div', { className: 'wb-inbox-meta' },
                             h(MessageSelectionBadges,{source,inbox:data.messageInbox}),h('span', null, '来自：' + messageOrigin(source, reply)),
                             h('span', null, '发出时间：' + messageSentTime(source)))),
                     h('p', { className: 'wb-inbox-message' }, reply.snippet || '无文本摘录'),
                     h('div', { className: 'wb-inbox-footer' },
-                        h(ReplyDraft, { reply, data, actions: statusActions }),
+                        h(ReplyDraft, { reply, data, actions: statusActions,initialOpen:selectedReply===reply.id }),
                         source ? h('details', { className: 'wb-inbox-evidence' },
                             h('summary', null, '查看原消息依据'),
                             h('p', null, source.excerpt),

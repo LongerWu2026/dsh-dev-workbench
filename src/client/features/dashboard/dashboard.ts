@@ -1,19 +1,24 @@
+import {AnalysisActivity} from '../../components/AnalysisActivity.js'
+import {briefLinkedActions} from './linked-actions.js'
+import {LinkedReplies} from './LinkedReplies.js'
+import {RemindersPanel} from '../operations/RemindersPanel.js'
+import {BriefAgenda} from './BriefAgenda.js'
 import {FocusedInbox} from '../inbox/FocusedInbox.js'
+import { WorkflowJobs } from '../../components/WorkflowJobs.js'
+import { NewsFetchStatus } from '../news/NewsFetchStatus.js'
+import { radarFetchOutcome } from '../../../shared/news-fetch.js'
 import {MessageSelectionBadges} from '../../components/MessageSelectionBadges.js'
 import { messageOrigin, messageSender, messageSentTime } from '../../../shared/message-display.js'
 import * as React from 'react'
 import { Badge, Btn, Chip, Empty, Icon, IconBtn, PageHead, Panel, Spinner, T, WB, h } from '../../core/runtime.js'
-import { dashActionable, dashDueValue, dashEarliestOverdue, dashEndOfToday, dashPriorityOf, dashProjectName, dashStaleInfo, dashStoreNavigate, dashTagPill, dashToneColor, replyStageTone } from './selectors.js'
+import { dashActionable, dashOpenTasks, dashAddedToday, dashDueValue, dashEarliestOverdue, dashEndOfToday, dashPriorityOf, dashProjectName, dashStaleInfo, dashStoreNavigate, dashTagPill, dashToneColor, replyStageTone } from './selectors.js'
 import { isIgnoredNews, newsPriority } from '../../../shared/news.js'
 import { DashRadarMenu, DashRadarModal, DashRadarRow, dashRadarTimeValue, dashSummaryParts } from '../news/news-presentation.js'
 import { SyncStatus } from '../../components/SyncStatus.js'
-import { StatsStrip } from '../../components/StatsStrip.js'
 import { DashTaskRow } from './task-preview.js'
 import { CompactEmptyState } from '../../components/CompactEmptyState.js'
 import { dashBriefMarkdown } from './brief-export.js'
-import { DashPomodoro } from './pomodoro.js'
 import { DashConnectorCard, dashConnectorIcon } from './connector-card.js'
-import { RemindersPanel } from '../operations/RemindersPanel.js'
 import { DashEmptyIllustration, DashEmptyStep } from './empty-state.js'
 
 function DashboardPage(): any {
@@ -26,7 +31,16 @@ function DashboardPage(): any {
     const [radarEditItem, setRadarEditItem] = React.useState<any>(null);
     const [radarFetching, setRadarFetching] = React.useState<any>(false);
     const [mentionsBusy, setMentionsBusy] = React.useState<any>(false);
-    const [quickMore, setQuickMore] = React.useState<any>(false);
+    const [reminderToolsOpen,setReminderToolsOpen]=React.useState(false);
+    const [taskScope,setTaskScope]=React.useState('today');
+    const [allTasksShown,setAllTasksShown]=React.useState(false);
+    const [taskClock,setTaskClock]=React.useState(Date.now);
+    React.useEffect(()=>{
+        const tick=()=>{if(document.visibilityState!=='hidden')setTaskClock(Date.now())};
+        const timer=setInterval(tick,60000);
+        window.addEventListener('focus',tick);document.addEventListener?.('visibilitychange',tick);
+        return ()=>{clearInterval(timer);window.removeEventListener('focus',tick);document.removeEventListener?.('visibilitychange',tick)};
+    },[]);
     // TODO 22：AI 识别状态一块看全（待确认/失败/计数），上轮摘要状态也在这里
     const [analysis, setAnalysis] = React.useState<any>(null);
     React.useEffect(function (): any {
@@ -42,10 +56,17 @@ function DashboardPage(): any {
     if (!data) {
         return h('div', { className: 'wb-page' }, h('div', { className: 'wb-row', style: { gap: 9, color: T.text2, padding: '10px 0' } }, h(Spinner, { size: 16 }), h('span', null, '正在读取今日简报…')));
     }
-    const counts = WB.taskCounts(data);
     const tasks = Array.isArray(data.tasks) ? data.tasks.filter((row:any)=>!row.archivedAt) : [];
-    const actionableAll = dashActionable(data);
-    const shownTasks = actionableAll.slice(0, 8);
+    const taskData={...data,tasks:tasks.filter((t:any)=>t.eventType!=='meeting')};
+    const counts = WB.taskCounts({...data,tasks});
+    counts.overdue=tasks.filter((t:any)=>!['completed','cancelled'].includes(t.status)&&dashDueValue(t)<taskClock).length;
+    counts.today=tasks.filter((t:any)=>!['completed','cancelled'].includes(t.status)&&dashDueValue(t)>=taskClock&&dashDueValue(t)<=dashEndOfToday(taskClock)).length;
+    const openTasks=dashOpenTasks(taskData).slice().sort((a:any,b:any)=>(Date.parse(b.createdAt)||0)-(Date.parse(a.createdAt)||0));
+    const actionableAll = dashActionable(taskData,taskClock);
+    const taskSelection=taskScope==='all'?openTasks:actionableAll;
+    const linked=briefLinkedActions(data,taskSelection);
+    const groupedMeetingIds=new Set(linked.groups.flatMap(g=>g.tasks.filter(t=>t.eventType==='meeting').map(t=>t.id)));
+    const shownGroups=allTasksShown?linked.groups:linked.groups.slice(0,8);
     const settings = data.settings || {};
     const topics = Array.isArray(settings.topics) ? settings.topics : [];
     const radarItems = Array.isArray(data.radar) ? data.radar : [];
@@ -75,7 +96,7 @@ function DashboardPage(): any {
     });
     const radarVisible = radarSorted.slice(0, 3);
     function goTasks(preset?: any): any {
-        dashStoreNavigate(preset);
+        dashStoreNavigate({typeFilter:'all',...preset});
     }
     const lastMentions = data && data.lastMentionsFetch ? data.lastMentionsFetch : null;
     const newMentions = lastMentions && lastMentions.added > 0
@@ -98,38 +119,20 @@ function DashboardPage(): any {
     }
     const mentionsStrip = h(SyncStatus, { report: lastMentions, busy: mentionsBusy, onRetry: runMentionsFetch });
     // 指标条：四个数字合并成一行紧凑标签，把纵向空间留给待办列表
-    const statStrip = h(StatsStrip, { counts, onFilter: goTasks });
     const taskPanel = h(Panel, {
         icon: 'checkCircle',
-        title: '今日待办',
+        title: '今日待办与回复',
         // 完全没有任务时隐藏副标题，空态保持干净（与右侧一致）
-        sub: tasks.length === 0 ? null : actionableAll.length > 0
-            ? '逾期、今日到期与高优先级，共 ' + actionableAll.length + ' 条'
-            : '按逾期、今日到期与高优先级筛选后没有待办',
-        badge: actionableAll.length > 0 ? h(Badge, { tone: 'accent' }, String(actionableAll.length)) : null,
-        actions: h(React.Fragment, null, h(Btn, {
-            size: 'sm',
-            kind: 'subtle',
-            icon: 'tasks',
-            style: { border: '1px solid ' + T.border1 },
-            onClick: function (): any {
-                WB.go('tasks');
-            },
-            children: '任务中心',
-        }), h(Btn, {
-            size: 'sm',
-            icon: 'plus',
-            onClick: function (): any {
-                WB.openTaskForm(null);
-            },
-            children: '新建待办',
-        })),
+        sub: null,
+        badge: linked.groups.length > 0 ? h(Badge, { tone: 'accent' }, String(linked.groups.length)) : null,
+        actions: h(Btn, {size:'sm',kind:'subtle',onClick:()=>WB.go('tasks'),children:'任务中心'}),
         flush: true,
-    }, shownTasks.length > 0
-        ? h('div', { className: 'wb-list', style: { padding: '0 16px' } }, shownTasks.map(function (task?: any): any {
-            return h(DashTaskRow, { key: task.id, task: task, data: data });
-        }))
-        : h(CompactEmptyState, {empty:tasks.length===0,onCreate:()=>WB.openTaskForm(null),onBrowse:()=>WB.go('tasks')}), actionableAll.length > shownTasks.length
+    }, tasks.length>0?h('div',{className:'wb-row wb-row--wrap',style:{gap:8,padding:'10px 16px',borderBottom:'1px solid '+T.border1}},
+        h(Chip,{active:taskScope==='today',onClick:()=>{setTaskScope('today');setAllTasksShown(false)},children:'今日关注 '+actionableAll.length}),
+        h(Chip,{active:taskScope==='all',onClick:()=>{setTaskScope('all');setAllTasksShown(false)},children:'全部未完成 '+openTasks.length}),
+        h('span',{className:'wb-tiny wb-muted'},'今日新增 '+openTasks.filter((task:any)=>dashAddedToday(task,taskClock)).length+' 条（北京时间）')):null,shownGroups.length > 0
+        ? h('div', { className: 'wb-list', style: { padding: '0 16px' } }, shownGroups.map(group=>h('article',{key:group.id,'aria-label':group.replies.length?'关联事项：'+group.tasks[0].title:undefined,style:{borderBottom:'1px solid '+T.border1}},group.tasks.map(task=>h(DashTaskRow,{key:task.id,task,data,linked:group.replies.length>0})),group.replies.length?h(LinkedReplies,{replies:group.replies,data}):null)))
+        : tasks.length===0?h(CompactEmptyState, {empty:true,onCreate:()=>WB.openTaskForm(null),onBrowse:()=>WB.go('tasks')}):h('div',{className:'wb-stack',style:{padding:16,gap:8}},h('strong',null,taskScope==='all'?'没有未完成待办':'当前没有今日关注事项'),h('span',{className:'wb-tiny wb-muted'},'今日关注包含今日新增、逾期、今日到期和高优先级事项。'),taskScope!=='all'?h(Btn,{size:'sm',onClick:()=>{setTaskScope('all');setAllTasksShown(false)},children:'显示全部未完成'}):null), linked.groups.length > 8
         ? h('div', {
             style: {
                 display: 'flex',
@@ -138,14 +141,14 @@ function DashboardPage(): any {
                 padding: '9px 16px',
                 borderTop: '1px solid ' + T.border1,
             },
-        }, h('span', { className: 'wb-tiny wb-muted' }, '还有 ' + (actionableAll.length - shownTasks.length) + ' 条紧急待办未展示'), h('div', { className: 'wb-spacer' }), h(Btn, {
+        }, h('span', { className: 'wb-tiny wb-muted' }, '已展示 '+shownGroups.length+' / '+linked.groups.length+' 条'), h('div', { className: 'wb-spacer' }), h(Btn, {
             size: 'sm',
             kind: 'subtle',
             icon: 'arrowRight',
             onClick: function (): any {
-                goTasks({ status: 'open' });
+                setAllTasksShown(!allTasksShown);
             },
-            children: '去任务中心',
+            children: allTasksShown?'收起列表':'展开其余 '+(linked.groups.length-shownGroups.length)+' 条',
         }))
         : null);
     const lastFetch = data && data.lastRadarFetch ? data.lastRadarFetch : null;
@@ -180,7 +183,7 @@ function DashboardPage(): any {
             ? null
             : 'AI 进展与开源项目 · '+radarStatus,
         badge: radarEmpty
-            ? h(Badge, { tone: 'idle' }, '尚未抓取')
+            ? h(Badge, { tone: lastFetch && radarFetchOutcome(lastFetch).status === 'error' ? 'err' : 'idle' }, lastFetch ? radarFetchOutcome(lastFetch).status === 'error' ? '获取失败' : '暂无新增' : '尚未抓取')
             : lastFetch && lastFetch.at && fetchStale
                 ? h(Badge, { tone: 'warn' }, '数据可能过期')
                 : null,
@@ -207,6 +210,7 @@ function DashboardPage(): any {
         flush: true,
     },
     // 「仅看关注主题」筛选从头部移到内容区：过滤属于内容操作，不再占用标题行
+    lastFetch ? h('div', {style:{padding:'0 16px'}}, h(NewsFetchStatus, {report:lastFetch})) : null,
     !radarEmpty && topics.length > 0
         ? h('div', { className: 'wb-row', style: { padding: '0 16px 8px' } }, h(Chip, {
             active: !radarAll,
@@ -284,11 +288,12 @@ function DashboardPage(): any {
     const replies = (data && data.replies) || [];
     const replyOpen = replies
         .filter(function (reply?: any): any {
-        return reply.stage === '待回复' || reply.stage === '已确认收到';
+        return !reply.archivedAt && (reply.stage === '待回复' || reply.stage === '已确认收到' || reply.stage === '已自动回复');
     })
         .sort(function (left?: any, right?: any): any {
         return String(right.updatedAt || '').localeCompare(String(left.updatedAt || ''));
     });
+    const standaloneReplies=linked.standalone.sort((a:any,b:any)=>String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
     const replyDone = replies.filter(function (reply?: any): any {
         return reply.stage === '已回复' || reply.stage === '不需回复';
     }).length;
@@ -301,9 +306,9 @@ function DashboardPage(): any {
         className: 'wb-panel--separated',
         icon: 'link',
         title: '待回复',
-        sub: replies.length > 0 ? '点击阶段 chip 推进；关联的待办在任务中心跟踪' : null,
-        badge: replyOpen.length > 0
-            ? h(Badge, { tone: 'warn' }, String(replyOpen.length))
+        sub: null,
+        badge: standaloneReplies.length > 0
+            ? h(Badge, { tone: 'warn' }, String(standaloneReplies.length))
             : replies.length > 0
                 ? h(Badge, { tone: 'ok' }, '已清')
                 : null,
@@ -318,9 +323,9 @@ function DashboardPage(): any {
         }),
     }, replies.length === 0
         ? h('div', { className: 'wb-tiny wb-muted', style: {padding:'4px 0',lineHeight:1.6} }, '没有待回复的沟通。AI 识别的回复义务在此跟踪，与待办独立处理。')
-        : h('div', { className: 'wb-list' }, replyOpen.slice(0, 6).map(function (reply?: any): any {
+        : h('div', { className: 'wb-list' }, standaloneReplies.slice(0, 6).map(function (reply?: any): any {
             const source = (data.sources || []).find((source:any) => source.id === reply.sourceId);
-            return h('div', { key: reply.id, className: 'wb-item' }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title', style: { display: 'flex', gap: 6, alignItems: 'center' } }, messageSender(source || {locator:{groupId:reply.groupId}}, reply.contact), h(MessageSelectionBadges,{source,inbox:data.messageInbox}), h(Badge, { tone: replyStageTone(reply.stage) }, reply.stage), reply.triage==='pending'?h(Badge,{tone:'idle'},'待AI识别'):null, reply.taskIds && reply.taskIds.length > 0 ? h(Badge, { tone: 'idle' }, '关联待办 ' + reply.taskIds.length) : null), h('div', { className: 'wb-item-sub', style:{overflowWrap:'anywhere',whiteSpace:'normal'} }, '来自：' + messageOrigin(source, reply)), h('div', { className: 'wb-item-sub wb-clamp2' }, reply.snippet || ''), h('div', { className: 'wb-tiny wb-muted' }, '发出时间：' + messageSentTime(source))), h('div', { className: 'wb-row', style: { gap: 5, flex: 'none' } }, [
+            return h('div', { key: reply.id, className: 'wb-item' }, h('button', { type:'button', className: 'wb-item-main wb-brief-reply-link', title:'在待回复页查看并处理', 'aria-label':'查看待回复：'+messageSender(source || {locator:{groupId:reply.groupId}}, reply.contact)+'：'+(reply.snippet||'').slice(0,50), onClick:()=>WB.openReply(reply.id), style:{padding:0,border:0,background:'transparent',color:'inherit',font:'inherit',textAlign:'left',cursor:'pointer'} }, h('span', { className: 'wb-item-title', style: { display: 'flex', gap: 6, alignItems: 'center' } }, messageSender(source || {locator:{groupId:reply.groupId}}, reply.contact), h(MessageSelectionBadges,{source,inbox:data.messageInbox}), h(Badge, { tone: replyStageTone(reply.stage) }, reply.stage), reply.triage==='pending'?h(Badge,{tone:'idle'},'待AI识别'):null, reply.taskIds && reply.taskIds.length > 0 ? h(Badge, { tone: 'idle' }, '关联待办 ' + reply.taskIds.length) : null), h('span', { className: 'wb-item-sub', style:{overflowWrap:'anywhere',whiteSpace:'normal'} }, '来自：' + messageOrigin(source, reply)), h('span', { className: 'wb-item-sub wb-clamp2' }, reply.snippet || ''), h('span', { className: 'wb-tiny wb-muted',style:{display:'block'} }, '发出时间：' + messageSentTime(source)),h('span',{className:'wb-tiny',style:{display:'block',color:T.accent,marginTop:4}},'查看并处理 →')), h('div', { className: 'wb-row', style: { gap: 5, flex: 'none' } }, [
                 { id: '已回复', hint: '已给出答复' },
                 { id: '不需回复', hint: '无需回复' },
             ].map(function (chip?: any): any {
@@ -336,150 +341,7 @@ function DashboardPage(): any {
         }), replyDone > 0
             ? h('div', { className: 'wb-tiny wb-muted', style: { padding: '2px 4px 0' } }, '另有 ' + replyDone + ' 条已处理（已回复 / 不需回复）')
             : null));
-    // ---- 快捷操作：把高频入口与本地小工具收在一张卡里（§2.1 首页应有快捷操作）
-    const quickActionsPanel = h(Panel, {
-        icon: 'zap',
-        title: '快捷操作',
-        sub: '高频入口；番茄钟与日报都在本地完成，不联网',
-        actions: h(Btn, {
-            size: 'sm',
-            kind: 'subtle',
-            icon: 'copy',
-            onClick: function (): any {
-                WB.util
-                    .copy(dashBriefMarkdown(data))
-                    .then(function (): any {
-                    WB.toast('今日简报已复制为 Markdown', 'ok');
-                })
-                    .catch(function (error?: any): any {
-                    WB.toast(String((error && error.message) || error), 'err');
-                });
-            },
-            children: '复制今日简报',
-        }),
-    }, h('div', { className: 'wb-stack', style: { gap: 10 } },
-    // 一个图标按钮，菜单向上展开（不并排堆按钮）
-    h('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 6 } }, quickMore
-        ? h('div', {
-            style: {
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 1,
-                minWidth: 168,
-                padding: 4,
-                border: '1px solid ' + T.border1,
-                borderRadius: 10,
-                background: T.layer1,
-            },
-        }, [
-            { key: 'new', icon: 'plus', label: '新建待办', run: function (): any { WB.openTaskForm(null); } },
-            { key: 'search', icon: 'search', label: '搜索', run: function (): any { WB.go('search'); } },
-            { key: 'toolbox', icon: 'toolbox', label: '开发工具箱', run: function (): any { WB.go('toolbox'); } },
-            { key: 'agents', icon: 'agent', label: 'Agent 中心', run: function (): any { WB.go('agents'); } },
-            { key: 'mentions', icon: 'sparkles', label: mentionsBusy ? '拉取 @我…' : '拉取 @我', run: runMentionsFetch, disabled: mentionsBusy },
-            { key: 'radar', icon: 'refresh', label: radarFetching ? '抓取中…' : '抓取资讯', run: runRadarFetch, disabled: radarFetching },
-            { key: 'aiextract', icon: 'sparkles', label: '运行 AI 分析', run: function (): any { WB.actions.analyzeRun(); } },
-            { key: 'radarsum', icon: 'book', label: '生成资讯摘要', run: function (): any { WB.actions.radarSummarize([]); } },
-        ].map(function (item?: any): any {
-            return h('button', {
-                key: item.key,
-                type: 'button',
-                disabled: !!item.disabled,
-                onClick: function (): any {
-                    setQuickMore(false);
-                    item.run();
-                },
-                style: {
-                    appearance: 'none',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 7,
-                    width: '100%',
-                    textAlign: 'left',
-                    border: 0,
-                    borderRadius: 7,
-                    background: 'transparent',
-                    color: T.text,
-                    font: 'inherit',
-                    fontSize: 12,
-                    lineHeight: 1.7,
-                    padding: '4px 8px',
-                    cursor: item.disabled ? 'default' : 'pointer',
-                    opacity: item.disabled ? 0.55 : 1,
-                },
-            }, h(Icon, { name: item.icon, size: 12 }), item.label);
-        }))
-        : null, h(IconBtn, {
-        name: 'zap',
-        label: '快捷操作',
-        active: quickMore,
-        onClick: function (): any {
-            setQuickMore(!quickMore);
-        },
-    })), h(DashPomodoro, null)));
-    const connectorsPanel = h(Panel, {
-        icon: 'plug',
-        title: '连接状态',
-        sub: '来自 Host 的连接器快照；未配置不会影响本地待办与工具',
-        actions: h(Btn, {
-            size: 'sm',
-            kind: 'subtle',
-            icon: 'settings',
-            onClick: function (): any {
-                WB.go('settings');
-            },
-            children: '连接与设置',
-        }),
-    }, connectors.length > 0
-        ? h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 } }, connectors.map(function (connector?: any): any {
-            return h(DashConnectorCard, { key: connector.id, connector: connector });
-        }))
-        : h(Empty, {
-            icon: 'plug',
-            title: '还没有连接器',
-            hint: '在“连接与设置”里记录云之家 CLI、Git / GitHub、Docker 等接入方式，这里会显示授权状态与能力。',
-            action: h(Btn, {
-                size: 'sm',
-                onClick: function (): any {
-                    WB.go('settings');
-                },
-                children: '去配置',
-            }),
-        }));
-    return h('div', null, h(PageHead, {
-        icon: 'dashboard',
-        title: '今日简报',
-        sub: '需要处理 ' +
-            counts.open +
-            ' 项 · 逾期 ' +
-            counts.overdue +
-            ' 项 · 今日到期 ' +
-            counts.today +
-            ' 项 · 数据更新于 ' +
-            (data.updatedAt ? WB.fmt.relative(data.updatedAt) : '尚未写入'),
-        actions: [
-            h(Btn, {
-                key: 'refresh',
-                size: 'sm',
-                icon: 'refresh',
-                disabled: state.busy || mentionsBusy,
-                onClick: runMentionsFetch,
-                children: state.busy || mentionsBusy ? '刷新中…' : '刷新',
-            }),
-            // 「新建待办」主按钮只保留全局工具栏一处（用户反馈 #4：同屏三个主按钮互相打架）
-        ],
-    }), h(FocusedInbox,{data}), stale
-        ? h('div', { className: 'wb-banner wb-banner--warn', style: { marginBottom: 16 } }, h('span', { className: 'wb-banner-icon' }, h(Icon, { name: 'clock', size: 15 })), h('div', { className: 'wb-banner-main' }, h('div', { className: 'wb-banner-title' }, '数据可能过期'), h('div', { className: 'wb-banner-sub' }, 'Host 快照已 ' + WB.fmt.relative(stale.updatedAt) + ' 未刷新（陈旧阈值 ' + stale.staleHours + ' 小时），任务与资讯可能不是最新。')), h('div', { className: 'wb-banner-actions' }, h(Btn, {
-            size: 'sm',
-            kind: 'subtle',
-            icon: 'refresh',
-            disabled: state.busy || mentionsBusy,
-            onClick: runMentionsFetch,
-            children: '立即刷新',
-        })))
-        : null, mentionsStrip, h(RemindersPanel,{revision:data.revision}),
-    /** TODO 22：AI 识别状态面板（与自动化开关共用配置语义，展示即真实） */
-    (analysis && (analysis.pending || analysis.awaitingHuman || analysis.failed || analysis.done || analysis.skipped || analysis.historical))
+    const analysisPanel = (analysis && (analysis.pending || analysis.awaitingHuman || analysis.failed || analysis.done || analysis.skipped || analysis.historical))
         ? h(Panel, {
             icon: 'sparkles',
             title: 'AI 识别',
@@ -491,11 +353,11 @@ function DashboardPage(): any {
                 size: 'sm',
                 kind: 'subtle',
                 icon: 'play',
+                disabled: (data.jobs || []).some((job:any)=>job.kind==='analysis'&&job.input?.continuous&&['queued','running'].includes(job.status)),
                 onClick: function (): any {
                     WB.actions
                         .analyzeRun()
                         .then(function (result?: any): any {
-                        WB.toast(result.jobId ? 'AI 分析已进入后台队列：' + result.jobId : 'AI 分析：处理 ' + (result.processed || 0) + ' / 失败 ' + (result.failures || 0), 'ok');
                         return WB.actions.analysisStatus();
                     })
                         .then(function (status?: any): any {
@@ -537,7 +399,43 @@ function DashboardPage(): any {
                     : null);
             }))
             : h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.6 } }, data.settings?.aiExtract?.enabled ? (analysis.pending ? 'AI 已开启，待识别消息可运行分析，或在待回复页逐条处理。' : '本轮识别已完成，暂无待确认或失败条目。') : '开启「设置 → 自动化 → AI 识别」后，可处理已采集消息。'))
-        : null, statStrip, replyPanel, h('div', { className: 'wb-split', style: { gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)', marginBottom: 16 } }, taskPanel, radarPanel), h('div', { style: { marginBottom: 16 } }, quickActionsPanel), connectorsPanel, h(DashRadarModal, {
+        : null;
+    return h('div', null, h(PageHead, {
+        icon: 'dashboard',
+        title: '今日简报',
+        sub: '北京时间 · '+new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'long',day:'numeric',weekday:'long'}).format(taskClock),
+        actions: [
+            h(Btn,{key:'copy',size:'sm',kind:'subtle',icon:'copy',onClick:()=>WB.util.copy(dashBriefMarkdown(data)).then(()=>WB.toast('今日简报已复制','ok')).catch((e:any)=>WB.toast(e.message,'err')),children:'复制今日简报'}),
+            h(Btn, {
+                key: 'refresh',
+                size: 'sm',
+                icon: 'refresh',
+                disabled: state.busy || mentionsBusy,
+                onClick: runMentionsFetch,
+                children: state.busy || mentionsBusy ? '刷新中…' : '刷新',
+            }),
+            // 「新建待办」主按钮只保留全局工具栏一处（用户反馈 #4：同屏三个主按钮互相打架）
+        ],
+    }),h(AnalysisActivity), h('div',{className:'wb-stats-strip', 'aria-label':'今日行动概览'},
+        h(Btn,{size:'sm',kind:'subtle',onClick:()=>goTasks({dueFilter:'overdue'}),children:'逾期事项 '+counts.overdue}),
+        h(Btn,{size:'sm',kind:'subtle',onClick:()=>goTasks({dueFilter:'today'}),children:'今日到期 '+counts.today}),
+        h(Btn,{size:'sm',kind:'subtle',onClick:()=>WB.go('replies'),children:'待回复 '+replyOpen.length}),
+        h(Btn,{size:'sm',kind:'subtle',icon:'radar',onClick:()=>document.getElementById('wb-brief-news')?.scrollIntoView({block:'start',behavior:'smooth'}),children:'AI 资讯 '+radarSorted.length}),
+        h(Btn,{size:'sm',kind:'subtle',disabled:!analysis?.awaitingHuman,onClick:()=>document.getElementById('wb-brief-analysis')?.scrollIntoView({block:'start'}),children:'待确认 '+(analysis?.awaitingHuman||0)})),
+    h('div',{className:'wb-split',style:{gridTemplateColumns:'minmax(0,1.6fr) minmax(0,1fr)',marginBottom:16}},
+        h('div',{className:'wb-stack',style:{gap:16,minWidth:0}},taskPanel,standaloneReplies.length?replyPanel:null),
+        h('div',{className:'wb-stack',style:{gap:16,minWidth:0}},h(BriefAgenda,{data:{...data,tasks:tasks.filter((t:any)=>!groupedMeetingIds.has(t.id))},now:taskClock}),h('div',{id:'wb-brief-news'},radarPanel))),
+    h('div',{id:'wb-brief-analysis'},analysis?.awaitingHuman>0?analysisPanel:null),
+    h(FocusedInbox,{data,compact:true}),
+    h('details',{className:'wb-compact-status'},h('summary',null,
+        h('span',null,lastMentions?.status==='ok'?'消息同步正常':lastMentions?'消息尚未同步完整':'消息尚未同步'),
+        h('span',{className:'wb-tiny wb-muted'},data.messageInbox?.at?'最近同步 '+WB.fmt.relative(data.messageInbox.at):'尚无消息快照'),
+        analysis?.failed?h(Badge,{tone:'err'},'识别失败 '+analysis.failed):null,
+        stale?h(Badge,{tone:'warn'},'快照可能过期'):null),
+        mentionsStrip,h(WorkflowJobs,{jobs:(data.jobs||[]).filter((j:any)=>!['queued','running'].includes(j.status)),kind:'analysis'}),analysis?.awaitingHuman>0?null:analysisPanel),
+    h(WorkflowJobs,{jobs:(data.jobs||[]).filter((j:any)=>['queued','running'].includes(j.status)),kind:'analysis'}),
+    h('details',{className:'wb-compact-status',onToggle:(event:any)=>setReminderToolsOpen(event.currentTarget.open)},h('summary',null,'提醒与日历导出'),reminderToolsOpen?h(RemindersPanel,{revision:data.revision}):null),
+    h(DashRadarModal, {
         open: radarFormOpen,
         item: radarEditItem,
         onClose: function (): any {
@@ -550,4 +448,4 @@ function DashboardPage(): any {
 WB.pages.dashboard = DashboardPage;
 
 
-export { dashStoreNavigate, dashToneColor, dashPriorityOf, dashDueValue, dashEndOfToday, dashActionable, dashEarliestOverdue, dashStaleInfo, dashProjectName, dashRadarTimeValue, dashSummaryParts, dashConnectorIcon, dashTagPill, replyStageTone, DashTaskRow, DashRadarRow, DashConnectorCard, DashRadarMenu, DashRadarModal, DashEmptyIllustration, DashEmptyStep, DashPomodoro, dashBriefMarkdown, DashboardPage }
+export { dashStoreNavigate, dashToneColor, dashPriorityOf, dashDueValue, dashEndOfToday, dashActionable, dashEarliestOverdue, dashStaleInfo, dashProjectName, dashRadarTimeValue, dashSummaryParts, dashConnectorIcon, dashTagPill, replyStageTone, DashTaskRow, DashRadarRow, DashConnectorCard, DashRadarMenu, DashRadarModal, DashEmptyIllustration, DashEmptyStep, dashBriefMarkdown, DashboardPage }

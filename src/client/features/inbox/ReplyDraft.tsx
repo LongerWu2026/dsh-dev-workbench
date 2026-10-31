@@ -10,14 +10,16 @@ export function ReplyDraft({ reply, data, actions,taskId,initialOpen=false }: {
     initialOpen?:boolean;
 }) {
     const [text, setText] = React.useState(data.replyDrafts?.[reply.id]?.text || ''), [busy, setBusy] = React.useState(false), [error, setError] = React.useState(''), [open, setOpen] = React.useState(initialOpen);
+    React.useEffect(()=>{if(initialOpen)setOpen(true)},[initialOpen]);
     const [preview, setPreview] = React.useState<any>(null), [blocked, setBlocked] = React.useState(false);
     const sending = React.useRef(false);
     const source = (data.sources || []).find((row:any) => row.id === reply.sourceId), loc = source?.locator;
     const conversation=data.messageInbox?.accountId===loc?.accountId?data.messageInbox?.conversations?.find((c:any)=>c.groupId===loc?.groupId):null;
     const privateChat=Number(loc?.groupType||conversation?.groupType||data.syncCursors?.[loc?.accountId+':'+loc?.groupId]?.groupType)===1;
     const delivery = data.replyDrafts?.[reply.id]?.delivery;
+    const automatic:any=Object.values(data.busyReplyDeliveries||{}).find((d:any)=>d.id===reply.autoReplyId);
     const taskAllowed=!!taskId&&taskReplyMatches(data,taskId,reply);
-    const canSend = source?.provider === 'yunzhijia' && loc?.groupId && loc.msgId && loc.accountId && loc.direction !== 'outbound' && (!taskId||taskAllowed) && (['待回复', '已确认收到'].includes(reply.stage)||taskAllowed&&reply.triage==='task'&&reply.stage==='不需回复');
+    const canSend = source?.provider === 'yunzhijia' && loc?.groupId && loc.msgId && loc.accountId && loc.direction !== 'outbound' && (!taskId||taskAllowed) && (['待回复', '已确认收到', '已自动回复'].includes(reply.stage)||taskAllowed&&reply.triage==='task'&&reply.stage==='不需回复');
     const deliveryBlocked = blocked || ['sending', 'uncertain', 'sent'].includes(delivery?.status);
     function review() {
         setError('');
@@ -51,6 +53,7 @@ export function ReplyDraft({ reply, data, actions,taskId,initialOpen=false }: {
     } }
     return <div className="wb-reply-draft">
         {taskId&&<p className="wb-tiny wb-muted">回复原会话：{messageOrigin(source,reply)} · {messageSender(source,reply.contact)}。回复与待办完成状态分别维护。</p>}
+        {reply.stage==='已自动回复'&&reply.autoReplyId&&<p className="wb-tiny wb-muted">已自动告知：{automatic?.text||'当前忙碌，稍后答复'}；仍需人工答复。</p>}
         {delivery?.status==='sent'&&<p className="wb-tiny">已发送：{delivery.text||data.replyDrafts?.[reply.id]?.text} {delivery.at&&<time dateTime={delivery.at}>（{messageSentTime({locator:{sentAt:delivery.at}})}）</time>}</p>}
         <div className="wb-reply-draft-toolbar"><div className="wb-row wb-row--wrap"><Btn size="sm" kind="primary" disabled={busy} onClick={() => setOpen(!open)}>{open ? '收起回复' : '回复'}</Btn><Btn size="sm" disabled={busy} onClick={generate}>生成回复草稿</Btn></div>{actions}</div>
         {open && <div className="wb-reply-editor">

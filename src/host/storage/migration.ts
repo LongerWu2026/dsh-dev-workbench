@@ -27,6 +27,7 @@ function buildMigrationPackage(includeSettings?: any): any {
         data[column] = JSON.parse(JSON.stringify(ensureArray(state[column])));
         counts[column] = data[column].length;
     }
+    data.busyReplyDeliveries=JSON.parse(JSON.stringify(state.busyReplyDeliveries||{}));
     data.replyDrafts = JSON.parse(JSON.stringify(state.replyDrafts || {}));
     data.webAI = normalizeWebAI(state.webAI,true);
     data.messageInbox=normalizeMessageInbox(state.messageInbox);
@@ -170,11 +171,11 @@ function composeMigration(state?: any, data?: any, request?: any): any {
     if (data.syncCursors && typeof data.syncCursors === 'object') {
         next.syncCursors = request.mode === 'merge' ? Object.assign({}, data.syncCursors, next.syncCursors) : JSON.parse(JSON.stringify(data.syncCursors));
     }
-    for(const key of ['replyDrafts','reminderSnoozes'])if(data[key]&&typeof data[key]==='object')next[key]=request.mode==='merge'?{...data[key],...next[key]}:data[key];
+    for(const key of ['replyDrafts','reminderSnoozes','busyReplyDeliveries'])if(data[key]&&typeof data[key]==='object')next[key]=request.mode==='merge'?{...data[key],...next[key]}:data[key];
     if(data.messageInbox!==undefined){const incoming=normalizeMessageInbox(data.messageInbox),current=normalizeMessageInbox(next.messageInbox);next.messageInbox=request.mode==='merge'&&current&&(!incoming||Date.parse(current.at)>=Date.parse(incoming.at))?current:incoming;}
     if(data.webAI){const incoming=normalizeWebAI(data.webAI,true),current=normalizeWebAI(next.webAI,true);next.webAI=request.mode==='merge'?normalizeWebAI({chatgptEnabled:current.chatgptEnabled,topics:[...current.topics,...incoming.topics.filter(t=>!current.topics.some(c=>c.id===t.id))],rounds:[...current.rounds,...incoming.rounds.filter(r=>!current.rounds.some(c=>c.id===r.id))]},true):incoming;}
     if (request.includeSettings && data.settings) {
-        const settings = Object.assign({}, data.settings);
+        const settings = Object.assign({}, data.settings);delete settings.busyReply;
         for (const key of ['assistantSessionId', 'analysisSessionId', 'summarySessionId'])
             delete settings[key];
         next.settings = normalizeSettings(Object.assign({}, next.settings, settings));

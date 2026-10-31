@@ -26,7 +26,7 @@ export function collectReminders(state: {
             reminders.push({ id: kind + ':' + task.id + ':' + at, entityId: task.id, kind, title: task.title, at, overdue: delta < 0 });
     }
     for (const reply of state.replies) {
-        if (['待回复', '已确认收到'].includes(reply.stage) && now - Date.parse(reply.createdAt) >= 24 * 3600000)
+        if (['待回复', '已确认收到', '已自动回复'].includes(reply.stage) && now - Date.parse(reply.createdAt) >= 24 * 3600000)
             reminders.push({ id: 'reply:' + reply.id, entityId: reply.id, kind: 'reply', title: reply.snippet || '待回复', at: reply.createdAt, overdue: true });
     }
     return reminders.filter(row => !(Date.parse(state.reminderSnoozes?.[row.id] || '') > now)).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));

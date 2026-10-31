@@ -1,7 +1,7 @@
 import { HOST_META, HOST_STATE_VERSION, arch, hostNowIso, platform, workbenchStatePath } from '../platform/runtime.js'
-import { probeYunzhijia } from './yunzhijia.js'
+import { invalidateYzjPathCache, probeYunzhijia, resolveYzjPath } from './yunzhijia.js'
 import { ensureArray } from '../domain/model.js'
-import { mutateWorkbenchState } from '../storage/state-store.js'
+import { mutateWorkbenchState, workbenchGenerationGuard } from '../storage/state-store.js'
 /* ============================================================================
  * dev-workbench host — connector probe
  *
@@ -89,6 +89,7 @@ async function detectConnectors(ctx?: any): Promise<any> {
     });
     // 云之家：真实能力发现（§6.3）。whoami 通了才算「已连接」，
     // 能力列表是这里实际调过的命令；token 快过期时给「待授权」。
+    const yzPath = await resolveYzjPath(ctx);
     const yzProbe = await probeYunzhijia(ctx);
     const yzCapabilities: any = [];
     if (yzProbe.state === 'ok') {
@@ -104,32 +105,49 @@ async function detectConnectors(ctx?: any): Promise<any> {
         id: 'yunzhijia',
         type: 'enterprise-im',
         label: '云之家',
+        installed: !!yzPath,
+        executablePath: yzPath,
         capabilities: yzCapabilities,
-        authState: yzProbe.state === 'ok' ? 'ok' : yzProbe.state === 'unauthorized' ? 'unauthorized' : 'unconfigured',
+        authState: yzProbe.state === 'ok' ? 'ok' : yzProbe.state === 'unauthorized' ? 'unauthorized' : yzProbe.state === 'error' ? 'error' : 'unconfigured',
         updatedAt: at,
         note: yzProbe.state === 'ok'
-            ? '以 ' + yzProbe.name + ' 身份只读调用 yzj-cli（whoami 已验证）。能力=消息搜索 / 文档搜索 / @我 检索；发送/审批/删除等写操作不在插件内，留在会话里走逐次审批。' +
+            ? '以 ' + yzProbe.name + ' 身份连接 yzj-cli（whoami 已验证）；支持消息和文档搜索、重点消息采集，发送回复需逐条确认。' +
                 (yzProbe.expiresAt ? ' token 至 ' + new Intl.DateTimeFormat('zh-CN', {timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date(yzProbe.expiresAt)) + '（UTC+8）。' : '')
             : yzProbe.state === 'unauthorized'
-                ? 'yzj-cli 需要重新认证：运行 yzj-cli auth login 后再刷新。'
+                ? '云之家 CLI 已安装，请登录授权；完成后会自动检测。'
                 : yzProbe.note || '未找到 yzj-cli，保持未配置。',
     });
     return rows;
 }
-async function refreshConnectors(ctx?: any, state?: any): Promise<any> {
+const connectorRefreshes = new WeakMap<object, Promise<any>>();
+async function refreshConnectors(ctx?: any, state?: any, force = false, maxAge = CONNECTOR_TTL_MS): Promise<any> {
+    const pending = connectorRefreshes.get(ctx);
+    if (pending) {
+        const refreshed = await pending;
+        return force ? refreshConnectors(ctx, refreshed, true, maxAge) : refreshed;
+    }
     const existing = ensureArray(state.connectors);
     const newest = existing.reduce(function (latest?: any, item?: any): any {
         const stamp = item && item.updatedAt ? new Date(item.updatedAt).getTime() : 0;
         return Number.isFinite(stamp) && stamp > latest ? stamp : latest;
     }, 0);
-    if (existing.length > 0 && Date.now() - newest < CONNECTOR_TTL_MS) {
+    if (!force && existing.length > 0 && Date.now() - newest < maxAge) {
         return state;
     }
-    const rows = await detectConnectors(ctx);
-    return mutateWorkbenchState(function (current?: any): any {
-        current.connectors = rows;
-        return current;
-    });
+    const refresh = (async () => {
+        const assertCurrent = workbenchGenerationGuard();
+        invalidateYzjPathCache();
+        const rows = await detectConnectors(ctx);
+        assertCurrent();
+        return mutateWorkbenchState(function (current?: any): any {
+            assertCurrent();
+            current.connectors = rows;
+            return current;
+        });
+    })();
+    connectorRefreshes.set(ctx, refresh);
+    try { return await refresh; }
+    finally { if (connectorRefreshes.get(ctx) === refresh) connectorRefreshes.delete(ctx); }
 }
 
 export { CONNECTOR_TTL_MS, probeExecutable, detectConnectors, refreshConnectors }

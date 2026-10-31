@@ -1,4 +1,5 @@
 import { WB } from '../../core/runtime.js'
+import {dashActionable} from './selectors.js'
 
 /** 今日简报 → Markdown，复制到剪贴板（不落盘、不联网）。 */
 function dashBriefMarkdown(data?: any): any {
@@ -18,7 +19,8 @@ function dashBriefMarkdown(data?: any): any {
             lines.push('- ' + WB.util.truncate(row.excerpt || row.title, 100) + (row.sender ? ' —— ' + row.sender : ''));
         });
     }
-    const tasks = WB.openTasks(data).slice(0, 8);
+    const selected=dashActionable(data);
+    const tasks = selected.slice(0, 8);
     if (tasks.length > 0) {
         lines.push('');
         lines.push('## 待办（' + tasks.length + '）');
@@ -26,6 +28,7 @@ function dashBriefMarkdown(data?: any): any {
             const due = task.dueAt ? '（截止 ' + WB.fmt.day(task.dueAt) + '）' : '';
             lines.push('- [' + (WB.TASK_STATUS[task.status] || {}).label + '] ' + task.title + due);
         });
+        if(selected.length>tasks.length)lines.push('- 其余 '+(selected.length-tasks.length)+' 条可在工作台展开查看。');
     }
     const radar = (data.radar || []).slice(-5).reverse();
     if (radar.length > 0) {

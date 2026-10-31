@@ -150,7 +150,7 @@ function validateAnalysis(parsed?: any, source?: any, scope?: any): any {
             throw new Error('会议结束时间早于开始');
         return out;
     });
-    const referenced = source.locator?.direction === 'outbound' && source.locator.replyToMsgId && scope.replies.find((reply:any)=>reply.msgId===source.locator.replyToMsgId && ['待回复','已确认收到'].includes(reply.stage));
+    const referenced = source.locator?.direction === 'outbound' && source.locator.replyToMsgId && scope.replies.find((reply:any)=>reply.msgId===source.locator.replyToMsgId && ['待回复','已确认收到','已自动回复'].includes(reply.stage));
     if (!parsed.noise && referenced && !items.some((item:any)=>(item.relatedReplyId===referenced.id || item.replyToMsgId===referenced.msgId) && item.replyStage)) throw new Error('引用了待回复消息，但未判定回复阶段，请重新识别');
     return { noise: parsed.noise, relevance: parsed.relevance || null, summary: asString(parsed.summary, 400), items: parsed.noise ? [] : items };
 }
@@ -168,7 +168,7 @@ function upsertReply(state?: any, entry?: any, source?: any, stage?: any, relate
             const original=state.sources.find((s:any)=>s.id===existing.sourceId);
             if((!privateSource(source)&&locator.replyToMsgId!==existing.msgId)||!asIso(locator.sentAt)||Date.parse(locator.sentAt)<Date.parse(original?.locator?.sentAt||''))return {reply:existing,created:false};
         }
-        if (!existing.humanGuard) {
+        if (!existing.humanGuard && existing.stage!=='已自动回复') {
             const ranks: any = { '待回复': 0, '已确认收到': 1, '已回复': 2, '不需回复': 2 };
             if (ranks[stage] >= ranks[existing.stage]) {
                 existing.stage = stage;
@@ -393,7 +393,7 @@ async function runAnalysisBatch(ctx?: any, request?: any): Promise<any> {
     const startedAt=Date.now();
     const metrics={inputCount:0,modelCalls:0,promptChars:0,ruleInitializations:0,contextMessages:0,batches:0,reusedBatches:0};
     try {
-        const limit=effectiveBatchSize(Number(request?.limit)||settings.aiExtract.batchSize||5,loadWorkbenchState().lastAnalysisBatch,request?.limit == null);
+        const limit=effectiveBatchSize(Number(request?.limit)||settings.aiExtract.batchSize||50,loadWorkbenchState().lastAnalysisBatch,request?.limit == null);
         const onlyIds=new Set(ensureArray(request?.onlyIds).filter((id:unknown)=>typeof id==='string'));
         let entries:any[]=[];
         await mutateWorkbenchState((state:any)=>{
@@ -461,6 +461,7 @@ async function runAnalysisBatch(ctx?: any, request?: any): Promise<any> {
                             const contextOnly=source.locator?.intake===false||source.locator?.direction==='outbound';
                             const pending=merged.requiresReview || !contextOnly&&canCreateMessageTask(source)&&analysis.items.some((item:any)=>item.needsAction)&&!merged.created.length&&!merged.updated.length;
                             Object.assign(row,{status:pending?'awaiting_human':'done',reviewReason:merged.reviewReason,analysis,analyzedAt:hostNowIso(),leaseUntil:null,lastError:null,taskIds:merged.created.concat(merged.updated).map((task:any)=>task.id)});
+                            if(request?.analysisJobId)row.analysisJobId=request.analysisJobId;
                             merged.itemLinks.forEach((link:any,index:number)=>links.set(source.id+':'+index,{...link,conversation:conversationKey(source)}));
                             processed++;auditEntry(state,'analysis.run',source.id+'：待办 '+merged.created.length+'，回复 '+merged.createdReplies.length);
                         }catch(error){failures++;const attempts=row.attempts||0;Object.assign(row,{status:'failed',attempts:attempts+1,leaseUntil:null,lastError:String(error?.message||error).slice(0,200),nextRetryAt:new Date(Date.now()+2**attempts*60000).toISOString()})}

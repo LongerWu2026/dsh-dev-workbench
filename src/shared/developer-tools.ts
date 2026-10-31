@@ -1,4 +1,9 @@
-export interface LaunchCommand { id: string; name: string; argv: string[] }
+export interface LaunchCommand { id: string; name: string; argv: string[]; common?: boolean; serviceUrl?: string }
+export function localServiceUrl(value: unknown): string {
+    const url = new URL(String(value || ''))
+    if (!['http:', 'https:'].includes(url.protocol) || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) || url.username || url.password) throw new Error('服务地址仅支持无内嵌凭据的本机 HTTP/HTTPS 地址')
+    return url.href
+}
 const binaries = new Set(['npm','pnpm','yarn','bun','node','python','python3','java','mvn','mvnw','gradle','gradlew','dotnet','go','cargo'])
 export function normalizeLaunchCommands(value: unknown): LaunchCommand[] {
     if (!Array.isArray(value) || value.length > 20) throw new Error('启动配置须为数组，最多20项')
@@ -6,10 +11,10 @@ export function normalizeLaunchCommands(value: unknown): LaunchCommand[] {
     return value.map((row:any,index) => {
         if (!Array.isArray(row?.argv) || !row.argv.length || row.argv.length > 64 || row.argv.some((v:any)=>typeof v!=='string'||v.length>2000||/[\x00\r\n]/.test(v))) throw new Error('启动命令须为非空 argv 字符串数组')
         if (!binaries.has(row.argv[0].replace(/^\.\//,''))) throw new Error('仅支持项目开发命令：npm/pnpm/yarn/bun/node/python/java/mvn/gradle/dotnet/go/cargo')
-        const id = typeof row.id==='string' && /^[\w-]{1,80}$/.test(row.id) ? row.id : 'custom-'+index
+        const id = typeof row.id==='string' && /^[\w:.-]{1,80}$/.test(row.id) ? row.id : 'custom-'+index
         if (ids.has(id)) throw new Error('启动配置ID重复')
         ids.add(id)
-        return {id, name:String(row.name||row.argv.join(' ')).slice(0,100), argv:row.argv.slice()}
+        return {id, name:String(row.name||row.argv.join(' ')).slice(0,100), argv:row.argv.slice(), ...(typeof row.common==='boolean'?{common:row.common}:{}), ...(row.serviceUrl?{serviceUrl:localServiceUrl(row.serviceUrl)}:{})}
     })
 }
 export function debugHeaders(value: unknown): Record<string,string> {

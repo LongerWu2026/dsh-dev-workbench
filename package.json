@@ -1,6 +1,6 @@
 {
   "name": "dsh-dev-workbench",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "智能工作台 — DeepSeek Harness 原生插件：待办、待回复、AI 资讯、知识空间、多 AI 对话与开发工具。",
   "repository": {
     "type": "git",
@@ -16,6 +16,9 @@
   },
   "type": "module",
   "main": "index.js",
+  "bin": {
+    "harness-linky": "bin/harness-linky.mjs"
+  },
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -26,22 +29,31 @@
   "files": [
     "index.js",
     "client.js",
+    "bin/harness-linky.mjs",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg",
-    "README.md"
+    "README.md",
+    "THIRD-PARTY-NOTICES.txt"
   ],
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "pnpm typecheck && pnpm check:architecture && node scripts/build.mjs --check && node --check index.js && node --check client.js",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.contracts.json",
-    "test": "node tests/host-smoke.mjs && node tests/developer-tools.mjs && node tests/message-boundary.mjs && node tests/focused-intake.mjs && node tests/message-routing.mjs && node tests/reply-send.mjs && node tests/message-metadata.mjs && node tests/reply-reconciliation.mjs && node tests/reliability.mjs && node tests/batch-analysis.mjs && node tests/office-upgrade.mjs && node tests/office-workflows.mjs && node tests/knowledge-retrieval.mjs && node tests/background-history.mjs && node tests/lifecycle-soak.mjs && node tests/scheduler-lifecycle.mjs && node tests/message-schedule.mjs && node tests/web-ai.mjs && node tests/web-ai-session.mjs && node tests/client-render.mjs && pnpm --dir plugin-tests test",
+    "test:development": "node tests/development.mjs && node tests/harness-linky.mjs",
+    "test": "node tests/development.mjs && node tests/harness-linky.mjs && node tests/yunzhijia-setup.mjs && node tests/host-smoke.mjs && node tests/news-first-use.mjs && node tests/data-tools.mjs && node tests/developer-tools.mjs && node tests/collaboration.mjs && node tests/message-boundary.mjs && node tests/focused-intake.mjs && node tests/message-routing.mjs && node tests/busy-reply.mjs && node tests/reply-send.mjs && node tests/message-metadata.mjs && node tests/reply-reconciliation.mjs && node tests/reliability.mjs && node tests/batch-analysis.mjs && node tests/continuous-analysis.mjs && node tests/office-upgrade.mjs && node tests/office-workflows.mjs && node tests/knowledge-retrieval.mjs && node tests/background-history.mjs && node tests/lifecycle-soak.mjs && node tests/scheduler-lifecycle.mjs && node tests/message-schedule.mjs && node tests/web-ai.mjs && node tests/web-ai-session.mjs && node tests/web-ai-unsent.mjs && node tests/client-render.mjs && pnpm --dir plugin-tests test",
     "evaluate:quality": "node scripts/evaluate-quality.mjs",
     "check:architecture": "node scripts/check-architecture.mjs",
     "test:layout": "node plugin-tests/layout/check-layout.mjs",
+    "test:analysis-layout": "node plugin-tests/layout/continuous-analysis.mjs",
     "test:suspend": "node tests/process-suspend.mjs",
     "test:web-ai-browser": "node tests/web-ai-browser.mjs",
-    "test:host-persistence": "node host-integration/test-persistence.mjs"
+    "test:host-persistence": "node host-integration/rc5/test-persistence.mjs",
+    "test:host-persistence-patch": "node host-integration/rc5/test-apply.mjs",
+    "test:host-login-cache": "node host-integration/rc5/test-standalone-cache.mjs .local-host/rc5-native-login",
+    "test:host-daily-entry": "node host-integration/rc5/test-daily-entry.mjs",
+    "test:data": "node tests/data-tools.mjs",
+    "test:busy-reply": "node tests/busy-reply.mjs"
   },
   "keywords": [
     "deepseek-harness",
@@ -71,14 +83,21 @@
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
+    "@types/pg": "^8.23.1",
+    "@types/pg-cursor": "^2.7.2",
     "@types/react": "^18.3.31",
     "esbuild": "^0.28.2",
+    "node-sql-parser": "^5.4.0",
     "typescript": "^5.9.3"
   },
   "engines": {
     "node": ">=22.19.0"
   },
   "dependencies": {
+    "ioredis": "^6.0.0",
+    "mysql2": "^3.24.6",
+    "pg": "^8.23.1",
+    "pg-cursor": "^2.22.1",
     "yaml": "^2.9.1"
   }
 }

@@ -27,11 +27,11 @@ function FilePreview({item}:{item:SelectedWebAIFile}){
  React.useEffect(()=>{if(!/^image\/(png|jpeg|webp|gif)$/.test(item.type)||!URL.createObjectURL)return;const value=URL.createObjectURL(item.file);setUrl(value);return()=>URL.revokeObjectURL(value)},[item])
  return <>{url&&<img src={url} alt={item.name} style={{width:48,height:48,objectFit:'contain',borderRadius:6}}/>}<span style={{minWidth:0,overflowWrap:'anywhere'}}>{item.name}<small className="wb-muted" style={{display:'block'}}>{Math.ceil(item.size/1024)} KB</small></span></>
 }
-export function WebAIAttachments({files,disabled,onAdd,onRemove}:{files:SelectedWebAIFile[];disabled:boolean;onAdd:(files:File[])=>void;onRemove:(id:string)=>void}){
+export function WebAIAttachments({files,disabled,onAdd,onRemove,compact=false}:{files:SelectedWebAIFile[];compact?:boolean;disabled:boolean;onAdd:(files:File[])=>void;onRemove:(id:string)=>void}){
  const chooser=React.useRef<HTMLInputElement>(null)
  return <div className="wb-stack" aria-label="问题附件">
   <input ref={chooser} aria-label="选择问题附件" type="file" multiple accept={WEB_AI_FILE_ACCEPT} disabled={disabled} style={{display:'none'}} onChange={event=>{onAdd(Array.from(event.target.files||[]));event.target.value=''}}/>
-  <div className="wb-row wb-row--wrap" style={{gap:8}}><Btn disabled={disabled} onClick={()=>chooser.current?.click()}>添加图片 / 文件</Btn><span className="wb-tiny wb-muted">可粘贴截图或拖入文件；最多5个，单个10MB，总计20MB。格式以官网为准。</span></div>
-  {!!files.length&&<><div className="wb-row wb-row--wrap" style={{gap:8}}>{files.map(item=><div key={item.id} className="wb-row" style={{gap:8,maxWidth:'100%',padding:8,border:'1px solid var(--dsw-alias-border-l1)',borderRadius:8}}><FilePreview item={item}/><Btn size="sm" disabled={disabled} aria-label={'移除附件 '+item.name} onClick={()=>onRemove(item.id)}>移除</Btn></div>)}</div><p className="wb-tiny wb-muted">附件将发送至勾选官网；批量仅附在第一问，后续复用会话。内容临时保留，历史仅保存附件信息；刷新后需重新选择。</p></>}
+  <div className="wb-row wb-row--wrap" style={{gap:8}}><Btn aria-label="添加附件" disabled={disabled} onClick={()=>chooser.current?.click()}>{compact?'📎':'添加图片 / 文件'}</Btn>{!compact&&<span className="wb-tiny wb-muted">可粘贴截图或拖入文件；最多5个，单个10MB，总计20MB。格式以官网为准。</span>}</div>
+  {!!files.length&&<><div className="wb-row wb-row--wrap" style={{gap:8}}>{files.map(item=><div key={item.id} className="wb-row" style={{gap:8,maxWidth:'100%',padding:8,border:'1px solid var(--dsw-alias-border-l1)',borderRadius:8}}><FilePreview item={item}/><Btn size="sm" disabled={disabled} aria-label={'移除附件 '+item.name} onClick={()=>onRemove(item.id)}>移除</Btn></div>)}</div>{!compact&&<p className="wb-tiny wb-muted">附件将发送至勾选官网；批量仅附在第一问，后续复用会话。内容临时保留，历史仅保存附件信息；刷新后需重新选择。</p>}</>}
  </div>
 }

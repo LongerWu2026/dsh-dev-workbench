@@ -59,13 +59,13 @@ function paletteCommands(context?: any): any {
     }
     if (context && context.runs && context.runs.length > 0) {
         commands.push({
-            id: 'nav:agents',
+            id: 'nav:office-history',
             label: '查看执行记录（' + context.runs.length + '）',
-            hint: 'Agent 中心：队列、审批与结果',
+            hint: '智能办公 → 执行记录',
             icon: 'agent',
             group: '操作',
             run: function (): any {
-                WB.go('agents');
+                WB.store.set({page:'office',officeView:'history'});
             },
         });
     }

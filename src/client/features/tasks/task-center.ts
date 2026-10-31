@@ -377,7 +377,7 @@ function TaskCenterRow(props?: any): any {
                 padding: '0 12px 12px',
                 background: 'color-mix(in srgb, ' + T.accent + ' 3%, transparent)',
             },
-        }, h(Btn, {size:'sm',icon:'agent',onClick:()=>WB.actions.officeWorkflowStart('task_assist',{taskId:task.id}).then(()=>WB.store.set({page:'agents'})).catch(()=>{}),children:'AI 整理处理方案'}),h(TaskCenterEvidence, { task: task, data: data })))
+        }, h(Btn, {size:'sm',icon:'agent',onClick:()=>WB.actions.officeWorkflowStart('task_assist',{taskId:task.id}).then(()=>WB.store.set({page:'office',officeView:'workflows'})).catch(()=>{}),children:'AI 整理处理方案'}),h(TaskCenterEvidence, { task: task, data: data })))
         : null);
 }
 function TaskCenterBoardCard(props?: any): any {
@@ -449,6 +449,7 @@ function TaskCenterPage(): any {
     const data = state.data;
     const [page,setPage]=React.useState(0);
     const [view, setView] = React.useState<any>('list');
+    const [filtersOpen,setFiltersOpen]=React.useState(false);
     const [search, setSearch] = React.useState<any>('');
     const [status, setStatus] = React.useState<any>('all');
     const [dueFilter, setDueFilter] = React.useState<any>('all');
@@ -473,6 +474,8 @@ function TaskCenterPage(): any {
         if (!preset)
             return;
         WB.store.set({ taskPreset: null });
+        if (preset.typeFilter)
+            setTypeFilter(preset.typeFilter);
         if (preset.status)
             setStatus(preset.status);
         if (preset.dueFilter)
@@ -595,97 +598,31 @@ function TaskCenterPage(): any {
     function newTask(): any {
         WB.openTaskForm(null);
     }
-    const filterBar = h(Panel, { style: { marginBottom: 14 }, bodyStyle: { padding: '12px 14px 13px' } }, h('div', { className: 'wb-stack', style: { gap: 9 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 10 } }, h('div', { style: { position: 'relative', flex: '1 1 240px', maxWidth: 340, minWidth: 170 } }, h(Input, {
-        value: search,
-        placeholder: '搜索标题、描述或标签',
-        'aria-label': '搜索待办',
-        style: { paddingLeft: 28 },
-        onChange: function (event?: any): any {
-            setSearch(event.target.value);
-        },
-    }), h('span', { style: { position: 'absolute', left: 9, top: 8, display: 'inline-flex', color: T.text2, pointerEvents: 'none' } }, h(Icon, { name: 'search', size: 13 }))), h(Tabs, {
-        items: tabItems,
-        value: status,
-        onChange: function (value?: any): any {
-            setStatus(value);
-        },
-    }), h('div', { className: 'wb-spacer' }), h(Btn, {
-        size: 'sm',
-        kind: 'subtle',
-        icon: 'xCircle',
-        disabled: !filtersActive,
-        onClick: resetFilters,
-        children: '重置筛选',
-    })), h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6 } }, h('span', { className: 'wb-tiny wb-muted' }, '到期'), dueOptions.map(function (option?: any): any {
-        return h(Chip, {
-            key: 'due:' + option.value,
-            active: dueFilter === option.value,
-            onClick: function (): any {
-                setDueFilter(option.value);
-            },
-            children: option.label,
-        });
-    }), h('span', {
-        style: { width: 1, height: 15, margin: '0 3px', background: T.border1, flex: 'none' },
-    }), h('span', { className: 'wb-tiny wb-muted' }, '优先级'), priorityOptions.map(function (option?: any): any {
-        return h(Chip, {
-            key: 'priority:' + option.value,
-            active: priority === option.value,
-            onClick: function (): any {
-                setPriority(option.value);
-            },
-            children: option.label,
-        });
-    }), h('span', {
-        style: { width: 1, height: 15, margin: '0 3px', background: T.border1, flex: 'none' },
-    }), h('span', { className: 'wb-tiny wb-muted' }, '项目'), h('div', { style: { width: 160 } }, h(Select, {
-        options: projectOptions,
-        value: projectId,
-        onChange: function (event?: any): any {
-            setProjectId(event.target.value);
-        },
-    }))), h('div',{className:'wb-row wb-row--wrap',style:{gap:8}},
-        h('span',{className:'wb-tiny wb-muted'},'消息发出时间（北京时间）'),
-        h('label',{className:'wb-row wb-tiny',style:{gap:5}},'从',h(Input,{type:'date','aria-label':'消息发出日期起始',value:messageFrom,max:messageTo||undefined,style:{width:148},onChange:(event:any)=>setMessageFrom(event.target.value)})),
-        h('label',{className:'wb-row wb-tiny',style:{gap:5}},'至',h(Input,{type:'date','aria-label':'消息发出日期截止',value:messageTo,min:messageFrom||undefined,style:{width:148},onChange:(event:any)=>setMessageTo(event.target.value)})),
-        h('div',{style:{width:180}},h(Select,{'aria-label':'待办排序',value:sortOrder,options:[{value:'default',label:'默认排序'},{value:'message-newest',label:'消息时间：最新在前'},{value:'message-oldest',label:'消息时间：最早在前'}],onChange:(event:any)=>setSortOrder(event.target.value)})),
-        messageFrom&&messageTo&&messageFrom>messageTo?h('span',{role:'alert',className:'wb-tiny',style:{color:T.err}},'起始日期不能晚于截止日期'):null), true
-        ? h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6, marginBottom: 6 } }, h('span', { className: 'wb-tiny wb-muted' }, '事项类型：'), [
-            { id: 'all', label: '全部' },
-            { id: 'meeting', label: '会议' },
-            { id: 'feature', label: '功能开发' },
-            { id: 'logging', label: '登记填报' },
-            { id: 'other', label: '其他' },
-        ].map(function (option?: any): any {
-            return h(Chip, {
-                key: 'type-' + option.id,
-                active: typeFilter === option.id,
-                onClick: function (): any {
-                    setTypeFilter(option.id);
-                },
-                children: option.label,
-            });
-        }))
-        : null, tagList.length > 0
-        ? h('div', { className: 'wb-row wb-row--wrap', style: { gap: 5 } }, h('span', { className: 'wb-tiny wb-muted' }, '标签'), tagsShown.map(function (item?: any): any {
-            return h(Chip, {
-                key: 'tag:' + item.tag,
-                active: tag === item.tag,
-                onClick: function (): any {
-                    setTag(tag === item.tag ? null : item.tag);
-                },
-                title: item.count + ' 条待办',
-                children: '#' + item.tag + (item.count > 0 ? ' · ' + item.count : ''),
-            });
-        }), tagList.length > 8
-            ? h(Chip, {
-                onClick: function (): any {
-                    setShowAllTags(!showAllTags);
-                },
-                children: showAllTags ? '收起标签' : '更多标签 · ' + (tagList.length - 8),
-            })
-            : null)
-        : null, h('div', { className: 'wb-row wb-tiny wb-muted', style: { gap: 8, flexWrap: 'wrap' } }, h('span', null, '共 ' + visible.length + ' 条结果'), h('span', null, '未完成 ' + tabCounts.open), h('span', null, '逾期 ' + tabCounts.overdue), h('div', { className: 'wb-spacer' }), h('span', { className: 'wb-tiny wb-muted' }, '筛选只影响当前视图，不写入 Host'))));
+    const typeOptions=[{value:'all',label:'全部'},{value:'meeting',label:'会议'},{value:'feature',label:'功能开发'},{value:'logging',label:'登记填报'},{value:'other',label:'其他'}];
+    const applied:any[]=[];
+    if(dueFilter!=='all')applied.push({label:'到期：'+dueOptions.find((o:any)=>o.value===dueFilter)?.label,clear:()=>setDueFilter('all')});
+    if(priority!=='all')applied.push({label:'优先级：'+priorityOptions.find((o:any)=>o.value===priority)?.label,clear:()=>setPriority('all')});
+    if(projectId!=='all')applied.push({label:'项目：'+(projectOptions.find((o:any)=>o.value===projectId)?.label||'已移除项目'),clear:()=>setProjectId('all')});
+    if(typeFilter!=='all')applied.push({label:'类型：'+typeOptions.find(o=>o.value===typeFilter)?.label,clear:()=>setTypeFilter('all')});
+    if(tag)applied.push({label:'标签：'+tag,clear:()=>setTag(null)});
+    if(messageFrom||messageTo)applied.push({label:'消息日期：'+(messageFrom||'不限')+' 至 '+(messageTo||'不限'),clear:()=>{setMessageFrom('');setMessageTo('');}});
+    const choices=(options:any[],value:any,setValue:any)=>h('div',{className:'wb-row wb-row--wrap',style:{gap:6}},options.map(option=>h(Chip,{key:option.value,active:value===option.value,onClick:()=>setValue(option.value),children:option.label})));
+    const group=(label:string,content:any)=>h('div',{className:'wb-task-filter-group'},h('span',{className:'wb-label'},label),content);
+    const filterBar=h(Panel,{className:'wb-task-filters',style:{marginBottom:14},bodyStyle:{padding:'12px 14px'}},h('div',{className:'wb-stack',style:{gap:12}},
+        h('div',{className:'wb-task-filter-toolbar'},
+            h('div',{className:'wb-task-filter-search'},h(Input,{value:search,placeholder:'搜索标题、描述或标签','aria-label':'搜索待办',style:{paddingLeft:28},onChange:(e:any)=>setSearch(e.target.value)}),h('span',{style:{position:'absolute',left:9,top:8,color:T.text2,pointerEvents:'none'}},h(Icon,{name:'search',size:13}))),
+            h('div',{style:{width:172,maxWidth:'100%'}},h(Select,{'aria-label':'待办排序',value:sortOrder,options:[{value:'default',label:'默认排序'},{value:'message-newest',label:'消息时间：最新在前'},{value:'message-oldest',label:'消息时间：最早在前'}],onChange:(e:any)=>setSortOrder(e.target.value)})),
+            h('button',{type:'button',className:'wb-btn wb-btn--ghost','aria-expanded':filtersOpen,'aria-controls':'wb-task-advanced',onClick:()=>setFiltersOpen(!filtersOpen)},h(Icon,{name:'filter',size:13}),'筛选'+(applied.length?' · '+applied.length:'')),
+            h(Btn,{size:'sm',kind:'subtle',disabled:!filtersActive,onClick:resetFilters,children:'重置筛选'})),
+        h(Tabs,{items:tabItems,value:status,onChange:setStatus}),
+        applied.length?h('div',{className:'wb-task-applied','aria-label':'已选筛选条件'},applied.map(item=>h('button',{key:item.label,type:'button',className:'wb-chip is-active','aria-label':'移除筛选：'+item.label,onClick:item.clear},item.label,h(Icon,{name:'close',size:12})))):null,
+        h('div',{id:'wb-task-advanced',className:'wb-task-advanced',hidden:!filtersOpen},
+            group('到期',choices(dueOptions,dueFilter,setDueFilter)),group('优先级',choices(priorityOptions,priority,setPriority)),
+            group('项目',h(Select,{'aria-label':'筛选项目',options:projectOptions,value:projectId,onChange:(e:any)=>setProjectId(e.target.value)})),
+            group('事项类型',choices(typeOptions,typeFilter,setTypeFilter)),
+            group('消息发出时间（北京时间）',h('div',{className:'wb-row wb-row--wrap'},h('label',{className:'wb-row wb-tiny'},'从',h(Input,{type:'date','aria-label':'消息发出日期起始',value:messageFrom,max:messageTo||undefined,style:{width:148},onChange:(e:any)=>setMessageFrom(e.target.value)})),h('label',{className:'wb-row wb-tiny'},'至',h(Input,{type:'date','aria-label':'消息发出日期截止',value:messageTo,min:messageFrom||undefined,style:{width:148},onChange:(e:any)=>setMessageTo(e.target.value)})),messageFrom&&messageTo&&messageFrom>messageTo?h('span',{role:'alert',className:'wb-tiny',style:{color:T.err}},'起始日期不能晚于截止日期'):null)),
+            tagList.length?group('标签',h('div',{className:'wb-row wb-row--wrap',style:{gap:5}},tagsShown.map((item:any)=>h(Chip,{key:item.tag,active:tag===item.tag,onClick:()=>setTag(tag===item.tag?null:item.tag),children:'#'+item.tag+' · '+item.count})),tagList.length>8?h(Chip,{onClick:()=>setShowAllTags(!showAllTags),children:showAllTags?'收起标签':'更多标签 · '+(tagList.length-8)}):null)):null),
+        h('span',{className:'wb-tiny wb-muted'},'共 '+visible.length+' 条结果')));
     let content;
     if (tasks.length === 0) {
         content = h(Panel, { flush: true }, h(Empty, {

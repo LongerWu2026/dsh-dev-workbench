@@ -11,7 +11,7 @@ export function RemindersPanel({ revision }: {
     if (!items.length && !error)
         return null;
     return <Panel className="wb-panel--separated" title="到期提醒" sub="会前 30 分钟、24 小时内到期、超过一天待回复；关闭软件期间不弹出提醒">
- {error && <p role="alert">{error}</p>}{items.slice(0, 8).map(row => <div className="wb-reply-item" key={row.id}><strong>{row.kind === 'meeting' ? '会议' : row.kind === 'reply' ? '待回复' : '待办'} · {row.title}</strong><p className="wb-tiny wb-muted">{row.overdue ? '已过期或等待中' : '即将到期'} · {row.at}</p><div className="wb-row"><Btn size="sm" onClick={() => { if (row.kind === 'reply') {
+ {error && <p role="alert">{error}</p>}{items.slice(0, 8).map(row => <div className="wb-reply-item" key={row.id}><strong>{row.kind === 'meeting' ? '会议' : row.kind === 'reply' ? '待回复' : '待办'} · {row.title}</strong><p className="wb-tiny wb-muted">{row.kind==='reply'?'等待回复':row.overdue?(row.kind==='meeting'?'会议已开始':'已逾期'):'即将到期'} · {WB.fmt.datetime(row.at)}</p><div className="wb-row"><Btn size="sm" onClick={() => { if (row.kind === 'reply') {
         WB.store.set({ page: 'replies' });
     }
     else {

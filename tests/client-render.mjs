@@ -23,6 +23,8 @@ let dirty = false
 
 const React = {
   Fragment: Symbol.for('react.fragment'),
+  memo(component) { return component },
+  useLayoutEffect(fn,deps) { return React.useEffect(fn,deps) },
   createElement(type, props) {
     // Real React also exposes children through props.children; components like
     // Panel read them there. Without this, every children-as-arguments call
@@ -658,7 +660,7 @@ function treeText(entries) {
 function findNavButtons(entries, out) {
   entries.forEach((item) => {
     if (item.tag) {
-      if (String((item.props || {}).className || '').indexOf('wb-nav-item') >= 0) out.push(item)
+      if (item.tag === 'button' && String((item.props || {}).className || '').indexOf('wb-nav-item') >= 0) out.push(item)
       findNavButtons(item.children || [], out)
     }
   })
@@ -746,17 +748,18 @@ if (entry && entry.key !== 'dev-workbench') problems.push('main key 不是 dev-w
 if (!registrations.panellist.length) problems.push('没有注册 sidebar.panellist')
 
 const pageSpecs = [
-  ['今日简报', 'dashboard', ['AI 动态', '抓取资讯', '快捷操作', '专注', '复制今日简报', '待回复', '张三', '已回复']],
-  ['任务中心', 'tasks', ['看板', '规则候选（备用）', '提取候选', '事项类型：']],
+  ['今日简报', 'dashboard', ['AI 动态', '抓取资讯', '复制今日简报', '待回复', '张三', '已回复']],
+  ['任务中心', 'tasks', ['看板', '规则候选（备用）', '提取候选', '筛选']],
   ['待回复', 'replies', ['私聊未读先待识别']],
   ['资讯', 'radar', ['生成摘要', '获取资讯']],
-  ['搜索', 'search', ['一个入口搜全部', '企业（云之家）', '本地', '互联网']],
-  ['Agent 中心', 'agents', ['办公执行', '历史执行记录']],
+  ['工作搜索', 'search', ['工作内容', '互联网', '消息']],
+  ['研发任务', 'agents', ['研发设置', 'Linky']],
+  ['智能办公', 'office', ['办公流程', '执行记录']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
   ['研发协作', 'collab', ['添加仓库目录', '端口占用', 'PR 与 CI', '进程 CPU / 内存']],
   ['知识空间', 'knowledge', ['知识空间']],
   ['连接与设置', 'settings', ['仓库目录决定', '资讯源', '自动化', '补充 @ 关键词', '立即备份']],
-  ['多 AI 对话', 'web-ai', ['历史问答', '发送范围', '无需创建主题', '登录 / 查看原对话']],
+  ['多 AI 对话', 'web-ai', ['新对话', '登录 / 官网', '启用 ChatGPT']],
 ]
 
 // 1) the shell on the default page
@@ -798,7 +801,7 @@ for (const [title, id, expected] of pageSpecs) {
     else queryInput.onChange({ target: { value: '限流' } })
     tree = await renderTree(title + '·查询')
     const allButtons = findButtons(tree, [])
-    const submit = allButtons.find((button) => button.text.indexOf('检索') >= 0)
+    const submit = allButtons.find((button) => button.text==='搜索')
     if (!submit) problems.push('检索按钮未找到：[' + allButtons.map((b) => b.text).join(' | ') + ']')
     else submit.onClick()
     tree = await renderTree(title + '·结果')
@@ -821,9 +824,12 @@ for (const [title, id, expected] of pageSpecs) {
   const toolboxIndex = nav.findIndex((item) => treeText(item.children).trim() === '开发工具箱')
   if (nav[toolboxIndex]) nav[toolboxIndex].props.onClick()
   let tree = await renderTree('工具箱·入口')
+  const toolPicker=findButtons(tree,[]).find(item=>item.text.trim()==='切换工具');if(toolPicker){toolPicker.onClick();tree=await renderTree('工具箱·展开工具菜单')}
+  const allTools = findButtons(tree, []).find(item => item.text.trim() === '全部');if(allTools){allTools.onClick();tree=await renderTree('工具箱·全部')}
   const tools = ['YAML', 'CSV', 'Markdown', 'HTTP 状态码', 'Shell / Docker', 'SQL 计划解读']
   for (const toolName of tools) {
-    const button = findButtons(tree, []).find((item) => item.text.indexOf(toolName) >= 0)
+    let button = findButtons(tree, []).find((item) => item.text.indexOf(toolName) >= 0)
+    if(!button){const picker=findButtons(tree,[]).find(item=>item.text.trim()==='切换工具');if(picker){picker.onClick();tree=await renderTree('工具箱·切换菜单');button=findButtons(tree,[]).find(item=>item.text.indexOf(toolName)>=0)}}
     if (!button) {
       problems.push('工具箱里找不到工具：' + toolName)
       continue
@@ -890,7 +896,9 @@ for (const [title, id, expected] of pageSpecs) {
   if (source.indexOf('workbench/deleteSource') < 0) problems.push('产物里缺少 deleteSource 调用')
 
   // Agent 中心：执行记录编辑 + 删除
-  const agentsEntries = await goPage('Agent 中心')
+  let agentsEntries = await goPage('智能办公')
+  const officeTab = findButtons(agentsEntries, []).find(button=>button.text==='执行记录')
+  if(officeTab){officeTab.onClick();agentsEntries=await renderTree('执行记录')}
   const agentsLabels = labelsOf(agentsEntries)
   if (agentsLabels.indexOf('编辑这条执行记录') < 0) problems.push('Agent 中心缺少「编辑执行记录」入口')
   if (agentsLabels.indexOf('删除这条执行记录') < 0) problems.push('Agent 中心缺少「删除执行记录」入口')
@@ -1139,11 +1147,10 @@ snapshotMode = 'full'
 // That is how `workbench/fetchRadar` broke in the shipped UI — the client sent
 // {request:{}} against a zero-param descriptor. Parse the host's signature
 // table (single source of truth) and verify every recorded call matches.
-const remoteSource = readFileSync(new URL('../src/host/api/remote.ts', import.meta.url), 'utf8')
-const descriptorParams = new Map()
-for (const match of remoteSource.matchAll(/\{\s*method:\s*'(\w+)',\s*params:\s*\[([^\]]*)\]\s*\}/g)) {
-  descriptorParams.set(match[1], [...match[2].matchAll(/'(\w+)'/g)].map((p) => p[1]).sort())
-}
+const {build:buildRemoteDescriptors}=await import('esbuild')
+const descriptorBundle=await buildRemoteDescriptors({entryPoints:[new URL('../src/host/api/remote.ts',import.meta.url).pathname],bundle:true,platform:'node',format:'esm',write:false,logLevel:'silent'})
+const {WORKBENCH_REMOTE_SIGNATURES}=await import('data:text/javascript;base64,'+Buffer.from(descriptorBundle.outputFiles[0].text).toString('base64'))
+const descriptorParams=new Map(WORKBENCH_REMOTE_SIGNATURES.map(entry=>[entry.method,[...entry.params].sort()]))
 for (const call of rpcCalls) {
   const method = call.endpoint.replace(/^workbench\//, '')
   const expected = descriptorParams.get(method)

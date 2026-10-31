@@ -41,22 +41,32 @@ function dashDueValue(task?: any): any {
     return Number.isNaN(value) ? Infinity : value;
 }
 
-function dashEndOfToday(): any {
-    const end = new Date();
-    end.setHours(23, 59, 59, 999);
-    return end.getTime();
+function dashEndOfToday(now=Date.now()): number {
+    const local=new Date(now+8*3600000);
+    return Date.UTC(local.getUTCFullYear(),local.getUTCMonth(),local.getUTCDate()+1)-8*3600000-1;
 }
 
-/** 逾期 + 今日到期 + 高优先级的未完成待办，最紧急的排前面。 */
-function dashActionable(data?: any): any {
-    const endOfDay = dashEndOfToday();
-    return WB.openTasks(data)
+function dashOpenTasks(data?:any):any[] {
+    return WB.openTasks(data).filter((task:any)=>!task.archivedAt);
+}
+function dashAddedToday(task:any,now=Date.now()):boolean {
+    const created=Date.parse(task.createdAt||'');
+    const end=dashEndOfToday(now);
+    return Number.isFinite(created)&&created>=end-86400000+1&&created<=end;
+}
+/** Newly added tasks remain visible even without a deadline or high priority. */
+function dashActionable(data?: any,now=Date.now()): any {
+    const endOfDay = dashEndOfToday(now);
+    return dashOpenTasks(data)
         .filter(function (task?: any): any {
-        if (task.priority === 'urgent' || task.priority === 'high')
+        if (dashAddedToday(task,now)||task.priority === 'urgent' || task.priority === 'high')
             return true;
         return dashDueValue(task) <= endOfDay;
     })
         .sort(function (a?: any, b?: any): any {
+        const addedA=dashAddedToday(a,now),addedB=dashAddedToday(b,now);
+        if(addedA!==addedB)return addedA?-1:1;
+        if(addedA&&addedB){const delta=Date.parse(b.createdAt)-Date.parse(a.createdAt);if(delta)return delta;}
         const ad = dashDueValue(a);
         const bd = dashDueValue(b);
         if (ad !== bd)
@@ -71,7 +81,7 @@ function dashActionable(data?: any): any {
 
 function dashEarliestOverdue(data?: any): any {
     let earliest: any = null;
-    WB.openTasks(data).forEach(function (task?: any): any {
+    dashOpenTasks(data).forEach(function (task?: any): any {
         const value = dashDueValue(task);
         if (value === Infinity || value >= Date.now())
             return;
@@ -134,4 +144,4 @@ function replyStageTone(stage?: any): any {
         return 'warn';
     return 'idle';
 }
-export { dashStoreNavigate, dashToneColor, dashPriorityOf, dashDueValue, dashEndOfToday, dashActionable, dashEarliestOverdue, dashStaleInfo, dashProjectName, dashTagPill, replyStageTone }
+export { dashStoreNavigate, dashToneColor, dashPriorityOf, dashDueValue, dashEndOfToday, dashOpenTasks, dashAddedToday, dashActionable, dashEarliestOverdue, dashStaleInfo, dashProjectName, dashTagPill, replyStageTone }

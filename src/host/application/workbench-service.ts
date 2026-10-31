@@ -1,4 +1,7 @@
+import {dataService} from './data-service.js'
 import {developerService} from './developer-service.js'
+import {developmentService} from './development-service.js'
+import {connectorService} from './connector-service.js'
 import { workflowService } from './workflow-service.js'
 import {webAIService} from './web-ai-service.js'
 /** Composition root. Implement business use cases in the service for their domain. */
@@ -12,7 +15,10 @@ import { analysisService } from './analysis-service.js'
 import { assistantService } from './assistant-service.js'
 import { systemService } from './system-service.js'
 const workbenchApi: any = {
+ ...developmentService,
+ ...connectorService,
  ...developerService,
+ ...dataService,
  ...webAIService(),
  ...officeService(workbenchContext),
  ...workflowService(workbenchContext),

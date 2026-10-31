@@ -1,5 +1,7 @@
+import {BusyReply} from './BusyReply.js'
 import { WorkflowPanel } from './WorkflowPanel.js'
-import { Badge, Btn, Divider, Empty, Field, Icon, IconBtn, Input, Modal, PageHead, Panel, Segmented, Select, Stat, T, Textarea, WB, h } from '../../core/runtime.js'
+import { DevelopmentPage } from './DevelopmentPage.js'
+import { Badge, Btn, Divider, Empty, Field, Icon, IconBtn, Input, Modal, PageHead, Panel, Segmented, Select, T, Textarea, WB, h } from '../../core/runtime.js'
 import * as React from 'react'
 /* ============================================================================
  * dev-workbench page: Agent center
@@ -143,7 +145,7 @@ function agentRunRow(props?: any): any {
     const meta = agentStatusMeta(run.status);
     const expanded = !!props.expanded;
     const minutes = agentDurationMinutes(run);
-    const title = agentTaskTitle(props.tasks, run.taskId) || '未关联任务';
+    const title = agentTaskTitle(props.tasks, run.taskId) || WB.util.truncate(String(run.summary || '').split('\n')[0], 80) || '通用执行记录';
     const steps = Array.isArray(run.steps) ? run.steps : [];
     const evidence = Array.isArray(run.evidence) ? run.evidence : [];
     const toggleLabel = expanded ? '收起执行详情' : '展开执行详情';
@@ -191,9 +193,9 @@ function agentRunRow(props?: any): any {
                 }
                 return h('span', { key: 'ev-' + index, className: 'wb-tiny wb-muted' }, String(label));
             }))
-            : h('div', { className: 'wb-tiny wb-muted' }, '这条记录没有关联证据'), h('div', { className: 'wb-row wb-tiny wb-muted wb-row--wrap', style: { gap: 12 } }, h('span', null, 'session：' + (run.sessionId || '未记录')), h('span', null, 'profile：' + (run.profile || '—')), h('span', { className: 'wb-mono' }, 'run id：' + run.id)))
+            : h('div', { className: 'wb-tiny wb-muted' }, '这条记录没有关联证据'), h('div', { className: 'wb-row wb-tiny wb-muted wb-row--wrap', style: { gap: 12 } }, h('span', null, '开始：' + agentFormatTime(run.startedAt)), h('span', null, '结束：' + agentFormatTime(run.endedAt)), h('span', null, 'session：' + (run.sessionId || '未记录')), h('span', null, 'profile：' + (run.profile || '—')), h('span', { className: 'wb-mono' }, 'run id：' + run.id)))
         : null;
-    return h('div', { className: 'wb-item', style: { flexDirection: 'column', alignItems: 'stretch' } }, h('div', { className: 'wb-row', style: { gap: 8, alignItems: 'flex-start', width: '100%' } }, h('button', {
+    return h('div', { className: 'wb-item wb-office-run-row', style: { flexDirection: 'column', alignItems: 'stretch' } }, h('div', { className: 'wb-row wb-office-run-main', style: { gap: 8, alignItems: 'flex-start', width: '100%' } }, h('button', {
         type: 'button',
         className: 'wb-item-main',
         onClick: props.onToggle,
@@ -211,7 +213,7 @@ function agentRunRow(props?: any): any {
             textAlign: 'left',
             cursor: 'pointer',
         },
-    }, h('span', { className: 'wb-row', style: { gap: 6, flexWrap: 'wrap' } }, h(Icon, { name: expanded ? 'chevronDown' : 'chevronRight', size: 13 }), h('span', { className: 'wb-item-title' }, title), h(Badge, { tone: meta.tone }, meta.label)), h('span', { className: 'wb-item-sub' }, h('span', null, 'profile ' + (run.profile || '—')), h('span', null, '开始 ' + agentFormatTime(run.startedAt)), h('span', null, '结束 ' + agentFormatTime(run.endedAt)), h('span', null, '耗时 ' + agentDurationText(minutes)), h('span', { className: 'wb-mono' }, run.sessionId || '无 sessionId'))), h('div', { style: { display: 'flex', alignItems: 'center', gap: 4, flex: 'none' } }, h(Btn, {
+    }, h('span', { className: 'wb-row', style: { gap: 6, flexWrap: 'wrap' } }, h(Icon, { name: expanded ? 'chevronDown' : 'chevronRight', size: 13 }), h('span', { className: 'wb-item-title' }, title), h(Badge, { tone: meta.tone }, meta.label)), h('span', { className: 'wb-item-sub' }, h('span', null, agentFormatTime(run.startedAt)), minutes !== null ? h('span', null, '耗时 ' + agentDurationText(minutes)) : null)), h('div', { style: { display: 'flex', alignItems: 'center', gap: 4, flex: 'none' } }, h(Btn, {
         size: 'sm',
         icon: 'check',
         disabled: run.status === 'completed',
@@ -283,7 +285,7 @@ function agentPage(): any {
     let visible = agentSortRuns(runs);
     if (filter === 'active') {
         visible = visible.filter(function (run?: any): any {
-            return run.status === 'queued' || run.status === 'running' || run.status === 'waiting_approval';
+            return run.status === 'queued' || run.status === 'running';
         });
     }
     else if (filter !== 'all') {
@@ -382,54 +384,34 @@ function agentPage(): any {
     const statusOptions = Object.keys(WB.RUN_STATUS).map(function (key?: any): any {
         return { value: key, label: WB.RUN_STATUS[key].label };
     });
-    const approvalBody = waiting.length
-        ? h('div', { className: 'wb-list' }, waiting.map(function (run?: any): any {
-            const title = agentTaskTitle(tasks, run.taskId) || '未关联任务';
-            return h('div', { key: run.id, className: 'wb-item' }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title' }, title), h('div', { className: 'wb-item-sub' }, h('span', null, 'profile ' + (run.profile || '—')), h('span', null, '开始 ' + agentFormatTime(run.startedAt)), h('span', { className: 'wb-mono' }, run.sessionId || '无 sessionId'))), h(Badge, { tone: 'warn' }, '待审批'), h('div', { style: { display: 'flex', gap: 4, flex: 'none' } }, h(Btn, {
-                size: 'sm',
-                icon: 'check',
-                onClick: function (): any {
-                    markRun(run, 'completed');
-                },
-                children: '完成',
-            }), h(Btn, {
-                size: 'sm',
-                kind: 'danger',
-                icon: 'xCircle',
-                onClick: function (): any {
-                    markRun(run, 'failed');
-                },
-                children: '失败',
-            })));
-        }), h('p', { className: 'wb-tiny wb-muted', style: { margin: '8px 0 0', lineHeight: 1.7 } }, '这里是历史记录中的待审批标记，不代表宿主当前存在审批命令；实际批准或拒绝请在原会话完成。'))
-        : h(Empty, {
-            icon: 'checkCircle',
-            title: '当前没有待审批操作',
-            hint: '审批绑定具体命令：只有会话里正在等待的那条命令会被交给您确认；没有命令执行时不会产生审批，插件也不会替您批准或跳过审批。',
-        });
-    const approval = h(Panel, {
-        title: '会话审批提示',
-        sub: waiting.length ? '历史标记，实际审批请回原会话' : '未登记待审批记录',
-        icon: 'lock',
-        badge: waiting.length ? h(Badge, { tone: 'warn' }, String(waiting.length)) : null,
-        style: { marginBottom: 14 },
-    }, approvalBody);
+    const approval = waiting.length ? h('details', { className: 'wb-office-approvals' },
+        h('summary', null, h(Icon, { name: 'lock', size: 13 }), '待审批标记', h(Badge, { tone: 'warn' }, String(waiting.length)), h('span', { className: 'wb-muted' }, '查看记录')),
+        h('p', { className: 'wb-tiny wb-muted' }, '以下为历史记录标记，实际审批请回原会话完成。'),
+        h('div', { className: 'wb-list' }, waiting.map(function (run?: any): any {
+            return h('div', { key: run.id, className: 'wb-item' },
+                h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title' }, agentTaskTitle(tasks, run.taskId) || WB.util.truncate(run.summary || '通用执行记录', 80)), h('div', { className: 'wb-item-sub' }, '开始 ' + agentFormatTime(run.startedAt))),
+                h(Btn, { size: 'sm', onClick: function (): any { setFilter('waiting_approval'); setExpanded(function (previous: any): any { return { ...previous, [run.id]: true }; }); }, children: '查看详情' }));
+        }))) : null;
+    const overview = h('div', { className: 'wb-office-run-overview' },
+        h('div', { className: 'wb-office-run-filters', role: 'group', 'aria-label': '筛选执行记录' }, [
+            { value: 'all', label: '全部', count: runs.length },
+            { value: 'active', label: '进行中', count: counts.running },
+            { value: 'waiting_approval', label: '待审批', count: counts.waiting },
+            { value: 'completed', label: '已完成', count: counts.completed },
+            { value: 'failed', label: '失败', count: counts.failed },
+        ].map(function (item): any {
+            return h('button', { key: item.value, type: 'button', className: 'wb-office-run-filter' + (filter === item.value ? ' is-active' : ''), 'aria-pressed': filter === item.value, onClick: function (): any { setFilter(item.value); } }, item.label, h('span', null, item.count));
+        })),
+        h('span', { className: 'wb-tiny wb-muted wb-office-run-average', title: average.count ? '按 ' + average.count + ' 条具有开始和结束时间的记录计算' : '暂无可计算耗时的已结束记录' }, '平均耗时 ', h('strong', null, average.minutes === null ? '—' : agentDurationText(average.minutes))));
     const queue = h(Panel, {
         title: '历史执行记录',
         sub: runs.length > 0
             ? '共 ' + runs.length + ' 条记录 · 按开始时间倒序 · 点击一行展开详情'
             : '还没有执行记录',
         icon: 'play',
-        actions: h(Segmented, {
-            items: [
-                { value: 'all', label: '全部' },
-                { value: 'active', label: '进行中' },
-                { value: 'completed', label: '已完成' },
-                { value: 'failed', label: '失败' },
-            ],
-            value: filter,
-            onChange: setFilter,
-        }),
+        actions: h('div', { className: 'wb-row wb-row--wrap' },
+            h(Btn, { kind: 'primary', size: 'sm', icon: 'plus', onClick: function (): any { setRecordOpen(true); }, children: '登记执行记录' }),
+            h(Btn, { size: 'sm', icon: 'copy', onClick: copyBrief, children: '复制任务简报' })),
     }, visible.length
         ? h('div', { className: 'wb-list' }, visible.map(function (run?: any): any {
             return h(agentRunRow, {
@@ -525,86 +507,12 @@ function agentPage(): any {
             patchDraft({ summary: event.target.value });
         },
     })), h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.7 } }, '登记后可在执行队列里展开查看，并继续标记完成 / 失败；这里不会触发任何命令执行。')));
-    return h('div', { className: 'wb-page' }, h(PageHead, {
-        icon: 'agent',
-        title: 'Agent 中心',
-        sub: '办公流程、真实后台进度、交付产物与执行记录。',
-        actions: [
-            h(Btn, {
-                key: 'record',
-                kind: 'primary',
-                icon: 'plus',
-                onClick: function (): any {
-                    setRecordOpen(true);
-                },
-                children: '登记执行记录',
-            }),
-            h(Btn, {
-                key: 'brief',
-                icon: 'copy',
-                onClick: copyBrief,
-                children: '复制任务简报',
-            }),
-        ],
-    }), h(WorkflowPanel), h('h2',{style:{fontSize:14,marginTop:20}},'历史记录统计'), h('div', {
-        className: 'wb-grid',
-        style: {
-            gridTemplateColumns: 'repeat(auto-fit, minmax(156px, 1fr))',
-            marginBottom: 12,
-        },
-    }, h(Stat, {
-        key: 'running',
-        label: '执行中',
-        value: counts.running,
-        sub: (counts.queued || 0) + ' 排队 · ' + (counts.executing || 0) + ' 执行',
-        tone: 'warn',
-        icon: 'play',
-        onClick: function (): any {
-            setFilter('active');
-        },
-    }), h(Stat, {
-        key: 'waiting',
-        label: '待审批',
-        value: counts.waiting,
-        sub: 'status waiting_approval',
-        tone: 'warn',
-        icon: 'lock',
-    }), h(Stat, {
-        key: 'completed',
-        label: '已完成',
-        value: counts.completed,
-        sub: 'status completed',
-        tone: 'ok',
-        icon: 'checkCircle',
-    }), h(Stat, {
-        key: 'failed',
-        label: '失败',
-        value: counts.failed,
-        sub: 'status failed',
-        tone: 'err',
-        icon: 'xCircle',
-    })), h('div', {
-        className: 'wb-grid',
-        style: {
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            marginBottom: 14,
-        },
-    }, h(Stat, {
-        key: 'average',
-        label: '平均耗时',
-        value: average.minutes === null ? '—' : agentDurationText(average.minutes),
-        sub: average.minutes === null
-            ? '暂无带 endedAt 的记录'
-            : '按 ' + average.count + ' 条已结束记录计算',
-        icon: 'clock',
-    }), h(Stat, {
-        key: 'measured',
-        label: '有效记录',
-        value: average.count,
-        sub: average.count ? '含 startedAt 与 endedAt 的记录数' : '没有可计算的耗时样本',
-        icon: 'layers',
-    })), approval, queue, h('p', { className: 'wb-tiny wb-muted', style: { marginTop: 14, lineHeight: 1.7 } }, '办公执行展示真实后台作业和产物；历史执行记录保留会话结果。业务完成须有交付依据，草稿保存不代表消息已发送。'), recordModal);
+    return h('section', { className: 'wb-office-history', 'aria-label': '执行记录' }, overview, approval, queue, recordModal);
 }
-WB.pages.agents = agentPage;
+WB.pages.agents = DevelopmentPage;
+WB.pages.office = function OfficePage(){
+    const tab=WB.useStore().officeView||'workflows',setTab=(officeView:string)=>WB.store.set({officeView});
+    return h('div',{className:'wb-page'},h(PageHead,{icon:'layers',title:'智能办公',sub:'整理回复、生成工作报告，跟进办公流程与产物。',actions:h(BusyReply)}),h(Segmented,{value:tab,onChange:setTab,items:[{value:'workflows',label:'办公流程'},{value:'history',label:'执行记录'}]}),tab==='workflows'?h('div',{style:{marginTop:20}},h(WorkflowPanel)):h(agentPage));
+};
 
 export { agentStatusMeta, agentFormatTime, agentDurationMinutes, agentDurationText, agentSortRuns, agentRunAverage, agentTaskTitle, agentPriorityRank, agentBriefMarkdown, agentRunRow, agentPage }

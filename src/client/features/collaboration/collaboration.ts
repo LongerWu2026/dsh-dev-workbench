@@ -1,4 +1,5 @@
 import {ProjectLauncher} from './ProjectLauncher.js'
+import {GithubPanel} from './GithubPanel.js'
 import { Badge, Btn, Chip, Divider, Empty, Icon, IconBtn, PageHead, Panel, Spinner, Stat, T, WB, h, useStore } from '../../core/runtime.js'
 import * as React from 'react'
 /* ============================================================================
@@ -10,9 +11,8 @@ import * as React from 'react'
  * missing binary, a non-repository directory and a stopped daemon each get their
  * own explanation instead of an empty table.
  *
- * No write action exists on this page on purpose: staging, pushing, restarting a
- * container are L3 operations that need per-action approval, which this plugin
- * does not implement.
+ * Project launches are explicit actions; repository and machine probes remain
+ * read-only. The selected project scopes the launcher, Git and PR/CI together.
  * ========================================================================== */
 function collabGitTone(repo?: any): any {
     if (repo.status === 'ok')
@@ -74,35 +74,33 @@ function collabRepoCard(repo?: any, index?: any, projects?: any): any {
 }
 function CollabPage(): any {
     const state = useStore();
+    const projects = (state.data && state.data.projects) || [];
+    const configured = projects.filter((project:any)=>project.repoPath);
+    const [selection,setSelection] = React.useState<string>(()=>WB.store.get().collabProjectId||'');
+    const projectId = configured.find((project:any)=>project.id===selection)?.id || configured[0]?.id || '';
+    const selected = configured.find((project:any)=>project.id===projectId);
     const [env, setEnv] = React.useState<any>(null);
     const [github, setGithub] = React.useState<any>(null);
-    const [busy, setBusy] = React.useState<any>(false);
-    const [error, setError] = React.useState<any>(null);
-    function load(): any {
-        setBusy(true);
-        setError(null);
-        WB.actions
-            .environment()
-            .then(function (value?: any): any {
-            setEnv(value);
-            setBusy(false);
-        })
-            .catch(function (e?: any): any {
-            setError(String((e && e.message) || e));
-            setBusy(false);
-        });
+    const [busy, setBusy] = React.useState(false);
+    const [error, setError] = React.useState<string|null>(null);
+    const [refreshVersion,setRefreshVersion] = React.useState(0);
+    const generation = React.useRef(0);
+    async function load(force=false): Promise<void> {
+        const version=++generation.current;
+        setBusy(true);setError(null);
+        const request={...(projectId?{projectId}:{}),force};
+        await Promise.all([
+            Promise.resolve().then(()=>WB.actions.environment(request)).then(value=>{if(version===generation.current)setEnv(value);},failure=>{if(version===generation.current){setEnv(null);setError(String(failure?.message||failure));}}),
+            Promise.resolve().then(()=>WB.actions.github(request)).then(value=>{if(version===generation.current)setGithub(value);},failure=>{if(version===generation.current)setGithub({status:'error',note:String(failure?.message||failure)});}),
+        ]);
+        if(version===generation.current)setBusy(false);
     }
-    React.useEffect(function (): any {
-        load();
-        WB.actions
-            .github()
-            .then(function (value?: any): any {
-            setGithub(value);
-        })
-            .catch(function (): any {
-            setGithub({ status: 'error', note: '读取 GitHub 快照失败', prs: { items: [] }, runs: { items: [] } });
-        });
-    }, []);
+    React.useEffect(()=>{
+        setEnv(null);setGithub(null);
+        WB.store.set({collabProjectId:projectId});
+        void load();
+        return()=>{generation.current++;};
+    },[projectId,selected?.repoPath]);
     function addRepoDir(): any {
         WB.pickDirectory().then(function (dir?: any): any {
             if (!dir) {
@@ -114,7 +112,8 @@ function CollabPage(): any {
             WB.actions
                 .saveProject({ name: name, repoPath: dir })
                 .then(function (): any {
-                load();
+                const added=WB.store.get().data?.projects?.find((project:any)=>project.repoPath===dir);
+                if(added&&added.id!==projectId)setSelection(added.id);else void load(true);
             })
                 .catch(function (): any {
                 /* settle() already toasted */
@@ -123,10 +122,10 @@ function CollabPage(): any {
     }
     const repos = (env && env.git) || [];
     const docker = (env && env.docker) || null;
-    const projects = (state.data && state.data.projects) || [];
     const dirty = repos.filter(function (repo?: any): any {
         return repo.status === 'ok' && repo.changed > 0;
     }).length;
+    const gitKnown = repos.length > 0 && repos.every((repo:any)=>repo.status==='ok');
     const running = docker && docker.status === 'ok' ? docker.containers.length : 0;
     return h('div', null, h(PageHead, {
         icon: 'git',
@@ -137,19 +136,21 @@ function CollabPage(): any {
             size: 'sm',
             kind: 'primary',
             disabled: busy,
-            onClick: load,
+            onClick: ()=>{setRefreshVersion(value=>value+1);void load(true);},
             children: busy ? '探测中…' : '重新探测',
         }),
-    }), h('div', { className: 'wb-grid', style: { gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', marginBottom: 14 } }, h(Stat, { label: '仓库', value: repos.filter(function (r?: any): any { return r.status === 'ok'; }).length, sub: '已探测 ' + repos.length + ' 个目录', icon: 'git' }), h(Stat, { label: '有未提交改动', value: dirty, tone: dirty ? 'warn' : 'ok', sub: dirty ? '先看一眼再动手' : '工作区干净', icon: 'edit' }), h(Stat, { label: '运行中的容器', value: docker && docker.status === 'ok' ? running : '—', sub: docker && docker.status === 'ok' ? '来自 docker ps' : (docker && docker.reason) || '未探测', icon: 'docker' }), h(Stat, { label: '项目', value: projects.length, sub: projects.length ? '来自 Host 数据' : '还没有配置项目', icon: 'folder' })), h(ProjectLauncher), busy && !env
+    }), h('div',{className:'wb-stack',style:{gap:6,marginBottom:14}},
+        h('label',{className:'wb-label'},'当前项目 ',h('select',{className:'wb-select','aria-label':'当前项目',value:projectId,disabled:!configured.length,onChange:(event:any)=>setSelection(event.target.value)},configured.length?configured.map((project:any)=>h('option',{key:project.id,value:project.id},project.name)):h('option',{value:''},'Host 工作目录'))),
+        selected?h('span',{className:'wb-tiny wb-mono wb-muted',style:{overflowWrap:'anywhere'}},selected.repoPath):null), h('div', { className: 'wb-grid', style: { gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', marginBottom: 14 } }, h(Stat, { label: '仓库', value: env ? repos.filter(function (r?: any): any { return r.status === 'ok'; }).length : '—', sub: '已探测 ' + repos.length + ' 个目录', icon: 'git' }), h(Stat, { label: '有未提交改动', value: gitKnown || dirty ? dirty : '—', tone: dirty ? 'warn' : gitKnown ? 'ok' : 'idle', sub: !env ? '尚未读取' : !gitKnown ? '仓库状态未完整读取' : dirty ? '先看一眼再动手' : '工作区干净', icon: 'edit' }), h(Stat, { label: '本机运行容器', value: docker && docker.status === 'ok' ? running : '—', sub: docker && docker.status === 'ok' ? '来自 docker ps' : (docker && docker.reason) || '未探测', icon: 'docker' }), h(Stat, { label: '项目', value: projects.length, sub: projects.length ? '来自 Host 数据' : '还没有配置项目', icon: 'folder' })), h(ProjectLauncher,{key:projectId+':'+(selected?.repoPath||''),projectId,refreshVersion}), h(GithubPanel,{snapshot:github}), busy && !env
         ? h('div', { className: 'wb-row', style: { padding: '30px 0', justifyContent: 'center', gap: 8 } }, h(Spinner, { size: 17 }), h('span', { className: 'wb-tiny wb-muted' }, '正在读取 git / docker 状态…'))
         : null, error
-        ? h(Panel, { title: '探测失败', icon: 'alert' }, h('div', { role: 'alert', className: 'wb-code' }, error), h('p', { className: 'wb-hint', style: { marginTop: 8 } }, '如果刚刚更新过插件，说明 Host 还没有加载新的 Remote 端点：重启 DSH 后再试。'))
+        ? h(Panel, { title: '探测失败', icon: 'alert' }, h('div', { role: 'alert', className: 'wb-code' }, error), h('p', { className: 'wb-hint', style: { marginTop: 8 } }, '请检查所选项目目录和本机工具，再重新探测。'))
         : null, env
         ? h('div', { className: 'wb-stack', style: { gap: 14 } }, h(Panel, {
             title: 'Git 仓库',
             icon: 'git',
-            sub: env.cwd ? '默认探测 Host 的当前工作目录，以及已配置 repoPath 的项目' : undefined,
-            actions: h('div', { className: 'wb-row', style: { gap: 8 } }, env.at ? h('span', { className: 'wb-tiny wb-muted' }, '探测于 ' + WB.fmt.relative(env.at)) : null, h(Btn, {
+            sub: selected ? '当前项目的分支与改动' : 'Host 当前工作目录',
+            actions: h('div', { className: 'wb-row', style: { gap: 8 } }, env.at ? h('span', { className: 'wb-tiny wb-muted' }, '更新于 ' + WB.fmt.relative(env.at)) : null, h(Btn, {
                 size: 'sm',
                 icon: 'plus',
                 onClick: addRepoDir,
@@ -164,40 +165,7 @@ function CollabPage(): any {
             })
             : h('div', { className: 'wb-stack', style: { gap: 10 } }, repos.map(function (repo?: any, index?: any): any {
                 return collabRepoCard(repo, index, projects);
-            }))), h(Panel, {
-            title: 'PR 与 CI',
-            icon: 'git',
-            sub: github && github.dir ? github.dir : '通过 gh CLI 只读读取',
-            badge: github
-                ? h(Badge, { tone: github.status === 'ok' ? 'ok' : github.status === 'unavailable' ? 'idle' : 'err' }, github.status === 'ok'
-                    ? (github.prs.items.length + github.runs.items.length) + ' 条'
-                    : github.status === 'unavailable'
-                        ? '不可用'
-                        : '失败')
-                : null,
-        }, !github
-            ? h('span', { className: 'wb-tiny wb-muted' }, '读取中…')
-            : github.status !== 'ok'
-                ? h(Empty, {
-                    icon: 'git',
-                    title: github.status === 'unavailable' ? 'gh CLI 不可用' : '读取失败',
-                    hint: github.note || '安装 GitHub CLI 并 gh auth login 后可读取 PR 与 CI。',
-                })
-                : h('div', { className: 'wb-stack', style: { gap: 10 } }, h('div', { className: 'wb-label' }, 'PR（' + github.prs.items.length + '）'), github.prs.items.length === 0
-                    ? h('span', { className: 'wb-tiny wb-muted' }, '当前仓库没有打开的 PR。')
-                    : h('div', null, github.prs.items.slice(0, 6).map(function (pr?: any): any {
-                        return h('div', { key: 'pr' + pr.number, className: 'wb-item' }, h(Badge, { tone: pr.state === 'OPEN' ? 'ok' : 'idle' }, '#' + pr.number), h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title' }, pr.url
-                            ? h('a', { className: 'wb-link', href: pr.url, target: '_blank', rel: 'noreferrer' }, pr.title)
-                            : pr.title, pr.draft ? h(Badge, { tone: 'idle' }, '草稿') : null), h('div', { className: 'wb-item-sub' }, [pr.author, pr.updatedAt ? WB.fmt.relative(pr.updatedAt) : ''].filter(Boolean).join(' · '))));
-                    })), h(Divider, null), h('div', { className: 'wb-label' }, 'CI（' + github.runs.items.length + '）'), github.runs.items.length === 0
-                    ? h('span', { className: 'wb-tiny wb-muted' }, '没有 CI 运行记录（仓库未配置 Actions 或近期限无运行）。')
-                    : h('div', null, github.runs.items.slice(0, 6).map(function (run?: any): any {
-                        const ok = run.conclusion === 'success';
-                        const bad = run.conclusion === 'failure' || run.conclusion === 'cancelled';
-                        return h('div', { key: 'run' + run.id, className: 'wb-item' }, h(Badge, { tone: ok ? 'ok' : bad ? 'err' : 'warn' }, run.conclusion || run.status || '?'), h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title' }, run.url
-                            ? h('a', { className: 'wb-link', href: run.url, target: '_blank', rel: 'noreferrer' }, run.workflow || 'CI')
-                            : run.workflow || 'CI'), h('div', { className: 'wb-item-sub' }, [run.branch, run.createdAt ? WB.fmt.relative(run.createdAt) : ''].filter(Boolean).join(' · '))));
-                    })), h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, marginTop: 4 } }, github.note || '只读：gh pr list / gh run list。'))), h(Panel, {
+            }))), h('details', {className:'wb-collab-diagnostics'}, h('summary',{className:'wb-label',style:{cursor:'pointer',padding:'10px 0'}},'环境诊断（本机）'), h('div',{className:'wb-stack',style:{gap:14,paddingTop:8}}, h(Panel, {
             title: '端口占用',
             icon: 'plug',
             sub: 'lsof -i 的只读快照：本机正在监听的 TCP 端口',
@@ -246,7 +214,7 @@ function CollabPage(): any {
                 ? h(Empty, { icon: 'zap', title: '读取失败', hint: env.processes.reason || 'ps 不可用。' })
                 : h('table', { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, 'PID'), h('th', null, 'CPU'), h('th', null, 'MEM'), h('th', null, '命令'))), h('tbody', null, env.processes.items.map(function (row?: any): any {
                     return h('tr', { key: row.pid + row.command }, h('td', { className: 'wb-mono' }, row.pid), h('td', null, h(Badge, { tone: row.cpu >= 50 ? 'warn' : 'idle' }, row.cpu.toFixed(1) + '%')), h('td', null, h(Badge, { tone: 'idle' }, row.mem.toFixed(1) + '%')), h('td', { className: 'wb-mono wb-ellipsis', style: { maxWidth: 260 } }, row.command));
-                })))), h(Panel, { title: '运行范围', icon: 'info' }, h('p', {className:'wb-tiny wb-muted'}, '项目启动只执行已配置目录中的启动项，日志在本次宿主运行期间保留；停用插件会停止由本插件启动的进程。Git、PR/CI、容器与端口仍为只读探测。')))
+                })))))), h(Panel, { title: '运行范围', icon: 'info' }, h('p', {className:'wb-tiny wb-muted'}, '项目启动只执行已配置目录中的启动项，日志在本次宿主运行期间保留；停用插件会停止由本插件启动的进程。Git、PR/CI、容器与端口仍为只读探测。')))
         : null);
 }
 WB.pages.collab = CollabPage;

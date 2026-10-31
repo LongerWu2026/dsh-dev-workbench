@@ -229,7 +229,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 102 个 Remote 描述符', invocations.length === 102, '实际 ' + invocations.length)
+check('注册了 114 个 Remote 描述符', invocations.length === 114, '实际 ' + invocations.length)
 check('回复发送只有显式页面入口，不暴露后台发送工具', invocations.some(entry => entry.method === 'sendReply') && !tools.some(tool => /send_reply|send_message/.test(tool.name)))
 check('待办原会话回复准备入口已接线',invocations.some(entry=>entry.method==='prepareTaskReply'))
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
@@ -510,7 +510,7 @@ function makeYzjSpawner(mentionJson, docJson) {
       terminate() {},
     }
   }
-  return { spawn, resolveExecutable: () => Promise.resolve('/fake/yzj-cli') }
+  return { spawn, resolveExecutable: name => Promise.resolve(name === 'gh' ? '/fake/gh' : '/fake/yzj-cli') }
 }
 
 // 未配置 CLI：provider 存在但解析与执行都失败（也阻断文件扫描），如实降级
@@ -716,6 +716,11 @@ const entGroup = entResult.groups.find((group) => group.id === 'enterprise')
 check('企业搜索路存在且可用', !!entGroup && entGroup.status === 'ok', JSON.stringify(entGroup && entGroup.status))
 check('企业搜索含文档结果', entGroup.items.some((item) => item.id === 'yzj-doc-d1'))
 check('企业搜索不构造空 URL', entGroup.items.every((item) => item.kind !== 'knowledge' || item.url !== null || item.id === 'yzj-doc-d1'))
+
+const webOnlyResult=await api.search({query:'CI 构建状态',scope:'web'})
+check('互联网模式只返回网页，不混入本地、企业或代码分组',webOnlyResult.groups.length===1&&webOnlyResult.groups[0].id==='web')
+const workOnlyResult=await api.search({query:'限流',scope:'work',includeWeb:true})
+check('工作模式即使带旧联网参数也不查询公网',!workOnlyResult.groups.some(group=>group.id==='web'))
 
 // 三路意图搜索：联系人 / 会议室 / 考勤
 const nameSearch = await api.search({ query: '田鹏飞' })

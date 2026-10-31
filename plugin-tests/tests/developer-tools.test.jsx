@@ -1,3 +1,4 @@
+import {toolButton,openTools} from './tool-picker.mjs'
 import React from 'react'
 import {describe,it,expect,vi,afterEach} from 'vitest'
 import {render,screen,waitFor,cleanup,within} from '@testing-library/react'
@@ -17,22 +18,22 @@ function setup(){
 }
 describe('研发协作与联网工具的职责边界',()=>{
  it('离线工具不请求宿主；切换HTTP后才显示联网提示，点击后发送所填参数',async()=>{
-  const {WB,calls}=setup(),user=userEvent.setup();render(<WB.pages.toolbox/>);expect(calls).toHaveLength(0)
-  await user.click(screen.getByRole('button',{name:/接口调试 HTTP/}));expect(calls).toHaveLength(0)
+  const {WB,calls}=setup(),user=userEvent.setup();render(<WB.pages.toolbox/>);await user.click(toolButton(/JSON 格式化/));calls.length=0;expect(calls).toHaveLength(0)
+  await user.click(toolButton(/接口调试 HTTP/));expect(calls).toHaveLength(0)
   expect(screen.getByText('宿主联网调试')).toBeTruthy();expect(screen.queryByText(/本地执行 · 全部计算/)).toBeNull()
   await user.type(screen.getByRole('textbox',{name:'接口请求地址'}),'http://localhost:8080/test');await user.selectOptions(screen.getByRole('combobox',{name:'HTTP 方法'}),'POST');await user.type(screen.getByRole('textbox',{name:'接口请求正文'}),'test-body');await user.click(screen.getByRole('button',{name:'发送请求'}))
   await screen.findByLabelText('调试响应');expect(calls.find(c=>c.method.endsWith('/httpDebug')).request).toMatchObject({url:'http://localhost:8080/test',method:'POST',body:'test-body'})
  })
  it('MCP先发现工具，再按选择和JSON参数调用，离开工具后断开连接',async()=>{
-  const {WB,calls}=setup(),user=userEvent.setup();render(<WB.pages.toolbox/>);await user.click(screen.getByRole('button',{name:/MCP 调试 连接/}));await user.type(screen.getByRole('textbox',{name:'MCP 服务地址'}),'http://localhost:3000/mcp');await user.click(screen.getByRole('button',{name:'连接并发现工具'}))
+  const {WB,calls}=setup(),user=userEvent.setup();render(<WB.pages.toolbox/>);await user.click(toolButton('全部'));await user.click(toolButton(/MCP 调试 连接/));await user.type(screen.getByRole('textbox',{name:'MCP 服务地址'}),'http://localhost:3000/mcp');await user.click(screen.getByRole('button',{name:'连接并发现工具'}))
   await screen.findByRole('combobox',{name:'MCP 工具'});expect(screen.getByRole('combobox',{name:'MCP 工具'}).value).toBe('echo');expect(screen.getByRole('textbox',{name:'MCP 服务地址'}).disabled).toBe(true)
   const args=screen.getByRole('textbox',{name:'MCP 工具参数'});await user.clear(args);await user.paste('{"text":"hello"}');await user.click(screen.getByRole('button',{name:'调用所选工具'}));await waitFor(()=>expect(calls.some(c=>c.method.endsWith('/mcpCall'))).toBe(true));expect(calls.find(c=>c.method.endsWith('/mcpCall')).request).toMatchObject({connectionId:'fixture-connection',name:'echo',arguments:'{"text":"hello"}'})
-  await user.click(screen.getByRole('button',{name:/JSON 格式化/}));await waitFor(()=>expect(calls.some(c=>c.method.endsWith('/mcpDisconnect'))).toBe(true))
+  await user.click(toolButton(/JSON 格式化/));await waitFor(()=>expect(calls.some(c=>c.method.endsWith('/mcpDisconnect'))).toBe(true))
  })
  it('请求中禁止重复发送，可取消，切换工具不会继续等待旧请求',async()=>{
   const {WB,calls}=setup(),user=userEvent.setup();let reject
   const original=WB.rpc;WB.rpc=vi.fn((method,payload)=>method.endsWith('/httpDebug')?new Promise((_,r)=>{reject=r}):original(method,payload))
-  render(<WB.pages.toolbox/>);await user.click(screen.getByRole('button',{name:/接口调试 HTTP/}));await user.type(screen.getByRole('textbox',{name:'接口请求地址'}),'http://localhost:8080/slow');await user.click(screen.getByRole('button',{name:'发送请求'}));expect(screen.getByRole('button',{name:'请求中…'}).disabled).toBe(true)
+  render(<WB.pages.toolbox/>);await user.click(toolButton(/接口调试 HTTP/));await user.type(screen.getByRole('textbox',{name:'接口请求地址'}),'http://localhost:8080/slow');await user.click(screen.getByRole('button',{name:'发送请求'}));expect(screen.getByRole('button',{name:'请求中…'}).disabled).toBe(true)
   await user.click(screen.getByRole('button',{name:'停止请求'}));expect(calls.some(c=>c.method.endsWith('/debugCancel'))).toBe(true);reject(new Error('请求已停止'));await screen.findByRole('alert')
  })
  it('研发协作显示项目启动与软件联动，启动只提交项目ID与配置ID',async()=>{

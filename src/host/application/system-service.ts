@@ -19,6 +19,7 @@ export const systemService = {
 
     async saveSettings(patch?: any): Promise<any> {
         return mutateWorkbenchState(function (state?: any): any {
+            if(patch&&'busyReply' in patch)throw Error('请使用智能办公的忙碌自动回复开关');
             const next = Object.assign({}, state.settings, patch || {});
             if (patch && patch.aiExtract)
                 next.aiExtract = Object.assign({}, state.settings.aiExtract, patch.aiExtract);
@@ -131,13 +132,13 @@ export const systemService = {
         return runUnifiedSearch(workbenchContext(), request || {});
     },
 
-    async environment(): Promise<any> {
-        return buildEnvironment(workbenchContext());
+    async environment(request?: any): Promise<any> {
+        return buildEnvironment(workbenchContext(), request);
     },
 
     /** GitHub 只读快照（PR / CI），走 gh CLI 白名单命令。 */
-    async github(): Promise<any> {
-        return buildGithubSnapshot(workbenchContext());
+    async github(request?: any): Promise<any> {
+        return buildGithubSnapshot(workbenchContext(), request);
     },
 
     /** TODO 21：导出迁移包（一致性快照 + 校验；凭据/原生会话不入包）。 */

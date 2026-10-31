@@ -19,10 +19,10 @@ export function AnalysisQueuePanel({ entries, sources }: { entries: Entry[]; sou
       else {
         if (kind === 'retry') await WB.actions.analysisRetry(entry.id)
         const result = await WB.actions.analyzeRun(1, [entry.id])
-        WB.toast('本条识别已入队：' + (result.jobId || ''), 'ok')
+        // Startup and final outcome are reported by the shared analysis monitor.
       }
       await WB.actions.reload()
-    } catch (error) { WB.toast(error instanceof Error ? error.message : String(error), 'err') }
+    } catch (error) { if(!(error as any)?.workbenchAnalysisNotified)WB.toast(error instanceof Error ? error.message : String(error), 'err') }
     finally { setBusyId(null) }
   }
   return <Panel title="AI 识别队列" sub={'当前 ' + rows.length + ' 条；采集、分析和人工确认分别跟踪'}><div>

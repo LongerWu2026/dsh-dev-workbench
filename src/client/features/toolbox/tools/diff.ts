@@ -1,3 +1,4 @@
+import {jsonChanges} from './developer-utils.js'
 import { Badge, Btn, Field, T, Textarea, h } from '../../../core/runtime.js'
 import { toolCopyButton, toolErrorBlock, toolMonoStyle, toolOutputBlock } from '../shared-controls.js'
 
@@ -56,7 +57,10 @@ function toolDiffPane(props?: any): any {
     const value = props.value || {};
     function run(): any {
         try {
-            const result = toolDiffLines(value.left, value.right);
+            let left=value.left,right=value.right;
+            if(value.jsonMode){const changes=jsonChanges(JSON.parse(left),JSON.parse(right));const rows=changes.map((c:any)=>({type:c.type==='add'?'add':'del',text:c.path+': '+(c.type==='add'?JSON.stringify(c.after):JSON.stringify(c.before)+(c.type==='change'?' → '+JSON.stringify(c.after):''))}));props.patch({rows,stats:{added:changes.filter((c:any)=>c.type==='add').length,removed:changes.filter((c:any)=>c.type==='del').length,same:0,changed:changes.filter((c:any)=>c.type==='change').length},error:'',ran:true});return}
+            if(value.ignoreWhitespace){left=left.split('\n').map((line:string)=>line.trim()).join('\n');right=right.split('\n').map((line:string)=>line.trim()).join('\n')}
+            const result = toolDiffLines(left, right);
             props.patch({ rows: result.rows, stats: result.stats, error: '', ran: true });
         }
         catch (error) {
@@ -86,14 +90,14 @@ function toolDiffPane(props?: any): any {
         onChange: function (event?: any): any {
             props.patch({ right: event.target.value });
         },
-    }))), h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8 } }, h(Btn, {
+    }))), h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8 } }, h('label',null,h('input',{type:'checkbox',checked:!!value.jsonMode,onChange:(e:any)=>props.patch({jsonMode:e.target.checked,rows:[],stats:null})}),'JSON 结构对比（忽略键顺序）'),h('label',null,h('input',{type:'checkbox',checked:!!value.ignoreWhitespace,disabled:!!value.jsonMode,onChange:(e:any)=>props.patch({ignoreWhitespace:e.target.checked})}),'忽略行首尾空白'),h(Btn, {
         size: 'sm',
         kind: 'primary',
         icon: 'git',
         onClick: run,
         children: '对比',
     }), stats
-        ? h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6 } }, h(Badge, { tone: 'ok' }, '+' + stats.added), h(Badge, { tone: 'err' }, '-' + stats.removed), h(Badge, { tone: 'idle' }, '=' + stats.same))
+        ? h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6 } }, h(Badge, { tone: 'ok' }, '+' + stats.added), h(Badge, { tone: 'err' }, '-' + stats.removed), h(Badge, { tone: 'idle' }, stats.changed!==undefined?'修改 '+stats.changed:'=' + stats.same))
         : null, h('div', { className: 'wb-spacer' }), h(toolCopyButton, { text: copyText })), h(toolErrorBlock, { text: value.error }), rows.length
         ? h('div', { className: 'wb-code', style: { padding: '4px 0', maxHeight: 360, overflow: 'auto' } }, rows.map(function (row?: any, index?: any): any {
             const isAdd = row.type === 'add';

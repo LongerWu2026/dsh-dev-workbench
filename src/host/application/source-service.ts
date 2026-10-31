@@ -1,3 +1,4 @@
+import {configureBusyReply} from '../integrations/busy-reply.js'
 import { REPLY_STATUSES, auditEntry, ensureArray, normalizeReplies, normalizeSource } from '../domain/model.js'
 import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store.js'
 import { probeYunzhijia, sendYzjTextReply, syncYunzhijiaMessages } from '../integrations/yunzhijia.js'
@@ -11,7 +12,7 @@ function replySendTarget(state: any, request: any): any {
     if (!reply) throw new Error('待回复不存在');
     if(request.taskId&&!taskReplyMatches(state,request.taskId,reply))throw new Error('待办与原私聊消息关联已变化，请重新核对');
     const taskReply=request.taskId&&reply.stage==='不需回复'&&reply.triage==='task';
-    if (reply.archivedAt || !taskReply&&!['待回复', '已确认收到'].includes(reply.stage)) throw new Error('该消息已处理，请先核实回复状态');
+    if (reply.archivedAt || !taskReply&&!['待回复', '已确认收到', '已自动回复'].includes(reply.stage)) throw new Error('该消息已处理，请先核实回复状态');
     const source = state.sources.find((row:any) => row.id === reply.sourceId);
     const loc = source?.locator;
     if (source?.provider !== 'yunzhijia' || !loc?.groupId || !loc.msgId || !loc.accountId || loc.direction === 'outbound') throw new Error('缺少有效的云之家原消息定位，不能直接回复');
@@ -25,6 +26,7 @@ function replySendTarget(state: any, request: any): any {
 
 /** source-service: shared Remote and Agent business use cases. */
 export const sourceService = {
+    async busyReplyConfigure(request:any){const ctx=workbenchContext();const snapshot=await configureBusyReply(request,()=>probeYunzhijia(ctx));if(request.enabled)void syncYunzhijiaMessages(ctx).catch(()=>{});return snapshot},
 
     /** Prepare local communication evidence without reopening a reply obligation. */
     async prepareTaskReply(taskId:string):Promise<any> {
@@ -128,6 +130,7 @@ export const sourceService = {
             if (REPLY_STATUSES.indexOf(stageText) < 0)
                 throw new Error('未知的回复阶段：' + stageText);
             const reply = state.replies[index];
+            if(stageText==='已自动回复'&&reply.stage!=='已自动回复')throw Error('已自动回复状态由实际自动发送结果设置');
             const next = normalizeReplies([Object.assign({}, reply, {
                     stage: stageText,
                     humanGuard: true,

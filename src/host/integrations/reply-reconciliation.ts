@@ -1,3 +1,4 @@
+import {isBusyReplyMessage} from '../../shared/busy-reply.js'
 import {createHash, asIso, asString, hostNowIso} from '../platform/runtime.js'
 
 export function messageSentAt(value:any):string|null {
@@ -6,7 +7,7 @@ export function messageSentAt(value:any):string|null {
 export function messageReplyId(message:any):string|null {
     return asString(message?.replyMsgId || message?.replyToMsgId || message?.param?.replyMsgId || message?.param?.replyToMsgId,80) || null;
 }
-const open=(row:any)=>!row.archivedAt && ['待回复','已确认收到'].includes(row.stage);
+const open=(row:any)=>!row.archivedAt && ['待回复','已确认收到','已自动回复'].includes(row.stage);
 const rows=(result:any):any[]=>Array.isArray(result?.json?.data?.list) ? result.json.data.list.map((row:any)=>row?.message || row).filter(Boolean) : [];
 
 /** Read evidence only: no message sending, AI dependency, or task-state changes. */
@@ -54,7 +55,7 @@ export async function reconcileYunzhijiaReplies(ctx:any,state:any,probe:any,run:
         }
         function validOwn(message:any):boolean {
             const sentAt=messageSentAt(message?.sendTime);
-            return message?.fromOpenId===probe.openId && !!message.msgId && message.msgId!==loc.msgId && !!sentAt &&
+            return !isBusyReplyMessage(state,loc.accountId,loc.groupId,message)&&message?.fromOpenId===probe.openId && !!message.msgId && message.msgId!==loc.msgId && !!sentAt &&
                 (!loc.sentAt || Date.parse(sentAt)>=Date.parse(loc.sentAt));
         }
         const quoted=(message:any)=>validOwn(message) && messageReplyId(message)===loc.msgId;

@@ -1,3 +1,4 @@
+import {runBusyReplies} from './busy-reply.js'
 import {seedUnreadPrivateReplies} from '../domain/reply-routing.js'
 import {skipHistoricalMessages} from '../domain/message-policy.js'
 import {fetchCalendarPlan,applyCalendarPlan} from './calendar-sync.js'
@@ -12,6 +13,8 @@ import { loadWorkbenchState, mutateWorkbenchState, workbenchGenerationGuard } fr
 import { messageConversation, messageSender } from '../../shared/message-display.js'
 import { linkedMessageSources, repairLinkedMessageMetadata } from './message-metadata.js'
 import { messageReplyId, reconcileYunzhijiaReplies, replyStatusSnapshot, mergeReconciledReplies } from './reply-reconciliation.js'
+import {nativeYunzhijiaBinary, yunzhijiaBinDirs, yunzhijiaManagedBinary} from './yunzhijia-paths.js'
+import {platform} from 'node:os'
 /* ============================================================================
  * dev-workbench host — 云之家 yzj-cli integration (design report §3.2, §6.3)
  *
@@ -83,9 +86,12 @@ function yzjCommandAllowed(argv?: any): any {
     });
 }
 async function resolveYzjPath(ctx?: any): Promise<any> {
+    // The managed native binary needs neither a new PATH nor a node shebang.
+    const managed = yunzhijiaManagedBinary();
+    if (existsSync(managed)) return managed;
     if (yzjPathCache !== undefined)
         return yzjPathCache;
-    const subprocess = ctx && ctx.get ? ctx.get('subprocess') : null;
+    const subprocess = ctx?.get ? ctx.get('subprocess') : ctx?.subprocess;
     if (subprocess && typeof subprocess.resolveExecutable === 'function') {
         let signal;
         try {
@@ -97,49 +103,43 @@ async function resolveYzjPath(ctx?: any): Promise<any> {
         try {
             const resolved = await subprocess.resolveExecutable('yzj-cli', undefined, signal);
             if (typeof resolved === 'string' && resolved.length > 0) {
-                yzjPathCache = resolved;
-                return resolved;
+                yzjPathCache = nativeYunzhijiaBinary(resolved);
+                return yzjPathCache;
             }
         }
         catch (e) {
             /* fall through to the filesystem scan */
         }
     }
-    // Filesystem scan ONLY when no subprocess provider exists AND the host
-    // process itself shows an nvm-style environment; a scan that silently
-    // executes a discovered binary is a real capability gain, so it must be
-    // observable (the connector row reports the resolved path). The scan is
-    // skipped entirely when a provider is present but resolution failed — that
-    // provider owns the truth about its execution world.
+    // GUI hosts retain their startup PATH. Ask the provider to validate explicit
+    // paths too, so a later external installation can be found without restart.
     const home = homedir();
     const nvmDir = process.env.NVM_DIR || join(home, '.nvm');
     const candidates: any = [
         join(nvmDir, 'versions', 'node'),
-        '/usr/local/bin',
-        join(home, '.local', 'bin'),
-        join(home, '.cargo', 'bin'),
-        join(home, 'bin'),
+        ...yunzhijiaBinDirs(),
     ];
-    const sawProvider = !!subprocess;
+    const accept = async (path: string) => {
+        if (!existsSync(path)) return null;
+        if (!subprocess) return path;
+        try {
+            const resolved = await subprocess.resolveExecutable?.(path, undefined, AbortSignal.timeout(2500));
+            return typeof resolved === 'string' && resolved.length > 0 ? resolved : null;
+        } catch { return null; }
+    };
     for (const dir of candidates) {
-        const direct = join(dir, 'yzj-cli');
-        if (existsSync(direct)) {
-            // A provider that failed to resolve while the file exists is suspicious;
-            // trust the provider only when it did resolve. Otherwise fall back.
-            if (sawProvider)
-                continue;
-            yzjPathCache = direct;
-            return direct;
+        const direct = await accept(join(dir, platform() === 'win32' ? 'yzj-cli.exe' : 'yzj-cli'));
+        if (direct) {
+            yzjPathCache = nativeYunzhijiaBinary(direct);
+            return yzjPathCache;
         }
         try {
             const versions = readdirSync(dir);
             for (const version of versions) {
-                const nested = join(dir, version, 'bin', 'yzj-cli');
-                if (existsSync(nested)) {
-                    if (sawProvider)
-                        continue;
-                    yzjPathCache = nested;
-                    return nested;
+                const nested = await accept(join(dir, version, 'bin', 'yzj-cli'));
+                if (nested) {
+                    yzjPathCache = nativeYunzhijiaBinary(nested);
+                    return yzjPathCache;
                 }
             }
         }
@@ -177,7 +177,7 @@ async function executeYzj(ctx: any, args: string[]): Promise<any> {
     if (!path) {
         return { status: 'unavailable', note: '未找到 yzj-cli（PATH 与常见安装位置都没有）' };
     }
-    const subprocess = ctx && ctx.get ? ctx.get('subprocess') : null;
+    const subprocess = ctx?.get ? ctx.get('subprocess') : ctx?.subprocess;
     if (!subprocess || typeof subprocess.spawn !== 'function') {
         return { status: 'unavailable', note: '当前 profile 未组合 subprocess 服务' };
     }
@@ -434,7 +434,7 @@ async function fetchYunzhijiaMentionsInto(ctx?: any, state?: any): Promise<any> 
     const accountSources = ensureArray(state.sources).filter((row:any) => row.provider === 'yunzhijia' && [accountId, probe.openId].includes(row.locator?.accountId));
     const senderNames = new Map<string, string>();
     for (const source of accountSources) if (source.locator?.senderId && !['未知发件人','机器人'].includes(messageSender(source))) senderNames.set(source.locator.senderId, source.sender);
-    const prioritySources = new Set(ensureArray(state.replies).filter((row:any) => ['待回复','已确认收到'].includes(row.stage)).map((row:any) => row.sourceId).concat(ensureArray(state.tasks).filter((row:any) => !['completed','cancelled'].includes(row.status)).map((row:any) => row.sourceRefId)));
+    const prioritySources = new Set(ensureArray(state.replies).filter((row:any) => ['待回复','已确认收到','已自动回复'].includes(row.stage)).map((row:any) => row.sourceId).concat(ensureArray(state.tasks).filter((row:any) => !['completed','cancelled'].includes(row.status)).map((row:any) => row.sourceRefId)));
     const unresolved = accountSources.slice().reverse().filter((row:any) => row.locator?.senderId && !senderNames.has(row.locator.senderId) && !unavailable.has(row.locator.senderId));
     const pendingIds = [...new Set(unresolved.filter((row:any) => prioritySources.has(row.id)).concat(unresolved).map((row:any) => row.locator.senderId))].slice(0, 100);
     const nameReport:any = {};
@@ -504,7 +504,7 @@ async function fetchYunzhijiaMentionsInto(ctx?: any, state?: any): Promise<any> 
         const prior=ensureArray(state.sources).find((row:any)=>row.provider==='yunzhijia'&&(row.externalId===externalId||row.locator?.groupId===mention.groupId&&row.locator?.msgId===mention.msgId&&row.locator.accountId===accountId));
         if(prior){
             prior.selection=normalizeMessageSelection(mention.selection);
-            prior.locator={...prior.locator,groupType:mention.groupType??prior.locator?.groupType,intake:mention.intake!==false,direction:mention.direction||'inbound',replyToMsgId:mention.replyToMsgId||null};
+            prior.locator={...prior.locator,...(mention.sendTime?{sentAt:mention.sendTime}:{}),sentAtVerified:!!mention.sendTime,groupType:mention.groupType??prior.locator?.groupType,intake:mention.intake!==false,direction:mention.direction||'inbound',replyToMsgId:mention.replyToMsgId||null};
             const q=ensureArray(state.analysisQueue).find((q:any)=>q.sourceId===prior.id);
             if(q?.status==='skipped'&&String(q.reviewReason).includes('旧全量消息队列'))Object.assign(q,{status:'pending',reviewReason:null,attempts:0});
             if(!q)state.analysisQueue.push({id:newId('aq'),sourceId:prior.id,msgId:mention.msgId,groupId:mention.groupId,accountId, status:'pending',attempts:0,at});
@@ -530,7 +530,7 @@ async function fetchYunzhijiaMentionsInto(ctx?: any, state?: any): Promise<any> 
                 intake: mention.intake !== false,
                 replyToMsgId: mention.replyToMsgId || null,
                 senderId: mention.fromOpenId || null,
-                sentAt: mention.sendTime || at,
+                sentAt: mention.sendTime || at,sentAtVerified:!!mention.sendTime,
             },
         });
         state.sources = ensureArray(state.sources).concat([createdSource]);
@@ -918,7 +918,7 @@ function syncYunzhijiaMessages(ctx?: any): any {
         const assertCurrent=workbenchGenerationGuard();
         const oldSources = new Set(ensureArray(baseline.sources).map(function (row?: any): any { return row.id; }));
         const fetched = await fetchYunzhijiaMentionsInto(ctx, baseline);
-        return mutateWorkbenchState(function (current?: any): any {
+        await mutateWorkbenchState(function (current?: any): any {
             assertCurrent();
             const known = new Set(ensureArray(current.sources).map(function (row?: any): any { return row.externalId; }));
             const fresh = ensureArray(fetched.sources).filter(function (row?: any): any { return !oldSources.has(row.id) && !known.has(row.externalId); });
@@ -926,7 +926,7 @@ function syncYunzhijiaMessages(ctx?: any): any {
             // Merge only enrichment fields. Never replace edits made while CLI calls ran.
             mergeMessageMetadata(current,fetched,before);
             const fetchedSources=new Map(ensureArray(fetched.sources).map((s:any)=>[s.id,s]));
-            for(const source of current.sources){const selected:any=fetchedSources.get(source.id);if(selected?.selection){source.selection=normalizeMessageSelection(selected.selection);source.locator={...source.locator,groupType:selected.locator?.groupType??source.locator?.groupType,intake:selected.locator?.intake,direction:selected.locator?.direction,replyToMsgId:selected.locator?.replyToMsgId||null};}}
+            for(const source of current.sources){const selected:any=fetchedSources.get(source.id);if(selected?.selection){source.selection=normalizeMessageSelection(selected.selection);source.locator={...source.locator,sentAtVerified:selected.locator?.sentAtVerified===true,groupType:selected.locator?.groupType??source.locator?.groupType,intake:selected.locator?.intake,direction:selected.locator?.direction,replyToMsgId:selected.locator?.replyToMsgId||null};}}
             current.messageInbox=fetched.messageInbox;
             applyCalendarPlan(current,fetched.__calendarPlan);
             mergeReconciledReplies(current,fetched,replyStates);
@@ -940,6 +940,8 @@ function syncYunzhijiaMessages(ctx?: any): any {
             auditEntry(current, 'messages.sync', '采集来源 ' + fresh.length + ' 条');
             return current;
         });
+        await runBusyReplies(()=>probeYunzhijia(ctx),(groupId,text)=>sendYzjTextReply(ctx,groupId,null,text));
+        return loadWorkbenchState();
     })().finally(function (): any { mentionsSyncPromise = null; });
     return mentionsSyncPromise;
 }

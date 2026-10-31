@@ -98,6 +98,7 @@ export const analysisService = {
             done: by('done'),
             modelHealth:state.modelHealth?.analysis || null,
             lastBatch:state.lastAnalysisBatch || null,
+            jobs:ensureArray(state.jobs).filter((job:any)=>job.kind==='analysis').slice(-20).map((job:any)=>({id:job.id,kind:job.kind,status:job.status,createdAt:job.createdAt,updatedAt:job.updatedAt,nextRetryAt:job.nextRetryAt,error:job.error,progress:job.progress,result:job.result?{status:job.result.status,note:job.result.note,processed:job.result.processed,failures:job.result.failures}:null})),
             entries: queue.filter((row:any)=>['awaiting_human','failed'].includes(row.status)).slice(-12).reverse(),
             note: '仅处理插件安装日期起的消息；历史暂存已跳过，不再识别或重试。',
         };

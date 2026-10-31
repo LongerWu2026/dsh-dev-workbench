@@ -1,0 +1,1 @@
+export async function openTools(page){await page.getByRole('button',{name:'切换工具',exact:true}).hover();if(!await page.getByRole('textbox',{name:'搜索工具',exact:true}).isVisible())await page.getByRole('button',{name:'切换工具',exact:true}).click();await page.getByRole('textbox',{name:'搜索工具',exact:true}).waitFor()}

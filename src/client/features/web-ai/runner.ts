@@ -1,7 +1,7 @@
 import type {WebAIFile} from '../../../shared/web-ai-attachments.js'
 import {WEB_AI_ACTIVE,type WebAIState,type WebAIAnswer} from '../../../shared/web-ai.js'
 import type {WebsiteController} from './NativeWebsite.js'
-import {selectCapturedTurn} from './capture.js'
+import {selectCapturedTurn,normalizeCapturedQuestion} from './capture.js'
 type Update=(value:Partial<WebAIAnswer>)=>Promise<void>
 /** A submitted message is never automatically retried, including after sleep or timeout. */
 export async function runWebsiteQuestion(controller:WebsiteController,question:string,requestId:string,update:Update,signal:AbortSignal,prepareOnly=false,clock=()=>Date.now(),pause=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms)),attachments:WebAIFile[]=[]){
@@ -25,7 +25,7 @@ export async function runWebsiteQuestion(controller:WebsiteController,question:s
  await update({status:'prepared',note:prepared.note,url:prepared.url})
  if(prepareOnly)return
  // Let framework-controlled inputs settle; submission uses a fresh DOM observation.
- await pause(150);check();let sent=await controller.execute('submit',question,requestId);check()
+ await pause(150);check();await update({status:'prepared',submission:'attempting',note:'正在确认官网提交状态'});check();let sent=await controller.execute('submit',question,requestId);check()
  // Only wait before a click. Never retry a submission that might already have reached the website.
  for(let attempt=0;sent.status==='prepared'&&sent.retryableBeforeSend===true&&attempt<4;attempt++){
   await pause(300);check();sent=await controller.execute('submit',question,requestId);check()
@@ -60,7 +60,7 @@ export async function collectWebsiteAnswer(controller:WebsiteController,question
    continue
   }
   const newUser=Number.isFinite(next.userCount)&&Number.isFinite(before.userCount)&&next.userCount>before.userCount
-  if(newUser&&next.lastQuestion&&String(next.lastQuestion).replace(/\s+/g,' ').trim()!==question.replace(/\s+/g,' ').trim()){await update({status:'uncertain',note:'官网已出现其他提问，本轮停止采集以免混入其他回答。',url:next.url});return}
+  if(newUser&&next.lastQuestion&&normalizeCapturedQuestion(String(next.lastQuestion))!==normalizeCapturedQuestion(question)){await update({status:'uncertain',note:'官网已出现其他提问，本轮停止采集以免混入其他回答。',url:next.url});return}
   const answers=Array.isArray(next.answers)?next.answers:[],tail=answers.at(-1)||''
   // A new container or changed last container is required. Never reuse an old answer.
   const count=Number.isFinite(next.answerCount)?next.answerCount:answers.length

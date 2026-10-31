@@ -12,6 +12,11 @@ import { PLUGIN_NAME } from '../platform/runtime.js'
  * `ctx.provide('workbench', …)`, so the gateway can bind the two halves.
  * ========================================================================== */
 const WORKBENCH_REMOTE_SIGNATURES: any = [
+    {method:'busyReplyConfigure',params:['request']},
+    {method:'development',params:['request']},
+    ...['dataConnections','dataSave','dataTest','dataDisconnect','dataObjects','dataStructure','dataQuery','dataGenerate'].map(method=>({method,params:method==='dataConnections'?[]:['request']})),
+    {method:'yunzhijiaStatus',params:['request']},
+    {method:'yunzhijiaSetup',params:['request']},
     {method:'projectRuntime',params:['request']},
     {method:'projectStart',params:['request']},
     {method:'projectStop',params:['request']},
@@ -78,8 +83,8 @@ const WORKBENCH_REMOTE_SIGNATURES: any = [
     { method: 'createTaskFromRadar', params: ['id'] },
     { method: 'deleteProject', params: ['id'] },
     { method: 'search', params: ['request'] },
-    { method: 'environment', params: [] },
-    { method: 'github', params: [] },
+    { method: 'environment', params: ['request'] },
+    { method: 'github', params: ['request'] },
     { method: 'reset', params: ['scope'] },
     { method: 'seedDemo', params: [] },
     { method: 'analysisStatus', params: [] },

@@ -161,6 +161,7 @@ function restoreBackup(id?: any): any {
     const parsed = normalizeState(JSON.parse(readFileSync(candidate.path, 'utf8')));
     if (parsed.corrupt)
         throw new Error('备份已损坏，无法恢复');
+    if(parsed.state.settings?.busyReply)parsed.state.settings.busyReply.enabled=false;
     return mutateWorkbenchState(function (state?: any): any {
         if (!createBackup('pre-restore'))
             throw new Error('恢复前备份失败，原数据未改动');

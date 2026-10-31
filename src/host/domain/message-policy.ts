@@ -1,3 +1,4 @@
+import {isBusyReplyMessage} from '../../shared/busy-reply.js'
 /** A profile's installation day is a fixed boundary, in Asia/Shanghai. */
 export function messageProcessingStart(installedAt: unknown): string | null {
     const time = typeof installedAt === 'string' ? Date.parse(installedAt) : NaN;
@@ -7,6 +8,7 @@ export function messageProcessingStart(installedAt: unknown): string | null {
 }
 
 export function messageSkipReason(state: any, source: any, entry?: any): string | null {
+    if(source?.locator?.direction==='outbound'&&isBusyReplyMessage(state,source.locator.accountId,source.locator.groupId,{msgId:source.locator.msgId,content:source.excerpt}))return '忙碌自动告知不作为正式答复或AI识别输入';
     if (entry?.status === 'skipped') return entry.reviewReason || '历史消息已跳过，不再识别';
     if (entry?.status === 'historical') return '历史暂存消息已跳过，不再识别';
     if(source?.provider==='yunzhijia' && (source.selection?.policy!=='focused-v1'||!source.selection?.reasons?.some((x:string)=>['unread','mention_me','mention_all','followup'].includes(x))))return '旧全量消息队列已停用：仅识别未读、@本人、@全员及明确关联事项';

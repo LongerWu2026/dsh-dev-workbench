@@ -1,6 +1,7 @@
+import {busyReplyLatestMayBeAutomatic} from '../../shared/busy-reply.js'
 import {hostNowIso,newId} from '../platform/runtime.js'
 import {canCreateMessageTask} from '../../shared/message-intake.js'
-const open=(r:any)=>!r.archivedAt&&['待回复','已确认收到'].includes(r.stage)
+const open=(r:any)=>!r.archivedAt&&['待回复','已确认收到','已自动回复'].includes(r.stage)
 export const privateSource=(s:any)=>s?.provider==='yunzhijia'&&Number(s.locator?.groupType)===1
 const eligible=(s:any)=>privateSource(s)&&s.locator?.direction!=='outbound'&&s.locator?.intake!==false
 const conversation=(state:any,s:any)=>state.messageInbox&&state.messageInbox.accountId===s.locator?.accountId?state.messageInbox.conversations?.find((c:any)=>c.groupId===s.locator?.groupId):null
@@ -8,7 +9,7 @@ const sourceReply=(state:any,s:any)=>(state.replies||[]).find((r:any)=>r.sourceI
 /** Immutable latest-message facts can close a reply even when its model result arrives later. */
 export function applyLatestPrivateReply(state:any,reply:any,source:any):boolean {
  if(!eligible(source)||!open(reply)||state.replyDrafts?.[reply.id]?.delivery?.status==='sending')return false
- const c=conversation(state,source),sent=Date.parse(source.locator?.sentAt||'')
+ const c=conversation(state,source);if(reply.stage==='已自动回复'||busyReplyLatestMayBeAutomatic(state,source,c))return false;const sent=Date.parse(source.locator?.sentAt||'')
  if(c?.latestDirection!=='outbound'||!c.latestMsgId||c.latestMsgId===reply.msgId||!Number.isFinite(sent)||!Number.isFinite(Date.parse(c.latestSentAt))||Date.parse(c.latestSentAt)<sent)return false
  Object.assign(reply,{stage:'已回复',evidenceMsgId:c.latestMsgId,repliedAt:c.latestSentAt,updatedAt:hostNowIso()})
  return true
@@ -28,8 +29,8 @@ export function routePrivateAnalysis(state:any,source:any,analysis:any,taskIds:s
  let reply=sourceReply(state,source)
  if(!reply&&replyNeeded)reply=createPending(state,source,'reply')
  if(!reply||reply.archivedAt||reply.humanGuard||state.replyDrafts?.[reply.id]?.delivery?.status==='sending')return reply
- const fields:any={triage,taskIds:[...new Set([...(reply.taskIds||[]),...taskIds])]}
- if(!replyNeeded&&open(reply))Object.assign(fields,{stage:'不需回复',repliedAt:null,evidenceMsgId:null})
+ const fields:any={triage:reply.stage==='已自动回复'?'reply':triage,taskIds:[...new Set([...(reply.taskIds||[]),...taskIds])]}
+ if(!replyNeeded&&open(reply)&&reply.stage!=='已自动回复')Object.assign(fields,{stage:'不需回复',repliedAt:null,evidenceMsgId:null})
  if(Object.entries(fields).some(([k,v])=>JSON.stringify(reply[k])!==JSON.stringify(v)))Object.assign(reply,fields,{updatedAt:hostNowIso()})
  if(replyNeeded)applyLatestPrivateReply(state,reply,source)
  return reply

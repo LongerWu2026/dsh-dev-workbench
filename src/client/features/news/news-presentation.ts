@@ -337,7 +337,7 @@ function DashRadarModal(props?: any): any {
             : '登记的资讯会和采集来源一起进入技术雷达',
         onClose: props.onClose,
         width: 580,
-        footer: h(React.Fragment, null, h(Btn, { onClick: props.onClose, disabled: busy, children: '取消' }), h('div', { className: 'wb-spacer' }), h(Btn, {
+        footer: h(React.Fragment, null, h(Btn, { onClick: props.onClose, disabled: busy, children: '取消' }), h(Btn, {
             kind: 'primary',
             icon: 'check',
             disabled: busy,

@@ -280,6 +280,6 @@ function toolSqlPane(props?: any): any {
         icon: 'database',
         onClick: run,
         children: '美化',
-    }), h('div', { className: 'wb-spacer' }), h(toolCopyButton, { text: value.output })), h(toolErrorBlock, { text: value.error }), h(toolOutputBlock, { text: value.output, placeholder: '关键字大写 + 子句换行后的 SQL' }))));
+    }), h('div', { className: 'wb-spacer' }), h(Btn,{size:'sm',onClick:()=>props.onTransfer?.('sqlexplain',value.input||'')},'解读执行计划'),h(toolCopyButton, { text: value.output })), h(toolErrorBlock, { text: value.error }), h(toolOutputBlock, { text: value.output, placeholder: '关键字大写 + 子句换行后的 SQL' }))));
 }
 export { toolSqlKeywords, toolSqlPhrases, toolSqlClauseWords, toolSqlContinuationWords, toolSqlTokenize, toolSqlMerge, toolSqlKeywordText, toolSqlFormat, toolSqlPane }

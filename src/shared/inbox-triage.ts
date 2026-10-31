@@ -14,7 +14,7 @@ export function isIrrelevantConversation(data: any, conversation: any): boolean 
     const sourceIds = new Set(sources.map((source: any) => source.id));
     if ((data.tasks || []).some((task: any) => !['completed', 'cancelled'].includes(task.status) &&
         (sourceIds.has(task.sourceRefId) || task.sourceRefs?.some((ref: any) => sourceIds.has(ref.sourceId))))) return false;
-    if ((data.replies || []).some((reply: any) => ['待回复', '已确认收到'].includes(reply.stage) &&
+    if ((data.replies || []).some((reply: any) => ['待回复', '已确认收到', '已自动回复'].includes(reply.stage) &&
         (sourceIds.has(reply.sourceId) || reply.accountId === account && reply.groupId === group))) return false;
     return [...ids].every(msgId => {
         const matches = sources.filter((source: any) => source.locator.msgId === msgId);

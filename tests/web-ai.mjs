@@ -134,5 +134,28 @@ try{
  await assert.rejects(()=>api.webAIManageTopic({topicId:mid,expectedVersion:topicVersion(),action:'purge'}),/确认/);checks++
  await api.webAIManageTopic({topicId:mid,expectedVersion:topicVersion(),action:'purge',confirm:true})
  check('永久删除只清理确认的本地主题及其轮次',()=>{assert.ok(!state().topics.some(t=>t.id===mid));assert.ok(!state().rounds.some(r=>r.topicId===mid));assert.ok(state().topics.some(t=>t.id===topicId))})
+ const bulkA=(await api.webAICreateTopic({title:'批量删除甲'})).topicId,bulkB=(await api.webAICreateTopic({title:'批量删除乙'})).topicId
+ await h.mutateWorkbenchState(s=>{for(const id of [bulkA,bulkB])s.webAI.rounds.push({...structuredClone(mr),id:'bulk-round-'+id,topicId:id,answers:mr.answers.map(a=>({...a,status:'completed',text:'本地保留证据'}))});return s})
+ const targets=()=>[bulkA,bulkB].map(topicId=>({topicId,expectedVersion:state().topics.find(t=>t.id===topicId).version||0}))
+ const unchanged=()=>JSON.stringify(h.loadWorkbenchState())
+ let before=unchanged()
+ await assert.rejects(()=>api.webAIManageTopic({action:'trash',topics:targets()}),/确认/)
+ await assert.rejects(()=>api.webAIManageTopic({action:'trash',confirm:true,topics:[targets()[0],{...targets()[1],expectedVersion:999}]}),/已更新/)
+ check('批量删除缺少确认或任一版本冲突时整批不写入',()=>assert.equal(unchanged(),before))
+ await h.mutateWorkbenchState(s=>{s.webAI.rounds.find(r=>r.topicId===bulkB).answers[0].status='generating';return s});before=unchanged()
+ await assert.rejects(()=>api.webAIManageTopic({action:'trash',confirm:true,topics:targets()}),/停止/)
+ check('任一选中问答仍在采集时，其他选中项也不会先被删除',()=>assert.equal(unchanged(),before))
+ await api.webAICancel({topicId:bulkB});before=unchanged()
+ for(const topics of [[],[targets()[0],targets()[0]],[targets()[0],{topicId:'not-found',expectedVersion:0}]])await assert.rejects(()=>api.webAIManageTopic({action:'trash',confirm:true,topics}))
+ await assert.rejects(()=>api.webAIManageTopic({action:'purge',confirm:true,topics:targets()}),/先将/)
+ check('空选择、重复ID、不存在的问答及未进回收站的永久删除均拒绝',()=>assert.equal(unchanged(),before))
+ const roundsBefore=state().rounds.length
+ await api.webAIManageTopic({action:'trash',confirm:true,topics:targets()})
+ check('确认后批量移入回收站，保留每组问答及其他主题',()=>{assert.ok([bulkA,bulkB].every(id=>state().topics.find(t=>t.id===id).deletedAt));assert.equal(state().rounds.length,roundsBefore);assert.ok(state().topics.some(t=>t.id===topicId&&!t.deletedAt))})
+ before=unchanged()
+ await assert.rejects(()=>api.webAIManageTopic({action:'purge',confirm:true,topics:[targets()[0],{...targets()[1],expectedVersion:0}]}),/已更新/)
+ check('永久删除也先校验全部版本，不发生部分删除',()=>assert.equal(unchanged(),before))
+ await api.webAIManageTopic({action:'purge',confirm:true,topics:targets()})
+ check('批量永久删除仅移除确认的本地主题和轮次',()=>{assert.ok(!state().topics.some(t=>[bulkA,bulkB].includes(t.id)));assert.ok(!state().rounds.some(r=>[bulkA,bulkB].includes(r.topicId)));assert.ok(state().topics.some(t=>t.id===topicId))})
  console.log('web-ai: '+checks+' checks passed')
 }finally{disposers.reverse().forEach(d=>d());rmSync(home,{recursive:true,force:true})}

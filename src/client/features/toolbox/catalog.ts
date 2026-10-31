@@ -10,6 +10,10 @@
  * ========================================================================== */
 /* ---------------------------------------------------------------- tool catalog */
 const toolDefs: any = [
+    {id:'data',name:'数据连接',desc:'SQL / ES / Redis · 结构与 AI 查询',icon:'database',network:true},
+    {id:'logs',name:'日志分析',desc:'日志筛选 / 堆栈整理 / AI 排障',icon:'filter'},
+    {id:'types',name:'类型生成',desc:'JSON → TypeScript 类型',icon:'command'},
+    {id:'pomodoro',name:'番茄钟',desc:'25 分钟专注计时',icon:'clock',group:'focus'},
     {id:'http-debug',name:'接口调试',desc:'HTTP 请求、响应与耗时',icon:'plug',network:true},
     {id:'mcp-debug',name:'MCP 调试',desc:'连接、发现工具与参数调用',icon:'agent',network:true},
     { id: 'json', name: 'JSON', desc: '格式化 / 压缩 / 校验', icon: 'layers' },
@@ -33,7 +37,9 @@ const toolDefs: any = [
 /* Initial input is example-shaped only; it is never presented as page data. */
 function toolInitialState(): any {
     return {
-        selected: 'json',
+        selected: 'data',
+        data:{form:{kind:'mysql',host:'127.0.0.1',port:3306},selected:[],objects:[],query:'SELECT 1 AS value'},
+        logs:{input:'',level:'all',query:''},types:{input:'',output:'',error:''},
         'http-debug': {url:'',method:'GET',headers:'{}',body:'',timeoutMs:30000},
         'mcp-debug': {url:'',version:'2025-11-25',headers:'{}',arguments:'{}',timeoutMs:30000},
         json: {

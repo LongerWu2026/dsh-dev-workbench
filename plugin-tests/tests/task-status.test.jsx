@@ -144,3 +144,9 @@ it('时间缺失或非法不回退采集/建档时间，后续关联消息不会
   const ties=[{sourceRefId:'source-start',id:'b'},{sourceRefId:'source-start',id:'a'},{id:'none'}]
   for(const order of ['message-newest','message-oldest'])expect(sortTasksByMessageTime(ties,fixture.sources,order).map(t=>t.id)).toEqual(['b','a','none'])
 })
+
+it('高级筛选默认收起，折叠后仍显示可移除的日期条件',async()=>{
+ messageTasks();const user=userEvent.setup();render(<WB.pages.tasks/>);const toggle=screen.getByRole('button',{name:'筛选',exact:true});expect(toggle.getAttribute('aria-expanded')).toBe('false');
+ await user.click(toggle);fireEvent.change(screen.getByLabelText('消息发出日期起始'),{target:{value:'2026-10-29'}});await user.click(toggle);expect(toggle.getAttribute('aria-expanded')).toBe('false');
+ await user.click(screen.getByRole('button',{name:'移除筛选：消息日期：2026-10-29 至 不限'}));expect(screen.getByLabelText('消息发出日期起始').value).toBe('');expect(updates).toHaveLength(0);
+})

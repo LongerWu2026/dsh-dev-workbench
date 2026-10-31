@@ -9,6 +9,18 @@ window.mountWorkbench=()=>{
  let App
  const call=async(_channel,endpoint,payload)=>{
   let value=data;const args=payload.args||{}
+  if(endpoint==='workbench/development'){
+   const dev=window.fixtureDevelopment||{config:{cliPath:'/synthetic/linky',profile:'synthetic',workspaceId:'synthetic-workspace',worktreeRoot:'/synthetic/workspaces',harnessCommand:['dsh','--profile','acp'],adapterRoots:[],checks:{}},tasks:[],nativeRuns:[],adapter:{installed:true,path:'/synthetic/bin/harness-linky',configPath:'/synthetic/config.json'}}
+   const action=args.request?.action
+   if(action==='detail')value={task:dev.tasks.find(t=>t.id===args.request.id),messages:[]}
+   else if(action==='detect')value=window.fixtureDevelopmentConnection||{status:'ready',user:{name:'合成开发者'},workspaces:[{id:'synthetic-workspace',name:'合成 ERP 项目组'}]}
+   else if(action==='configure'){dev.config={...dev.config,...args.request.config};value=dev.config}
+   else if(action==='workItems')value={items:window.fixtureWorkItems||[{id:'fixture-issue',code:'BUG-2026-046131',title:'合成 ERP 缺陷工作项',type:'bug',workspaceId:'synthetic-workspace',status:'处理中'}],hasMore:false,statuses:[],cursors:{bug:null,requirement:null}}
+   else if(action==='issue')value={id:'fixture-issue',code:'BUG-2026-046131',title:'合成 ERP 缺陷工作项',description:'合成验收需求'}
+   else if(action==='agents')value={items:[{id:'erp',name:'ERP 开发工程师'}]}
+   else if(action==='projectSetup')value={commands:[['pnpm','test'],['pnpm','check']],source:'detected'}
+   else value=dev
+  }
   const retrieval={id:'synthetic-retrieval',status:'ok',query:'接口发布验收',scope:{},strategy:'local-bm25-chinese',elapsedMs:1,hits:[{id:'synthetic-knowledge@v1:1',documentId:'synthetic-knowledge',title:'合成知识验收规范',text:'发布前完成灰度验收。',version:'v1',lineStart:1,lineEnd:1}]};
   if(endpoint==='workbench/knowledgeRetrieve')value=retrieval
   if(endpoint==='workbench/knowledgeRead')value={hits:retrieval.hits}
@@ -18,7 +30,12 @@ window.mountWorkbench=()=>{
   if(endpoint==='workbench/assistantSend')value={status:'ok',sessionId:'synthetic-session',fromSeq:0,retrieval}
   if(endpoint==='workbench/assistantDelta')value={status:'ok',entries:[{role:'assistant',text:'发布前完成灰度验收 [知识:synthetic-knowledge@v1:1]'}],nextSeq:3,turnEnded:true}
   if(endpoint==='workbench/revision')value={revision:1}
-  if(endpoint==='workbench/analysisStatus')value={entries:[],pending:0,done:0,failed:0}
+  if(endpoint==='workbench/analysisStatus')value={entries:[],pending:0,done:0,failed:0,jobs:(WB.store.get().data.jobs||[]).filter(job=>job.kind==='analysis')}
+  if(endpoint==='workbench/analysisStart'){
+   if(window.fixtureExtractionStartError)throw Error(window.fixtureExtractionStartError)
+   const job=window.fixtureExtractionJob||{id:'synthetic-extraction',kind:'analysis',status:'running'}
+   const current=WB.store.get().data;WB.store.set({data:{...current,revision:current.revision+1,jobs:[job]}});value={jobId:job.id,status:job.status}
+  }
   if(endpoint==='workbench/operationsStatus')value={queue:{pending:0},policy:{},qualityReviews:[],reminders:[],storageBytes:1024}
   if(endpoint==='workbench/diagnostics')value={platform:'isolated browser',counts:{},tools:[],dataPath:'/synthetic/state.json'}
   if(endpoint==='workbench/backups')value={backups:[]}

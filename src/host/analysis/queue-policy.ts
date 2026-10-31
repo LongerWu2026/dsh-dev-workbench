@@ -50,7 +50,7 @@ export function effectiveBatchSize(configured: number, last?: {
     durationMs?: number;
     inputCount?:number;failures?:number;processed?:number;modelCalls?:number;
 }, adaptive = true): number {
-    const cap = Math.max(1, Math.min(20, configured || 5));
+    const cap = Math.max(1, Math.min(50, configured || 50));
     if (!adaptive)
         return cap;
     const count=last?.inputCount||0;

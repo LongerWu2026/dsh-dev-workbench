@@ -1,3 +1,4 @@
+import {toolButton,openTools} from './tool-picker.mjs'
 import React from 'react'
 import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest'
 import {render,screen,within,act,fireEvent,cleanup,waitFor} from '@testing-library/react'
@@ -45,17 +46,22 @@ describe('办公流程与布局入口',()=>{
   it('顶部目录直接显示多 AI 对话入口，快捷新建可编辑会议字段',async()=>{
   const user=userEvent.setup();const view=render(<App/>);const nav=screen.getByRole('navigation',{name:'工作台导航'})
   expect(nav.className).toContain('wb-topnav');expect(view.container.querySelector('.wb-nav')).toBeNull()
-  expect(within(nav).getAllByRole('button',{hidden:true}).length).toBe(11)
+  expect(within(nav).getAllByRole('button',{hidden:true}).length).toBe(12)
   const multiAI=within(nav).getByRole('button',{name:'多 AI 对话'})
   expect(multiAI.parentElement).toBe(nav)
   expect(multiAI.closest('details')).toBeNull()
+  expect(within(nav).getByRole('button',{name:'工作搜索'}).parentElement).toBe(nav)
   await user.click(nav.querySelector('summary'));expect(nav.querySelector('details').open).toBe(true)
   await user.click(screen.getAllByRole('button',{name:'新建待办'})[0]);const type=screen.getByRole('combobox',{name:'事项类型'});await user.selectOptions(type,'meeting');expect(screen.getByLabelText('会议开始')).toBeTruthy();expect(screen.getByLabelText('会议地点')).toBeTruthy()
   expect(nav.querySelector('details').open).toBe(false)
  },10000)
- it('更多目录的选中状态可识别，Escape关闭后回到目录触发器',async()=>{
+ it('更多只展开菜单，子项保留选中状态，Escape关闭后回到触发器',async()=>{
   WB.store.set({data:fixture,page:'toolbox'});const user=userEvent.setup();render(<App/>);const nav=screen.getByRole('navigation',{name:'工作台导航'});const summary=nav.querySelector('summary')
-  expect(summary.textContent).toBe('开发工具箱');expect(summary.parentElement.className).toContain('is-active');await user.click(summary);expect(summary.parentElement.open).toBe(true);await user.keyboard('{Escape}');expect(summary.parentElement.open).toBe(false);expect(document.activeElement).toBe(summary)
+  expect(summary.textContent).toBe('更多');expect(summary.parentElement.className).not.toContain('is-active');await user.click(summary);expect(summary.parentElement.open).toBe(true);expect(WB.store.get().page).toBe('toolbox');
+  expect(within(summary.parentElement).getByRole('button',{name:'开发工具箱'}).getAttribute('aria-current')).toBe('page');
+  expect(within(summary.parentElement).getAllByRole('button').map(button=>button.textContent)).toEqual(['开发工具箱','研发协作','连接与设置']);
+  await user.click(within(summary.parentElement).getByRole('button',{name:'研发协作'}));expect(WB.store.get().page).toBe('collab');expect(summary.textContent).toBe('更多');expect(summary.parentElement.open).toBe(false);
+  await user.click(summary);await user.keyboard('{Escape}');expect(summary.parentElement.open).toBe(false);expect(document.activeElement).toBe(summary)
  })
  it('十条待回复全部可访问，按Reply ID标记且不操作Task',async()=>{
   fixture.replies=Array.from({length:10},(_,i)=>({id:'reply-'+i,msgId:'m-'+i,stage:'待回复',contact:'同事'+i,snippet:'请求'+i,taskIds:[],createdAt:new Date().toISOString()}));WB.store.set({data:fixture,page:'replies'})
@@ -95,14 +101,14 @@ describe('办公流程与布局入口',()=>{
  it('任务中心独立于回复，会议时间可见且事项类型筛选可重置',async()=>{
   fixture.tasks=[{id:'meeting',title:'验收会议',status:'ready',priority:'normal',eventType:'meeting',meetingStart:'2026-10-29T06:00:00Z',tags:[]},{id:'feature',title:'验收开发',status:'ready',priority:'normal',eventType:'feature',tags:[]}];WB.store.set({data:fixture,page:'tasks'})
   const user=userEvent.setup();render(<WB.pages.tasks/>);expect(screen.queryByRole('button',{name:/^待回复 \d/})).toBeNull();expect(screen.getByText(/2026-10-29/)).toBeTruthy()
-  await user.click(screen.getByRole('button',{name:'会议'}));expect(screen.queryByText('验收开发')).toBeNull();await user.click(screen.getByRole('button',{name:'重置筛选'}));expect(screen.getByText('验收开发')).toBeTruthy()
+  await user.click(screen.getByRole('button',{name:'筛选',exact:true}));await user.click(screen.getByRole('button',{name:'会议'}));expect(screen.queryByText('验收开发')).toBeNull();await user.click(screen.getByRole('button',{name:'重置筛选'}));expect(screen.getByText('验收开发')).toBeTruthy()
  })
- it('只有meetingStart的参会待办进入今日列表、统计和今日筛选，不改写截止时间',async()=>{
+ it('只有meetingStart的参会待办在首页日程展示并可进入会议列表，不改写截止时间',async()=>{
   vi.useFakeTimers({toFake:['Date']});vi.setSystemTime(new Date('2026-10-29T06:00:00Z'));
   try{
    fixture.tasks=[{id:'broadcast-meeting',title:'参加月度质量星期四',status:'ready',priority:'normal',eventType:'meeting',dueAt:null,meetingStart:'2026-10-29T07:30:00Z',meetingLocation:'A303',tags:[]},{id:'tomorrow-meeting',title:'明天的会议',status:'ready',priority:'normal',eventType:'meeting',dueAt:null,meetingStart:'2026-10-30T07:30:00Z',tags:[]}];WB.store.set({data:fixture,page:'dashboard'});const user=userEvent.setup();render(<App/>);
-   expect(screen.getByRole('button',{name:'参加月度质量星期四'})).toBeTruthy();expect(screen.getByText(/会议 .*A303/)).toBeTruthy();expect(screen.queryByText('明天的会议')).toBeNull();expect(WB.taskCounts(fixture).today).toBe(1);
-   await user.click(screen.getByRole('button',{name:'今日到期 1'}));expect(screen.getByRole('button',{name:'参加月度质量星期四'})).toBeTruthy();expect(screen.queryByText('明天的会议')).toBeNull();expect(fixture.tasks[0].dueAt).toBeNull();
+   expect(screen.getByRole('button',{name:'参加月度质量星期四'})).toBeTruthy();expect(screen.getByText('A303')).toBeTruthy();expect(screen.queryByText('明天的会议')).toBeNull();expect(WB.taskCounts(fixture).today).toBe(1);
+   await user.click(screen.getByRole('button',{name:'全部日程'}));expect(screen.getByRole('button',{name:'参加月度质量星期四'})).toBeTruthy();expect(fixture.tasks[0].dueAt).toBeNull();
   }finally{vi.useRealTimers()}
  })
  it('已完成的识别记录可以复核并只重跑选中条目',async()=>{
@@ -140,12 +146,12 @@ describe('办公流程与布局入口',()=>{
   await act(async()=>deferred.shift()({ok:true,value:fixture}));expect(WB.store.get().data.revision).toBe(fixture.revision)
   await waitFor(()=>expect(screen.getByText(/待识别 0 · 待确认 0 · 失败 0 · 完成 1/)).toBeTruthy());view.unmount()
  })
- it('完整采集和本地刷新分开说明，批次数配置接入手动识别',async()=>{
+ it('后台批量配置与手动每批50条连续识别分别说明',async()=>{
   fixture.settings.aiExtract={enabled:true,batchSize:10};WB.store.set({data:fixture,page:'settings'});const user=userEvent.setup();render(<WB.pages.settings/>);
   expect(screen.getByText(/云之家独立按北京时间09:00–21:00每5分钟同步，页面每12秒读取本地状态/)).toBeTruthy()
   const batch=within(screen.getByText('每批识别消息数').closest('.wb-item')).getByRole('combobox');expect(batch.value).toBe('10');await user.selectOptions(batch,'20');
   expect(calls.some(call=>call.endpoint==='workbench/saveSettings'&&call.args.patch.aiExtract.batchSize===20)).toBe(true)
-  await WB.actions.analyzeRun();expect(calls.find(call=>call.endpoint==='workbench/analysisStart').args.request.limit).toBe(10)
+  await WB.actions.analyzeRun();expect(calls.find(call=>call.endpoint==='workbench/analysisStart').args.request.limit).toBe(50)
  })
 
  it('首页只展示3条AI动态，不展示失效页和原始错误，更多进入资讯页',async()=>{
@@ -178,7 +184,7 @@ describe('办公流程与布局入口',()=>{
  })
  it('YAML 列表和嵌套配置可双向转换，拒绝重复键与别名',async()=>{
   WB.store.set({data:fixture,page:'toolbox'});const user=userEvent.setup();render(<WB.pages.toolbox/>);
-  await user.click(screen.getByRole('button',{name:/YAML YAML/}));await user.click(screen.getByRole('button',{name:'YAML → JSON'}));
+  await user.click(toolButton('全部'));await user.click(toolButton(/YAML YAML/));await user.click(screen.getByRole('button',{name:'YAML → JSON'}));
   expect(screen.getByRole('button',{name:'复制'}).disabled).toBe(false);expect(screen.getByText(/"offline"/).textContent).toContain('"browser"');
   const input=screen.getByPlaceholderText(/name: dev-workbench/);fireEvent.change(input,{target:{value:'service:\n  ports:\n    - 80\n    - 443\nname: "a,b"'}});await user.click(screen.getByRole('button',{name:'YAML → JSON'}));expect(screen.getByText(/"ports"/).textContent).toContain('443');
   fireEvent.change(input,{target:{value:'name: first\nname: second'}});await user.click(screen.getByRole('button',{name:'YAML → JSON'}));expect(screen.getByRole('button',{name:'复制'}).disabled).toBe(true);expect(screen.getByText(/Map keys must be unique/)).toBeTruthy();
@@ -266,9 +272,12 @@ describe('办公流程与布局入口',()=>{
 })
 
 describe('Agent办公执行实际界面',()=>{
+ it('执行记录深链直接进入智能办公历史，切换办公流程保留独立入口',async()=>{
+  WB.store.set({data:fixture,page:'office',officeView:'history'});const user=userEvent.setup();render(<WB.pages.office/>);expect(screen.getByText('历史执行记录')).toBeTruthy();expect(screen.queryByRole('button',{name:'新建研发任务'})).toBeNull();await user.click(screen.getByRole('button',{name:'办公流程'}));expect(screen.getByRole('button',{name:'新建办公流程'})).toBeTruthy();expect(WB.store.get().officeView).toBe('workflows')
+ })
  it('选择多条待回复并提交一个批次，日报与待办模板共享入口',async()=>{
   fixture.replies=[1,2].map(n=>({id:'reply-'+n,stage:'待回复',contact:'同事',snippet:'请求'+n}));fixture.tasks=[{id:'task-work',title:'处理工作',status:'ready',priority:'normal'}];WB.store.set({data:fixture,page:'agents'});
-  const user=userEvent.setup();render(<WB.pages.agents/>);await user.click(screen.getByRole('button',{name:'新建办公流程'}));
+  const user=userEvent.setup();render(<WB.pages.office/>);await user.click(screen.getByRole('button',{name:'新建办公流程'}));
   const dialog=screen.getByRole('dialog');await user.click(within(dialog).getByLabelText('同事：请求1'));await user.click(within(dialog).getByLabelText('同事：请求2'));await user.click(within(dialog).getByRole('button',{name:'加入执行队列'}));
   expect(calls.find(c=>c.endpoint==='workbench/officeWorkflowStart').args).toEqual({kind:'reply_batch',input:{replyIds:['reply-1','reply-2']}})
   await user.click(screen.getByRole('button',{name:'新建办公流程'}));await user.selectOptions(screen.getByRole('combobox',{name:'流程类型'}),'work_report');await user.selectOptions(screen.getByRole('combobox',{name:'报告范围'}),'week');await user.click(screen.getByRole('button',{name:'加入执行队列'}));
@@ -277,7 +286,7 @@ describe('Agent办公执行实际界面',()=>{
  })
  it('产物可复制及采纳，取消和继续使用真实作业ID',async()=>{
   fixture.jobs=[{id:'workflow-1',kind:'reply_batch',title:'批量回复草稿',status:'failed',createdAt:new Date().toISOString(),steps:[{id:'reply-1',label:'第一条',status:'completed',artifact:{text:'可用草稿',evidenceIds:['source-1'],at:new Date().toISOString()}},{id:'reply-2',label:'第二条',status:'failed',error:'引用校验失败'}]}];WB.store.set({data:fixture,page:'agents'});
-  const user=userEvent.setup();render(<WB.pages.agents/>);await user.click(screen.getByText(/批量回复草稿 · 需处理/));expect(screen.getByText('可用草稿')).toBeTruthy();await user.click(screen.getByRole('button',{name:'存为候选知识'}));expect(calls.at(-1).args.input.reviewState).toBe('candidate');await user.click(screen.getByRole('button',{name:'采纳为回复草稿'}));expect(calls.at(-1).args).toEqual({jobId:'workflow-1',stepId:'reply-1'});
+  const user=userEvent.setup();render(<WB.pages.office/>);await user.click(screen.getByText(/批量回复草稿 · 需处理/));expect(screen.getByText('可用草稿')).toBeTruthy();await user.click(screen.getByRole('button',{name:'存为候选知识'}));expect(calls.at(-1).args.input.reviewState).toBe('candidate');await user.click(screen.getByRole('button',{name:'采纳为回复草稿'}));expect(calls.at(-1).args).toEqual({jobId:'workflow-1',stepId:'reply-1'});
   const copied=vi.spyOn(WB.util,'copy').mockResolvedValue();await user.click(screen.getByRole('button',{name:'复制产物'}));expect(copied).toHaveBeenCalledWith('可用草稿');copied.mockRestore();await user.click(screen.getByRole('button',{name:'继续未完成步骤'}));expect(calls.at(-1).args).toEqual({id:'workflow-1',action:'retry'});
   await act(async()=>{fixture={...fixture,revision:11,jobs:[{...fixture.jobs[0],status:'running'}]};WB.store.set({data:fixture})});await user.click(screen.getByRole('button',{name:'取消后续步骤'}));expect(calls.at(-1).args).toEqual({id:'workflow-1',action:'cancel'});
  })
@@ -298,5 +307,20 @@ describe('知识库自动检索界面',()=>{
  it('助手可切换知识模式、项目和账号范围',async()=>{
   fixture.projects=[{id:'p-A',name:'项目A'}];fixture.sources=[{id:'source-A',locator:{accountId:'account-A'}}];WB.store.set({data:fixture,assistantOpen:true});render(<App/>);const user=userEvent.setup();
   await user.click(screen.getByText('知识设置：自动检索'));await user.selectOptions(screen.getByRole('combobox',{name:'知识模式'}),'only');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识项目'}),'p-A');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识账号'}),'account-A');expect(screen.getByRole('combobox',{name:'知识模式'}).value).toBe('only');expect(screen.getByRole('combobox',{name:'聊天知识项目'}).value).toBe('p-A')
+ })
+})
+
+
+describe('紧凑执行记录界面',()=>{
+ const run=(id,status,summary)=>({id,status,summary,startedAt:'2026-10-31T01:00:00Z',endedAt:status==='completed'?'2026-10-31T01:00:02Z':null,steps:[],evidence:[]})
+ it('只展示一个页面标题，统计直接筛选且无审批空卡片',async()=>{
+  fixture.runs=[run('done','completed','已交付内容'),run('active','running','正在处理内容')];WB.store.set({data:fixture,page:'office',officeView:'history'});const user=userEvent.setup();render(<WB.pages.office/>);
+  expect(screen.getAllByRole('heading',{level:1}).map(el=>el.textContent)).toEqual(['智能办公']);expect(document.querySelectorAll('.wb-page').length).toBe(1);expect(screen.queryByText('历史记录统计')).toBeNull();expect(screen.queryByText('会话审批提示')).toBeNull();expect(screen.queryByText('当前没有待审批操作')).toBeNull();expect(screen.queryByText('status completed')).toBeNull();
+  const filters=screen.getByRole('group',{name:'筛选执行记录'});await user.click(within(filters).getByRole('button',{name:'已完成 1'}));expect(screen.getAllByRole('button',{name:'展开执行详情'}).length).toBe(1);expect(within(filters).getByRole('button',{name:'已完成 1'}).getAttribute('aria-pressed')).toBe('true');await user.click(within(filters).getByRole('button',{name:'进行中 1'}));expect(screen.getAllByRole('button',{name:'展开执行详情'}).length).toBe(1);
+  await user.click(screen.getByRole('button',{name:'登记执行记录'}));expect(screen.getByRole('dialog')).toBeTruthy()
+ })
+ it('待审批记录默认折叠，查看详情定位对应筛选，不产生审批请求',async()=>{
+  fixture.runs=[run('waiting','waiting_approval','需要核实的记录'),run('done','completed','已完成记录')];WB.store.set({data:fixture,page:'office',officeView:'history'});const user=userEvent.setup();render(<WB.pages.office/>);
+  const approvals=document.querySelector('.wb-office-approvals');expect(approvals.open).toBe(false);await user.click(within(approvals).getByText('待审批标记'));expect(approvals.open).toBe(true);await user.click(within(approvals).getByRole('button',{name:'查看详情'}));expect(screen.getByRole('button',{name:'待审批 1'}).getAttribute('aria-pressed')).toBe('true');expect(screen.getByRole('button',{name:'收起执行详情'})).toBeTruthy();expect(calls.length).toBe(0)
  })
 })

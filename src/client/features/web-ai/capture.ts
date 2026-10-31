@@ -1,7 +1,8 @@
 export interface WebsiteTurn {
  id:string;ordinal:number;question:string|null;userIndex:number|null;text:string;truncated:boolean;complete:boolean;completionEvidence:string|null
 }
-const normalized=(value:string)=>value.replace(/\s+/g,' ').trim()
+export const normalizeCapturedQuestion=(value:string)=>value.normalize('NFKC').replace(/\s+/g,' ').replace(/\s*([,。.!?:;“”"、])\s*/g,'$1').trim()
+const normalized=normalizeCapturedQuestion
 /** Bind a reply to the requested turn, including when later questions already exist. */
 export function selectCapturedTurn(snapshot:any,question:string,before:any):{turn:WebsiteTurn|null;foreign:boolean;ambiguous:boolean}{
  const turns:WebsiteTurn[]=(Array.isArray(snapshot.turns)?snapshot.turns:[]).filter((t:any)=>Number.isInteger(t?.ordinal)&&typeof t?.text==='string')

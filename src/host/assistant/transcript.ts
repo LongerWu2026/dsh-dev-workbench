@@ -170,7 +170,12 @@ function transcriptOf(session?: any, limit?: any): any {
     }
     return entries.slice(-(limit || 40));
 }
-/** 旧版本存下来的默认计数字 id（session-1 / session-2…）：没有持久化日志，必须丢弃。 */
+/** Read known error fields only; host versions wrap provider errors differently. */
+function modelErrorText(value:any,depth=0):string {
+    if(typeof value==='string')return value;
+    if(!value||typeof value!=='object'||depth>=8)return '';
+    return modelErrorText(value.error,depth+1)||modelErrorText(value.cause,depth+1)||modelErrorText(value.message,depth+1);
+}
 function transcriptDelta(session?: any, fromSeq?: any): any {
     const start = Number(fromSeq);
     const events = session.snapshotEvents(Number.isFinite(start) && start >= 0 ? start : 0);
@@ -186,7 +191,7 @@ function transcriptDelta(session?: any, fromSeq?: any): any {
             turnActive = false;
             turnEnded = true;
             const reason = event.data && event.data.reason;
-            if (reason && reason.kind === 'error') entries.push({role:'error',text:reason.error && reason.error.message || '模型轮次失败',at:event.time,seq:event.seq});
+            if (reason && reason.kind === 'error') entries.push({role:'error',text:modelErrorText(reason.error) || '模型轮次失败',at:event.time,seq:event.seq});
             continue;
         }
         if (event.type === 'user/message') {
@@ -224,7 +229,7 @@ function transcriptDelta(session?: any, fromSeq?: any): any {
             entries.push({ role: 'toolResult', text: name, ok: ok, at: event.time, seq: event.seq });
         }
         else if (event.type === 'turn/error') {
-            const note = event.data && event.data.message ? String(event.data.message) : '本轮执行出错';
+            const note = modelErrorText(event.data) || '本轮执行出错';
             entries.push({ role: 'error', text: note, at: event.time, seq: event.seq });
         }
     }

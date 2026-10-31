@@ -10,7 +10,7 @@ import { waitStructuredReply, isModelServiceFailure } from '../analysis/message-
 const digest = (value: unknown) => hashText(JSON.stringify(value, (key, item) => ['updatedAt','elapsedMs'].includes(key) || key==='id'&&item?.startsWith?.('retrieval-') ? undefined : item && typeof item==='object' && !Array.isArray(item) ? Object.fromEntries(Object.keys(item).sort().map(k=>[k,item[k]])) : item))
 function replyInput(s: any, id: string) {
  const reply=s.replies.find((r:any)=>r.id===id)
- if(!reply || reply.archivedAt || !['待回复','已确认收到'].includes(reply.stage))throw new Error('待回复不存在或已处理，请重新选择')
+ if(!reply || reply.archivedAt || !['待回复','已确认收到','已自动回复'].includes(reply.stage))throw new Error('待回复不存在或已处理，请重新选择')
  const source=s.sources.find((r:any)=>r.id===reply.sourceId)
  if(!source)throw new Error('原消息不存在')
  return {reply,source,tasks:s.tasks.filter((t:any)=>(reply.taskIds||[]).includes(t.id)),draft:s.replyDrafts?.[id]||null}
@@ -26,7 +26,7 @@ function periodInput(s:any,period:string){
  const days=period==='week'?7:1, now=Date.now(),today=Math.floor((now+8*3600000)/86400000)*86400000-8*3600000,start=today-(days-1)*86400000
  const rows=s.tasks.filter((t:any)=>!t.archivedAt && (!['completed','cancelled'].includes(t.status)||Date.parse(t.updatedAt)>=start)).sort((a:any,b:any)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))
  const tasks=rows.slice(0,100).map((t:any)=>Object.fromEntries(['id','title','status','priority','dueAt','updatedAt','projectId','deliverable'].map(k=>[k,t[k]??null]))),ids=new Set(tasks.map((t:any)=>t.id))
- return {period,timezone:'Asia/Shanghai',from:new Date(start).toISOString(),to:new Date(now).toISOString(),totalTasks:rows.length,includedTasks:tasks.length,tasks,runs:s.runs.filter((r:any)=>ids.has(r.taskId)&&Date.parse(r.startedAt)>=start).slice(-50).map((r:any)=>({id:r.id,taskId:r.taskId,status:r.status,summary:r.summary,startedAt:r.startedAt})),replies:s.replies.filter((r:any)=>['待回复','已确认收到'].includes(r.stage)).slice(0,30)}
+ return {period,timezone:'Asia/Shanghai',from:new Date(start).toISOString(),to:new Date(now).toISOString(),totalTasks:rows.length,includedTasks:tasks.length,tasks,runs:s.runs.filter((r:any)=>ids.has(r.taskId)&&Date.parse(r.startedAt)>=start).slice(-50).map((r:any)=>({id:r.id,taskId:r.taskId,status:r.status,summary:r.summary,startedAt:r.startedAt})),replies:s.replies.filter((r:any)=>['待回复','已确认收到','已自动回复'].includes(r.stage)).slice(0,30)}
 }
 export function prepareOfficeSteps(s:any,kind:OfficeWorkflowKind,input:any):OfficeStep[]{
  const items=kind==='reply_batch'?input.replyIds.map((id:string)=>({id,label:s.replies.find((r:any)=>r.id===id)?.snippet||id,data:replyInput(s,id)})):kind==='task_assist'?[{id:input.taskId,label:'整理依据 → 生成方案 → 验证产物',data:taskInput(s,input.taskId)}]:[{id:input.period,label:input.period==='week'?'近七日工作报告':'今日工作报告',data:periodInput(s,input.period)}]

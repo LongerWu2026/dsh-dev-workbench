@@ -180,6 +180,10 @@ async function runUnifiedSearch(ctx?: any, request?: any): Promise<any> {
     const query = asString(request && request.query, 200);
     if (!query)
         throw new Error('搜索关键词不能为空');
+    if(request?.scope==='web'){
+        const group=await searchWebGroup(ctx,query);
+        return {query,at:hostNowIso(),total:group.items.length,groups:[group]};
+    }
     const state = loadWorkbenchState();
     const groups = searchLocalGroups(state, query);
     // 本地项目（文件名 + 文本片段）：不受联网与凭据影响，始终可用
@@ -228,7 +232,7 @@ async function runUnifiedSearch(ctx?: any, request?: any): Promise<any> {
             note: gh.status === 'ok' ? gh.note : gh.note,
         });
     }
-    if (!request || request.includeWeb !== false) {
+    if (request?.scope!=='work'&&(!request || request.includeWeb !== false)) {
         groups.push(await searchWebGroup(ctx, query));
     }
     const total = groups.reduce(function (sum?: any, group?: any): any {

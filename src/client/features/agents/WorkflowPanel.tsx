@@ -1,4 +1,5 @@
 import {KnowledgeSources} from '../../components/KnowledgeSources.js'
+import {AnalysisJobProgress} from '../../components/WorkflowJobs.js'
 import {Pagination,PAGE_SIZE,pageIndex} from '../../components/Pagination.js'
 import * as React from 'react'
 import {WB,Btn,Panel,Select,Field,Modal,Badge} from '../../core/runtime.js'
@@ -6,7 +7,7 @@ import {OFFICE_WORKFLOW_LABELS,isOfficeWorkflow} from '../../../shared/office-wo
 const STATUS:Record<string,string>={queued:'排队中',running:'执行中',completed:'已交付',failed:'需处理',cancelled:'已取消',pending:'待处理'}
 export function WorkflowPanel(){
  const data=WB.useStore().data||{},[open,setOpen]=React.useState(false),[kind,setKind]=React.useState('reply_batch'),[period,setPeriod]=React.useState('day'),[taskId,setTaskId]=React.useState(''),[selected,setSelected]=React.useState<string[]>([]),[filter,setFilter]=React.useState('all'),[page,setPage]=React.useState(0)
- const replies=(data.replies||[]).filter((r:any)=>!r.archivedAt&&['待回复','已确认收到'].includes(r.stage)), tasks=(data.tasks||[]).filter((t:any)=>!t.archivedAt&&!['completed','cancelled'].includes(t.status))
+ const replies=(data.replies||[]).filter((r:any)=>!r.archivedAt&&['待回复','已确认收到','已自动回复'].includes(r.stage)), tasks=(data.tasks||[]).filter((t:any)=>!t.archivedAt&&!['completed','cancelled'].includes(t.status))
  const jobs=(data.jobs||[]).slice().reverse(), visible=jobs.filter((j:any)=>filter==='all'||filter==='active'&&['queued','running'].includes(j.status)||filter==='review'&&['failed','cancelled'].includes(j.status)||filter==='done'&&j.status==='completed')
  const safe=(promise:Promise<any>)=>promise.catch(()=>{})
  async function start(){try{await WB.actions.officeWorkflowStart(kind,kind==='reply_batch'?{replyIds:selected}:kind==='task_assist'?{taskId}:{period});setOpen(false)}catch{}}
@@ -20,6 +21,7 @@ export function WorkflowPanel(){
     {job.kind==='task_assist'&&<p className="wb-tiny">产物为处理方案与验收清单；尚未执行项目命令或标记业务完成。</p>}
     {job.error&&<p role="status" className="wb-tiny" style={{overflowWrap:'anywhere'}}>{job.error}{job.nextRetryAt&&` · 下次尝试 ${WB.fmt.datetime(job.nextRetryAt)}`}</p>}
     {job.note&&<p className="wb-tiny">{job.note}</p>}
+    {job.kind==='analysis'&&<AnalysisJobProgress job={job}/>}
     {isOfficeWorkflow(job.kind)&&<div className="wb-row wb-row--wrap" style={{gap:8}}>
      {['queued','running'].includes(job.status)&&<Btn size="sm" onClick={()=>safe(WB.actions.officeWorkflowControl(job.id,'cancel'))}>取消后续步骤</Btn>}
      {['failed','cancelled'].includes(job.status)&&<Btn size="sm" onClick={()=>safe(WB.actions.officeWorkflowControl(job.id,'retry'))}>继续未完成步骤</Btn>}

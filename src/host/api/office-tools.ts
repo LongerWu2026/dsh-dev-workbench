@@ -31,7 +31,7 @@ function officeToolDefinitions(): any {
                 const reply = state.replies.find(function (row?: any): any { return row.id === args.id; });
                 return { text: '回复阶段已保存：' + reply.stage, reply, revision: state.revision };
             }
-            const replies = ensureArray(loadWorkbenchState().replies).filter(function (row?: any): any { return (args.includeDone || ['待回复', '已确认收到'].includes(row.stage)) && (!args.query || [row.snippet, row.contact, row.groupName].join(' ').includes(args.query)); });
+            const replies = ensureArray(loadWorkbenchState().replies).filter(function (row?: any): any { return (args.includeDone || ['待回复', '已确认收到', '已自动回复'].includes(row.stage)) && (!args.query || [row.snippet, row.contact, row.groupName].join(' ').includes(args.query)); });
             return { text: JSON.stringify(replies), replies };
         }),
         tool('workbench_manage_knowledge', '查询、创建或更新工作台知识。新建或修改的内容进入待审核，不自动确认为事实；更新前先查询真实 ID，正文保留原文来源链接。', {

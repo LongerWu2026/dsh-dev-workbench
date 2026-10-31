@@ -1,3 +1,4 @@
+import {normalizeBusyReply} from '../../shared/busy-reply.js'
 import {normalizeMessageSelection,normalizeMessageInbox} from '../../shared/message-intake.js'
 import {normalizeLaunchCommands} from '../../shared/developer-tools.js'
 import { knowledgeMode } from '../../shared/knowledge.js'
@@ -77,7 +78,7 @@ function normalizeAiExtract(raw?: any): any {
         autoRegister: input.autoRegister === true,
         batchSize: (function (): any {
             const n = Number(input.batchSize);
-            return Number.isFinite(n) ? Math.max(1, Math.min(20, Math.round(n))) : 5;
+            return Number.isFinite(n) ? Math.max(1, Math.min(50, Math.round(n))) : 50;
         })(),
     };
 }
@@ -112,6 +113,7 @@ function normalizeReplies(raw?: any): Reply[] {
             accountId: asString(row.accountId, 120) || null,
             contact: asString(row.contact, 80) || null,
             snippet: asString(row.snippet, 300) || null,
+            autoReplyId:asString(row.autoReplyId,100)||null,autoRepliedAt:asIso(row.autoRepliedAt),
             stage: REPLY_STATUSES.indexOf(row.stage) >= 0 ? row.stage : '待回复',
             triage:['pending','reply','task','noise'].includes(row.triage)?row.triage:null,
             humanGuard: row.humanGuard === true,
@@ -126,7 +128,7 @@ function normalizeReplies(raw?: any): Reply[] {
     return list;
 }
 /** 回复阶段（Reply 自身状态机，平行于 Task 的处理状态机） */
-const REPLY_STATUSES: any = ['待回复', '已确认收到', '已回复', '不需回复'];
+const REPLY_STATUSES: any = ['待回复', '已确认收到', '已自动回复', '已回复', '不需回复'];
 /** TODO 14：分析队列条目（按 msgId 幂等；失败保留 attempts/lastError 以便重放） */
 function normalizeAnalysisQueue(raw?: any): any {
     const list = ensureArray(raw)
@@ -139,6 +141,7 @@ function normalizeAnalysisQueue(raw?: any): any {
         return {
             id: asString(row.id, 80) || newId('aq'),
             sourceId: sourceId,
+            ...(row.analysisJobId ? {analysisJobId:asString(row.analysisJobId,80)} : {}),
             msgId: asString(row.msgId, 80) || null,
             groupId: asString(row.groupId, 80) || null,
             accountId: asString(row.accountId, 120) || null,
@@ -265,6 +268,7 @@ function normalizeSettings(raw?: any): any {
     })
         .slice(0, 12);
     return {
+        busyReply:normalizeBusyReply(input.busyReply),
         knowledgeMode: knowledgeMode(input.knowledgeMode),
         topics: topics.length > 0 || input.topics !== undefined ? topics : DEFAULT_TOPICS.slice(),
         defaultProjectId: typeof input.defaultProjectId === 'string' && input.defaultProjectId ? input.defaultProjectId : null,
@@ -428,6 +432,7 @@ function normalizeSource(raw?: any): Source {
                 intake: input.locator.intake !== false,
                 replyToMsgId: asString(input.locator.replyToMsgId, 80) || null,
                 senderId: asString(input.locator.senderId, 120) || null,
+                sentAtVerified:input.locator.sentAtVerified===true,
                 sentAt: asIso(input.locator.sentAt) || asIso(input.fetchedAt),
             }
             : null,
@@ -603,6 +608,8 @@ function normalizeState(raw?: any): any {
         changeHistory: ensureArray(raw.changeHistory),
         aiUsage: raw.aiUsage && typeof raw.aiUsage==='object' ? raw.aiUsage : {},
         reminderSnoozes: raw.reminderSnoozes && typeof raw.reminderSnoozes==='object' ? raw.reminderSnoozes : {},
+        busyReplyDeliveries: raw.busyReplyDeliveries&&typeof raw.busyReplyDeliveries==='object'?raw.busyReplyDeliveries:{},
+        lastBusyReplyCheckAt:asIso(raw.lastBusyReplyCheckAt),lastBusyReplyError:asString(raw.lastBusyReplyError,300)||null,
         replyDrafts: raw.replyDrafts && typeof raw.replyDrafts==='object' ? raw.replyDrafts : {},
         qualityReviews: ensureArray(raw.qualityReviews),
         qualityEvaluation: raw.qualityEvaluation || null,

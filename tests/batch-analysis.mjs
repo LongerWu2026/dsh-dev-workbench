@@ -91,6 +91,13 @@ try{
  controller.prompt=normalPrompt;const reuseBefore=creates;await run([await add()]);check('兼容恢复成功后继续复用新会话，不逐批重建',()=>assert.equal(creates,reuseBefore))
  let eventCalls=0;controller.prompt=async request=>{eventCalls++;if(eventCalls===1){const target=sessions.get(request.sessionId);target.events.push({type:'turn/start',seq:target.seq+1,data:{}},{type:'turn/end',seq:target.seq+2,data:{reason:{kind:'error',error:{message:'provider metadata '.repeat(30)+historyError}}}});return{accepted:true}}return normalPrompt(request)}
  const eventRecovered=await run([await add()]);check('异步轮次错误保留200字符后的reasoning字段并恢复',()=>{assert.equal(eventCalls,2);assert.equal(eventRecovered.processed,1)})
+ for(const shape of ['nested-turn-error','string-turn-end']){
+  let calls=0;
+  const payload=JSON.stringify({message:JSON.stringify({error:{message:"Missing required parameter: 'messages[5].reasoning_content'. This model needs the reasoning of every earlier assistant message",type:'AI_APICallError'}}),type:'invalid_request_error'});
+  controller.prompt=async request=>{calls++;if(calls===1){const target=sessions.get(request.sessionId);target.events.push({type:'turn/start',seq:target.seq+1,data:{}},shape==='nested-turn-error'?{type:'turn/error',seq:target.seq+2,data:{message:'request failed',error:{cause:{message:payload}}}}:{type:'turn/end',seq:target.seq+2,data:{reason:{kind:'error',error:payload}}});return{accepted:true}}return normalPrompt(request)};
+  const row=await add(),result=await run([row]);
+  check('推理历史错误形态 '+shape+' 保留原因并只恢复一次',()=>{assert.equal(calls,2);assert.equal(result.processed,1);assert.equal(state().analysisQueue.find(e=>e.id===row.entry.id).attempts,0);assert.equal(state().settings.assistantSessionId,'human-chat-preserved')});
+ }
  let persistentCalls=0;controller.prompt=async()=>{persistentCalls++;throw Error(historyError)};const persistent=await add();const persistentResult=await run([persistent]);
  check('恢复后仍缺推理内容停止本批并退避，不无限建会话或消耗业务次数',()=>{assert.equal(persistentCalls,2);assert.equal(persistentResult.status,'deferred');assert.equal(persistentResult.failures,0);const row=state().analysisQueue.find(e=>e.id===persistent.entry.id);assert.equal(row.status,'pending');assert.equal(row.attempts,0);assert.equal(row.leaseUntil,null)})
  controller.prompt=normalPrompt;await host.mutateWorkbenchState(s=>{delete s.modelHealth.analysis;return s})

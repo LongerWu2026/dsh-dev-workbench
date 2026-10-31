@@ -171,20 +171,22 @@ async function readTopProcesses(ctx?: any): Promise<any> {
     });
     return { status: 'ok', reason: null, items: rows.slice(0, 12) };
 }
-async function buildEnvironment(ctx?: any): Promise<any> {
-    if (environmentCache.value && Date.now() - environmentCache.at < ENVIRONMENT_TTL_MS) {
+async function buildEnvironment(ctx?: any, request?: any): Promise<any> {
+    const state = loadWorkbenchState();
+    const selected = request?.projectId ? ensureArray(state.projects).find((p:any)=>p.id===request.projectId) : null;
+    if (request?.projectId && !selected?.repoPath) throw new Error('请选择已配置目录的项目');
+    const key = selected ? selected.id + ':' + selected.repoPath : 'all';
+    if (!request?.force && environmentCache.key === key && environmentCache.value && Date.now() - environmentCache.at < ENVIRONMENT_TTL_MS) {
         return environmentCache.value;
     }
-    const state = loadWorkbenchState();
     const targets: any = [];
     const seen = new Set();
     const defaultDir = cwdForHostCommands(ctx);
-    if (defaultDir) {
+    if (!selected && defaultDir) {
         targets.push({ dir: defaultDir, label: '当前工作目录' });
         seen.add(defaultDir);
     }
-    ensureArray(state.projects)
-        .slice(0, 6)
+    (selected ? [selected] : ensureArray(state.projects).slice(0, 6))
         .forEach(function (project?: any): any {
         if (!project.repoPath || seen.has(project.repoPath))
             return;
@@ -197,6 +199,7 @@ async function buildEnvironment(ctx?: any): Promise<any> {
     }
     const value: any = {
         at: hostNowIso(),
+        projectId: selected?.id || null,
         cwd: defaultDir,
         git: repositories,
         docker: await readDockerState(ctx),
@@ -204,7 +207,7 @@ async function buildEnvironment(ctx?: any): Promise<any> {
         processes: await readTopProcesses(ctx),
         note: '全部为只读探测：git status/log、docker ps、lsof -i、ps aux，不写仓库、不启动容器、不结束进程。',
     };
-    environmentCache = { at: Date.now(), value: value };
+    environmentCache = { key, at: Date.now(), value: value };
     return value;
 }
 

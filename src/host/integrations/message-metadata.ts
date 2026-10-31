@@ -2,7 +2,7 @@ import {createHash, asIso, asString} from '../platform/runtime.js'
 
 export function linkedMessageSources(state:any):any[] {
     const sources=new Map<string,any>((state.sources || []).map((row:any)=>[row.id,row]));
-    const ids=[...(state.replies || []).filter((row:any)=>!row.archivedAt && ['待回复','已确认收到'].includes(row.stage)).map((row:any)=>row.sourceId),
+    const ids=[...(state.replies || []).filter((row:any)=>!row.archivedAt && ['待回复','已确认收到','已自动回复'].includes(row.stage)).map((row:any)=>row.sourceId),
         ...(state.tasks || []).filter((row:any)=>!row.archivedAt && !['completed','cancelled'].includes(row.status)).flatMap((row:any)=>[row.sourceRefId,...(row.sourceRefs || []).map((ref:any)=>ref.sourceId)])];
     return [...new Set(ids)].map(id=>sources.get(id)).filter(source=>source?.provider==='yunzhijia');
 }

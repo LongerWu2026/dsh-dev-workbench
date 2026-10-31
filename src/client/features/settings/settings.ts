@@ -1,4 +1,5 @@
 import { BackgroundHistoryPanel } from '../operations/BackgroundHistoryPanel.js'
+import {YunzhijiaConnection} from './YunzhijiaConnection.js'
 import { OperationsPanel } from '../operations/OperationsPanel.js'
 import { ArchiveBrowser } from '../operations/ArchiveBrowser.js'
 import { MigrationImportPanel } from '../../components/MigrationImportPanel.js'
@@ -182,13 +183,13 @@ function SettingsPage(): any {
         title: '连接器',
         sub: '一个 Provider 一种能力；未接入的能力保持“未配置”而不是假装可用',
         icon: 'plug',
-    }, connectors.length === 0
+    }, h(YunzhijiaConnection, {initial:connectors.find((row:any)=>row.id === 'yunzhijia')}), connectors.length === 0
         ? h(Empty, {
             icon: 'plug',
             title: '还没有连接器',
             hint: '首版只登记真实存在的能力：本地数据、Host 运行时与命令探测。企业系统（云之家、Git、Docker）需要先完成能力发现再显示为“已连接”。',
         })
-        : h('div', null, connectors.map(function (connector?: any): any {
+        : h('div', null, connectors.filter((row:any)=>row.id !== 'yunzhijia').map(function (connector?: any): any {
             const meta = WB.connectorState(connector.authState);
             return h('div', { key: connector.id, className: 'wb-item', style: { alignItems: 'flex-start' } }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title' }, connector.label || connector.type, h(Badge, { tone: meta.tone }, meta.label)), h('div', { className: 'wb-item-sub' }, (connector.capabilities || []).length > 0
                 ? connector.capabilities.map(function (capability?: any): any {
@@ -460,8 +461,8 @@ function SettingsPage(): any {
         }),
     }), h(SettingsRow, {
         title: '每批识别消息数',
-        hint: '同账号消息合并调用模型；不同聊天按来源隔离。超长内容会分批，异常结果逐条保留重试。',
-        control: h(Select, {value:String(settings.aiExtract?.batchSize || 5),options:[{value:'5',label:'5 条'},{value:'10',label:'10 条'},{value:'20',label:'20 条'}],onChange:(event:any)=>patchSettings({aiExtract:{batchSize:Number(event.target.value)}})}),
+        hint: '后台定时识别使用此批量。点击「运行分析」固定每批 50 条，自动连续处理至队列结束；超长内容会拆包，失败自动等待重试并展示暂停原因。',
+        control: h(Select, {value:String(settings.aiExtract?.batchSize || 50),options:[{value:'5',label:'5 条'},{value:'10',label:'10 条'},{value:'20',label:'20 条'},{value:'50',label:'50 条'}],onChange:(event:any)=>patchSettings({aiExtract:{batchSize:Number(event.target.value)}})}),
     }), h(SettingsRow, {
         title: '识别后自动登记待办',
         hint: '开启后安装日期起的明确交办直接建档；关闭则待确认。安装日期之前的消息和历史暂存不再识别。',

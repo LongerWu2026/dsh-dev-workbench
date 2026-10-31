@@ -4,6 +4,7 @@ import { MAX_ASSISTANT_CONTEXTS } from '../../shared/assistant-context.js'
 import { fmt, pad2, parseDate, util } from './format.js'
 import { Badge, Btn, Chip, Divider, Empty, Field, Icon, IconBtn, Input, Kbd, Modal, PageHead, Panel, Progress, Segmented, Select, Spinner, Stat, Tabs, Textarea, Toggle, WB_ICON_PATHS } from '../components/primitives.js'
 import { WB_CSS } from './styles.js'
+import { radarFetchOutcome } from '../../shared/news-fetch.js'
 
 /* ------------------------------------------------------------------- WB bag */
 const WB: any = {
@@ -28,6 +29,7 @@ const wbStore = (function (): any {
         toasts: [],
         page: 'dashboard',
         focusTaskId: null,
+        focusReplyId: null,
         taskForm: null,
         /** Transient hand-off from the dashboard to the task center
          *  ({status?|dueFilter?}); the task page consumes it and clears it. */
@@ -80,8 +82,8 @@ const WB_DICT: any = {
         'nav.tools': '工具',
         'nav.dashboard': '今日简报',
         'nav.tasks': '任务中心',
-        'nav.search': '搜索',
-        'nav.agents': 'Agent 中心',
+        'nav.search': '工作搜索',
+    'nav.agents': '研发任务',
         'nav.collab': '研发协作',
         'nav.radar': '技术雷达',
         'nav.toolbox': '开发工具箱',
@@ -100,7 +102,7 @@ const WB_DICT: any = {
         'common.all': '全部',
         'dash.title': '今日简报',
         'tasks.title': '任务中心',
-        'agents.title': 'Agent 中心',
+    'agents.title': '研发任务',
         'radar.title': '技术雷达',
         'toolbox.title': '开发工具箱',
         'knowledge.title': '知识空间',
@@ -275,6 +277,7 @@ function assistantBrief(refs?: any, instruction?: any): any {
 /* ----------------------------------------------------------------- actions */
 let wbPendingRequests = 0;
 let wbSyncInFlight: Promise<boolean> | null = null;
+let wbAnalysisStartInFlight:Promise<any>|null=null;
 
 function acceptSnapshot(snapshot?: any): any {
     const current = wbStore.get().data;
@@ -377,7 +380,11 @@ const wbActions: any = {
     /** Fetch the configured RSS/Atom feeds; the report lands in data.lastRadarFetch.
      *  Zero-parameter endpoint — payload must be exactly {} (see fetchMentions). */
     fetchRadar(): any {
-        return settle(wbRpc('workbench/fetchRadar', {}), '抓取完成');
+        return settle(wbRpc('workbench/fetchRadar', {})).then((snapshot: any) => {
+            const result = radarFetchOutcome(snapshot.lastRadarFetch);
+            toast(result.text, result.tone);
+            return snapshot;
+        });
     },
     /** Turn one radar item into a real task with its source evidence attached. */
     createTaskFromRadar(id?: any): any {
@@ -427,16 +434,16 @@ const wbActions: any = {
     /** Unified search. Returns {query, at, total, groups[]} — NOT a snapshot. */
     search(query?: any, options?: any): any {
         return wbRpc('workbench/search', {
-            request: { query: query, includeWeb: !options || options.includeWeb !== false },
+            request: { query: query, includeWeb: !options || options.includeWeb !== false, ...(options?.scope==='work'||options?.scope==='web'?{scope:options.scope}:{}) },
         });
     },
     /** Read-only engineering environment: git status per project + docker ps. */
-    environment(): any {
-        return wbRpc('workbench/environment', {});
+    environment(request?: any): any {
+        return wbRpc('workbench/environment', request ? {request} : {});
     },
     /** GitHub 只读快照（PR / CI）。 */
-    github(): any {
-        return wbRpc('workbench/github', {});
+    github(request?: any): any {
+        return wbRpc('workbench/github', request ? {request} : {});
     },
     /**
      * 自动同步：只比对业务修订号，变新才重取快照；正在编辑表单时跳过，
@@ -517,8 +524,21 @@ const wbActions: any = {
     analysisStatus(): any {
         return wbRpc('workbench/analysisStatus', {});
     },
-    analyzeRun(limit?: any, onlyIds?: string[]): any {
-        return wbRpc('workbench/analysisStart', { request: { limit: limit || wbStore.get().data?.settings?.aiExtract?.batchSize || 5, onlyIds: onlyIds || [] } });
+    analyzeRun(limit?: any, onlyIds?: string[], retryFailed=false): any {
+        if(wbAnalysisStartInFlight)return wbAnalysisStartInFlight;
+        const requestId='analysis-'+Date.now()+'-'+Math.random();
+        wbStore.set({analysisActivity:{requestId,phase:'starting',message:'正在启动提取'}});
+        wbAnalysisStartInFlight=wbRpc('workbench/analysisStart', { request: { limit: limit || 50, onlyIds: onlyIds || [],...(retryFailed?{retryFailed:true}:{}) } }).then((result:any)=>{
+            wbStore.set({analysisActivity:{requestId,jobId:result?.jobId,phase:result?.jobId?'queued':'completed',message:result?.jobId?'提取已排队':'提取请求已返回'}});
+            return result;
+        }).catch((error:any)=>{
+            const message=String(error?.message||error);
+            wbStore.set({analysisActivity:{requestId,phase:'failed',message}});
+            toast('提取启动失败：'+message.slice(0,180),'err');
+            if(error&&typeof error==='object')error.workbenchAnalysisNotified=true;
+            throw error;
+        }).finally(()=>{wbAnalysisStartInFlight=null});
+        return wbAnalysisStartInFlight;
     },
     /** TODO 20：对指定资讯批量生成四段摘要（读原文 → 模型 → 写回卡片）。 */
     radarSummarize(onlyIds?: any, retryFailed?: boolean): any {
@@ -571,6 +591,11 @@ WB.openTaskForm = function (task?: any, defaults?: any): any {
 /** Jump to the task center with one task selected. */
 WB.focusTask = function (id?: any): any {
     wbStore.set({ page: 'tasks', focusTaskId: id });
+};
+
+/** Open one exact communication obligation without changing its business stage. */
+WB.openReply = function(id:string):any {
+    wbStore.set({page:'replies',focusReplyId:id,assistantOpen:false,contextHidden:true});
 };
 
 WB.TASK_STATUS = {

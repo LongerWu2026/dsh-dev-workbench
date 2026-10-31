@@ -1,3 +1,4 @@
+import {AnalysisMonitor} from '../components/AnalysisActivity.js'
 import {KnowledgeSources} from '../components/KnowledgeSources.js'
 import { AssistantContextPicker } from '../components/AssistantContextPicker.js'
 import { Btn, Chip, Empty, Icon, IconBtn, Panel, Select, Spinner, T, Textarea, WB, WB_CSS, WB_DICT, h, setShared_wbConnection, setShared_wbTranslate, useStore, wbConnection, wbTranslate } from '../core/runtime.js'
@@ -24,18 +25,18 @@ WB.PAGE_META = {
     tasks: { title: '任务中心', icon: 'tasks', hint: '统一任务模型：来源、优先级、截止与执行记录' },
     replies: { title: '待回复', icon: 'chat', hint: '独立跟踪需要回复的消息与来源' },
     radar: { title: '资讯', icon: 'radar', hint: '联网发现、原文摘要与收藏' },
-    search: { title: '搜索', icon: 'search', hint: '一个入口搜全部：本地、企业、代码与外网，按分类过滤' },
-    agents: { title: 'Agent 中心', icon: 'agent', hint: '执行队列、审批与结果回写' },
+    search: { title: '工作搜索', icon: 'search', hint: '查找工作内容，或单独搜索互联网' },
+    office: { title: '智能办公', icon: 'layers', hint: '回复草稿、工作报告、办公流程与产物' },
+    agents: { title: '研发任务', icon: 'agent', hint: 'Linky 工作项、独立工作区、Harness 开发与审查' },
     'web-ai': { title: '多 AI 对话', icon: 'messages', hint: '统一提问、连续追问与多家 AI 回答对比' },
     toolbox: { title: '开发工具箱', icon: 'toolbox', hint: '本地执行、数据不出浏览器的高频工具' },
     collab: { title: '研发协作', icon: 'git', hint: '项目启动、开发软件联动、运行日志与仓库环境' },
     knowledge: { title: '知识空间', icon: 'book', hint: '收藏、笔记与排障记录' },
     settings: { title: '连接与设置', icon: 'settings', hint: '连接器状态、关注主题与数据管理' },
 };
-WB.ORDER = ['dashboard', 'tasks', 'replies', 'radar', 'knowledge', 'web-ai', 'search', 'agents', 'toolbox', 'collab', 'settings'];
+WB.ORDER = ['dashboard', 'agents', 'office', 'tasks', 'replies', 'radar', 'knowledge', 'web-ai', 'search', 'toolbox', 'collab', 'settings'];
 WB.NAV_GROUPS = [
-    { label: '工作', items: ['dashboard', 'tasks', 'search'] },
-    { label: '执行', items: ['agents'] },
+    { label: '工作', items: ['dashboard', 'agents', 'office', 'tasks', 'search'] },
     { label: '工具', items: ['toolbox', 'collab'] },
     { label: '沉淀', items: ['knowledge'] },
     { label: '系统', items: ['settings'] },
@@ -43,7 +44,7 @@ WB.NAV_GROUPS = [
 WB.go = function (page?: any): any {
     if (WB.ORDER.indexOf(page) < 0)
         return;
-    WB.store.set({ page: page });
+    WB.store.set({ page: page, ...(page==='agents'?{developmentOpenSeq:(WB.store.get().developmentOpenSeq||0)+1}:{}) });
 };
 function WorkbenchIcon(props?: any): any {
     const size = (props && typeof props.size === 'number' && props.size) || 18;
@@ -77,7 +78,7 @@ function Toaster(): any {
     if (!state.toasts.length)
         return null;
     return h('div', { className: 'wb-toasts', 'aria-live': 'polite' }, state.toasts.map(function (item?: any): any {
-        return h('div', { key: item.id, className: 'wb-toast wb-toast--' + (item.kind || 'info') }, h(Icon, { name: item.kind === 'err' ? 'alert' : item.kind === 'ok' ? 'checkCircle' : 'info', size: 14 }), h('span', { style: { minWidth: 0, overflowWrap: 'anywhere' } }, item.text));
+        return h('div', { key: item.id, role:item.kind==='err'?'alert':'status', className: 'wb-toast wb-toast--' + (item.kind || 'info') }, h(Icon, { name: item.kind === 'err' ? 'alert' : item.kind === 'ok' ? 'checkCircle' : 'info', size: 14 }), h('span', {title:item.text, style: { minWidth: 0, overflowWrap: 'anywhere' } }, item.text));
     }));
 }
 /* -------------------------------------------------------------- 工作台助手 */
@@ -646,15 +647,15 @@ function WorkbenchApp(): any {
     const failed = state.status === 'error' && !state.data;
     const WebAIPage = WB.pages['web-ai'];
     React.useEffect(()=>{if(page==='web-ai')setWebAIVisited(true)},[page]);
-    return h('div', {className:'wb-root'},
+    return h('div', {className:'wb-root'+(page==='web-ai'?' is-web-ai':'')},
       h('style',null,WB_CSS+WB_LAYOUT_CSS),
       h('header',{className:'wb-head'},h(Toolbar,{data:state.data,page,assistantOpen:state.assistantOpen}),h(TopNavigation,{page,data:state.data})),
       h('div',{className:'wb-workarea'+(state.assistantOpen||state.taskForm&&!state.contextHidden?' is-context-open':'')},
         h('div',{className:'wb-main'},h('div',{className:'wb-scroll'},
           page!=='web-ai'?h('div',{key:'business-page',className:'wb-page'},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
-          (webAIVisited||page==='web-ai')&&WebAIPage?h('div',{key:'web-ai-surface',className:'wb-page',hidden:page!=='web-ai'},h(WebAIPage)):null)),
+          (webAIVisited||page==='web-ai')&&WebAIPage?h('div',{key:'web-ai-surface',className:'wb-page wb-chat-page',hidden:page!=='web-ai'},h(WebAIPage)):null)),
         h(AssistantDrawer),h(TaskFormHost,{embedded:true})),
-      WB.Palette?h(WB.Palette,{open:paletteOpen,onClose:()=>setPaletteOpen(false)}):null,h(Toaster));
+      WB.Palette?h(WB.Palette,{open:paletteOpen,onClose:()=>setPaletteOpen(false)}):null,h(AnalysisMonitor),h(Toaster));
 }
 /* -------------------------------------------------------------------- apply */
 WB.apply = function apply(ctx?: any): any {

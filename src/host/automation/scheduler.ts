@@ -1,3 +1,4 @@
+import {busyReplyDue} from '../../shared/busy-reply.js'
 import {messageSyncDue} from '../../shared/message-schedule.js'
 import { drainWorkflowJobs } from './jobs.js'
 import { radarNeedsSummary } from '../news/summarizer.js'
@@ -98,7 +99,7 @@ async function runAutomationTick(ctx?: any, request?: {backlogOnly?:boolean;resu
                 notes.push('@我 失败：' + String((e && e.message) || e).slice(0, 120));
             }
         }
-        if (config.analyze !== false && extractSettings.enabled && loadWorkbenchState().settings.automation.enabled) {
+        if (config.analyze !== false && extractSettings.enabled && loadWorkbenchState().settings.automation.enabled && !loadWorkbenchState().jobs.some((job:any)=>job.kind==='analysis'&&job.input?.continuous&&['queued','running'].includes(job.status))) {
             // TODO 19：采集 → 分析在同一 tick 顺序执行；识别在写入临界区外跑，
             // 提交时走统一的 mutate（短写），失败计入重试（attempts<3 每个 tick 重放一次）
             try {
@@ -161,6 +162,14 @@ async function runAutomationTick(ctx?: any, request?: {backlogOnly?:boolean;resu
         note: notes.join('；'),
     };
 }
+let busySyncInFlight=false
+export async function runBusyMessageSync(ctx:any):Promise<any>{
+ if(busySyncInFlight||!busyReplyDue(loadWorkbenchState()))return {ran:false}
+ busySyncInFlight=true;const assertCurrent=workbenchGenerationGuard()
+ try{await mutateWorkbenchState((s:any)=>{assertCurrent();s.lastBusyReplyCheckAt=hostNowIso();return s});if(!loadWorkbenchState().settings.busyReply.enabled)return {ran:false};await syncYunzhijiaMessages(ctx);return {ran:true}}
+ catch(error){await mutateWorkbenchState((s:any)=>{assertCurrent();s.lastBusyReplyError=String((error as Error).message).slice(0,300);return s});return {ran:false}}
+ finally{busySyncInFlight=false}
+}
 /** 启动后台检查循环（每 60s 判断是否到期）；返回清理函数。 */
 function startAutomation(ctx?: any): any {
     automationStop?.();
@@ -170,6 +179,7 @@ function startAutomation(ctx?: any): any {
         if (stopped) return;
         const state = loadWorkbenchState();
         void drainWorkflowJobs(ctx).catch(() => {});
+        if(busyReplyDue(state))void runBusyMessageSync(ctx).catch(()=>{});
         if (automationDue(state, Date.now())) runAutomationTick(ctx,{automatic:true}).catch(() => {});
         else if (messageSyncDue(state)) runAutomationTick(ctx,{resumeMentionsOnly:true,automatic:true}).catch(() => {});
         else if (state.settings.automation.enabled && state.settings.aiExtract.enabled && (state.analysisQueue.some((row:any)=>row.status==='pending' || row.status==='failed' && row.attempts<3 && (!row.nextRetryAt || Date.parse(row.nextRetryAt)<=Date.now())) || state.radar.some((row:any)=>row.url && radarNeedsSummary(row) && (row.summaryAttempts||0)<3 && (!row.summaryRetryAt || Date.parse(row.summaryRetryAt)<=Date.now())))) runAutomationTick(ctx,{backlogOnly:true,automatic:true}).catch(()=>{});
@@ -186,6 +196,7 @@ function startAutomation(ctx?: any): any {
             if(stopped)return;
             const state=loadWorkbenchState();
             void drainWorkflowJobs(ctx).catch(()=>{});
+            if(busyReplyDue(state))void runBusyMessageSync(ctx).catch(()=>{});
             if(automationDue(state,Date.now()))runAutomationTick(ctx,{automatic:true}).catch(()=>{});
             else if(messageSyncDue(state))runAutomationTick(ctx,{resumeMentionsOnly:true,automatic:true}).catch(()=>{});
         });

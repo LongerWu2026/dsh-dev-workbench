@@ -1,3 +1,5 @@
+import {JsonTree} from './DeveloperExtras.js'
+import {jsonType} from './developer-utils.js'
 import { Btn, Field, Textarea, h } from '../../../core/runtime.js'
 import { toolCopyButton, toolErrorBlock, toolMonoStyle, toolOutputBlock } from '../shared-controls.js'
 
@@ -64,6 +66,9 @@ function toolJsonPane(props?: any): any {
         }
         try {
             const parsed = JSON.parse(text);
+            if(mode==='types'){props.patch({output:'export type Root = '+jsonType(parsed)+';',error:'',tree:false});return}
+            if(mode==='tree'){props.patch({tree:true,treeValue:parsed,error:''});return}
+            props.patch({tree:false});
             if (mode === 'validate') {
                 props.patch({
                     output: '✓ JSON 合法 · ' +
@@ -117,6 +122,6 @@ function toolJsonPane(props?: any): any {
             run('validate');
         },
         children: '校验',
-    }), h('div', { className: 'wb-spacer' }), h(toolCopyButton, { text: value.output })), h(toolErrorBlock, { text: value.error }), h(toolOutputBlock, { text: value.output, placeholder: '格式化 / 压缩 / 校验的结果' }))));
+    }), h(Btn,{size:'sm',onClick:()=>run('tree')},'树形查看'),h(Btn,{size:'sm',onClick:()=>run('types')},'转 TypeScript'), h('div', { className: 'wb-spacer' }), h(toolCopyButton, { text: value.output })), h(toolErrorBlock, { text: value.error }), value.tree?h(JsonTree,{value:value.treeValue}):h(toolOutputBlock, { text: value.output, placeholder: '格式化 / 压缩 / 校验的结果' }))));
 }
 export { toolJsonError, toolJsonSummary, toolJsonPane }
