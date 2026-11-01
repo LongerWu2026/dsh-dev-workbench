@@ -4,21 +4,29 @@ import { KNOWLEDGE_KINDS, REPLY_STATUSES, ensureArray } from '../domain/model.js
 import { workbenchApi } from '../application/workbench-service.js'
 import { loadWorkbenchState } from '../storage/state-store.js'
 import { asString } from '../platform/runtime.js'
+import {runAssistantOperation,assistantToolConversation,assistantToolKnowledgeScope} from '../assistant/assistant-actions.js'
+import {workbenchContext} from '../application/service-context.js'
+import {identifyActiveHubTurn} from '../assistant/hub-turns.js'
+// Host tool values must already be JSON, not just serializable. Optional service
+// fields may be undefined; remove them at the transport boundary without mutating state.
+function jsonToolValue(value:any):any{return JSON.parse(JSON.stringify(value))}
 function officeToolDefinitions(): any {
     function tool(name?: any, description?: any, properties?: any, required?: any, execute?: any): any {
-        return { name, description, parameters: { type: 'object', properties, required: required || [], additionalProperties: false }, output: { schema: toolOutputSchema(), render: renderToolText }, execute };
+        return { name, description, parameters: { type: 'object', properties, required: required || [], additionalProperties: false }, output: { schema: toolOutputSchema(), render: renderToolText }, execute:async(...args:any[])=>jsonToolValue(await execute(...args)) };
     }
     return [
+        tool('workbench_assistant_action','在当前助手业务会话中操作识别、资讯、待办、回复、知识或办公作业。消息识别会话先用analysis.results按query/kind查询真实提取结果，再用analysis.updateResult以真实kind(task/reply)+id+patch修改原记录。办公主题绑定日报周报日期范围或批量回复对象，不允许换为其他主题；office.start可省略kind/input沿用绑定。任务方案归当前待办，单条回复归当前待回复。busyReply.configure仅在用户明确要求开启或关闭忙碌自动回复时传enabled布尔并生成确认卡，不因忙碌语气自动开启。office.adoptReply/office.saveKnowledge只传真实jobId和stepId。只能修改已保存且确由识别来源关联的事项；待回复仅snippet摘要和stage，不能改收件人或原消息。使用当前会话，不传会话ID。知识修改删除、回复发送只生成确认卡，确认由用户完成。',{
+            operation:{type:'string',enum:['task.update','reply.stage','reply.draft','reply.send','analysis.status','analysis.results','analysis.updateResult','analysis.continue','analysis.retry','analysis.fetch','radar.fetch','radar.summary','radar.toTask','radar.toKnowledge','knowledge.search','knowledge.update','knowledge.delete','office.start','office.status','office.retry','office.cancel','office.adoptReply','office.saveKnowledge','busyReply.status','busyReply.configure']},
+            id:{type:'string'},jobId:{type:'string'},stepId:{type:'string'},enabled:{type:'boolean'},query:{type:'string'},runId:{type:'string'},offset:{type:'number',minimum:0},limit:{type:'number',minimum:1,maximum:50},text:{type:'string'},stage:{type:'string'},kind:{type:'string',enum:['all','task','reply','reply_batch','work_report','task_assist']},patch:{type:'object',properties:{status:{type:'string'},dueAt:{type:['string','null']},priority:{type:'string'},title:{type:'string'},body:{type:'string'},url:{type:'string'},description:{type:'string'},snippet:{type:'string',maxLength:300},stage:{type:'string',enum:REPLY_STATUSES},assignee:{type:'string'},tags:{type:'array',items:{type:'string'}},kind:{type:'string'}},additionalProperties:false},input:{type:'object',properties:{period:{type:'string',enum:['day','week']},replyIds:{type:'array',items:{type:'string'}}},additionalProperties:false}
+        },['operation'],async(args:any,execution:any)=>{if(['confirm','cancel'].includes(args.operation)||String(args.operation).startsWith('development.'))throw Error('此操作需要用户在对应界面明确确认');const conversationId=assistantToolConversation(execution);if(!conversationId)throw Error('请从 AI 助手的对应会话发起操作');const result=jsonToolValue(await runAssistantOperation(workbenchContext(),{...args,executionOrigin:'tool',conversationId,knowledgeScope:assistantToolKnowledgeScope(execution),assistantTurnId:identifyActiveHubTurn(execution?.agent?.session)?.id}));return {...result,text:JSON.stringify(result)}}),
         tool('workbench_knowledge_retrieve','按当前项目检索已确认知识原文，返回片段ID、版本、正文和行号。回答时用[知识:片段ID]引用；无命中不能冒充知识答案。', {query:{type:'string'},projectId:{type:'string'},accountId:{type:'string'}},['query'],async(args:any)=>{const result=await workbenchApi.knowledgeRetrieve({query:args.query,scope:{projectId:args.projectId,accountId:args.accountId}});return {text:JSON.stringify(result),...result}}),
         tool('workbench_knowledge_read','重新读取检索得到的知识片段；旧版本、失效、归档或其他范围的片段会拒绝。',{ids:{type:'array',items:{type:'string'},maxItems:8},projectId:{type:'string'},accountId:{type:'string'}},['ids'],async(args:any)=>{const result=await workbenchApi.knowledgeRead({ids:args.ids,scope:{projectId:args.projectId,accountId:args.accountId}});return {text:JSON.stringify(result),...result}}),
         tool('workbench_office_workflow', '用户要求批量准备回复、生成日报周报或整理待办处理方案时，启动可恢复办公作业。start后立即返回，不轮询。status查询进度，retry继续未完成步骤，cancel停止后续步骤。草稿不自动发送，不执行项目命令。', {
             action:{type:'string',enum:['start','status','retry','cancel']},kind:{type:'string',enum:['reply_batch','work_report','task_assist']},replyIds:{type:'array',items:{type:'string'},maxItems:20},taskId:{type:'string'},period:{type:'string',enum:['day','week']},id:{type:'string'}
-        }, ['action'], async(args:any)=>{
-            if(args.action==='start')await workbenchApi.officeWorkflowStart(args.kind,{replyIds:args.replyIds,taskId:args.taskId,period:args.period});
-            else if(['retry','cancel'].includes(args.action))await workbenchApi.officeWorkflowControl(args.id,args.action);
-            else if(args.action!=='status')throw new Error('未知动作');
-            const jobs=loadWorkbenchState().jobs.filter((j:any)=>!args.id||j.id===args.id).slice(-20).map((j:any)=>({id:j.id,kind:j.kind,status:j.status,error:j.error,steps:j.steps?.map((s:any)=>({id:s.id,status:s.status,error:s.error,artifact:s.artifact}))}));
-            return {text:JSON.stringify(jobs),jobs};
+        }, ['action'], async(args:any,execution:any)=>{
+            const conversationId=assistantToolConversation(execution);if(!conversationId)throw Error('请从 AI 助手的日常工作或对应事项会话发起办公操作')
+            const result=await runAssistantOperation(workbenchContext(),{conversationId,operation:'office.'+args.action,kind:args.kind,id:args.id,input:{replyIds:args.replyIds,taskId:args.taskId,period:args.period},assistantTurnId:identifyActiveHubTurn(execution?.agent?.session)?.id});
+            return {...result,text:JSON.stringify(result.status==='error'?result:result.jobs||[])};
         }),
         tool('workbench_manage_replies', '查询或更新待回复。先查询取得真实 Reply ID；收到只标记已确认收到，实质答复才标已回复。此工具只维护本地记录，不发送消息。', {
             action: { type: 'string', enum: ['list', 'create', 'set_stage'] }, id: { type: 'string' }, sourceId: { type: 'string' }, stage: { type: 'string', enum: REPLY_STATUSES }, includeDone: { type: 'boolean' }, query: { type: 'string' },
@@ -34,21 +42,26 @@ function officeToolDefinitions(): any {
             const replies = ensureArray(loadWorkbenchState().replies).filter(function (row?: any): any { return (args.includeDone || ['待回复', '已确认收到', '已自动回复'].includes(row.stage)) && (!args.query || [row.snippet, row.contact, row.groupName].join(' ').includes(args.query)); });
             return { text: JSON.stringify(replies), replies };
         }),
-        tool('workbench_manage_knowledge', '查询、创建或更新工作台知识。新建或修改的内容进入待审核，不自动确认为事实；更新前先查询真实 ID，正文保留原文来源链接。', {
-            action: { type: 'string', enum: ['list', 'create', 'update'] }, id: { type: 'string' }, title: { type: 'string' }, body: { type: 'string' }, url: { type: 'string' }, query: { type: 'string' }, kind: { type: 'string', enum: KNOWLEDGE_KINDS },
-        }, ['action'], async function (args?: any): Promise<any> {
+        tool('workbench_manage_knowledge', '查询、创建或准备修改/删除工作台知识。修改和删除先展示确认卡，由用户确认后执行；新内容进入待审核。先查询真实 ID，保留原文来源链接。', {
+            action: { type: 'string', enum: ['list', 'create', 'update','delete'] }, id: { type: 'string' }, title: { type: 'string' }, body: { type: 'string' }, url: { type: 'string' }, query: { type: 'string' }, kind: { type: 'string', enum: KNOWLEDGE_KINDS },
+        }, ['action'], async function (args?: any,execution?:any): Promise<any> {
             if (args.action === 'list') {
-                const rows = ensureArray(loadWorkbenchState().knowledge).filter(function (row?: any): any { return knowledgeAllowed(row,defaultKnowledgeScope(loadWorkbenchState()),true) && (!args.query || (row.title + ' ' + row.body).includes(args.query)); }).slice(-50);
+                const rows = ensureArray(loadWorkbenchState().knowledge).filter(function (row?: any): any { return knowledgeAllowed(row,defaultKnowledgeScope(loadWorkbenchState(),assistantToolKnowledgeScope(execution)),true) && (!args.query || (row.title + ' ' + row.body).includes(args.query)); }).slice(-50);
                 return { text: JSON.stringify(rows), items: rows };
             }
             if (args.action === 'create' && !asString(args.title, 200))
                 throw new Error('知识标题不能为空');
-            if (args.action === 'update' && !args.id)
+            if (['update','delete'].includes(args.action) && !args.id)
                 throw new Error('更新需要真实知识 ID');
             const patch: any = {reviewState:'candidate'};
             for (const key of ['title', 'body', 'url', 'kind'])
                 if (args[key] !== undefined)
                     patch[key] = args[key];
+            if(['update','delete'].includes(args.action)){
+                const conversationId=assistantToolConversation(execution)||'system:knowledge';
+                const result=await runAssistantOperation(workbenchContext(),{conversationId,operation:'knowledge.'+args.action,id:args.id,patch,knowledgeScope:assistantToolKnowledgeScope(execution),assistantTurnId:identifyActiveHubTurn(execution?.agent?.session)?.id});
+                return {...result,text:JSON.stringify(result)};
+            }
             const state = args.action === 'create' ? await workbenchApi.createKnowledge(patch) : await workbenchApi.updateKnowledge(args.id, patch);
             const item = args.action === 'create' ? state.knowledge.find(function (row?: any): any { return row.title === String(args.title || '').trim() && (row.url || '') === (args.url && /^https?:\/\//.test(args.url) ? args.url.trim() : ''); }) : state.knowledge.find(function (row?: any): any { return row.id === args.id; });
             return { text: '知识已保存：' + item.id, item, revision: state.revision };

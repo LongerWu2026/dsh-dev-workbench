@@ -16,22 +16,19 @@ try{
  await page.addScriptTag({content:built.outputFiles[0].text});await page.addScriptTag({content:readFileSync(resolve(base,'../../client.js'),'utf8')});await page.evaluate(()=>window.mountWorkbench());await page.locator('.wb-root').waitFor()
  for(const width of [1280,800,560,360])for(const theme of ['light','dark']){
   await page.setViewportSize({width,height:600});await page.evaluate(t=>document.documentElement.className=t,theme)
-  for(const section of ['dashboard','tasks','replies','radar','knowledge','web-ai','search','agents','office','toolbox','collab','settings']){
+  for(const section of ['dashboard','tasks','replies','radar','knowledge','web-ai','search','agents','toolbox','collab','settings']){
    await page.evaluate(p=>window.WB.go(p),section);await page.locator('.wb-page').first().waitFor();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))
    const metrics=await page.evaluate(()=>{const root=document.querySelector('.wb-root'),scroll=document.querySelector('.wb-scroll'),nav=document.querySelector('.wb-topnav');const clippedControls=[...root.querySelectorAll('button,input,select,textarea')].filter(el=>{if(!el.checkVisibility())return false;const r=el.getBoundingClientRect();for(let parent=el.parentElement;parent&&parent!==root;parent=parent.parentElement){const p=parent.getBoundingClientRect();if(['auto','scroll'].includes(getComputedStyle(parent).overflowX)&&parent.scrollWidth>parent.clientWidth+2)break;if(['hidden','clip'].includes(getComputedStyle(parent).overflowX)&&(r.left<p.left-2||r.right>p.right+2))return true}return false}).map(el=>(el.getAttribute('aria-label')||el.textContent||el.tagName).slice(0,60));return{pageOverflow:scroll.scrollWidth-scroll.clientWidth,rootOverflow:root.scrollWidth-root.clientWidth,navOverflow:nav.scrollWidth-nav.clientWidth,visibleHeight:scroll.clientHeight,clippedControls}})
    report.push({width,theme,section,...metrics});if(metrics.pageOverflow>2||metrics.rootOverflow>2||metrics.navOverflow>2||metrics.clippedControls.length)await page.screenshot({path:resolve(out,`${width}-${theme}-${section}.png`)})
   }
  }
+ // Legacy office routes must remain navigable without restoring a duplicate run-list page.
  for(const width of [1280,800,560,360])for(const theme of ['light','dark']){
-  await page.setViewportSize({width,height:700});await page.evaluate(t=>{document.documentElement.className=t;window.officeHistoryOriginal=window.WB.store.get().data;window.WB.store.set({page:'office',officeView:'history',data:{...window.officeHistoryOriginal,runs:[{id:'office-done',status:'completed',summary:'客户问题处理记录',startedAt:'2026-10-31T01:00:00Z',endedAt:'2026-10-31T01:00:02Z',steps:[],evidence:[]}]}})},theme);
-  await page.getByRole('group',{name:'筛选执行记录'}).waitFor();
-  for(const pending of [false,true]){
-   if(pending){await page.evaluate(()=>{const state=window.WB.store.get();window.WB.store.set({data:{...state.data,runs:[...state.data.runs,{id:'office-waiting',status:'waiting_approval',summary:'等待原会话确认的长内容'.repeat(12),startedAt:'2026-10-31T01:00:00Z'}]}})});await page.locator('.wb-office-approvals summary').click();await page.getByRole('button',{name:'查看详情',exact:true}).click();}
-   const metrics=await page.locator('.wb-scroll').evaluate(el=>({pageOverflow:el.scrollWidth-el.clientWidth,headingCount:el.querySelectorAll('h1').length,nestedPages:el.querySelectorAll('.wb-office-history .wb-page').length}));
-   if(width<=560){const fits=await page.locator('.wb-office-run-main').first().evaluate(el=>el.querySelector('.wb-item-main').getBoundingClientRect().width>=el.clientWidth*.9);if(!fits)throw Error('窄窗口执行标题被操作按钮挤压');}if(metrics.headingCount!==1||metrics.nestedPages)throw Error('执行记录仍有重复页面标题或嵌套留白');
-   await page.getByRole('button',{name:pending?'收起执行详情':'展开执行详情',exact:true}).first().scrollIntoViewIfNeeded();report.push({section:'office-history'+(pending?'-pending':''),width,theme,...metrics});await page.screenshot({path:resolve(out,`office-history-${width}-${theme}-${pending?'pending':'completed'}.png`)});
-  }
-  await page.evaluate(()=>window.WB.store.set({data:window.officeHistoryOriginal,officeView:'workflows'}));
+  await page.setViewportSize({width,height:700});await page.evaluate(t=>{document.documentElement.className=t;window.officeHistoryOriginal=window.WB.store.get().data;window.WB.store.set({page:'office',officeView:'history',data:{...window.officeHistoryOriginal,runs:[{id:'office-done',status:'completed',summary:'客户问题处理记录',startedAt:'2026-10-31T01:00:00Z',steps:[],evidence:[]}]}})},theme);
+  await page.locator('.wb-assistant').waitFor();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))));
+  const metrics=await page.evaluate(()=>{const state=window.WB.store.get(),assistant=document.querySelector('.wb-assistant');if(state.page!=='assistant'||state.assistantConversationId!=='system:office')throw Error('旧办公链接未迁入日常工作会话');if(!state.data.runs.some(run=>run.id==='office-done'))throw Error('迁移丢失旧执行数据');if(document.querySelector('.wb-office-history'))throw Error('仍展示孤立执行记录');return{overflow:assistant.scrollWidth-assistant.clientWidth,visibleHeight:assistant.getBoundingClientRect().height}});
+  report.push({section:'legacy-office-assistant',width,theme,...metrics});await page.screenshot({path:resolve(out,`legacy-office-${width}-${theme}.png`)});
+  await page.evaluate(()=>window.WB.store.set({data:window.officeHistoryOriginal,page:'dashboard',officeView:null,assistantOpen:false,assistantConversationId:null}));
  }
  for(const width of [800,360]){
   await page.setViewportSize({width,height:480});await page.evaluate(()=>{const data=window.WB.store.get().data;window.briefLayoutOriginal=data;const tasks=[...Array.from({length:12},(_,i)=>({id:'brief-old-'+i,title:'旧紧急待办'+i,status:'ready',priority:'high',dueAt:'2026-10-01T00:00:00Z',createdAt:'2026-10-01T00:00:00Z',tags:[]})),{id:'brief-new',title:'今日新识别普通待办',status:'ready',priority:'normal',createdAt:new Date().toISOString(),tags:[]},{id:'brief-normal',title:'历史普通待办',status:'ready',priority:'normal',createdAt:'2026-10-01T00:00:00Z',tags:[]}];window.WB.store.set({data:{...data,tasks}});window.WB.go('dashboard')})
@@ -83,7 +80,7 @@ try{
  await page.evaluate(()=>{window.WB.store.set({taskForm:null,assistantOpen:true,contextHidden:true})});await page.getByPlaceholder('输入指令，或让我帮你整理待办…').waitFor();await page.screenshot({path:resolve(out,'assistant-360.png')})
  const assistant=await page.locator('.wb-assistant').evaluate(el=>({width:el.getBoundingClientRect().width,overflow:el.scrollWidth-el.clientWidth}));report.push({section:'assistant',width:360,...assistant})
  await page.evaluate(()=>window.WB.store.set({assistantRefs:Array.from({length:8},(_,i)=>({kind:'task',id:'context-'+i,title:'带有长标题的合成上下文 '+i}))}))
- await page.getByRole('button',{name:'清空上下文'}).waitFor();await page.screenshot({path:resolve(out,'assistant-contexts-360.png')})
+ await page.getByRole('region',{name:'已选择的上下文'}).waitFor();await page.screenshot({path:resolve(out,'assistant-contexts-360.png')})
  const composer=await page.getByPlaceholder('输入指令，或让我帮你整理待办…').evaluate(el=>({bottom:el.getBoundingClientRect().bottom,viewport:innerHeight,boxes:['.wb-workarea','.wb-assistant','.wb-assistant-composer'].map(s=>{const n=document.querySelector(s),r=n.getBoundingClientRect();return{selector:s,height:r.height,top:r.top,minHeight:getComputedStyle(n).minHeight,maxHeight:getComputedStyle(n).maxHeight}})}));report.push({section:'assistant-contexts',width:360,composerOutside:composer.bottom>composer.viewport+2,composer})
  await page.setViewportSize({width:360,height:320});await page.getByPlaceholder('输入指令，或让我帮你整理待办…').scrollIntoViewIfNeeded()
  const shortInput=await page.getByPlaceholder('输入指令，或让我帮你整理待办…').evaluate(el=>el.getBoundingClientRect().bottom<=innerHeight+2)
@@ -97,22 +94,19 @@ try{
    const metrics=await page.locator('.wb-scroll').evaluate(el=>({pageOverflow:el.scrollWidth-el.clientWidth,visibleHeight:el.clientHeight}));report.push({section,zoom,...metrics});await page.screenshot({path:resolve(out,`zoom-${zoom}-${section}.png`)})
   }
  }
- await page.evaluate(()=>{document.documentElement.style.zoom='1';window.WB.store.set({assistantOpen:false,assistantRefs:[],taskForm:null});window.WB.go('office')})
- for(const height of [600,320]){
-  await page.setViewportSize({width:360,height});await page.getByRole('button',{name:'新建办公流程'}).click();await page.getByRole('dialog').waitFor();await page.getByRole('button',{name:'加入执行队列'}).scrollIntoViewIfNeeded()
-  const metrics=await page.getByRole('dialog').evaluate(el=>({overflow:el.scrollWidth-el.clientWidth,visibleHeight:el.getBoundingClientRect().height}));report.push({section:'office-workflow-modal',width:360,height,...metrics});await page.screenshot({path:resolve(out,`office-workflow-360-${height}.png`)});await page.getByRole('button',{name:'关闭',exact:true}).click()
- }
+ await page.evaluate(()=>{document.documentElement.style.zoom='1';window.WB.store.set({assistantOpen:false,assistantRefs:[],taskForm:null})})
+
  for(const width of [800,360]){
   await page.setViewportSize({width,height:480});await page.evaluate(()=>{window.WB.store.set({assistantOpen:false,assistantRefs:[]});window.WB.go('knowledge')});await page.getByRole('textbox',{name:'知识检索测试问题'}).fill('接口发布验收');await page.getByRole('button',{name:'测试检索'}).click();if(!await page.locator('section[aria-label="知识检索依据"] details').evaluate(el=>el.open))await page.getByText(/知识依据 · 1 个片段/).click();await page.getByRole('button',{name:/合成知识验收规范.*行1/}).click();await page.getByRole('dialog').waitFor();const metrics=await page.getByRole('dialog').evaluate(el=>({overflow:el.scrollWidth-el.clientWidth,visibleHeight:el.getBoundingClientRect().height}));report.push({section:'knowledge-source-modal',width,...metrics});await page.screenshot({path:resolve(out,`knowledge-source-${width}.png`)});await page.getByRole('button',{name:'关闭',exact:true}).click()
  }
  await page.evaluate(()=>{const data=window.WB.store.get().data;window.WB.store.set({data:{...data,revision:100,tasks:[{id:'layout-message-task',title:'消息时间布局验收',status:'ready',priority:'high',sourceRefId:'layout-source',sourceRefs:[],tags:[]}],replies:[{id:'layout-reply',sourceId:'layout-source',msgId:'original-message',stage:'待回复',contact:'BOT-6a50…',taskIds:[]}],sources:[{id:'layout-source',provider:'yunzhijia',sender:'BOT-6a50…',excerpt:'原消息'+('original-text-'.repeat(30)),locator:{groupId:'session-'.repeat(10),groupName:'研发协作讨论群'.repeat(8),senderId:'BOT-6a501234abcd',msgId:'original-message',accountId:'fixture:me',sentAt:'2026-08-24T01:32:03.405Z'}}]}});window.WB.go('replies')})
  for(const width of [800,360])for(const section of ['dashboard','replies']){
-  await page.setViewportSize({width,height:480});await page.evaluate(section=>window.WB.go(section),section);await page.locator('.wb-item-title, .wb-reply-item strong').filter({hasText:'机器人'}).first().waitFor();if(section==='dashboard')await page.getByText('消息来源',{exact:true}).click();await page.getByText('来自：'+'研发协作讨论群'.repeat(8),{exact:false}).first().waitFor()
+  await page.setViewportSize({width,height:480});await page.evaluate(section=>window.WB.go(section),section);await page.locator('.wb-item-title, .wb-reply-item strong').filter({hasText:'机器人'}).first().waitFor();if(section==='dashboard'&&await page.getByRole('group',{name:'消息来源'}).first().evaluate(el=>!!el.closest('details')))throw Error('首页消息来源不应折叠');await page.getByText('来自：'+'研发协作讨论群'.repeat(8),{exact:false}).first().waitFor()
   const metrics=await page.locator('.wb-scroll').evaluate(el=>({pageOverflow:el.scrollWidth-el.clientWidth,visibleHeight:el.clientHeight}));report.push({section:'reply-group-origin-'+section,width,...metrics});await page.screenshot({path:resolve(out,`reply-group-${section}-${width}.png`)})
  }
  for(const width of [800,360])for(const section of ['dashboard','tasks-list','tasks-board']){
   await page.setViewportSize({width,height:480});await page.evaluate(section=>window.WB.go(section==='dashboard'?'dashboard':'tasks'),section);if(section!=='dashboard')await page.getByRole('button',{name:section==='tasks-list'?'列表':'看板',exact:true}).click()
-  if(section==='dashboard')await page.getByText('消息来源',{exact:true}).click();
+  if(section==='dashboard'&&await page.getByRole('group',{name:'消息来源'}).first().evaluate(el=>!!el.closest('details')))throw Error('首页消息来源不应折叠');
   const metadata=page.getByRole('group',{name:'消息来源'}).first();await metadata.waitFor();const content=await metadata.innerText();if(section==='tasks-list'){await page.getByRole('columnheader',{name:'消息发出时间'}).waitFor();await page.getByText('2026-08-24 09:32:03',{exact:true}).waitFor();}else if(!content.includes('消息发出时间：2026-08-24 09:32:03（北京时间）'))throw Error('任务消息时间缺失: '+section);await metadata.scrollIntoViewIfNeeded()
   const metrics=await page.locator('.wb-scroll').evaluate(el=>({pageOverflow:el.scrollWidth-el.clientWidth,visibleHeight:el.clientHeight}));report.push({section:'task-message-time-'+section,width,...metrics});await page.screenshot({path:resolve(out,`task-message-time-${section}-${width}.png`)})
  }

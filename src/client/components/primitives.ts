@@ -259,6 +259,7 @@ function Kbd(props?: any): any {
 
 function Modal(props?: any): any {
     const maskRef=React.useRef<any>(null);
+    const titleId=React.useId();
     React.useEffect(function (): any {
         if (!props.open)
             return undefined;
@@ -288,7 +289,8 @@ function Modal(props?: any): any {
         className: 'wb-modal',
         role: 'dialog',
         'aria-modal': 'true',
+        'aria-labelledby': props.title ? titleId : undefined,
         style: props.width ? { width: 'min(' + props.width + 'px, 100%)' } : undefined,
-    }, h('div', { className: 'wb-modal-head' }, h('div', { style: { flex: '1 1 auto', minWidth: 0 } }, props.title ? h('h2', null, props.title) : null, props.sub ? h('strong', null, props.sub) : null), h(IconBtn, { name: 'close', label: '关闭', onClick: props.onClose })), h('div', { className: 'wb-modal-body' }, props.children), props.footer ? h('div', { className: 'wb-modal-foot' }, props.footer) : null));
+    }, h('div', { className: 'wb-modal-head' }, h('div', { style: { flex: '1 1 auto', minWidth: 0 } }, props.title ? h('h2', {id:titleId}, props.title) : null, props.sub ? h('strong', null, props.sub) : null), h(IconBtn, { name: 'close', label: '关闭', onClick: props.onClose })), h('div', { className: 'wb-modal-body' }, props.children), props.footer ? h('div', { className: 'wb-modal-foot' }, props.footer) : null));
 }
 export { WB_ICON_PATHS, Icon, Divider, Spinner, Btn, IconBtn, Badge, Chip, Panel, PageHead, Stat, Field, Input, Textarea, Select, Toggle, Segmented, Tabs, Empty, Progress, Kbd, Modal }

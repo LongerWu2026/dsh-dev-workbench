@@ -19,6 +19,9 @@ function setup(){
 async function newTask(user){await screen.findByRole('button',{name:/BUG-2026-1.*处理中.*合成 ERP/})}
 async function selectIssue(user){await user.click(screen.getByRole('button',{name:/BUG-2026-1.*处理中.*合成 ERP/}));await user.click(screen.getByRole('button',{name:'下一步：选择工程'}));await screen.findByDisplayValue('pnpm test')}
 describe('以研发任务为中心的工作台',()=>{
+ it('测试阶段缺命令时主按钮直接配置，保存后才显示继续，不提交空转请求',async()=>{
+  const {WB,calls,task}=setup(),user=userEvent.setup();Object.assign(task,{status:'paused',stage:'test',pauseReason:'尚未配置工程测试命令。分析与开发已保留，请补充测试命令。',steps:task.steps.slice(0,2)});render(<WB.pages.agents/>);await screen.findByText('Linky 已连接 · 合成开发者');await user.click(screen.getByRole('button',{name:/BUG-2026-1.*已暂停.*合成 ERP 缺陷/}));await screen.findByText('分析与开发已完成，请先配置测试命令');expect(screen.queryByRole('button',{name:'继续执行'})).toBeNull();await user.click(screen.getByRole('button',{name:'配置测试命令'}));expect(screen.getByRole('combobox',{name:'验证工程'}).value).toBe('project');expect(screen.getByRole('textbox',{name:'工程测试命令'}).value).toBe('');expect(calls.some(c=>c.action==='start')).toBe(false);await user.type(screen.getByRole('textbox',{name:'工程测试命令'}),'node check-skill.mjs');await user.click(screen.getByRole('button',{name:'保存设置'}));await screen.findByRole('button',{name:'继续执行'});expect(calls.find(c=>c.action==='configure').config.checks.project).toEqual([['node','check-skill.mjs']]);expect(calls.some(c=>c.action==='start')).toBe(false);await user.click(screen.getByRole('button',{name:'继续执行'}));await waitFor(()=>expect(calls.filter(c=>c.action==='start')).toHaveLength(1))
+ })
  it('自动检测登录，办公与技术配置不占研发页签，首屏无原始参数',async()=>{
   const {WB,calls}=setup();render(<WB.pages.agents/>);await screen.findByText('Linky 已连接 · 合成开发者');expect(calls.map(c=>c.action)).toEqual(['state','detect','workItems']);expect(screen.queryByText('办公与历史')).toBeNull();expect(screen.queryByText('连接与工程')).toBeNull();expect(screen.queryByDisplayValue('/synthetic/linky')).toBeNull();expect(screen.queryByRole('button',{name:'新建研发任务'})).toBeNull();expect(screen.getByLabelText('我的工作项')).toBeTruthy()
  })
@@ -124,4 +127,12 @@ describe('以研发任务为中心的工作台',()=>{
  it('按需要处理和编号筛选任务，退回后不沿用上轮进度',async()=>{
   const {WB,task}=setup(),user=userEvent.setup();task.status='rejected';task.stage='implementation';render(<WB.pages.agents/>);await user.click(await screen.findByText('研发执行记录'));await user.click(await screen.findByRole('button',{name:/BUG-2026-1.*已退回/}));await screen.findByText('累计 1 / 6 阶段 · 剩余 5');expect(screen.getByText(/测试验证 · 待处理/)).toBeTruthy();await user.type(screen.getByRole('textbox',{name:'搜索研发会话'}),'no-match');expect(within(screen.getByRole('region',{name:'研发任务列表'})).queryByRole('button',{name:/BUG-2026-1/})).toBeNull();await user.click(screen.getByRole('button',{name:'清除筛选'}));expect(screen.getByRole('button',{name:/BUG-2026-1.*已退回/})).toBeTruthy()
  })
+})
+
+
+it('兼容接续后可打开保留的原历史会话，暂停阶段已有完成证据不丢失',async()=>{
+ const {WB,calls}=setup(),user=userEvent.setup(),real=WB.rpc,open=vi.fn();WB.setNativeSessions({open});
+ WB.rpc=vi.fn(async(method,args)=>{const value=await real(method,args);if(args.request.action==='detail')return {...value,task:{...value.task,status:'paused',stage:'implementation',cycleStart:0,sessionId:'compatible-session',steps:[{stage:'analysis',status:'completed',at:'2026-11-01T00:00:00Z',output:'分析已完成'},{stage:'implementation',status:'completed',at:'2026-11-01T00:00:01Z',output:'代码已完成'}],sessionRecoveries:[{fromSessionId:'original-mixed-session',toSessionId:'compatible-session',stage:'implementation',cycleStart:0,status:'completed',at:'2026-11-01T00:00:00Z',model:{provider:'current-provider',model:'current-model'},context:'接续上下文',workspaceHash:'hash'}]},messages:[{sessionId:'original-mixed-session',entries:[{role:'assistant',text:'原历史的内容仍保留'}]}]};return value});
+ render(<WB.pages.agents/>);await user.click(await screen.findByText('研发执行记录'));await user.click(await screen.findByRole('button',{name:/BUG-2026-1.*待人工审查/}));await screen.findByLabelText('任务详情');expect(screen.getByRole('progressbar',{name:'研发流程进度'}).value).toBe(2);
+ await user.click(screen.getByText('已保留原历史会话 · 1 次兼容接续'));await user.click(screen.getByRole('button',{name:'打开原历史会话 1'}));expect(open).toHaveBeenCalledWith('original-mixed-session');await user.click(screen.getByRole('button',{name:'会话过程'}));expect(screen.getByText('原历史的内容仍保留')).toBeTruthy();expect(calls.some(call=>['start','prepare','writeback'].includes(call.action))).toBe(false)
 })

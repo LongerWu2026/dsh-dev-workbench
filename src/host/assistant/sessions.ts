@@ -8,6 +8,9 @@ import {auditEntry} from '../domain/model.js'
 import { cwdForHostCommands } from '../integrations/environment.js'
 import { loadWorkbenchState, mutateWorkbenchState, workbenchGenerationGuard } from '../storage/state-store.js'
 import { asString, createHash } from '../platform/runtime.js'
+import {developmentSessionIds} from '../storage/development-store.js'
+import {taskThreads,taskThreadOwner,rememberTaskThread} from './task-threads.js'
+import {hubSessionOwner} from './hub-store.js'
 /* ============================================================================
  * dev-workbench host — 工作台助手（TODO 04：侧栏内可对话）
  *
@@ -112,24 +115,50 @@ function rememberAssistantSession(sessionId?: any): any {
         return current;
     });
 }
-/** 取（或建）助手会话；陈旧 id 自动丢弃重建。 */
-async function ensureAssistantSession(ctx?: any): Promise<any> {
-    const sessions = hostService(ctx, 'sessions');
-    const controller = hostService(ctx, 'sessionController');
-    if (!sessions || typeof sessions.get !== 'function' || !controller)
-        return null;
-    const state = loadWorkbenchState();
-    const savedId = state.settings && state.settings.assistantSessionId;
-    if (savedId && !isLegacySessionId(savedId)) {
-        const existing = sessions.get(savedId);
-        if (existing && !isWorkbenchBackgroundSession(state,existing.id,existing))
-            return existing;
-    }
-    const session = await createPersistedSession(ctx);
-    if (!session)
-        return null;
-    await rememberAssistantSession(session.id);
-    return session;
+function officeTaskId(input:any={}):string {
+    const id=asString(input.taskId,120)
+    if(id&&!loadWorkbenchState().tasks.some((task:any)=>task.id===id))throw new Error('找不到这条待办，无法打开对应会话')
+    return id
+}
+function scopeFailure(input:any={}):any {
+    const taskId=officeTaskId(input),id=asString(input.sessionId,120),owner=id&&taskThreadOwner(id)
+    const hubOwner=id&&hubSessionOwner(id)
+    if(hubOwner&&hubOwner!=='task:'+taskId)return {status:'wrong_task_session',note:'该会话属于独立事项，请从 AI 助手对应入口继续'}
+    if(id&&isWorkbenchBackgroundSession(loadWorkbenchState(),id))return {status:'background_session',note:'后台识别会话不能接收自由对话，请从 AI 助手固定入口继续'}
+    return id&&((taskId&&owner!==taskId)||(!taskId&&owner))?{status:'wrong_task_session',note:'会话与当前待办不匹配，请切换到对应待办的会话'}:null
+}
+async function restoreOfficeSession(ctx:any,id:string):Promise<any>{
+    const sessions=hostService(ctx,'sessions'),controller=hostService(ctx,'sessionController')
+    if(sessions?.get?.(id))return sessions.get(id)
+    if(typeof controller?.resolveAgent!=='function')return null
+    const handle=await controller.resolveAgent(id)
+    if(handle?.error)throw handle.error
+    return sessions.get(id)||handle?.agent?.session||null
+}
+async function rememberOfficeSession(session:any,input:any={}){
+    const taskId=officeTaskId(input)
+    if(taskId){const title=sessionTitleOf(session),task=loadWorkbenchState().tasks.find((task:any)=>task.id===taskId);rememberTaskThread(taskId,session.id,title.startsWith('会话 ')?task.title:title)}
+    else await rememberAssistantSession(session.id)
+}
+const taskSessionPromises=new Map<string,Promise<any>>()
+/** A task owns its conversation history, independently of the generic office chat. */
+async function ensureAssistantSession(ctx?: any,taskId=''): Promise<any> {
+    if(taskId&&taskSessionPromises.has(taskId))return taskSessionPromises.get(taskId)
+    const pending=(async()=>{
+        const assertCurrent=workbenchGenerationGuard(),sessions=hostService(ctx,'sessions'),controller=hostService(ctx,'sessionController')
+        if(!sessions?.get||!controller)return null
+        if(taskId)officeTaskId({taskId})
+        const state=loadWorkbenchState(),savedId=taskId?taskThreads().find(row=>row.taskId===taskId)?.activeId:state.settings?.assistantSessionId
+        if(savedId&&!isLegacySessionId(savedId)&&!developmentSessionIds().has(savedId)&&!isWorkbenchBackgroundSession(state,savedId)&&(!hubSessionOwner(savedId)||hubSessionOwner(savedId)==='task:'+taskId)&&(!taskId?!taskThreadOwner(savedId):taskThreadOwner(savedId)===taskId)){
+            try{const existing=await restoreOfficeSession(ctx,savedId);assertCurrent();if(existing)return existing}
+            catch(error){if(!/SessionPersistenceNotFound|no such session|session ["'][^"']+["'] not found|session [\w-]+ not found|session[^\n]*does not exist/i.test(String(error?.message||error)))throw error}
+            if(taskId&&typeof controller.resolveAgent!=='function')throw new Error('宿主暂时无法恢复原待办会话，已保留历史，请更新或重连宿主')
+        }
+        const session=await createPersistedSession(ctx);assertCurrent();if(!session)return null
+        await rememberOfficeSession(session,{taskId});return session
+    })()
+    if(taskId)taskSessionPromises.set(taskId,pending)
+    try{return await pending}finally{if(taskId&&taskSessionPromises.get(taskId)===pending)taskSessionPromises.delete(taskId)}
 }
 const backgroundSessionPromises = new Map();
 export class BackgroundSessionBusyError extends Error {
@@ -200,24 +229,77 @@ async function ensureBackgroundSession(ctx?: any, purpose='analysis', accountId?
     backgroundSessionPromises.set(key,promise);
     try{return await promise}finally{backgroundSessionPromises.delete(key)}
 }
+export class BackgroundReasoningRecoveryError extends Error {
+    readonly code='WORKBENCH_MODEL_UNAVAILABLE';
+    readonly reasoningRecoveryBlocked=true;
+    constructor(){super('模型仍缺少历史 reasoning_content，换会话后尚未通过续轮验证；已暂停自动识别，避免重复创建会话。请切换兼容模型或修复宿主模型适配后重试。')}
+}
+/** The native request header records the provider/model actually used, not UI settings. */
+function backgroundModelFingerprint(ctx:any,session:any):string {
+    const live=hostService(ctx,'sessions')?.get?.(session.id) || session;
+    const events=live?.snapshotEvents?.() || [];
+    let config:any;
+    for(let i=events.length-1;i>=0;i--)if(events[i].type==='request/header'){config=events[i].data?.header?.config;break}
+    // Older hosts without request headers still receive a conservative, durable guard.
+    const identity=typeof config?.provider==='string' && typeof config?.model==='string'
+        ? [config.provider,config.model] : ['__unknown_provider','__unknown_model'];
+    return createHash('sha256').update(JSON.stringify(identity)).digest('hex');
+}
+/** A fresh first turn proves nothing about history replay: require a later successful turn. */
+export async function recordBackgroundReasoningSuccess(ctx:any,key:string,session:any,fromSeq:number):Promise<void> {
+    const model=backgroundModelFingerprint(ctx,session);
+    const recovery=loadWorkbenchState().backgroundThreads?.[key]?.reasoningRecoveries?.[model];
+    if(!recovery)return;
+    await mutateWorkbenchState((state:any)=>{
+        const thread=state.backgroundThreads?.[key],marker=thread?.reasoningRecoveries?.[model];
+        if(thread?.sessionId!==session.id || !marker)return state;
+        if(marker.sessionId!==session.id){marker.sessionId=session.id;marker.firstSuccessSeq=Number(session.seq)||0;}
+        else if(marker.firstSuccessSeq==null)marker.firstSuccessSeq=Number(session.seq)||0;
+        else if(fromSeq>=marker.firstSuccessSeq)delete thread.reasoningRecoveries[model];
+        return state;
+    });
+}
 /** Only an explicitly incompatible background history may be replaced; preserve its log. */
 export async function replaceIncompatibleBackgroundSession(ctx:any,purpose:string,key:string,expectedId:string):Promise<any> {
     const assertCurrent=workbenchGenerationGuard();
     const current=loadWorkbenchState().backgroundThreads?.[key];
     if(current?.sessionId!==expectedId)throw new BackgroundSessionBusyError();
-    const controller=hostService(ctx,'sessionController');
-    if(typeof controller?.cancel==='function')try{await controller.cancel({sessionId:expectedId})}catch(error){const live=hostService(ctx,'sessions')?.get?.(expectedId);if(live && transcriptDelta(live,0).turnActive)throw new BackgroundSessionBusyError()}
-    assertCurrent();
-    const fresh=await createPersistedSession(ctx);assertCurrent();
-    if(!fresh)throw Error('无法恢复后台模型会话');
+    const model=backgroundModelFingerprint(ctx,{id:expectedId});
+    // Reserve durably before asynchronous creation: restart or a concurrent recovery
+    // must not buy another fresh first turn for this same failing provider/model.
     await mutateWorkbenchState((state:any)=>{
-        if(state.backgroundThreads?.[key]?.sessionId!==expectedId)throw new BackgroundSessionBusyError();
-        rememberBackgroundSession(state,key,purpose,current.accountId || undefined,fresh.id);
-        auditEntry(state,'model.historyRecovered',purpose+'：历史推理字段不兼容，保留旧日志并恢复后台会话');
+        const thread=state.backgroundThreads?.[key];
+        if(thread?.sessionId!==expectedId)throw new BackgroundSessionBusyError();
+        thread.reasoningRecoveries ||= {};
+        if(thread.reasoningRecoveries[model])throw new BackgroundReasoningRecoveryError();
+        thread.reasoningRecoveries[model]={sessionId:expectedId,firstSuccessSeq:null};
         return state;
     });
-    if(typeof controller.rename==='function')try{await controller.rename({sessionId:fresh.id,title:'工作台后台 · '+(purpose==='summary'?'资讯摘要':'消息识别')+' · '+key.slice(0,6)})}catch{}
-    return {...fresh,id:fresh.id,workbenchThreadKey:key,get seq(){return fresh.seq},snapshotEvents:(from=0)=>fresh.snapshotEvents(from)};
+    try {
+        const controller=hostService(ctx,'sessionController');
+        if(typeof controller?.cancel==='function')try{await controller.cancel({sessionId:expectedId})}catch(error){const live=hostService(ctx,'sessions')?.get?.(expectedId);if(live && transcriptDelta(live,0).turnActive)throw new BackgroundSessionBusyError()}
+        assertCurrent();
+        const fresh=await createPersistedSession(ctx);assertCurrent();
+        if(!fresh)throw Error('无法恢复后台模型会话');
+        await mutateWorkbenchState((state:any)=>{
+            if(state.backgroundThreads?.[key]?.sessionId!==expectedId)throw new BackgroundSessionBusyError();
+            rememberBackgroundSession(state,key,purpose,current.accountId || undefined,fresh.id);
+            state.backgroundThreads[key].reasoningRecoveries[model]={sessionId:fresh.id,firstSuccessSeq:null};
+            auditEntry(state,'model.historyRecovered',purpose+'：历史推理字段不兼容，保留旧日志并恢复后台会话');
+            return state;
+        });
+        if(typeof controller.rename==='function')try{await controller.rename({sessionId:fresh.id,title:'工作台后台 · '+(purpose==='summary'?'资讯摘要':'消息识别')+' · '+key.slice(0,6)})}catch{}
+        return {...fresh,id:fresh.id,workbenchThreadKey:key,get seq(){return fresh.seq},snapshotEvents:(from=0)=>fresh.snapshotEvents(from)};
+    } catch(error) {
+        // Creation/cancellation can fail before replacement. Remove only this still
+        // unattached reservation; never erase a newer session's recovery marker.
+        try {await mutateWorkbenchState((state:any)=>{
+            const thread=state.backgroundThreads?.[key],marker=thread?.reasoningRecoveries?.[model];
+            if(thread?.sessionId===expectedId && marker?.sessionId===expectedId && marker.firstSuccessSeq===null)delete thread.reasoningRecoveries[model];
+            return state;
+        })}catch{}
+        throw error;
+    }
 }
 /**
  * 一次助手问答：提交提示 → 等待本轮结束 → 返回回复与工具调用。
@@ -229,28 +311,18 @@ async function listAssistantSessions(ctx?: any, request?: any): Promise<any> {
     if (!sessions || typeof sessions.list !== 'function') {
         return { status: 'unavailable', note: '没有可用的会话服务', sessions: [], assistantSessionId: null };
     }
-    const limit = Math.max(1, Math.min(20, Number(request && request.limit) || 12));
-    const state = loadWorkbenchState();
-    const currentId = state.settings && state.settings.assistantSessionId ? String(state.settings.assistantSessionId) : null;
-    const rows = sessions
-        .list()
-        .filter((session: any) => !isWorkbenchBackgroundSession(state,session.id,session))
-        .map(function (session?: any): any {
-        return {
-            id: String(session.id),
-            title: sessionTitleOf(session),
-            lastAt: sessionLastAt(session),
-            createdAt: session.header && session.header.createdAt ? new Date(session.header.createdAt).toISOString() : null,
-            isAssistant: currentId === String(session.id),
-        };
-    })
-        .sort(function (a?: any, b?: any): any {
-        const left = a.lastAt ? new Date(a.lastAt).getTime() : 0;
-        const right = b.lastAt ? new Date(b.lastAt).getTime() : 0;
-        return right - left;
-    })
-        .slice(0, limit);
-    return { status: 'ok', sessions: rows, assistantSessionId: rows.some((row:any)=>row.id===currentId) ? currentId : null };
+    const limit=Math.max(1,Math.min(100,Number(request?.limit)||50)),state=loadWorkbenchState(),taskId=officeTaskId(request)
+    const records=taskThreads(),currentId=taskId?records.find(row=>row.taskId===taskId)?.activeId:state.settings?.assistantSessionId
+    const developmentIds=developmentSessionIds(),byId=new Map<string,any>()
+    for(const row of records)for(const thread of row.threads){if(!developmentIds.has(thread.id))byId.set(thread.id,{...thread,taskId:row.taskId,taskTitle:state.tasks.find((task:any)=>task.id===row.taskId)?.title||'历史待办'})}
+    for(const session of sessions.list()){
+        if(developmentIds.has(session.id)||isWorkbenchBackgroundSession(state,session.id,session)||hubSessionOwner(session.id)&&!taskThreadOwner(session.id))continue
+        const prior=byId.get(session.id),title=sessionTitleOf(session)
+        byId.set(session.id,{...prior,id:String(session.id),title:title.startsWith('会话 ')?prior?.title||title:title,lastAt:sessionLastAt(session)||prior?.lastAt,createdAt:session.header?.createdAt?new Date(session.header.createdAt).toISOString():prior?.createdAt})
+    }
+    const rows=[...byId.values()].map(row=>({...row,isAssistant:row.id===currentId})).sort((a,b)=>Number(b.id===currentId)-Number(a.id===currentId)||String(b.lastAt||'').localeCompare(String(a.lastAt||''))).slice(0,limit)
+    return {status:'ok',sessions:rows,assistantSessionId:rows.some(row=>row.id===currentId)?currentId:null,taskId:taskId||null}
+
 }
 /** 读取指定会话（缺省为助手会话）的记录。 */
 async function readAssistantTranscript(ctx?: any, request?: any): Promise<any> {
@@ -258,18 +330,21 @@ async function readAssistantTranscript(ctx?: any, request?: any): Promise<any> {
     if (!sessions || typeof sessions.get !== 'function') {
         return { status: 'unavailable', note: '没有可用的会话服务', messages: [] };
     }
+    const taskId=officeTaskId(request),conflict=scopeFailure(request);if(conflict)return {...conflict,messages:[]};
     const wanted = asString(request && request.sessionId, 120);
+    if(wanted && developmentSessionIds().has(wanted))return {status:'development_session',note:'这是研发专用会话，请从研发任务打开；普通待办请使用办公助手会话',messages:[]};
     let session: any = null;
     if (wanted) {
-        session = sessions.get(wanted);
+        session = await restoreOfficeSession(ctx,wanted);
         if (!session)
             return { status: 'not_found', note: '找不到该会话', messages: [] };
     }
     else {
-        session = await ensureAssistantSession(ctx);
+        session = await ensureAssistantSession(ctx,taskId);
         if (!session)
             return { status: 'unavailable', note: '没有可用的会话服务', messages: [] };
     }
+    await rememberOfficeSession(session,{taskId});
     return {
         status: 'ok',
         sessionId: String(session.id),
@@ -310,7 +385,7 @@ function userFacingAssistantError(failure?: any): any {
  * `resume failed for session "…": SessionPersistenceNotFoundError`。
  * 这里捕获这一类错误，重建一个持久化会话并重试一次，同时更新记录的会话 id。
  */
-async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: any, steer?: any, purpose?: string, options?: {backgroundKey?:string;recoveryText?:string}): Promise<any> {
+async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: any, steer?: any, purpose?: string, options?: {backgroundKey?:string;recoveryText?:string;taskId?:string}): Promise<any> {
     const build = function (sessionId?: any): any {
         return {
             requestId: 'wb-assistant-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
@@ -343,7 +418,7 @@ async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: a
         if (!fresh)
             throw error;
         if (purpose) await mutateWorkbenchState((state:any)=>{const key=options?.backgroundKey || backgroundSessionKey(purpose);rememberBackgroundSession(state,key,purpose,state.backgroundThreads?.[key]?.accountId || undefined,fresh.id);return state});
-        else await rememberAssistantSession(fresh.id);
+        else await rememberOfficeSession(fresh,{taskId:options?.taskId});
         const retried = await attempt(fresh,options?.recoveryText || text);
         return Object.assign({}, retried, { recovered: true });
     }
@@ -351,6 +426,8 @@ async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: a
 /** 只提交提示并立即返回（不等待本轮结束），供侧栏渐进渲染。 */
 async function sendAssistantPrompt(ctx?: any, request?: any): Promise<any> {
     const input = request && typeof request === 'object' ? request : {};
+    const taskId=officeTaskId(input),conflict=scopeFailure(input);if(conflict)return {...conflict,entries:[],messages:[],reply:''};
+    if(developmentSessionIds().has(asString(input.sessionId,120)))return {status:'development_session',note:'这是研发专用会话，请新建办公助手会话后发送，研发会话未被修改'};
     const text = asString(input.text, 4000);
     if (!text)
         return { status: 'invalid', note: '请输入内容' };
@@ -367,16 +444,13 @@ async function sendAssistantPrompt(ctx?: any, request?: any): Promise<any> {
     let session: any = null;
     if (wantedSession) {
         const sessions = hostService(ctx, 'sessions');
-        session = sessions && typeof sessions.get === 'function' ? sessions.get(wantedSession) : null;
+        session = sessions && typeof sessions.get === 'function' ? await restoreOfficeSession(ctx,wantedSession) : null;
         if (!session)
             return { status: 'not_found', note: '找不到该会话：' + wantedSession };
-        mutateWorkbenchState(function (current?: any): any {
-            current.settings.assistantSessionId = String(session.id);
-            return current;
-        });
+        await rememberOfficeSession(session,{taskId});
     }
     else {
-        session = await ensureAssistantSession(ctx);
+        session = await ensureAssistantSession(ctx,taskId);
         if (!session)
             return { status: 'unavailable', note: '当前宿主没有可用的 sessions / sessionController 服务。' };
     }
@@ -388,7 +462,7 @@ async function sendAssistantPrompt(ctx?: any, request?: any): Promise<any> {
     lines.push('');
     lines.push('（需要落库时请直接调用 workbench_* 工具：建/改待办、登记执行记录、写回资讯摘要。）');
     try {
-        const submitted = await submitPrompt(ctx, controller, session, lines.join('\n'), input.steer === true);
+        const submitted = await submitPrompt(ctx, controller, session, lines.join('\n'), input.steer === true,undefined,{taskId});
         await setKnowledgeOnlySession(submitted.session.id,retrieval.mode==='only');
         await recordRetrieval(retrieval,submitted.session.id,submitted.fromSeq);
         return {
@@ -406,19 +480,21 @@ async function sendAssistantPrompt(ctx?: any, request?: any): Promise<any> {
 /** 增量读取端点：供侧栏渐进渲染。 */
 async function readAssistantDelta(ctx?: any, request?: any): Promise<any> {
     const input = request && typeof request === 'object' ? request : {};
+    const taskId=officeTaskId(input),conflict=scopeFailure(input);if(conflict)return {...conflict,entries:[],messages:[],reply:''};
     const sessions = hostService(ctx, 'sessions');
     if (!sessions || typeof sessions.get !== 'function') {
         return { status: 'unavailable', note: '没有可用的会话服务', entries: [], nextSeq: 0, turnActive: false };
     }
     const wanted = asString(input.sessionId, 120);
+    if(wanted && developmentSessionIds().has(wanted))return {status:'development_session',note:'研发会话请从研发任务查看',entries:[],nextSeq:0,turnActive:false};
     let session: any = null;
     if (wanted) {
-        session = sessions.get(wanted);
+        session = await restoreOfficeSession(ctx,wanted);
         if (!session)
             return { status: 'not_found', note: '找不到该会话', entries: [], nextSeq: 0, turnActive: false };
     }
     else {
-        session = await ensureAssistantSession(ctx);
+        session = await ensureAssistantSession(ctx,taskId);
         if (!session)
             return { status: 'unavailable', note: '没有可用的会话服务', entries: [], nextSeq: 0, turnActive: false };
     }
@@ -428,6 +504,8 @@ async function readAssistantDelta(ctx?: any, request?: any): Promise<any> {
 }
 async function runAssistantAsk(ctx?: any, request?: any): Promise<any> {
     const input = request && typeof request === 'object' ? request : {};
+    const taskId=officeTaskId(input),conflict=scopeFailure(input);if(conflict)return {...conflict,entries:[],messages:[],reply:''};
+    if(developmentSessionIds().has(asString(input.sessionId,120)))return {status:'development_session',note:'这是研发专用会话，请新建办公助手会话后发送，研发会话未被修改',reply:''};
     const text = asString(input.text, 4000);
     if (!text)
         return { status: 'invalid', note: '请输入内容', reply: '' };
@@ -445,18 +523,15 @@ async function runAssistantAsk(ctx?: any, request?: any): Promise<any> {
     let session: any = null;
     if (wantedSession) {
         const sessions = hostService(ctx, 'sessions');
-        session = sessions && typeof sessions.get === 'function' ? sessions.get(wantedSession) : null;
+        session = sessions && typeof sessions.get === 'function' ? await restoreOfficeSession(ctx,wantedSession) : null;
         if (!session) {
             return { status: 'not_found', note: '找不到该会话：' + wantedSession, reply: '' };
         }
-        mutateWorkbenchState(function (current?: any): any {
-            current.settings.assistantSessionId = String(session.id);
-            return current;
-        });
+        await rememberOfficeSession(session,{taskId});
     }
     else {
         try {
-            session = await ensureAssistantSession(ctx);
+            session = await ensureAssistantSession(ctx,taskId);
         }
         catch (e) {
             return Object.assign(userFacingAssistantError(e), { reply: '' });
@@ -481,7 +556,7 @@ async function runAssistantAsk(ctx?: any, request?: any): Promise<any> {
     lines.push('（需要落库时请直接调用 workbench_* 工具：建/改待办、登记执行记录、写回资讯摘要。）');
     const promptText = lines.join('\n');
     try {
-        const submitted = await submitPrompt(ctx, controller, session, promptText, false);
+        const submitted = await submitPrompt(ctx, controller, session, promptText, false,undefined,{taskId});
         session = submitted.session;
         await setKnowledgeOnlySession(session.id,retrieval.mode==='only');
         await recordRetrieval(retrieval,session.id,submitted.fromSeq);
@@ -557,12 +632,13 @@ async function readAssistantHistory(ctx?: any): Promise<any> {
     };
 }
 /** 清空助手上下文（换一个新会话，旧会话仍保留在原生会话列表里）。 */
-async function resetAssistantSession(ctx?: any): Promise<any> {
+async function resetAssistantSession(ctx?: any,request:any={}): Promise<any> {
+    const taskId=officeTaskId(request);
     const session = await createPersistedSession(ctx);
     if (!session) {
         return { status: 'unavailable', note: '没有可用的 sessionController.create', sessionId: null };
     }
-    await rememberAssistantSession(session.id);
+    await rememberOfficeSession(session,{taskId});
     return { status: 'ok', sessionId: String(session.id) };
 }
 /**

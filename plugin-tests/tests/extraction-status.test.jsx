@@ -20,7 +20,7 @@ it('已接受后很快失败也通知失败，不能把入队当成功',async()=
 it('启动中与运行中转圈，进度每秒更新，完成后停止轮询和转圈',async()=>{
  const f=setup();let accept;f.start=()=>new Promise(r=>accept=r);fireEvent.click(screen.getByRole('button',{name:'提取消息',exact:true}));await flush();expect(screen.getByText('正在启动提取',{exact:true})).toBeTruthy();expect(screen.getByLabelText('提取进行中')).toBeTruthy();expect(f.starts).toBe(1)
  f.jobs=[running()];await act(async()=>accept({jobId:'new-extract'}));await flush();expect(screen.getByText('正在提取',{exact:true})).toBeTruthy();expect(f.WB.store.get().toasts).toHaveLength(0)
- f.jobs=[running({progress:{processed:6,remaining:4,failed:0,batches:1,pauseReason:null}})];await tick();expect(screen.getByText('已提取 6 条 · 剩余 4 条')).toBeTruthy()
+ f.jobs=[running({progress:{processed:6,remaining:4,failed:0,batches:1,pauseReason:null}})];await tick();expect(screen.getByText(/累计处理 6 条 · 剩余 4 条/)).toBeTruthy()
  f.jobs=[running({status:'completed',progress:{processed:10,remaining:0,failed:0,batches:2,pauseReason:null}})];await tick();expect(screen.queryByLabelText('提取进行中')).toBeNull();expect(screen.getAllByText('提取完成',{exact:true}).length).toBeGreaterThan(0);const count=f.reads;await tick();expect(f.reads).toBe(count)
 });
 it('自动作业的快速完成也能捕获，历史失败不重复弹通知',async()=>{

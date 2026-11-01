@@ -1,5 +1,5 @@
 /** Shared business contracts. Runtime input remains untrusted until validated. */
-export type PageId = 'dashboard' | 'tasks' | 'replies' | 'radar' | 'knowledge' | 'search' | 'agents' | 'office' | 'toolbox' | 'collab' | 'settings' | 'web-ai'
+export type PageId = 'dashboard' | 'assistant' | 'tasks' | 'replies' | 'radar' | 'knowledge' | 'search' | 'agents' | 'office' | 'toolbox' | 'collab' | 'settings' | 'web-ai'
 export type ReplyStage = '已自动回复' | '待回复' | '已确认收到' | '已回复' | '不需回复'
 export type TaskStatus = 'draft' | 'ready' | 'running' | 'waiting_approval' | 'completed' | 'failed' | 'cancelled'
 export type EventType = 'meeting' | 'feature' | 'logging' | 'other'

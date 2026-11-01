@@ -8,6 +8,7 @@ import { isOfficeWorkflow, type OfficeWorkflowKind } from '../../shared/office-w
 import { newId, hostNowIso } from '../platform/runtime.js'
 import { analysisProcessedCount, analysisRemainder, advanceAnalysisJob } from './analysis-progress.js'
 import type { AnalysisProgress } from '../../shared/analysis-progress.js'
+import {completeHubRun} from '../assistant/hub-runs.js'
 interface WorkflowJob {id:string;kind:'analysis'|'summary'|OfficeWorkflowKind;status:'queued'|'running'|'completed'|'failed'|'cancelled';input:Record<string,unknown>;createdAt:string;updatedAt:string;attempts:number;result?:unknown;error?:string;nextRetryAt?:string|null;executionId?:string;progress?:AnalysisProgress}
 let draining=false
 export async function startWorkflowJob(ctx:unknown,kind:'analysis'|'summary',input:Record<string,unknown>={}):Promise<{jobId:string;status:string;note:string}> {
@@ -44,14 +45,15 @@ export async function drainWorkflowJobs(ctx:unknown):Promise<void>{
  try{
   while(true){
    assertCurrent()
-   const pending:WorkflowJob|undefined=(loadWorkbenchState().jobs||[]).slice().sort((a:WorkflowJob,b:WorkflowJob)=>Number(isOfficeWorkflow(b.kind))-Number(isOfficeWorkflow(a.kind))).find((row:WorkflowJob)=>row.status==='queued'&&(!row.nextRetryAt||Date.parse(row.nextRetryAt)<=Date.now()))
+   const pending:WorkflowJob|undefined=(loadWorkbenchState().jobs||[]).slice().sort((a:WorkflowJob,b:WorkflowJob)=>Number(isOfficeWorkflow(b.kind))-Number(isOfficeWorkflow(a.kind))).find((row:WorkflowJob)=>!row.input?.observed&&row.status==='queued'&&(!row.nextRetryAt||Date.parse(row.nextRetryAt)<=Date.now()))
    if(!pending)break
    let admitted: WorkflowJob | undefined
    await mutateWorkbenchState((state:any)=>{const row=state.jobs.find((job:WorkflowJob)=>job.id===pending.id);if(row && row.status==='queued'){Object.assign(row,{status:'running',error:undefined,nextRetryAt:null,executionId:newId('execution'),updatedAt:hostNowIso()});if(row.progress)Object.assign(row.progress,{processed:analysisProcessedCount(state,row),pauseReason:null});admitted={...row,input:{...row.input}}}return state})
    if(!admitted)continue
    try{
-    const result=isOfficeWorkflow(admitted.kind)?await runOfficeWorkflow(ctx,admitted):admitted.kind==='analysis'?await runAnalysisBatch(ctx,{...admitted.input,...(admitted.input.continuous?{analysisJobId:admitted.id}:{})}):await runRadarSummarizeBatch(ctx,admitted.input)
+    const result=isOfficeWorkflow(admitted.kind)?await runOfficeWorkflow(ctx,admitted):admitted.kind==='analysis'?await runAnalysisBatch(ctx,{...admitted.input,analysisJobId:admitted.id}):await runRadarSummarizeBatch(ctx,{...admitted.input,hubRunId:admitted.id})
     assertCurrent()
+    try{completeHubRun(ctx,admitted,result)}catch(error){await mutateWorkbenchState((state:any)=>{const row=state.jobs.find((job:any)=>job.id===admitted!.id);if(row)row.historyError=String(error.message||error);return state}).catch(()=>{})}
     await mutateWorkbenchState((state:any)=>{assertCurrent();const row=state.jobs.find((job:WorkflowJob)=>job.id===pending.id);if(row?.status==='running'&&row.executionId===admitted!.executionId){row.updatedAt=hostNowIso();if(row.kind==='analysis'&&row.input.continuous)advanceAnalysisJob(state,row,result);else{row.result=result;if(['busy','interrupted'].includes(result.status)||result.status==='deferred'&&result.retryAt){row.status='queued';row.nextRetryAt=result.retryAt||new Date(Date.now()+60000).toISOString()}else row.status=['ok','partial'].includes(result.status)?'completed':'failed'}}return state})
     if(['busy','interrupted','deferred'].includes(result.status))break
    }catch(e){

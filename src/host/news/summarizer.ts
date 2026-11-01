@@ -4,6 +4,7 @@ import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store
 import { auditEntry, ensureArray, normalizeRadarItem } from '../domain/model.js'
 import { waitStructuredReply, modelGate, resetModelHealth, recordModelFailure, isModelServiceFailure } from '../analysis/message-analysis.js'
 import { hostNowIso, runtimeCheckpoint, isRuntimeInterrupted } from '../platform/runtime.js'
+import {observeBackgroundBatch} from '../automation/observed-batch.js'
 /* ============================================================================
  * dev-workbench host — 资讯四段摘要批处理（TODO 20）
  *
@@ -80,6 +81,9 @@ function runRadarSummarizeBatch(ctx?: any, request?: any): any {
     return radarSummaryInFlight;
 }
 async function executeRadarSummary(ctx?: any, request?: any): Promise<any> {
+    return observeBackgroundBatch(ctx,'summary',request,(tracked,begin)=>executeTrackedRadarSummary(ctx,tracked,begin));
+}
+async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<void>):Promise<any> {
     if(request?.retryModel===true)await resetModelHealth('summary');
     const gate=modelGate(loadWorkbenchState(),'summary');if(gate)return {...gate,done:0,failed:0};
     const controller = hostService(ctx, 'sessionController');
@@ -107,6 +111,7 @@ async function executeRadarSummary(ctx?: any, request?: any): Promise<any> {
     if (candidates.length === 0) {
         return { status: 'ok', done: 0, failed: 0, note: '没有待摘要的资讯（都有四段摘要或没有 url）。' };
     }
+    await begin();
     let resolved:any;
     try{resolved=await ensureBackgroundSession(ctx,'summary')}
     catch(error){if(error?.code==='WORKBENCH_BACKGROUND_BUSY')return {status:'busy',done:0,failed:0,note:error.message};if(isModelServiceFailure(error))return {...await recordModelFailure('summary',error),done:0,failed:0};throw error}
@@ -130,7 +135,7 @@ async function executeRadarSummary(ctx?: any, request?: any): Promise<any> {
                 sourceError=true;throw new Error('原文内容不足（可能被反爬或需要登录）');
             }
             phase='model';
-            const parsed = await waitStructuredReply(ctx, controller, resolved, summaryPrompt(item, bodyText), SUMMARY_TURN_TIMEOUT_MS, 'summary');
+            const parsed = await waitStructuredReply(ctx, controller, resolved, summaryPrompt(item, bodyText), SUMMARY_TURN_TIMEOUT_MS, 'summary',{hubRunId:request?.hubRunId,backgroundKey:resolved.workbenchThreadKey});
             await resetModelHealth('summary');
             for (const key of ['change', 'usage', 'risk', 'practice']) {
                 if (parsed[key] !== undefined && typeof parsed[key] !== 'string')
@@ -191,10 +196,11 @@ async function executeRadarSummary(ctx?: any, request?: any): Promise<any> {
         auditEntry(current, 'radar.summarize', '摘要生成：成功 ' + done + ' / 失败 ' + failed);
         return current;
     });
-    return deferred ? {...deferred,done,failed} : {
+    return deferred ? {...deferred,done,failed,items:perItem} : {
         status: interrupted ? 'interrupted' : failed > 0 ? 'partial' : 'ok',
         done: done,
         failed: failed,
+        items: perItem,
         note: failed > 0 ? '失败条目见 lastRadarSummarize' : null,
     };
 }

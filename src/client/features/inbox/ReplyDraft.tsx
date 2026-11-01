@@ -55,7 +55,7 @@ export function ReplyDraft({ reply, data, actions,taskId,initialOpen=false }: {
         {taskId&&<p className="wb-tiny wb-muted">回复原会话：{messageOrigin(source,reply)} · {messageSender(source,reply.contact)}。回复与待办完成状态分别维护。</p>}
         {reply.stage==='已自动回复'&&reply.autoReplyId&&<p className="wb-tiny wb-muted">已自动告知：{automatic?.text||'当前忙碌，稍后答复'}；仍需人工答复。</p>}
         {delivery?.status==='sent'&&<p className="wb-tiny">已发送：{delivery.text||data.replyDrafts?.[reply.id]?.text} {delivery.at&&<time dateTime={delivery.at}>（{messageSentTime({locator:{sentAt:delivery.at}})}）</time>}</p>}
-        <div className="wb-reply-draft-toolbar"><div className="wb-row wb-row--wrap"><Btn size="sm" kind="primary" disabled={busy} onClick={() => setOpen(!open)}>{open ? '收起回复' : '回复'}</Btn><Btn size="sm" disabled={busy} onClick={generate}>生成回复草稿</Btn></div>{actions}</div>
+        <div className="wb-reply-draft-toolbar"><div className="wb-row wb-row--wrap"><Btn size="sm" kind="primary" disabled={busy} onClick={() => setOpen(!open)}>{open ? '收起回复' : '回复'}</Btn><Btn size="sm" disabled={busy} onClick={generate}>生成回复草稿</Btn><Btn size="sm" icon="sparkles" onClick={()=>WB.assistant.openHub('reply',reply.id)}>AI 回复</Btn></div>{actions}</div>
         {open && <div className="wb-reply-editor">
             {error && <p role="alert">{error}</p>}
             <textarea className="wb-input" aria-label="回复草稿" placeholder="输入要回复的内容" disabled={busy || !!preview} value={text} maxLength={8000} rows={4} onChange={e => setText(e.target.value)}/>

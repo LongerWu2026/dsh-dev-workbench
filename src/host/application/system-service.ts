@@ -20,6 +20,7 @@ export const systemService = {
     async saveSettings(patch?: any): Promise<any> {
         return mutateWorkbenchState(function (state?: any): any {
             if(patch&&'busyReply' in patch)throw Error('请使用智能办公的忙碌自动回复开关');
+            if(patch&&'assistantName' in patch&&(typeof patch.assistantName!=='string'||!patch.assistantName.trim()||patch.assistantName.trim().length>40||/[\u0000-\u001f\u007f]/.test(patch.assistantName)))throw Error('助手名称请输入 1–40 个字符，不能包含换行或控制字符');
             const next = Object.assign({}, state.settings, patch || {});
             if (patch && patch.aiExtract)
                 next.aiExtract = Object.assign({}, state.settings.aiExtract, patch.aiExtract);

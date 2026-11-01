@@ -4,6 +4,7 @@ import { recordRetrieval } from '../knowledge/context.js'
 import { loadWorkbenchState } from '../storage/state-store.js'
 import { auditEntry, ensureArray, normalizeKnowledge } from '../domain/model.js'
 import { mutateWorkbenchState } from '../storage/state-store.js'
+import { hashText } from '../platform/runtime.js'
 
 /** knowledge-service: shared Remote and Agent business use cases. */
 export const knowledgeService = {
@@ -28,7 +29,7 @@ export const knowledgeService = {
         });
     },
 
-    async updateKnowledge(id?: any, patch?: any): Promise<any> {
+    async updateKnowledge(id?: any, patch?: any, expectedFingerprint?:string): Promise<any> {
         if(typeof patch?.body==='string'&&patch.body.length>20000)throw new Error('知识正文超过20000字符，请按章节拆分');
         if(patch?.validUntil&&!Number.isFinite(Date.parse(patch.validUntil)))throw new Error('知识有效期格式无效');
         return mutateWorkbenchState(function (state?: any): any {
@@ -37,6 +38,7 @@ export const knowledgeService = {
             });
             if (!existing)
                 throw new Error('找不到该知识条目：' + String(id));
+            if(expectedFingerprint&&hashText(JSON.stringify(existing))!==expectedFingerprint)throw new Error('知识已更新，确认失效，请重新预览');
             const next = normalizeKnowledge(patch || {}, existing);
             next.id = existing.id;
             if(next.projectId&&!state.projects.some((p:any)=>p.id===next.projectId))throw new Error('关联项目不存在');
@@ -48,8 +50,9 @@ export const knowledgeService = {
         });
     },
 
-    async deleteKnowledge(id?: any): Promise<any> {
+    async deleteKnowledge(id?: any, expectedFingerprint?:string): Promise<any> {
         return mutateWorkbenchState(function (state?: any): any {
+            if(expectedFingerprint){const existing=ensureArray(state.knowledge).find((item:any)=>item.id===id);if(!existing||hashText(JSON.stringify(existing))!==expectedFingerprint)throw new Error('知识已更新或已删除，确认失效，请重新预览');}
             state.knowledge = ensureArray(state.knowledge).filter(function (item?: any): any {
                 return item.id !== id;
             });

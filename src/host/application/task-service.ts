@@ -16,8 +16,9 @@ export const taskService = {
         });
     },
 
-    async updateTask(id?: any, patch?: any): Promise<any> {
+    async updateTask(id?: any, patch?: any, validate?:(state:any)=>void): Promise<any> {
         return mutateWorkbenchState(function (state?: any): any {
+            validate?.(state);
             return applyUpdateTask(state, id, patch).state;
         });
     },

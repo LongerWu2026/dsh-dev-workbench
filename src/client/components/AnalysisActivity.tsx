@@ -1,5 +1,6 @@
 import * as React from 'react'
 import {WB,Spinner,Btn} from '../core/runtime.js'
+import {AnalysisJobProgress} from './WorkflowJobs.js'
 
 function activityOf(job:any):any {
  const reason=job.error||job.progress?.pauseReason||job.result?.note||'';
@@ -76,10 +77,10 @@ export function AnalysisActivity() {
   <div className="wb-row wb-row--wrap" style={{gap:8}}>
    {busy&&<span aria-label="提取进行中"><Spinner size={14}/></span>}
    <strong role="status" style={{color:phase==='failed'?'var(--wb-err,#d22)':undefined}}>{labels[phase]||'消息提取'}</strong>
-   {activity?.progress&&<span className="wb-tiny wb-muted">已提取 {activity.progress.processed} 条 · 剩余 {activity.progress.remaining} 条</span>}
-   <div className="wb-spacer"/><Btn size="sm" disabled={busy} onClick={()=>WB.actions.analyzeRun(undefined,undefined,phase==='failed').catch(()=>{})}>{busy?'提取中…':phase==='failed'?'重试提取':'提取消息'}</Btn>
+   <div className="wb-spacer"/><Btn size="sm" onClick={()=>WB.assistant.openHub('system','analysis')}>识别会话</Btn><Btn size="sm" disabled={busy} onClick={()=>WB.actions.analyzeRun(undefined,undefined,phase==='failed').catch(()=>{})}>{busy?'提取中…':phase==='failed'?'重试提取':'提取消息'}</Btn>
   </div>
-  {activity?.message&&['failed','paused'].includes(phase)&&<p role="alert" className="wb-tiny" style={{overflowWrap:'anywhere',marginBottom:0}}>{activity.message}{activity.nextRetryAt?'；自动重试时间：'+WB.fmt.datetime(activity.nextRetryAt):''}</p>}
+  {activity?.progress&&<AnalysisJobProgress job={{id:activity.jobId||'',kind:'analysis',status:phase,progress:activity.progress,nextRetryAt:activity.nextRetryAt}}/>}
+  {activity?.message&&['failed','paused'].includes(phase)&&activity.message!==activity.progress?.pauseReason&&<p role="alert" className="wb-tiny" style={{overflowWrap:'anywhere',marginBottom:0}}>{activity.message}{activity.nextRetryAt?'；自动重试时间：'+WB.fmt.datetime(activity.nextRetryAt):''}</p>}
   {state.analysisStatusError&&busy&&<p className="wb-tiny wb-muted">{state.analysisStatusError}</p>}
  </div>
 }

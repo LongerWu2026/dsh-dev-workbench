@@ -1,5 +1,3 @@
-import {BusyReply} from './BusyReply.js'
-import { WorkflowPanel } from './WorkflowPanel.js'
 import { DevelopmentPage } from './DevelopmentPage.js'
 import { Badge, Btn, Divider, Empty, Field, Icon, IconBtn, Input, Modal, PageHead, Panel, Segmented, Select, T, Textarea, WB, h } from '../../core/runtime.js'
 import * as React from 'react'
@@ -511,8 +509,9 @@ function agentPage(): any {
 }
 WB.pages.agents = DevelopmentPage;
 WB.pages.office = function OfficePage(){
-    const tab=WB.useStore().officeView||'workflows',setTab=(officeView:string)=>WB.store.set({officeView});
-    return h('div',{className:'wb-page'},h(PageHead,{icon:'layers',title:'智能办公',sub:'整理回复、生成工作报告，跟进办公流程与产物。',actions:h(BusyReply)}),h(Segmented,{value:tab,onChange:setTab,items:[{value:'workflows',label:'办公流程'},{value:'history',label:'执行记录'}]}),tab==='workflows'?h('div',{style:{marginTop:20}},h(WorkflowPanel)):h(agentPage));
+    // Compatibility for callers that kept a reference to the retired page.
+    React.useEffect(()=>{WB.assistant.openHub('system','office')},[]);
+    return null;
 };
 
 export { agentStatusMeta, agentFormatTime, agentDurationMinutes, agentDurationText, agentSortRuns, agentRunAverage, agentTaskTitle, agentPriorityRank, agentBriefMarkdown, agentRunRow, agentPage }

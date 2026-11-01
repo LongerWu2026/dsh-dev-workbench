@@ -34,3 +34,13 @@ it('真实空结果显示暂无新增，首页和资讯页都能查看报告',()
  const view=render(<WB.pages.radar/>);expect(screen.getByRole('status').textContent).toContain('暂无新增');view.unmount()
  render(<WB.pages.dashboard/>);const panel=screen.getByText('AI 动态').closest('section');expect(within(panel).getByRole('status').textContent).toContain('暂无新增');expect(within(panel).queryByText('尚未抓取')).toBeNull()
 })
+
+it('资讯只显示当前摘要状态，继续处理进入固定资讯会话，不暴露后台作业列表',()=>{
+ data.jobs=[{id:'private-job-id',kind:'summary',status:'completed',result:{processed:2,failures:0,note:'已生成2条摘要'}}];WB.store.set({data})
+ render(<WB.pages.radar/>);expect(screen.getByText('已生成2条摘要')).toBeTruthy();expect(screen.queryByText('private-job-id')).toBeNull();expect(screen.queryByText(/后台摘要任务/)).toBeNull()
+ fireEvent.click(screen.getByRole('button',{name:'在助手中继续'}));expect(WB.store.get().page).toBe('assistant');expect(WB.store.get().assistantConversationId).toBe('system:radar')
+})
+it('摘要简洁状态优先展示仍在进行的处理，不被较新的已完成记录遮盖',()=>{
+ data.jobs=[{id:'summary-running',kind:'summary',status:'running'},{id:'summary-completed',kind:'summary',status:'completed',result:{processed:1}}];WB.store.set({data})
+ render(<WB.pages.radar/>);expect(screen.getByText('资讯摘要 · 运行中')).toBeTruthy();expect(screen.queryByText('资讯摘要 · 已完成')).toBeNull()
+})

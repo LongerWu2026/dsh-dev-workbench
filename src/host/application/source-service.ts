@@ -144,6 +144,21 @@ export const sourceService = {
         });
     },
 
+    /** Correct a saved reply obligation, never its original message or delivery target. */
+    async updateReply(id:string,patch:any,validate?:(state:any)=>void):Promise<any> {
+        if(!patch||typeof patch!=='object'||Array.isArray(patch)||!Object.keys(patch).length||Object.keys(patch).some(key=>!['snippet','stage'].includes(key)))throw Error('只能修改待回复摘要和阶段');
+        if(patch.snippet!==undefined&&(typeof patch.snippet!=='string'||!patch.snippet.trim()||patch.snippet.length>300))throw Error('待回复摘要须为 1–300 字符');
+        if(patch.stage!==undefined&&(!REPLY_STATUSES.includes(patch.stage)||patch.stage==='已自动回复'))throw Error('无效的人工回复阶段');
+        return mutateWorkbenchState((state:any)=>{
+            validate?.(state);
+            const index=state.replies.findIndex((row:any)=>row.id===id);if(index<0)throw Error('找不到该待回复');
+            const reply=state.replies[index],next=normalizeReplies([{...reply,...patch,humanGuard:true,updatedAt:hostNowIso(),repliedAt:patch.stage==='已回复'?hostNowIso():reply.repliedAt||null}])[0];
+            state.replies[index]=next;
+            auditEntry(state,'reply.corrected','人工修正待回复 '+id+(patch.stage?' → '+patch.stage:''));
+            return state;
+        });
+    },
+
     /** 删除来源证据：同时清理派生候选，并把引用它的待办解除来源关联。 */
     async deleteSource(id?: any): Promise<any> {
         return mutateWorkbenchState(function (state?: any): any {

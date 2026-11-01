@@ -2,7 +2,7 @@ import {mkdirSync,readFileSync,writeFileSync,renameSync,existsSync,readdirSync} 
 import {join,resolve,isAbsolute} from 'node:path'
 import {homedir} from 'node:os'
 import {randomUUID} from 'node:crypto'
-import {checkedArgv,type DevelopmentConfig,type DevelopmentTask} from '../../shared/development.js'
+import {checkedArgv,developmentTaskSessionIds,type DevelopmentConfig,type DevelopmentTask} from '../../shared/development.js'
 import {discoverLinky} from './development-environment.js'
 
 export function developmentDir(){return join(process.env.DSH_HOME||join(homedir(),'.dsh'),'storages','dev-workbench','development')}
@@ -51,4 +51,16 @@ export function readDevelopmentTask(id:string):DevelopmentTask{return JSON.parse
 export function listDevelopmentTasks():DevelopmentTask[]{
     const dir=join(developmentDir(),'tasks');if(!existsSync(dir))return []
     return readdirSync(dir).filter(name=>/^[\w-]+\.json$/.test(name)).map(name=>readDevelopmentTask(name.slice(0,-5))).sort((a,b)=>b.updatedAt.localeCompare(a.updatedAt))
+}
+
+/** Both local flows and Linky CLI runs own sessions that office assistance must not adopt. */
+export function developmentSessionIds():Set<string>{
+    const ids=new Set<string>()
+    for(const task of listDevelopmentTasks())for(const id of developmentTaskSessionIds(task))ids.add(id)
+    const dir=join(developmentDir(),'native-runs')
+    if(existsSync(dir))for(const name of readdirSync(dir).filter(name=>/^[\w-]+\.json$/.test(name))){
+        let run:any;try{run=JSON.parse(readFileSync(join(dir,name),'utf8'))}catch{continue}
+        if(typeof run.sessionId==='string')ids.add(run.sessionId)
+    }
+    return ids
 }

@@ -1,5 +1,9 @@
 import {AnalysisMonitor} from '../components/AnalysisActivity.js'
 import {KnowledgeSources} from '../components/KnowledgeSources.js'
+import {AssistantSessionsNav} from '../components/AssistantSessionsNav.js'
+import {AssistantHubEntry} from '../components/AssistantHub.js'
+import {AssistantKnowledgeSettings} from '../components/AssistantKnowledgeSettings.js'
+import {installAssistantNative} from '../core/assistant-native.js'
 import { AssistantContextPicker } from '../components/AssistantContextPicker.js'
 import { Btn, Chip, Empty, Icon, IconBtn, Panel, Select, Spinner, T, Textarea, WB, WB_CSS, WB_DICT, h, setShared_wbConnection, setShared_wbTranslate, useStore, wbConnection, wbTranslate } from '../core/runtime.js'
 import * as React from 'react'
@@ -22,11 +26,11 @@ import { TaskFormHost } from '../features/tasks/task-form.js'
  * ========================================================================== */
 WB.PAGE_META = {
     dashboard: { title: '今日简报', icon: 'dashboard', hint: '今天要处理的事、资讯与连接状态' },
-    tasks: { title: '任务中心', icon: 'tasks', hint: '统一任务模型：来源、优先级、截止与执行记录' },
+    assistant: { title: 'AI 助手', icon: 'messages', hint: '处理日常工作、继续事项对话并查看结果' },
+    tasks: { title: '任务中心', icon: 'tasks', hint: '查看待办、来源和处理进展' },
     replies: { title: '待回复', icon: 'chat', hint: '独立跟踪需要回复的消息与来源' },
     radar: { title: '资讯', icon: 'radar', hint: '联网发现、原文摘要与收藏' },
     search: { title: '工作搜索', icon: 'search', hint: '查找工作内容，或单独搜索互联网' },
-    office: { title: '智能办公', icon: 'layers', hint: '回复草稿、工作报告、办公流程与产物' },
     agents: { title: '研发任务', icon: 'agent', hint: 'Linky 工作项、独立工作区、Harness 开发与审查' },
     'web-ai': { title: '多 AI 对话', icon: 'messages', hint: '统一提问、连续追问与多家 AI 回答对比' },
     toolbox: { title: '开发工具箱', icon: 'toolbox', hint: '本地执行、数据不出浏览器的高频工具' },
@@ -34,17 +38,18 @@ WB.PAGE_META = {
     knowledge: { title: '知识空间', icon: 'book', hint: '收藏、笔记与排障记录' },
     settings: { title: '连接与设置', icon: 'settings', hint: '连接器状态、关注主题与数据管理' },
 };
-WB.ORDER = ['dashboard', 'agents', 'office', 'tasks', 'replies', 'radar', 'knowledge', 'web-ai', 'search', 'toolbox', 'collab', 'settings'];
+WB.ORDER = ['dashboard', 'assistant', 'agents', 'tasks', 'replies', 'radar', 'knowledge', 'web-ai', 'search', 'toolbox', 'collab', 'settings'];
 WB.NAV_GROUPS = [
-    { label: '工作', items: ['dashboard', 'agents', 'office', 'tasks', 'search'] },
+    { label: '工作', items: ['dashboard', 'assistant', 'agents', 'tasks', 'search'] },
     { label: '工具', items: ['toolbox', 'collab'] },
     { label: '沉淀', items: ['knowledge'] },
     { label: '系统', items: ['settings'] },
 ];
 WB.go = function (page?: any): any {
+    if(page==='office'){WB.store.set({page:'office'});return;}
     if (WB.ORDER.indexOf(page) < 0)
         return;
-    WB.store.set({ page: page, ...(page==='agents'?{developmentOpenSeq:(WB.store.get().developmentOpenSeq||0)+1}:{}) });
+    WB.store.set({ page: page, ...(page==='assistant'?{assistantOpen:true,contextHidden:true}:{}), ...(page==='agents'?{developmentOpenSeq:(WB.store.get().developmentOpenSeq||0)+1}:{}) });
 };
 function WorkbenchIcon(props?: any): any {
     const size = (props && typeof props.size === 'number' && props.size) || 18;
@@ -102,21 +107,30 @@ function AssistantDrawer(): any {
     const [error, setError] = React.useState<any>(null);
     const [sessions, setSessions] = React.useState<any>([]);
     const [activeId, setActiveId] = React.useState<any>(null);
-    const [loaded, setLoaded] = React.useState<any>(false);
+    const [resolving,setResolving]=React.useState(true);
+    const [historyCollapsed,setHistoryCollapsed]=React.useState(()=>typeof window!=='undefined'&&window.innerWidth<640);
+    const taskId=state.assistantTaskId||'',scopeKey=taskId+':'+(state.assistantOpenSeq||0)+':'+(state.assistantSessionTarget||'');
+    const renderedScope=React.useRef(scopeKey),resolvedScope=React.useRef<string|null>(null),drafts=React.useRef<Record<string,string>>({}),draftRef=React.useRef(''),activeRef=React.useRef<string|null>(null);draftRef.current=draft;activeRef.current=activeId;
     const [retrieval,setRetrieval]=React.useState<any>(null);
     const [citationAudit,setCitationAudit]=React.useState<any>(null);
     const [knowledgeMode,setKnowledgeMode]=React.useState('auto');
     const [knowledgeScope,setKnowledgeScope]=React.useState<any>({});
+    const [knowledgeOpen,setKnowledgeOpen]=React.useState(false);
+    const knowledgeButton=React.useRef<any>(null);
+    const closeKnowledge=()=>{setKnowledgeOpen(false);knowledgeButton.current?.focus()};
     const [steerMode, setSteerMode] = React.useState<any>(false);
     const bodyRef = React.useRef<any>(null);
     const requestGeneration = React.useRef(0);
     const transcriptGeneration = React.useRef(0);
+    if(renderedScope.current!==scopeKey){renderedScope.current=scopeKey;requestGeneration.current++;transcriptGeneration.current++;resolvedScope.current=null}
     React.useEffect(() => () => { requestGeneration.current += 1; transcriptGeneration.current += 1; }, []);
+    React.useEffect(()=>{const resize=()=>{if(window.innerWidth<640)setHistoryCollapsed(true)};window.addEventListener('resize',resize);return()=>window.removeEventListener('resize',resize)},[]);
+    React.useEffect(()=>{if(state.page==='assistant'&&window.innerWidth>=640)setHistoryCollapsed(false)},[state.page]);
     const open = !!state.assistantOpen;
     const refs = Array.isArray(state.assistantRefs) ? state.assistantRefs : [];
     const settings = (state.data && state.data.settings) || {};
     const savedWidth = Number(settings.assistantWidth);
-    const [width, setWidth] = React.useState<any>(Number.isFinite(savedWidth) ? savedWidth : 384);
+    const [width, setWidth] = React.useState<any>(Number.isFinite(savedWidth) ? Math.max(640,savedWidth) : 800);
     const widthRef = React.useRef<any>(width);
     React.useEffect(function (): any {
         widthRef.current = width;
@@ -141,38 +155,31 @@ function AssistantDrawer(): any {
         window.addEventListener('mouseup', onUp);
         window.addEventListener('mouseleave', onUp);
     }
-    function loadTranscript(sessionId?: any): any {
-        const generation = ++transcriptGeneration.current;
-        return WB.actions
-            .assistantTranscript(sessionId, 40)
-            .then(function (result?: any): any {
-            if (generation !== transcriptGeneration.current) return;
-            setMessages((result && result.messages) || []);
-            if (result && result.sessionId){
-                setActiveId(result.sessionId);
-                WB.actions.knowledgeTraces({sessionId:result.sessionId}).then((history:any)=>{if(generation===transcriptGeneration.current){setRetrieval(history?.items?.[0]||null);setCitationAudit(null)}}).catch(()=>{});
-            }
-        })
-            .catch(function (): any { });
+    function loadTranscript(sessionId?:any,scope=taskId):any {
+        const generation=++transcriptGeneration.current
+        return WB.actions.assistantTranscript(sessionId,80,scope).then((result:any)=>{
+            if(generation!==transcriptGeneration.current)return
+            if(result?.status&&result.status!=='ok')throw new Error(result.note||'无法读取助手会话')
+            if(!result?.sessionId)throw new Error('宿主未返回助手会话，请重新打开')
+            setMessages(result.messages||[]);setActiveId(result.sessionId);resolvedScope.current=scopeKey
+            setDraft(drafts.current[result.sessionId]||'');setResolving(false)
+            const taskTitle=state.data?.tasks?.find((task:any)=>task.id===scope)?.title
+            setSessions((previous:any[])=>previous.some(row=>row.id===result.sessionId)?previous:[{id:result.sessionId,title:scope&&result.title?.startsWith('会话 ')?taskTitle||'新会话':result.title||'新会话',taskId:scope||null,taskTitle,isAssistant:true},...previous])
+            WB.actions.knowledgeTraces({sessionId:result.sessionId}).then((history:any)=>{if(generation===transcriptGeneration.current){setRetrieval(history?.items?.[0]||null);setCitationAudit(null)}}).catch(()=>{})
+        }).catch((failure:any)=>{if(generation===transcriptGeneration.current){setActiveId(null);setResolving(false);setError(failure.message||'无法读取助手会话')}})
     }
-    React.useEffect(function (): any {
-        if (!open || loaded)
-            return;
-        setLoaded(true);
-        WB.actions
-            .assistantSessions(12)
-            .then(function (result?: any): any {
-            const list = (result && result.sessions) || [];
-            setSessions(list);
-            const preferred = list.find((row:any)=>row.id===result?.assistantSessionId)?.id || list[0]?.id || null;
-            if (preferred) {
-                setActiveId(preferred);
-                return loadTranscript(preferred);
-            }
-            return null;
-        })
-            .catch(function (): any { });
-    }, [open, loaded]);
+    React.useEffect(()=>{
+        if(!open)return
+        if(activeRef.current)drafts.current[activeRef.current]=draftRef.current
+        requestGeneration.current++;const generation=++transcriptGeneration.current
+        setSending(false);setResolving(true);setActiveId(null);setMessages([]);setDraft('');setError(null);setRetrieval(null);setCitationAudit(null)
+        WB.actions.assistantSessions(100,taskId).then((result:any)=>{
+            if(generation!==transcriptGeneration.current)return
+            setSessions(result?.sessions||[])
+            return loadTranscript(state.assistantSessionTarget||result?.assistantSessionId||undefined,taskId)
+        }).catch((failure:any)=>{if(generation===transcriptGeneration.current){setResolving(false);setError(failure.message||'会话列表读取失败')}})
+        return()=>{requestGeneration.current++;transcriptGeneration.current++;resolvedScope.current=null}
+    },[open,scopeKey]);
     React.useEffect(function (): any {
         const node = bodyRef.current;
         if (node)
@@ -180,17 +187,13 @@ function AssistantDrawer(): any {
     }, [messages, sending]);
     if (!open)
         return null;
-    function switchSession(nextId?: any): any {
-        requestGeneration.current += 1;
-        setSending(false);
-        setActiveId(nextId);
-        setRetrieval(null);setCitationAudit(null);
-        setError(null);
-        loadTranscript(nextId);
+    function switchSession(row:any):any {
+        const task=state.data?.tasks?.find((task:any)=>task.id===row.taskId)
+        WB.store.set((value:any)=>({assistantTaskId:row.taskId||null,assistantSessionTarget:row.id,assistantOpenSeq:(value.assistantOpenSeq||0)+1,assistantRefs:task?[{kind:'task',id:task.id,title:task.title,body:task.description||''}]:[]}))
     }
     function send(): any {
         const text = draft.trim();
-        if (!text || sending && !steerMode)
+        if (!text || resolving || !activeId || resolvedScope.current!==scopeKey || sending && !steerMode)
             return;
         setError(null);
         setDraft('');
@@ -201,7 +204,7 @@ function AssistantDrawer(): any {
             return previous.concat([{ role: 'user', text: text }]);
         });
         WB.actions
-            .assistantSend(text, refs, activeId, steerMode, knowledgeMode, knowledgeScope)
+            .assistantSend(text, refs, activeId, steerMode, knowledgeMode, knowledgeScope, taskId)
             .then(function (result?: any): any {
             if (generation !== requestGeneration.current) return;
             setRetrieval(result?.retrieval||null);setCitationAudit(null);
@@ -221,7 +224,7 @@ function AssistantDrawer(): any {
             function tick(): any {
                 if (generation !== requestGeneration.current) return;
                 WB.actions
-                    .assistantDelta(sid, cursor, result.retrieval?.id)
+                    .assistantDelta(sid, cursor, result.retrieval?.id, taskId)
                     .then(function (delta?: any): any {
                     if (generation !== requestGeneration.current) return;
                     if (delta && delta.status === 'ok') {
@@ -244,9 +247,9 @@ function AssistantDrawer(): any {
                                 setError('本轮超过 3 分钟仍未结束，可稍后在主面板查看。');
                             WB.actions.reload().catch(function (): any { });
                             WB.actions
-                                .assistantSessions(12)
+                                .assistantSessions(100,taskId)
                                 .then(function (next?: any): any {
-                                setSessions((next && next.sessions) || []);
+                                if(generation===requestGeneration.current)setSessions((next && next.sessions) || []);
                             })
                                 .catch(function (): any { });
                             return;
@@ -271,31 +274,20 @@ function AssistantDrawer(): any {
             setError(String((failure && failure.message) || failure));
         });
     }
-    function newSession(): any {
-        requestGeneration.current += 1;
-        transcriptGeneration.current += 1;
-        setSending(false);
-        WB.actions
-            .assistantReset()
-            .then(function (result?: any): any {
-            setMessages([]);
-            setError(null);
-            const nextId = result && result.sessionId;
-            if (nextId)
-                setActiveId(nextId);
-            WB.actions
-                .assistantSessions(12)
-                .then(function (next?: any): any {
-                setSessions((next && next.sessions) || []);
-            })
-                .catch(function (): any { });
-            WB.toast('已开始新的助手会话', 'ok');
-        })
-            .catch(function (): any { });
+    function newSession(general=false):any {
+        if(resolving)return
+        if(activeId)drafts.current[activeId]=draft
+        const generation=++requestGeneration.current;transcriptGeneration.current++;setSending(false);setResolving(true);setError(null)
+        WB.actions.assistantReset(general?'':taskId).then(async(result:any)=>{
+            if(generation!==requestGeneration.current)return
+            if(result?.status!=='ok'||!result.sessionId)throw new Error(result?.note||'无法新建会话')
+            if(general){WB.store.set((value:any)=>({page:'assistant',assistantTaskId:null,assistantRefs:[],assistantSessionTarget:result.sessionId,assistantOpenSeq:(value.assistantOpenSeq||0)+1}));return}
+            await loadTranscript(result.sessionId,taskId)
+            const next=await WB.actions.assistantSessions(100,taskId)
+            if(generation===requestGeneration.current)setSessions(next?.sessions||[])
+        }).catch((failure:any)=>{if(generation===requestGeneration.current){setResolving(false);setError(failure.message||'无法新建会话')}})
     }
-    const sessionOptions = (sessions.length > 0 ? sessions : [{ id: activeId || '', title: '当前会话' }]).map(function (item?: any): any {
-        return { value: item.id, label: (item.isAssistant ? '★ ' : '') + WB.util.truncate(item.title || item.id, 22) };
-    });
+    const activeSession=sessions.find((row:any)=>row.id===activeId),currentTask=state.data?.tasks?.find((task:any)=>task.id===taskId)
     const hasHistory = messages.length > 0;
     return h('aside', {
         className: 'wb-assistant',
@@ -303,7 +295,7 @@ function AssistantDrawer(): any {
             flex: '0 0 ' + width + 'px',
             width: width,
             minWidth: 240,
-            maxWidth: '58%',
+            maxWidth: '100%',
             display: 'flex',
             flexDirection: 'column',
             position: 'relative',
@@ -318,8 +310,9 @@ function AssistantDrawer(): any {
         onMouseDown: startResize,
         style: { position: 'absolute', left: -3, top: 0, bottom: 0, width: 6, cursor: 'col-resize', zIndex: 5 },
     }),
-    /* ---- 头部：只保留会话切换与三个操作，不再有标题与说明 ---- */
+    /* ---- 会话切换与按需设置 ---- */
     h('div', {
+        className:'wb-assistant-head',
         style: {
             display: 'flex',
             alignItems: 'center',
@@ -328,14 +321,7 @@ function AssistantDrawer(): any {
             borderBottom: '1px solid ' + T.border1,
             flex: 'none',
         },
-    }, h('div', { style: { flex: '1 1 auto', minWidth: 0 } }, h(Select, {
-        value: activeId || '',
-        options: sessionOptions,
-        title: '切换原生会话',
-        onChange: function (event?: any): any {
-            switchSession(event.target.value);
-        },
-    })), h(IconBtn, { name: 'plus', label: '新会话', onClick: newSession }), h(IconBtn, {
+    }, h(Btn,{size:'sm',icon:'messages','aria-label':historyCollapsed?'展开会话列表':'收起会话列表',onClick:()=>setHistoryCollapsed(!historyCollapsed),children:'会话'}),h('div',{className:'wb-assistant-current','aria-live':'polite'},h('strong',null,resolving?'正在恢复会话…':activeSession?.title||'AI 助手'),currentTask?h('small',null,currentTask.title):null), h('button',{ref:knowledgeButton,type:'button',className:'wb-iconbtn'+(knowledgeMode!=='auto'||knowledgeScope.projectId!==undefined||knowledgeScope.accountId!==undefined?' is-active':''),'aria-label':'知识设置','aria-haspopup':'dialog',title:'知识设置：'+(knowledgeMode==='only'?'仅知识库':knowledgeMode==='off'?'关闭':'自动检索'),onClick:()=>setKnowledgeOpen(true)},h(Icon,{name:'settings',size:15})), h(IconBtn, { name: 'plus', label: '新会话', disabled:resolving, onClick:()=>newSession() }), h(IconBtn, {
         name: 'external',
         label: '在主面板打开该会话',
         onClick: function (): any {
@@ -344,12 +330,14 @@ function AssistantDrawer(): any {
                 : WB.openConversation && WB.openConversation();
             if (!opened) WB.toast('当前宿主未提供会话导航，可从左侧会话列表打开该会话', 'warn');
         },
-    }), h(IconBtn, { name: 'close', label: '关闭助手', onClick: function (): any { WB.assistant.close(); } })),
+    }), state.page!=='assistant'?h(IconBtn, { name: 'close', label: '关闭助手', onClick: function (): any { WB.assistant.close(); } }):null),
+    h('div',{className:'wb-assistant-chat-layout'},!historyCollapsed?h(AssistantSessionsNav,{sessions,activeId,disabled:resolving,onNew:()=>newSession(true),onSelect:(row:any)=>{switchSession(row);if(typeof window!=='undefined'&&window.innerWidth<640)setHistoryCollapsed(true)}}):null,h('div',{className:'wb-assistant-conversation','aria-busy':resolving},
     /* ---- 消息区 ---- */
     h('div', {
         ref: bodyRef,
+        className:'wb-assistant-body',
         style: { flex: '1 1 auto', minHeight: 0, overflow: 'auto', padding: '14px 14px 10px', display: 'flex', flexDirection: 'column', gap: 12 },
-    }, !hasHistory && !sending
+    }, resolving?h('div',{className:'wb-row wb-muted'},h(Spinner,{size:14}),'正在恢复会话…'):!hasHistory && !sending
         ? h('div', {
             style: {
                 margin: 'auto 0',
@@ -433,7 +421,7 @@ function AssistantDrawer(): any {
                 const index = messages.indexOf(message);
                 const mine = message.role === 'user';
                 const markdown = !mine;
-                return h('div', { key: 'm' + index, style: { display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' } }, h('div', {
+                return h('div', { key: 'm' + index, className:'wb-assistant-message', style: { display: 'flex', justifyContent: mine ? 'flex-end' : 'flex-start' } }, h('div', {
                     style: {
                         maxWidth: '94%',
                         padding: '8px 10px',
@@ -473,10 +461,10 @@ function AssistantDrawer(): any {
                     }))
                     : null));
             });
-        })(), h(KnowledgeSources,{result:retrieval,audit:citationAudit,provided:true}), sending ? h('div', { className: 'wb-row wb-tiny wb-muted', style: { gap: 6 } }, h(Spinner, { size: 12 }), h('span', null, '思考中…')) : null, error ? h('div', { role: 'alert', className: 'wb-tiny', style: { color: T.err, lineHeight: 1.6 } }, error) : null),
+        })(), h(KnowledgeSources,{result:retrieval,audit:citationAudit,provided:true,compact:true}), sending ? h('div', { className: 'wb-row wb-tiny wb-muted', style: { gap: 6 } }, h(Spinner, { size: 12 }), h('span', null, '思考中…')) : null, error ? h('div', { role: 'alert', className: 'wb-tiny', style: { color: T.err, lineHeight: 1.6 } }, error) : null),
     /* ---- 输入区 ---- */
-    h('div', { className: 'wb-assistant-composer', style: { borderTop: '1px solid ' + T.border1, padding: '9px 10px 8px', display: 'flex', flexDirection: 'column', gap: 7, flex: 'none' } }, h('details',{className:'wb-knowledge-controls'},h('summary',{className:'wb-tiny',style:{cursor:'pointer'}},'知识设置：'+(knowledgeMode==='only'?'仅知识库':knowledgeMode==='off'?'关闭':'自动检索')),h('div',{className:'wb-row',style:{gap:6,flexWrap:'wrap',paddingTop:6}},h('label',{className:'wb-tiny'},'知识模式 ',h('select',{className:'wb-select',style:{maxWidth:125},'aria-label':'知识模式',value:knowledgeMode,onChange:(e:any)=>setKnowledgeMode(e.target.value)},h('option',{value:'auto'},'自动检索'),h('option',{value:'only'},'仅知识库'),h('option',{value:'off'},'关闭'))),h('select',{className:'wb-select','aria-label':'聊天知识项目',style:{maxWidth:145},value:knowledgeScope.projectId===undefined?'__auto':knowledgeScope.projectId||'',onChange:(e:any)=>setKnowledgeScope({...knowledgeScope,projectId:e.target.value==='__auto'?undefined:e.target.value||null})},h('option',{value:'__auto'},'项目：自动'),h('option',{value:''},'个人通用'),((state.data&&state.data.projects)||[]).map((p:any)=>h('option',{key:p.id,value:p.id},p.name))),h('select',{className:'wb-select','aria-label':'聊天知识账号',style:{maxWidth:145},value:knowledgeScope.accountId===undefined?'__auto':knowledgeScope.accountId||'',onChange:(e:any)=>setKnowledgeScope({...knowledgeScope,accountId:e.target.value==='__auto'?undefined:e.target.value||null})},h('option',{value:'__auto'},'账号：自动'),h('option',{value:''},'通用资料'),[...new Set<string>(((state.data&&state.data.sources)||[]).map((s:any)=>s.locator?.accountId).filter(Boolean))].map(id=>h('option',{key:id,value:id},id))))),h(AssistantContextPicker,{data:state.data,refs}), refs.length > 0
-        ? h('div', { className: 'wb-assistant-contexts', tabIndex: 0, role: 'region', 'aria-label': '已选择的上下文', style: { display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' } }, h('span', { className: 'wb-tiny wb-muted' }, '上下文 ' + refs.length + '：'), refs.map(function (ref?: any): any {
+    h('div', { className: 'wb-assistant-composer' }, h('div',{className:'wb-assistant-input'}, refs.length > 0
+        ? h('div', { className: 'wb-assistant-contexts', tabIndex: 0, role: 'region', 'aria-label': '已选择的上下文', style: { display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' } }, refs.map(function (ref?: any): any {
             return h(Chip, {
                 key: ref.kind + ':' + ref.id,
                 active: true,
@@ -489,7 +477,9 @@ function AssistantDrawer(): any {
         }))
         : null, h(Textarea, {
         value: draft,
-        rows: 2,
+        disabled: resolving,
+        rows: 3,
+        'aria-label':'助手消息',
         placeholder: '输入指令，或让我帮你整理待办…',
         onChange: function (event?: any): any {
             setDraft(event.target.value);
@@ -500,20 +490,20 @@ function AssistantDrawer(): any {
                 send();
             }
         },
-    }), h('div', { className: 'wb-row', style: { gap: 6 } }, h(Chip, {
+    }), h('div', { className: 'wb-row wb-assistant-input-actions', style: { gap: 6 } }, h(AssistantContextPicker,{data:state.data,refs,compact:true}), h(Chip, {
         active: steerMode,
         onClick: function (): any {
             setSteerMode(!steerMode);
         },
         title: steerMode ? '打断当前轮并立即处理' : '排队等当前轮结束再处理',
         children: steerMode ? '打断' : '排队',
-    }), h('span', { className: 'wb-tiny wb-muted', title: 'Enter 发送 / Shift+Enter 换行' }, '⏎ 发送'), h(IconBtn, {
+    }), h('div',{className:'wb-spacer'}), h('span',{title:'Enter 发送 / Shift+Enter 换行'},h(IconBtn, {
         name: 'arrowRight',
         label: sending && !steerMode ? '正在执行' : steerMode ? '打断并发送' : '发送',
-        disabled: sending && !steerMode || !draft.trim(),
+        disabled: resolving || !activeId || sending && !steerMode || !draft.trim(),
         active: (!sending || steerMode) && !!draft.trim(),
         onClick: send,
-    }))));
+    }))))))), h(AssistantKnowledgeSettings,{open:knowledgeOpen,onClose:closeKnowledge,data:state.data,mode:knowledgeMode,onMode:setKnowledgeMode,scope:knowledgeScope,onScope:setKnowledgeScope}));
 }
 /* --------------------------------------------------------------- error gate */ /* --------------------------------------------------------------- error gate */ /* --------------------------------------------------------------- error gate */
 function LoadingScreen(): any {
@@ -643,6 +633,7 @@ function WorkbenchApp(): any {
     }, []);
     const page = state.page;
     const Page = WB.pages[page];
+    React.useEffect(()=>{if(page==='assistant'&&!state.assistantOpen&&!state.taskForm?.open)WB.assistant.open()},[page,state.assistantOpen,state.taskForm?.open]);
     const loading = state.status === 'loading' && !state.data;
     const failed = state.status === 'error' && !state.data;
     const WebAIPage = WB.pages['web-ai'];
@@ -650,15 +641,16 @@ function WorkbenchApp(): any {
     return h('div', {className:'wb-root'+(page==='web-ai'?' is-web-ai':'')},
       h('style',null,WB_CSS+WB_LAYOUT_CSS),
       h('header',{className:'wb-head'},h(Toolbar,{data:state.data,page,assistantOpen:state.assistantOpen}),h(TopNavigation,{page,data:state.data})),
-      h('div',{className:'wb-workarea'+(state.assistantOpen||state.taskForm&&!state.contextHidden?' is-context-open':'')},
+      h('div',{className:'wb-workarea'+(page==='assistant'?' wb-assistant-page':'')+(state.assistantOpen||state.taskForm&&state.taskForm.presentation!=='modal'&&!state.contextHidden?' is-context-open':'')},
         h('div',{className:'wb-main'},h('div',{className:'wb-scroll'},
-          page!=='web-ai'?h('div',{key:'business-page',className:'wb-page'},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
+          page!=='web-ai'&&page!=='assistant'?h('div',{key:'business-page',className:'wb-page'},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
           (webAIVisited||page==='web-ai')&&WebAIPage?h('div',{key:'web-ai-surface',className:'wb-page wb-chat-page',hidden:page!=='web-ai'},h(WebAIPage)):null)),
-        h(AssistantDrawer),h(TaskFormHost,{embedded:true})),
+        h(AssistantHubEntry,{Legacy:AssistantDrawer}),h(TaskFormHost,{embedded:true})),
       WB.Palette?h(WB.Palette,{open:paletteOpen,onClose:()=>setPaletteOpen(false)}):null,h(AnalysisMonitor),h(Toaster));
 }
 /* -------------------------------------------------------------------- apply */
 WB.apply = function apply(ctx?: any): any {
+    ctx.effect(()=>installAssistantNative(WB,ctx));
     if (ctx.connection)
         setShared_wbConnection(ctx.connection);
     if (typeof WB.setLayout === 'function') {

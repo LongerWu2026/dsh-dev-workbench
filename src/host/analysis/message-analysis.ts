@@ -1,3 +1,5 @@
+import {recordHubRun} from '../assistant/hub-store.js'
+import {observeBackgroundBatch} from '../automation/observed-batch.js'
 import {canCreateMessageTask,isFreshPrivateHead} from '../../shared/message-intake.js'
 import {privateSource,routePrivateAnalysis,applyLatestPrivateReply} from '../domain/reply-routing.js'
 import {findCalendarMeetingTask} from '../domain/meeting-match.js'
@@ -9,7 +11,7 @@ import { assertAnalysisShape } from '../../shared/contracts.js'
 import { EVENT_TYPES, auditEntry, ensureArray, normalizeHumanGuard, normalizeReplies } from '../domain/model.js'
 import { asIso, asString, hostNowIso, newId, createHash, runtimeCheckpoint, RuntimeInterruptedError, isRuntimeInterrupted } from '../platform/runtime.js'
 import { applyCreateTask, applyUpdateTask } from '../domain/task-commands.js'
-import { ensureBackgroundSession, replaceIncompatibleBackgroundSession, backgroundSessionKey, hostService, sleepMs, submitPrompt, transcriptDelta } from '../assistant/sessions.js'
+import { ensureBackgroundSession, replaceIncompatibleBackgroundSession, recordBackgroundReasoningSuccess, BackgroundReasoningRecoveryError, backgroundSessionKey, hostService, sleepMs, submitPrompt, transcriptDelta } from '../assistant/sessions.js'
 import { loadWorkbenchState, mutateWorkbenchState, workbenchGenerationGuard } from '../storage/state-store.js'
 /* Structured message understanding. All model waits happen outside the commit queue. */
 const ANALYSIS_TURN_TIMEOUT_MS = 90000;
@@ -32,11 +34,11 @@ export async function recordModelFailure(purpose:string,error:any):Promise<any> 
     let gate:any;
     await mutateWorkbenchState((state:any)=>{
         state.modelHealth ||= {};
-        const failures=Math.min(3,(state.modelHealth[purpose]?.failures||0)+1);
+        const failures=error?.reasoningRecoveryBlocked===true?3:Math.min(3,(state.modelHealth[purpose]?.failures||0)+1);
         const blocked=failures>=3;
         const retryAt=blocked?null:new Date(Date.now()+failures*5*60000).toISOString();
         const detail=String(error.message||error).slice(0,140);
-        const note=blocked?'模型连续失败，已暂停自动调用；在宿主恢复模型后点击运行重试。':'模型暂不可用，已保留业务消息，'+failures*5+'分钟后重试。';
+        const note=error?.reasoningRecoveryBlocked===true?String(error.message):blocked?'模型连续失败，已暂停自动调用；在宿主恢复模型后点击运行重试。':'模型暂不可用，已保留业务消息，'+failures*5+'分钟后重试。';
         state.modelHealth[purpose]={failures,blocked,retryAt,note,detail,at:hostNowIso()};
         gate={status:'deferred',retryAt,note};
         auditEntry(state,'model.unavailable',purpose+'：'+note);
@@ -257,7 +259,7 @@ export function isReasoningHistoryFailure(error:any):boolean {
     const message=String(error?.message || error);
     return /reasoning_content/i.test(message) && /Missing required|must.*(?:pass|send)|needs? the reasoning|reasoning_content.*(?:required|missing)/i.test(message);
 }
-async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any,timeout:any,purpose?:string,options?:{backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void}):Promise<any> {
+async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any,timeout:any,purpose?:string,options?:{hubRunId?:string;backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void}):Promise<any> {
     const key=options?.backgroundKey || session?.workbenchThreadKey || (purpose ? backgroundSessionKey(purpose) : null);
     const current=key && loadWorkbenchState().backgroundThreads?.[key];
     if(purpose && current && current.sessionId!==session.id)session=await ensureBackgroundSession(ctx,purpose,current.accountId || undefined);
@@ -270,16 +272,19 @@ async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any
         try {
             return await waitStructuredReplyOnce(ctx,controller,fresh,options?.recoveryText || prompt,timeout,purpose,{...options,onSubmitted:(value:any)=>options?.onSubmitted?.(value,false)});
         }catch(recoveryError){
-            if(isReasoningHistoryFailure(recoveryError))throw new ModelServiceError('模型历史兼容恢复失败，已停止本批；请检查宿主模型适配：'+String(recoveryError.message).slice(0,1200));
+            if(isReasoningHistoryFailure(recoveryError))throw new BackgroundReasoningRecoveryError();
             throw recoveryError;
         }
     }
 }
-async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: any, prompt?: any, timeout?: any, purpose?: string, options?: {backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void}): Promise<any> {
+async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: any, prompt?: any, timeout?: any, purpose?: string, options?: {hubRunId?:string;backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void}): Promise<any> {
     const assertCurrent=workbenchGenerationGuard();
     const target = session || (purpose ? await ensureBackgroundSession(ctx,purpose) : null);
     const submitted = await submitPrompt(ctx, controller, target, prompt, false, purpose,options);
     options?.onSubmitted?.(submitted.session,submitted.recovered);
+    let recordedSeq=-1,historyError='';
+    const recordHistory=()=>{const toSeq=Number(submitted.session.seq)||0;if(options?.hubRunId&&toSeq!==recordedSeq){try{recordHubRun(options.hubRunId,[{sessionId:submitted.session.id,fromSeq:Number(submitted.fromSeq)||0,toSeq,purpose:purpose||'analysis',accountId:loadWorkbenchState().backgroundThreads?.[options.backgroundKey||submitted.session.workbenchThreadKey]?.accountId}],[])}catch(error){historyError=String(error.message||error)}recordedSeq=toSeq}};
+    recordHistory();
     try {
     const deadline = Date.now() + timeout;
     const generation = runtimeCheckpoint();
@@ -287,6 +292,7 @@ async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: an
         await sleepMs(ANALYSIS_POLL_MS);
         assertCurrent(); // Ownership fence after every awaited model poll.
         const delta = transcriptDelta(submitted.session, submitted.fromSeq);
+        recordHistory();
         const failure=delta.entries.find((row:any)=>row.role==='error');
         if (failure) throw new ModelServiceError(String(failure.text||'模型轮次执行失败，请查看宿主模型或认证状态').slice(0,4000));
         if (delta.turnEnded && !delta.turnActive) {
@@ -294,6 +300,8 @@ async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: an
             const parsed = extractJsonFromReply(text);
             if (!parsed)
                 throw new Error('模型回复无法解析为 JSON');
+            const backgroundKey=options?.backgroundKey || target?.workbenchThreadKey || (purpose?backgroundSessionKey(purpose):null);
+            if(backgroundKey)await recordBackgroundReasoningSuccess(ctx,backgroundKey,submitted.session,Number(submitted.fromSeq)||0);
             return parsed;
         }
         if (runtimeCheckpoint() !== generation) {
@@ -304,7 +312,11 @@ async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: an
     }
     if (typeof controller.cancel === 'function') { try { await controller.cancel({sessionId:submitted.session.id}) } catch(e) {} }
     throw new Error('模型处理超时，本条保留以便重试');
-    } finally { await captureModelUsage(submitted.session,submitted.fromSeq); }
+    } finally {
+        recordHistory();
+        if(historyError&&options?.hubRunId)try{await mutateWorkbenchState((state:any)=>{const job=state.jobs.find((row:any)=>row.id===options.hubRunId);if(job)job.historyError=historyError;return state})}catch{}
+        await captureModelUsage(submitted.session,submitted.fromSeq);
+    }
 }
 export const ANALYSIS_BATCH_PROTOCOL='awb-message-batch-v3';
 const ANALYSIS_PACKET_CHARS=40000;
@@ -380,6 +392,9 @@ function resolveBatchReferences(analysis:any,source:any,links:Map<string,any>):a
 }
 
 async function runAnalysisBatch(ctx?: any, request?: any): Promise<any> {
+    return observeBackgroundBatch(ctx,'analysis',request,(tracked,begin)=>executeAnalysisBatch(ctx,tracked,begin));
+}
+async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>):Promise<any> {
     if(analysisBatchInFlight)return {status:'busy',processed:0,failures:0,note:'识别批次正在运行'};
     if(request?.retryModel===true)await resetModelHealth('analysis');
     const gate=modelGate(loadWorkbenchState(),'analysis');if(gate)return {...gate,processed:0,failures:0};
@@ -412,6 +427,7 @@ async function runAnalysisBatch(ctx?: any, request?: any): Promise<any> {
             return state;
         });
         metrics.inputCount=entries.length;
+        if(entries.length)await begin();
         if(!entries.length&&onlyIds.size&&loadWorkbenchState().analysisQueue.some((row:any)=>onlyIds.has(row.id)&&['pending','failed'].includes(row.status))) {runStatus='deferred';return {status:'deferred',processed:0,failures:0,...metrics,retryAt:new Date(Date.now()+60000).toISOString(),note:'指定消息仍在会话补采或重试等待中，保留作业，下一轮继续核对'};}
         let remaining=entries.slice();
         while(remaining.length && loadWorkbenchState().settings.aiExtract.enabled){
@@ -433,7 +449,7 @@ async function runAnalysisBatch(ctx?: any, request?: any): Promise<any> {
             const call=async(input:any)=>{
                 metrics.modelCalls++;metrics.promptChars+=input.text.length;metrics.ruleInitializations+=input.includeRules?1:0;metrics.contextMessages+=input.contextCount;
                 const recovery=buildAnalysisPacket(loadWorkbenchState(),sources,session,batchId,true);
-                const parsed=await waitStructuredReply(ctx,controller,usedSession,input.text,Math.min(180000,ANALYSIS_TURN_TIMEOUT_MS+(sources.length-1)*5000),'analysis',{backgroundKey:session.workbenchThreadKey,recoveryText:recovery.text,onSubmitted:(value,recovered)=>{usedSession=value;if(recovered){metrics.modelCalls++;metrics.promptChars+=recovery.text.length;metrics.ruleInitializations++;metrics.contextMessages+=recovery.contextCount;packet=recovery}}});
+                const parsed=await waitStructuredReply(ctx,controller,usedSession,input.text,Math.min(180000,ANALYSIS_TURN_TIMEOUT_MS+(sources.length-1)*5000),'analysis',{hubRunId:request?.analysisJobId,backgroundKey:session.workbenchThreadKey,recoveryText:recovery.text,onSubmitted:(value,recovered)=>{usedSession=value;if(recovered){metrics.modelCalls++;metrics.promptChars+=recovery.text.length;metrics.ruleInitializations++;metrics.contextMessages+=recovery.contextCount;packet=recovery}}});
                 return decodeAnalysisBatch(parsed,batchId,sources);
             };
             try {

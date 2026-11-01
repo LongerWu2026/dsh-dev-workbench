@@ -143,6 +143,14 @@ const WB_CSS = `
 .wb-grid { display: grid; gap: 16px; }
 .wb-row { display: flex; align-items: center; gap: 8px; }
 .wb-row--wrap { flex-wrap: wrap; }
+.wb-brief-task-title { min-width: 0; }
+.wb-brief-task-title > button { width: 100%; }
+.wb-brief-task .wb-item-sub { gap: 5px; margin-top: 4px; }
+.wb-brief-task-source { margin-top: 4px; }
+.wb-brief-task-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 7px; }
+.wb-brief-task-footer .wb-btn { max-width: 100%; white-space: normal; text-align: left; }
+.wb-brief-task-footer .wb-btn > span { min-width: 0; overflow-wrap: anywhere; }
+.wb-brief-task-actions { margin-top: -4px; }
 .wb-spacer { flex: 1 1 auto; }
 .wb-stack { display: flex; flex-direction: column; gap: 8px; }
 

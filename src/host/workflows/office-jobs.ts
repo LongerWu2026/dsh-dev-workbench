@@ -21,25 +21,28 @@ function taskInput(s:any,id:string){
  const ids=new Set([task.sourceRefId,...(task.sourceRefs||[]).map((r:any)=>typeof r==='string'?r:r.sourceId)])
  return {task,sources:s.sources.filter((r:any)=>ids.has(r.id)),replies:s.replies.filter((r:any)=>(r.taskIds||[]).includes(id))}
 }
-function periodInput(s:any,period:string){
+function periodInput(s:any,period:string,now:number){
  if(!['day','week'].includes(period))throw new Error('请选择日报或周报')
- const days=period==='week'?7:1, now=Date.now(),today=Math.floor((now+8*3600000)/86400000)*86400000-8*3600000,start=today-(days-1)*86400000
+ const days=period==='week'?7:1,today=Math.floor((now+8*3600000)/86400000)*86400000-8*3600000,start=today-(days-1)*86400000
  const rows=s.tasks.filter((t:any)=>!t.archivedAt && (!['completed','cancelled'].includes(t.status)||Date.parse(t.updatedAt)>=start)).sort((a:any,b:any)=>String(b.updatedAt).localeCompare(String(a.updatedAt)))
  const tasks=rows.slice(0,100).map((t:any)=>Object.fromEntries(['id','title','status','priority','dueAt','updatedAt','projectId','deliverable'].map(k=>[k,t[k]??null]))),ids=new Set(tasks.map((t:any)=>t.id))
  return {period,timezone:'Asia/Shanghai',from:new Date(start).toISOString(),to:new Date(now).toISOString(),totalTasks:rows.length,includedTasks:tasks.length,tasks,runs:s.runs.filter((r:any)=>ids.has(r.taskId)&&Date.parse(r.startedAt)>=start).slice(-50).map((r:any)=>({id:r.id,taskId:r.taskId,status:r.status,summary:r.summary,startedAt:r.startedAt})),replies:s.replies.filter((r:any)=>['待回复','已确认收到','已自动回复'].includes(r.stage)).slice(0,30)}
 }
-export function prepareOfficeSteps(s:any,kind:OfficeWorkflowKind,input:any):OfficeStep[]{
- const items=kind==='reply_batch'?input.replyIds.map((id:string)=>({id,label:s.replies.find((r:any)=>r.id===id)?.snippet||id,data:replyInput(s,id)})):kind==='task_assist'?[{id:input.taskId,label:'整理依据 → 生成方案 → 验证产物',data:taskInput(s,input.taskId)}]:[{id:input.period,label:input.period==='week'?'近七日工作报告':'今日工作报告',data:periodInput(s,input.period)}]
+export function prepareOfficeSteps(s:any,kind:OfficeWorkflowKind,input:any,now=Date.now()):OfficeStep[]{
+ const items=kind==='reply_batch'?input.replyIds.map((id:string)=>({id,label:s.replies.find((r:any)=>r.id===id)?.snippet||id,data:replyInput(s,id)})):kind==='task_assist'?[{id:input.taskId,label:'整理依据 → 生成方案 → 验证产物',data:taskInput(s,input.taskId)}]:[{id:input.period,label:input.period==='week'?'近七日工作报告':'今日工作报告',data:periodInput(s,input.period,now)}]
  return items.map((item:any)=>{if(JSON.stringify(item.data).length>40000)throw new Error('事项上下文超过40000字符，请缩小范围');const projectId=item.data.task?.projectId||item.data.tasks?.[0]?.projectId||s.settings?.defaultProjectId||null,accountId=item.data.source?.locator?.accountId||null;const retrieval=kind==='work_report'?null:retrieveKnowledge(s,[item.data.task?.title,item.data.task?.description,item.data.source?.excerpt].filter(Boolean).join(' '),{scope:{projectId,accountId}});return{id:item.id,label:String(item.label).slice(0,120),status:'pending',attempts:0,input:{...item.data,...(retrieval?{knowledge:retrieval}:{})}}})
 }
-export async function enqueueOfficeWorkflow(kind:string,input:any={}){
+export async function enqueueOfficeWorkflow(kind:string,input:any={},onSelected?:(id:string)=>void,validateAt?:(now:number)=>void){
  if(!isOfficeWorkflow(kind))throw new Error('未知办公工作流')
  if(kind==='reply_batch'&&(!Array.isArray(input.replyIds)||!input.replyIds.length||input.replyIds.length>20||input.replyIds.some((id:any)=>typeof id!=='string')))throw new Error('每批请选择1–20条待回复')
  const safe=kind==='reply_batch'?{replyIds:[...new Set<string>(input.replyIds)].sort()}:kind==='task_assist'?{taskId:String(input.taskId||'')}:{period:input.period||'day'}
  return mutateWorkbenchState((s:any)=>{
-  const steps=prepareOfficeSteps(s,kind,safe),key=digest([kind,safe,steps.map(r=>r.input)])
-  if(s.jobs.some((j:any)=>j.kind===kind&&j.inputKey===key&&['queued','running','completed'].includes(j.status)))return s
-  s.jobs.push({id:newId('job'),kind,title:OFFICE_WORKFLOW_LABELS[kind],input:safe,inputKey:key,status:'queued',steps,createdAt:hostNowIso(),updatedAt:hostNowIso(),attempts:0})
+  // Validate a trusted theme at commit time, then freeze this same clock sample.
+  const now=Date.now();validateAt?.(now)
+  const stableInputs=(steps:any[])=>steps.map(step=>{if(kind!=='work_report')return step.input;const {to,...facts}=step.input;return facts})
+  const steps=prepareOfficeSteps(s,kind,safe,now),key=digest([kind,safe,stableInputs(steps)])
+  const existing=s.jobs.find((j:any)=>j.kind===kind&&(j.inputKey===key||kind==='work_report'&&Array.isArray(j.steps)&&digest([kind,safe,stableInputs(j.steps)])===key)&&['queued','running','completed'].includes(j.status));if(existing){onSelected?.(existing.id);return s}
+  const id=newId('job');s.jobs.push({id,kind,title:OFFICE_WORKFLOW_LABELS[kind],input:safe,inputKey:key,status:'queued',steps,createdAt:hostNowIso(),updatedAt:hostNowIso(),attempts:0});onSelected?.(id)
   return s
  })
 }

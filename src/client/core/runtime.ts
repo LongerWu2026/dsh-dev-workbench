@@ -37,6 +37,10 @@ const wbStore = (function (): any {
         /** 工作台助手：可移除的上下文引用（task / source / radar / knowledge / search） */
         assistantOpen: false,
         assistantRefs: [],
+        assistantTaskId: null,
+        assistantSessionTarget: null,
+        assistantConversationId: null,
+        assistantOpenSeq: 0,
         /** 命令面板 → 搜索页的交接：{query, groups} */
         searchPreset: null,
     };
@@ -46,7 +50,10 @@ const wbStore = (function (): any {
             return state;
         },
         set(patch?: any): any {
-            const next = typeof patch === 'function' ? patch(state) : patch;
+            let next = typeof patch === 'function' ? patch(state) : patch;
+            // Old saved routes and officeView deep links now enter the same
+            // durable assistant conversation; jobs and historical data remain intact.
+            if(next?.page==='office')next={...next,page:'assistant',officeView:null,assistantOpen:true,contextHidden:true,assistantConversationId:'system:office',assistantHubThreadId:null,assistantTaskId:null,assistantSessionTarget:null,assistantRefs:[],assistantOpenSeq:(state.assistantOpenSeq||0)+1};
             state = Object.assign({}, state, next);
             listeners.forEach(function (fn?: any): any {
                 try {
@@ -214,16 +221,26 @@ WB.WORKBENCH_TOOL_NAMES = [
  * 插件内不嵌模型；这里只负责组装上下文与跳转（TODO 04 的备选路径）。
  */
 const assistant: any = {
+    openHub(kind='system',id='analysis'): any {
+        if(kind.includes(':')){const separator=kind.indexOf(':');id=kind.slice(separator+1);kind=kind.slice(0,separator)}
+        wbStore.set((state:any)=>({page:'assistant',assistantOpen:true,contextHidden:true,assistantConversationId:kind+':'+id,assistantHubThreadId:null,assistantTaskId:kind==='task'?id:null,assistantSessionTarget:null,assistantRefs:[],assistantOpenSeq:(state.assistantOpenSeq||0)+1}));
+    },
     open(): any {
         wbStore.set({ assistantOpen: true });
     },
     close(): any {
-        wbStore.set({ assistantOpen: false });
+        wbStore.set((state:any)=>({ assistantOpen: false, ...(state.page==='assistant'?{page:'dashboard'}:{}) }));
     },
     toggle(): any {
         wbStore.set(function (state?: any): any {
-            return { assistantOpen: !state.assistantOpen };
+            return { assistantOpen: !state.assistantOpen, ...(state.assistantOpen&&state.page==='assistant'?{page:'dashboard'}:{}) };
         });
+    },
+    /** A single-item assistance entry starts with this item, not yesterday's selection. */
+    openFor(ref?: any): any {
+        if (!ref || !ref.kind || !ref.id)
+            return;
+        wbStore.set((state:any)=>({ page:'assistant', assistantOpen: true, assistantRefs: [ref], assistantTaskId:ref.kind==='task'?ref.id:null, assistantConversationId:['task','reply','development','radar','knowledge'].includes(ref.kind)?ref.kind+':'+ref.id:null, assistantSessionTarget:null, assistantHubThreadId:null, assistantOpenSeq:(state.assistantOpenSeq||0)+1 }));
     },
     add(ref?: any): any {
         if (!ref || !ref.kind)
@@ -473,21 +490,22 @@ const wbActions: any = {
         return wbSyncInFlight;
     },
     /** 侧栏助手：向原生会话提交一次问答，返回 {status, reply, toolCalls, note}。 */
+    assistantHub(request:any):any { return wbRpc('workbench/assistantHub',{request}); },
     assistantAsk(text?: any, refs?: any, sessionId?: any): any {
         return wbRpc('workbench/assistantAsk', {
             request: { text: text, refs: refs || [], sessionId: sessionId || null },
         });
     },
     /** 只提交提示，立即返回 {sessionId, fromSeq}；配合 assistantDelta 渐进渲染。 */
-    assistantSend(text?: any, refs?: any, sessionId?: any, steer?: any, knowledgeMode?:string, knowledgeScope?:any): any {
+    assistantSend(text?: any, refs?: any, sessionId?: any, steer?: any, knowledgeMode?:string, knowledgeScope?:any, taskId?:string): any {
         return wbRpc('workbench/assistantSend', {
-            request: { text: text, refs: refs || [], sessionId: sessionId || null, steer: steer === true, knowledgeMode, ...(knowledgeScope||{}) },
+            request: { text: text, refs: refs || [], sessionId: sessionId || null, steer: steer === true, knowledgeMode, ...(knowledgeScope||{}), ...(taskId?{taskId}:{}) },
         });
     },
     /** 增量读取：{entries, nextSeq, turnActive}。 */
-    assistantDelta(sessionId?: any, fromSeq?: any, retrievalId?:string): any {
+    assistantDelta(sessionId?: any, fromSeq?: any, retrievalId?:string, taskId?:string): any {
         return wbRpc('workbench/assistantDelta', {
-            request: { sessionId: sessionId || null, fromSeq: fromSeq || 0, retrievalId },
+            request: { sessionId: sessionId || null, fromSeq: fromSeq || 0, retrievalId, ...(taskId?{taskId}:{}) },
         });
     },
     /** 按消息 id 取助手回复正文（原生聊天内嵌动作）。 */
@@ -505,19 +523,19 @@ const wbActions: any = {
     deleteCandidate(id?: any): any {
         return settle(wbRpc('workbench/deleteCandidate', { id: id }), '候选已删除');
     },
-    assistantSessions(limit?: any): any {
-        return wbRpc('workbench/assistantSessions', { request: { limit: limit || 12 } });
+    assistantSessions(limit?: any, taskId?:string): any {
+        return wbRpc('workbench/assistantSessions', { request: { limit: limit || 100, ...(taskId?{taskId}:{}) } });
     },
-    assistantTranscript(sessionId?: any, limit?: any): any {
+    assistantTranscript(sessionId?: any, limit?: any, taskId?:string): any {
         return wbRpc('workbench/assistantTranscript', {
-            request: { sessionId: sessionId || null, limit: limit || 40 },
+            request: { sessionId: sessionId || null, limit: limit || 40, ...(taskId?{taskId}:{}) },
         });
     },
     assistantHistory(): any {
         return wbRpc('workbench/assistantHistory', {});
     },
-    assistantReset(): any {
-        return wbRpc('workbench/assistantReset', {});
+    assistantReset(taskId?:string): any {
+        return wbRpc('workbench/assistantReset', {request:taskId?{taskId}:{}});
     },
     analysisRetry(entryId?: string): any { return settle(wbRpc('workbench/analysisRetry', {entryId}), '已加入重试队列') },
     analysisCancel(entryId?: string): any { return settle(wbRpc('workbench/analysisCancel', {entryId}), '已取消分析') },
@@ -584,8 +602,8 @@ WB.ICONS = Object.keys(WB_ICON_PATHS);
 
 /* --------------------------------------------------------- task presentation */
 /** Open the shared task form for an existing task (or null to create one). */
-WB.openTaskForm = function (task?: any, defaults?: any): any {
-    wbStore.set({ assistantOpen:false, contextHidden:false, taskForm: { open: true, task: task || null, defaults: defaults || null } });
+WB.openTaskForm = function (task?: any, defaults?: any, options?: {presentation?:'modal'|'pane'}): any {
+    wbStore.set({ assistantOpen:false, contextHidden:false, taskForm: { open: true, task: task || null, defaults: defaults || null, presentation: options?.presentation || 'pane' } });
 };
 
 /** Jump to the task center with one task selected. */

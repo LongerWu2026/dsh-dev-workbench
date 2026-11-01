@@ -20,10 +20,14 @@ import { readFileSync } from 'node:fs'
 let hookSlots = []
 let hookIndex = 0
 let dirty = false
+let componentId = 0
 
 const React = {
   Fragment: Symbol.for('react.fragment'),
   memo(component) { return component },
+  useId() { return React.useState(()=>'fixture-id-'+(++componentId))[0] },
+  createContext(value) { const context={value};context.Provider={testContext:context};return context },
+  useContext(context) { return context.value },
   useLayoutEffect(fn,deps) { return React.useEffect(fn,deps) },
   createElement(type, props) {
     // Real React also exposes children through props.children; components like
@@ -74,7 +78,9 @@ const React = {
     return fn
   },
   useRef(initial) {
-    return { current: initial }
+    const slots=hookSlots,slot=hookIndex++
+    if(!(slot in slots))slots[slot]={current:initial}
+    return slots[slot]
   },
   useSyncExternalStore(subscribe, getSnapshot) {
     subscribe(function () {
@@ -390,7 +396,7 @@ const githubFixture = {
   prs: {
     status: 'ok',
     note: null,
-    items: [{ number: 12, title: 'feat: 工作台骨架', state: 'OPEN', draft: false, author: 'wulonglong', updatedAt: iso(-3), url: 'https://github.com/o/r/pull/12' }],
+    items: [{ number: 12, title: 'feat: 工作台骨架', state: 'OPEN', draft: false, author: 'fixture-user', updatedAt: iso(-3), url: 'https://github.com/o/r/pull/12' }],
   },
   runs: {
     status: 'ok',
@@ -628,6 +634,7 @@ function expand(node, out) {
     return expand(node(node.props || {}), out)
   }
   if (typeof node === 'object' && node.type) {
+    if(node.type.testContext){const context=node.type.testContext,previous=context.value;context.value=node.props?.value;try{return expand(node.props?.children,out)}finally{context.value=previous}}
     if (typeof node.type === 'function') {
       beginComponent(node.type)
       return expand(node.type(node.props || {}), out)
@@ -748,13 +755,13 @@ if (entry && entry.key !== 'dev-workbench') problems.push('main key 不是 dev-w
 if (!registrations.panellist.length) problems.push('没有注册 sidebar.panellist')
 
 const pageSpecs = [
-  ['今日简报', 'dashboard', ['AI 动态', '抓取资讯', '复制今日简报', '待回复', '张三', '已回复']],
+  ['今日简报', 'dashboard', ['AI 动态', '抓取资讯', '复制今日简报', '待回复', '张三', '处理回复']],
+  ['AI 助手', 'assistant', ['最近会话', '新建对话']],
   ['任务中心', 'tasks', ['看板', '规则候选（备用）', '提取候选', '筛选']],
   ['待回复', 'replies', ['私聊未读先待识别']],
   ['资讯', 'radar', ['生成摘要', '获取资讯']],
   ['工作搜索', 'search', ['工作内容', '互联网', '消息']],
   ['研发任务', 'agents', ['研发设置', 'Linky']],
-  ['智能办公', 'office', ['办公流程', '执行记录']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
   ['研发协作', 'collab', ['添加仓库目录', '端口占用', 'PR 与 CI', '进程 CPU / 内存']],
   ['知识空间', 'knowledge', ['知识空间']],
@@ -814,6 +821,7 @@ for (const [title, id, expected] of pageSpecs) {
   markers.forEach(function (marker) {
     if (text.indexOf(marker) < 0) problems.push(title + ' 缺少预期内容「' + marker + '」')
   })
+  if (id === 'dashboard' && !findButtons(tree, []).some(button => button.label.startsWith('编辑待办：'))) problems.push('今日简报缺少待办编辑图标')
   if (!seenPages.includes(id)) problems.push('page 状态从未进入 ' + id)
 }
 
@@ -895,13 +903,11 @@ for (const [title, id, expected] of pageSpecs) {
   if (source.indexOf('删除这条来源证据') < 0) problems.push('产物里缺少「删除来源证据」入口')
   if (source.indexOf('workbench/deleteSource') < 0) problems.push('产物里缺少 deleteSource 调用')
 
-  // Agent 中心：执行记录编辑 + 删除
-  let agentsEntries = await goPage('智能办公')
-  const officeTab = findButtons(agentsEntries, []).find(button=>button.text==='执行记录')
-  if(officeTab){officeTab.onClick();agentsEntries=await renderTree('执行记录')}
-  const agentsLabels = labelsOf(agentsEntries)
-  if (agentsLabels.indexOf('编辑这条执行记录') < 0) problems.push('Agent 中心缺少「编辑执行记录」入口')
-  if (agentsLabels.indexOf('删除这条执行记录') < 0) problems.push('Agent 中心缺少「删除执行记录」入口')
+  // Retired office routes lead into the durable assistant, never a duplicate raw-run page.
+  WB.go('office')
+  const officeRoute = await renderTree('旧办公入口迁移')
+  if(WB.store.get().page!=='assistant'||WB.store.get().assistantConversationId!=='system:office')problems.push('旧办公入口没有恢复办公历史')
+  if(labelsOf(officeRoute).includes('编辑这条执行记录')||labelsOf(officeRoute).includes('新建办公流程'))problems.push('办公迁移仍展示孤立执行列表')
 
   // 研发协作：仓库移除入口
   const collabEntries = await goPage('研发协作')
@@ -927,17 +933,18 @@ for (const [title, id, expected] of pageSpecs) {
     // 新设计：头部不再有标题与说明文字，只留会话切换与操作
     if (text.indexOf('DSH 原生会话与模型') >= 0) problems.push('助手头部仍渲染说明文字（应去掉）')
     if (text.indexOf('早上好') < 0) problems.push('助手抽屉没有载入历史消息')
-    // 会话选择器必须存在（头部唯一的选择控件）
-    let hasSessionSelect = false
-    const findSelect = (list) => {
+    // 会话列表替代长下拉，支持收起；当前会话在列表中明确标记。
+    let hasSessionList = false
+    const findSessions = (list) => {
       list.forEach((item) => {
         if (!item.tag) return
-        if (item.tag === 'select') hasSessionSelect = true
-        findSelect(item.children || [])
+        if (item.tag === 'nav' && item.props?.['aria-label']==='助手会话列表') hasSessionList = true
+        findSessions(item.children || [])
       })
     }
-    findSelect(drawer)
-    if (!hasSessionSelect) problems.push('助手头部缺少会话选择器')
+    findSessions(drawer)
+    if (!hasSessionList) problems.push('助手缺少左侧会话列表')
+    if(!findButtons(drawer,[]).some(button=>button.label==='收起会话列表'))problems.push('会话列表缺少折叠入口')
     // 可拖拽分栏：必须有分隔条，且侧栏是固定宽度、主区随之让位
     let separator = null
     const findSeparator = (list) => {

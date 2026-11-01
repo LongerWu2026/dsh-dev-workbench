@@ -1,9 +1,10 @@
 import * as React from 'react'
 import { WB, Btn, Modal } from '../core/runtime.js'
-export function KnowledgeSources({result,audit,provided=false}: {result:any;audit?:any;provided?:boolean}){
+export function KnowledgeSources({result,audit,provided=false,compact=false}: {result:any;audit?:any;provided?:boolean;compact?:boolean}){
  const [selected,setSelected]=React.useState<any>(null),[error,setError]=React.useState('')
  React.useEffect(()=>{setError('');setSelected(null)},[result?.id]);
  if(!result||result.status==='off')return null
+ if(compact&&result.status==='empty'&&!result.hits?.length&&!audit?.invalid?.length&&!audit?.stale?.length&&!audit?.missing)return <p role="status" className="wb-tiny wb-muted wb-assistant-knowledge-note" title={result.note||'当前知识范围未命中'}>本轮未命中知识库资料</p>
  async function read(hit:any){setError('');try{const rows=await WB.actions.knowledgeRead({ids:[hit.id],scope:result.scope});setSelected(rows.hits[0])}catch(e:any){setError(e.message||'原文读取失败，可能已更新或失效')}}
  return <section aria-label="知识检索依据" style={{margin:'8px 0',padding:8,border:'1px solid '+WB.T.border1,borderRadius:8,fontSize:12,minWidth:0}}>
   <details><summary style={{cursor:'pointer',overflowWrap:'anywhere'}}>知识依据 · {result.hits?.length||0} 个片段 · {result.status==='ok'?(provided?'已提供给模型':'检索命中'):result.note||'未命中'}</summary>

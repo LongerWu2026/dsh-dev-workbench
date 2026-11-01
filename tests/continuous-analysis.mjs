@@ -73,6 +73,35 @@ try{
  onPrompt=null;await h.mutateWorkbenchState(s=>{delete s.modelHealth.analysis;return s});await resume(unavailable.jobId)
  check('模型恢复后原作业继续并完成，无需重新建作业',()=>assert.equal(job(unavailable.jobId).progress.processed,2))
 
+ // Real native failure shape: every fresh session can answer once, but history replay fails.
+ await seed(125);const beforeReasoningSessions=serial,normalPrompt=controller.prompt,attempted=new Set(sessions.keys());let reasoningCalls=0,reloadedGuard;
+ controller.prompt=async request=>{
+  reasoningCalls++;const target=sessions.get(request.sessionId),config={provider:'command-code',model:'reflection/beam:free'};
+  target.events.push({type:'request/header',seq:target.seq+1,data:{header:{config}}});
+  if(attempted.has(request.sessionId)){
+   if(reasoningCalls===3){const persisted=JSON.parse(readFileSync(join(home,'storages/dev-workbench/state.json'),'utf8'));reloadedGuard=h.normalizeState(persisted).state.backgroundThreads;}
+   const message=JSON.stringify({message:JSON.stringify({error:{message:"Missing required parameter: 'messages[5].reasoning_content'. This model needs the reasoning of every earlier assistant message: send back the 'reasoning_content' returned with that message.",type:'AI_APICallError'}}),type:'invalid_request_error'});
+   target.events.push({type:'turn/start',seq:target.seq+1,data:{}},{type:'turn/end',seq:target.seq+2,data:{reason:{kind:'error',error:message}}});return{accepted:true};
+  }
+  attempted.add(request.sessionId);return normalPrompt(request);
+ };
+ const reasoning=await api.analysisStart();await finish(reasoning.jobId);
+ check('新会话首轮成功后续轮再报推理字段缺失，只恢复一次并立即暂停剩余75条',()=>{const j=job(reasoning.jobId);assert.equal(reasoningCalls,3);assert.equal(serial,beforeReasoningSessions+1);assert.equal(j.status,'failed');assert.equal(j.progress.processed,50);assert.equal(j.progress.remaining,75);assert.equal(j.nextRetryAt,null);assert.match(j.progress.pauseReason,/reasoning_content.*暂停/);assert.equal(state().modelHealth.analysis.blocked,true);assert.ok(state().analysisQueue.every(row=>row.attempts===0));const markers=Object.values(reloadedGuard).flatMap(thread=>Object.values(thread.reasoningRecoveries||{}));assert.ok(markers.some(marker=>marker.firstSuccessSeq>0))});
+ await h.drainWorkflowJobs(ctx);await h.runAutomationTick(ctx,{backlogOnly:true});
+ check('重复调度不会让已暂停的推理兼容故障空转或继续创建会话',()=>{assert.equal(reasoningCalls,3);assert.equal(serial,beforeReasoningSessions+1)});
+ const restartGuardCode=`
+ import * as h from ${JSON.stringify(join(home,'host.mjs'))};
+ const original=h.loadWorkbenchState(),thread=Object.values(original.backgroundThreads).find(t=>t.purpose==='analysis'&&t.accountId==='account'),events=[{type:'request/header',seq:1,data:{header:{config:{provider:'command-code',model:'reflection/beam:free'}}}}],session={id:thread.sessionId,events,get seq(){return events.length},snapshotEvents(from=0){return events.filter(e=>e.seq>from)}};let creates=0,calls=0;
+ const controller={create:async()=>{creates++;throw Error('unexpected create')},state:async()=>({cursor:session.seq,running:false}),prompt:async()=>{calls++;throw Error("Missing required parameter: 'messages[5].reasoning_content'. This model needs the reasoning of every earlier assistant message")}};
+ const services={sessionController:controller,sessions:{get:id=>id===session.id?session:null,list:()=>[session]}};
+ await h.mutateWorkbenchState(s=>{delete s.modelHealth.analysis;const at=new Date().toISOString();s.jobs=[{id:'reasoning-restarted',kind:'analysis',status:'queued',input:{continuous:true,limit:50,onlyIds:[]},createdAt:at,updatedAt:at,attempts:0}];return s});
+ await h.drainWorkflowJobs({get:name=>services[name]});
+ const result=h.loadWorkbenchState();console.log(JSON.stringify({creates,calls,blocked:result.modelHealth.analysis.blocked,status:result.jobs.at(-1).status}));
+ `;
+ const afterRestart=JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',restartGuardCode],{env:process.env,encoding:'utf8'}));
+ check('独立进程重启且人工清理模型冷却后，持久恢复保护仍阻止再次换会话',()=>{assert.equal(afterRestart.calls,1);assert.equal(afterRestart.creates,0);assert.equal(afterRestart.blocked,true);assert.equal(afterRestart.status,'failed')});
+ controller.prompt=normalPrompt;
+
  await seed(1);await h.mutateWorkbenchState(s=>{s.settings.aiExtract.enabled=false;return s});const disabled=await api.analysisStart();await finish(disabled.jobId)
  check('关闭识别时显示暂停原因，保留剩余条目',()=>{assert.equal(job(disabled.jobId).status,'failed');assert.match(job(disabled.jobId).progress.pauseReason,/开启 AI 识别/);assert.equal(job(disabled.jobId).progress.remaining,1)})
 

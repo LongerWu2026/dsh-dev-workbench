@@ -1,9 +1,11 @@
 import { backgroundHistory, archiveBackgroundHistory } from '../assistant/background-history.js'
 import { listAssistantSessions, readAssistantDelta, readAssistantHistory, readAssistantMessage, readAssistantTranscript, resetAssistantSession, runAssistantAsk, sendAssistantPrompt } from '../assistant/sessions.js'
 import { workbenchContext } from './service-context.js'
+import { assistantHub } from '../assistant/hub.js'
 
 /** assistant-service: shared Remote and Agent business use cases. */
 export const assistantService = {
+    async assistantHub(request:any={}) { return assistantHub(workbenchContext(),request) },
     async backgroundHistory(request:any={}) { return backgroundHistory(workbenchContext(),request) },
     async archiveBackgroundHistory(ids:unknown) { return archiveBackgroundHistory(workbenchContext(),ids) },
 
@@ -41,7 +43,7 @@ export const assistantService = {
         return readAssistantTranscript(workbenchContext(), request || {});
     },
 
-    async assistantReset(): Promise<any> {
-        return resetAssistantSession(workbenchContext());
+    async assistantReset(request:any={}): Promise<any> {
+        return resetAssistantSession(workbenchContext(),request);
     }
 };

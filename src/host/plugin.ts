@@ -8,6 +8,8 @@ import { claimWorkbenchOwnership, loadWorkbenchState } from './storage/state-sto
 import { workbenchStatePath } from './platform/runtime.js'
 import { ensureArray } from './domain/model.js'
 import { isWorkbenchBackgroundSession } from './assistant/sessions.js'
+import {identifyActiveHubTurn,setHubReinterpretGuardAvailable} from './assistant/hub-turns.js'
+import {attachmentOnlyToolGuard} from './assistant/hub-attachments.js'
 /* ============================================================================
  * dev-workbench host — plugin entry
  *
@@ -34,10 +36,15 @@ export function apply(ctx?: any, config?: any): any {
         ctx.effect(function (): any {
             const guard = typeof host.tools.guard === 'function' ? host.tools.guard((execution: any) => {
                 const id = execution.agent && execution.agent.session && execution.agent.session.id
+                const turn=id?identifyActiveHubTurn(execution.agent.session):undefined
+                if(turn?.mode==='reinterpret')return '本轮仅重新识别指令，禁止调用任何工具或重复执行操作；请只说明建议和识别结果。'
+                if(turn?.clarificationOnly)return '本轮操作意图或确认对象尚未明确，禁止调用任何工具；请先解释或澄清，等待用户给出明确操作。'
+                if(turn?.attachmentOnly){const blocked=attachmentOnlyToolGuard(execution);if(blocked)return blocked}
                 if(id&&knowledgeToolGuard(id))return knowledgeToolGuard(id);
                 if (id && isWorkbenchBackgroundSession(loadWorkbenchState(),id,execution.agent.session)) return '后台识别/摘要会话只允许输出结构化结果，由 Host 校验后提交，禁止执行工具'
                 return undefined
             }) : null
+            setHubReinterpretGuardAvailable(ctx,typeof guard==='function');
             const definitions = workbenchToolDefinitions();
             const disposers = definitions.map(function (definition?: any): any {
                 return host.tools.register(definition);
@@ -46,6 +53,7 @@ export function apply(ctx?: any, config?: any): any {
                 return definition.name;
             }));
             return function (): any {
+                setHubReinterpretGuardAvailable(ctx,false);
                 registerWorkbenchToolNames([]);
                 if (typeof guard === 'function') guard();
                 disposers.forEach(function (dispose?: any): any {

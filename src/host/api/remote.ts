@@ -12,6 +12,7 @@ import { PLUGIN_NAME } from '../platform/runtime.js'
  * `ctx.provide('workbench', …)`, so the gateway can bind the two halves.
  * ========================================================================== */
 const WORKBENCH_REMOTE_SIGNATURES: any = [
+    {method:'assistantHub',params:['request']},
     {method:'busyReplyConfigure',params:['request']},
     {method:'development',params:['request']},
     ...['dataConnections','dataSave','dataTest','dataDisconnect','dataObjects','dataStructure','dataQuery','dataGenerate'].map(method=>({method,params:method==='dataConnections'?[]:['request']})),
@@ -111,7 +112,7 @@ const WORKBENCH_REMOTE_SIGNATURES: any = [
     { method: 'assistantHistory', params: [] },
     { method: 'assistantSessions', params: ['request'] },
     { method: 'assistantTranscript', params: ['request'] },
-    { method: 'assistantReset', params: [] },
+    { method: 'assistantReset', params: ['request'] },
     { method: 'automationRun', params: [] },
     { method: 'automationStatus', params: [] },
     { method: 'backup', params: [] },

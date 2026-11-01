@@ -1,4 +1,5 @@
 import * as React from 'react'
+import {WB,Btn} from '../core/runtime.js'
 import type { AnalysisProgress } from '../../shared/analysis-progress.js'
 interface Job {id:string;kind:string;status:string;error?:string;nextRetryAt?:string|null;progress?:AnalysisProgress;result?:{note?:string;status?:string;done?:number;failed?:number;processed?:number;failures?:number}}
 export function AnalysisJobProgress({job}:{job:Job}):React.ReactElement|null {
@@ -11,10 +12,11 @@ export function AnalysisJobProgress({job}:{job:Job}):React.ReactElement|null {
  </div>
 }
 export function WorkflowJobs({jobs,kind}:{jobs:Job[];kind:'analysis'|'summary'}):React.ReactElement|null {
- const active=(job:Job)=>!!job.progress&&['queued','running'].includes(job.status)
- const rows=jobs.filter(job=>job.kind===kind).slice().reverse().sort((a,b)=>Number(active(b))-Number(active(a))).slice(0,5)
+ const priority=(job:Job)=>['queued','running'].includes(job.status)?job.progress?2:1:0
+ const rows=jobs.filter(job=>job.kind===kind).slice().reverse().sort((a,b)=>priority(b)-priority(a))
  if(!rows.length)return null
  const labels:Record<string,string>={queued:'已排队',running:'运行中',completed:'已完成',failed:'失败',cancelled:'已取消'}
  const label=(job:Job)=>job.progress?.pauseReason&&job.status!=='completed'?'已暂停':!job.progress&&job.result?.status==='partial'?'部分完成':labels[job.status]||job.status
- return <div className="wb-compact-status"><details><summary>后台{kind==='analysis'?'识别':'摘要'}任务 · {label(rows[0])}</summary>{rows.map(job=><div key={job.id} className="wb-reply-item"><strong>{label(job)}</strong> <span className="wb-tiny wb-muted">{job.id}</span>{job.progress ? job!==rows[0]&&<AnalysisJobProgress job={job}/> : <p className="wb-tiny">{job.error||job.result?.note||('处理 '+(job.result?.processed??job.result?.done??0)+' 条，失败 '+(job.result?.failures??job.result?.failed??0)+' 条')}</p>}</div>)}</details><AnalysisJobProgress job={rows[0]}/></div>
+ const latest=rows[0]
+ return <div className="wb-compact-status" aria-label={kind==='analysis'?'识别进度':'摘要进度'}><div className="wb-row wb-row--wrap"><strong>{kind==='analysis'?'消息识别':'资讯摘要'} · {label(latest)}</strong><div className="wb-spacer"/><Btn size="sm" onClick={()=>WB.assistant.openHub('system',kind==='analysis'?'analysis':'radar')}>在助手中继续</Btn></div>{latest.progress?<AnalysisJobProgress job={latest}/>:<p className="wb-tiny" style={{overflowWrap:'anywhere'}}>{latest.error||latest.result?.note||(latest.status==='completed'?'处理 '+(latest.result?.processed??latest.result?.done??0)+' 条，失败 '+(latest.result?.failures??latest.result?.failed??0)+' 条':'结果会持续更新到助手会话')}</p>}</div>
 }

@@ -149,7 +149,7 @@ function migrationNormalizeRow(column?: any, row?: any): any {
         return normalizeCandidate(row, row);
     if (column === 'replies')
         return normalizeReplies([row])[0];
-    if (column === 'jobs') return Object.assign({},row,{status:row.status === 'running' ? 'queued' : row.status})
+    if (column === 'jobs') return Object.assign({},row,row.input?.observed&&['running','queued'].includes(row.status)?{status:'failed',error:'上次同步执行中断；后续处理由原调度继续',nextRetryAt:null}:{status:row.status === 'running' ? 'queued' : row.status})
     if (column === 'analysisQueue')
         return normalizeAnalysisQueue([Object.assign({}, row, { status: row.status === 'running' ? 'pending' : row.status, leaseUntil: null })])[0];
     return JSON.parse(JSON.stringify(row));

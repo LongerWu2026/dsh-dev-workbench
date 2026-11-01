@@ -1,5 +1,5 @@
 import {realpathSync} from 'node:fs'
-import type {DevelopmentTask} from '../../shared/development.js'
+import {developmentTaskSessionIds,type DevelopmentTask} from '../../shared/development.js'
 import {workbenchContext} from './service-context.js'
 
 /** The native registry owns directory identity, deduplication, titles and membership. */
@@ -14,7 +14,7 @@ async function workspaceFor(cwd:string){
 /** Register old task sessions without replacing their logs or starting a model turn. */
 export async function bindDevelopmentWorkspace(row:DevelopmentTask){
     const workspace=await workspaceFor(row.cwd)
-    for(const id of [row.sessionId,row.reviewSessionId].filter(Boolean)){
+    for(const id of developmentTaskSessionIds(row)){
         if(!workspace.sessionIds?.includes(id))await workspace.attachSession(id)
     }
     return {id:String(workspace.id),title:String(workspace.title),path:String(workspace.path)}

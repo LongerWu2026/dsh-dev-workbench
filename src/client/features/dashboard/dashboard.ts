@@ -4,7 +4,6 @@ import {LinkedReplies} from './LinkedReplies.js'
 import {RemindersPanel} from '../operations/RemindersPanel.js'
 import {BriefAgenda} from './BriefAgenda.js'
 import {FocusedInbox} from '../inbox/FocusedInbox.js'
-import { WorkflowJobs } from '../../components/WorkflowJobs.js'
 import { NewsFetchStatus } from '../news/NewsFetchStatus.js'
 import { radarFetchOutcome } from '../../../shared/news-fetch.js'
 import {MessageSelectionBadges} from '../../components/MessageSelectionBadges.js'
@@ -432,8 +431,7 @@ function DashboardPage(): any {
         h('span',{className:'wb-tiny wb-muted'},data.messageInbox?.at?'最近同步 '+WB.fmt.relative(data.messageInbox.at):'尚无消息快照'),
         analysis?.failed?h(Badge,{tone:'err'},'识别失败 '+analysis.failed):null,
         stale?h(Badge,{tone:'warn'},'快照可能过期'):null),
-        mentionsStrip,h(WorkflowJobs,{jobs:(data.jobs||[]).filter((j:any)=>!['queued','running'].includes(j.status)),kind:'analysis'}),analysis?.awaitingHuman>0?null:analysisPanel),
-    h(WorkflowJobs,{jobs:(data.jobs||[]).filter((j:any)=>['queued','running'].includes(j.status)),kind:'analysis'}),
+        mentionsStrip,analysis?.awaitingHuman>0?null:analysisPanel),
     h('details',{className:'wb-compact-status',onToggle:(event:any)=>setReminderToolsOpen(event.currentTarget.open)},h('summary',null,'提醒与日历导出'),reminderToolsOpen?h(RemindersPanel,{revision:data.revision}):null),
     h(DashRadarModal, {
         open: radarFormOpen,

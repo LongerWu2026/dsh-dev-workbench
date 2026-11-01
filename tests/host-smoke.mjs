@@ -174,7 +174,7 @@ check('示例数据不重复叠加', state.tasks.length === 3, '实际 ' + state
 const diag = await api.diagnostics()
 check('诊断返回数据路径', typeof diag.dataPath === 'string' && diag.dataPath.indexOf('dev-workbench') >= 0)
 check('诊断统计到任务', diag.counts.tasks === 3)
-check('注册了 16 个 Agent 工具', tools.length === 16, '实际 ' + tools.length)
+check('注册了 17 个 Agent 工具', tools.length === 17, '实际 ' + tools.length)
 
 /* ---------------------------------------------------------------------------
  * P0-01：真实执行工具（不是只数注册数量）
@@ -229,7 +229,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 114 个 Remote 描述符', invocations.length === 114, '实际 ' + invocations.length)
+check('注册了 115 个 Remote 描述符', invocations.length === 115, '实际 ' + invocations.length)
 check('回复发送只有显式页面入口，不暴露后台发送工具', invocations.some(entry => entry.method === 'sendReply') && !tools.some(tool => /send_reply|send_message/.test(tool.name)))
 check('待办原会话回复准备入口已接线',invocations.some(entry=>entry.method==='prepareTaskReply'))
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
@@ -477,7 +477,7 @@ function makeYzjSpawner(mentionJson, docJson) {
       }
       if (/^.*gh pr list/.test(cmdline)) {
         return JSON.stringify([
-          { number: 12, title: 'feat: 工作台骨架', state: 'OPEN', isDraft: false, author: { login: 'wulonglong' }, updatedAt: '2026-10-27T10:00:00Z', url: 'https://github.com/o/r/pull/12' },
+          { number: 12, title: 'feat: 工作台骨架', state: 'OPEN', isDraft: false, author: { login: 'fixture-user' }, updatedAt: '2026-10-27T10:00:00Z', url: 'https://github.com/o/r/pull/12' },
         ])
       }
       if (/^.*gh run list/.test(cmdline)) {
@@ -488,8 +488,8 @@ function makeYzjSpawner(mentionJson, docJson) {
       if (/^.*ps aux/.test(cmdline)) {
         return [
           'USER PID %CPU %MEM VSZ RSS TT STAT STARTED TIME COMMAND',
-          'wulonglong 100 55.0 3.2 1000 200 s001 R 10:00AM 1:00 node server.js',
-          'wulonglong 200 5.0 1.0 800 100 s001 S 10:00AM 0:10 redis-server',
+          'fixture-user 100 55.0 3.2 1000 200 s001 R 10:00AM 1:00 node server.js',
+          'fixture-user 200 5.0 1.0 800 100 s001 S 10:00AM 0:10 redis-server',
         ].join('\n')
       }
       if (/attendance\s+record\s+list/.test(cmdline)) {

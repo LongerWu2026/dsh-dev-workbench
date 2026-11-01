@@ -279,6 +279,18 @@ function TaskCenterRow(props?: any): any {
     function toggleDone(): any {
         updateStatus(done ? 'ready' : 'completed');
     }
+    async function prepareWithAssistant():Promise<void> {
+        if(busy)return;
+        setBusy(true);
+        const conversationId='task:'+task.id,requestId='task-assist-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);
+        WB.assistant.openFor({kind:'task',id:task.id,title:task.title});
+        try{
+            const result=await WB.actions.assistantHub({action:'operate',conversationId,operation:'office.start',kind:'task_assist',input:{taskId:task.id},text:'整理待办处理方案',requestId});
+            if(!['ok','confirmation_required'].includes(result?.status))throw Error(result?.note||'无法确认待办处理方案是否已启动，请在当前会话查看结果');
+            if(WB.store.get().assistantConversationId===conversationId)WB.store.set((state:any)=>({assistantOpenSeq:(state.assistantOpenSeq||0)+1}));
+        }catch(error){WB.toast(String(error.message||error),'err')}
+        finally{setBusy(false)}
+    }
     function remove(): any {
         if (busy)
             return;
@@ -377,7 +389,7 @@ function TaskCenterRow(props?: any): any {
                 padding: '0 12px 12px',
                 background: 'color-mix(in srgb, ' + T.accent + ' 3%, transparent)',
             },
-        }, h(Btn, {size:'sm',icon:'agent',onClick:()=>WB.actions.officeWorkflowStart('task_assist',{taskId:task.id}).then(()=>WB.store.set({page:'office',officeView:'workflows'})).catch(()=>{}),children:'AI 整理处理方案'}),h(TaskCenterEvidence, { task: task, data: data })))
+        }, h(Btn, {size:'sm',icon:'agent',disabled:busy,onClick:prepareWithAssistant,children:'AI 整理处理方案'}),h(TaskCenterEvidence, { task: task, data: data })))
         : null);
 }
 function TaskCenterBoardCard(props?: any): any {

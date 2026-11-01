@@ -12,8 +12,8 @@ function setup(tasks){
  let data={version:2,revision:1,updatedAt:new Date().toISOString(),settings:{topics:[],feeds:[],automation:{enabled:false},aiExtract:{enabled:false}},projects:[],tasks,sources:[],radar:[],replies:[],analysisQueue:[],jobs:[],knowledge:[],connectors:[],runs:[],audit:[]}
  const calls=[]
  WB.store.set({data,status:'ready',page:'dashboard'})
- WB.apply({get:()=>undefined,effect:fn=>fn(),connection:{rpc:{call:async(_channel,endpoint)=>{
-  calls.push(endpoint);let value=data
+ WB.apply({get:()=>undefined,effect:fn=>fn(),connection:{rpc:{call:async(_channel,endpoint,payload)=>{
+  calls.push(endpoint);if(endpoint==='workbench/updateTask'){data={...data,revision:data.revision+1,tasks:data.tasks.map(task=>task.id===payload.args.id?{...task,...payload.args.patch}:task)}}let value=data
   if(endpoint==='workbench/revision')value={revision:data.revision}
   if(endpoint==='workbench/analysisStatus')value={pending:0,failed:0,done:0,entries:[]}
   if(endpoint==='workbench/operationsStatus')value={queue:{},policy:{},reminders:[]}
@@ -91,7 +91,7 @@ it('需要人工确认的识别结果保持展开，其余运行详情收起',as
 
 it('关联回复在待办卡片内只显示一次，完成与回复分别操作',async()=>{
  vi.spyOn(Date,'now').mockReturnValue(now);const fixture=setup([task('交付方案',{createdAt:new Date(now).toISOString()})]);const reply={id:'linked-reply',stage:'待回复',contact:'协作同事',snippet:'请交付后告知',taskIds:['交付方案']};const data={...fixture.data,replies:[reply]};fixture.WB.store.set({data});const complete=vi.spyOn(fixture.WB.actions,'updateTask').mockResolvedValue(undefined),stage=vi.spyOn(fixture.WB.actions,'setReplyStage').mockResolvedValue(undefined);const user=userEvent.setup();render(<fixture.WB.pages.dashboard/>);
- expect(screen.getAllByRole('button',{name:'交付方案',exact:true})).toHaveLength(1);expect(screen.queryByRole('heading',{name:'待回复',exact:true})).toBeNull();expect(screen.getAllByText('回复：待回复')).toHaveLength(1)
+ expect(screen.getAllByRole('button',{name:'交付方案',exact:true})).toHaveLength(1);expect(screen.queryByRole('heading',{name:'待回复',exact:true})).toBeNull();expect(screen.getAllByText('回复：待回复')).toHaveLength(1);expect(screen.getByRole('button',{name:'编辑待办：交付方案'}).closest('.wb-brief-task-actions')).toBeTruthy()
  await user.click(screen.getByRole('button',{name:'标记“交付方案”为完成'}));expect(complete).toHaveBeenCalledWith('交付方案',{status:'completed'});expect(stage).not.toHaveBeenCalled()
  await act(async()=>fixture.WB.store.set({data:{...data,tasks:[{...data.tasks[0],status:'completed'}]}}));expect(screen.getByText('待办：已完成')).toBeTruthy();expect(screen.getByText('回复：待回复')).toBeTruthy();expect(screen.getByRole('button',{name:'待办状态：已完成'}).disabled).toBe(true)
  await user.click(screen.getByText('处理回复',{exact:true}));await user.click(screen.getByRole('button',{name:'我已回复',exact:true}));expect(stage).toHaveBeenCalledWith('linked-reply','已回复');expect(complete).toHaveBeenCalledTimes(1)
@@ -99,7 +99,7 @@ it('关联回复在待办卡片内只显示一次，完成与回复分别操作'
 
 it('一条回复关联多条待办时聚合一组，已处理回复不使待办消失',()=>{
  vi.spyOn(Date,'now').mockReturnValue(now);const fixture=setup([task('接口开发',{createdAt:new Date(now).toISOString()}),task('文档更新',{createdAt:new Date(now).toISOString()})]);fixture.WB.store.set({data:{...fixture.data,replies:[{id:'one',stage:'已回复',taskIds:['接口开发','文档更新'],contact:'协作同事'}]}});render(<fixture.WB.pages.dashboard/>);
- expect(screen.getAllByLabelText('关联回复')).toHaveLength(1);expect(screen.getAllByText('回复：已回复')).toHaveLength(1);for(const title of ['接口开发','文档更新'])expect(screen.getByRole('button',{name:title,exact:true})).toBeTruthy();expect(screen.getByRole('button',{name:'待回复 0'})).toBeTruthy()
+ expect(screen.getAllByLabelText('关联回复')).toHaveLength(1);expect(screen.getAllByText('回复：已回复')).toHaveLength(1);for(const title of ['接口开发','文档更新'])expect(screen.getByRole('button',{name:title,exact:true})).toBeTruthy();expect(screen.getByRole('button',{name:'待回复 0'})).toBeTruthy();for(const title of ['接口开发','文档更新'])expect(screen.getAllByRole('button',{name:'编辑待办：'+title})).toHaveLength(1)
 })
 
 it('未纳入今日关注的旧待办在有待回复义务时仍显示，失效关联回复独立保留',()=>{
@@ -121,4 +121,39 @@ it('关联链聚合去重，标题相同或来源相同不会自动合并',()=>{
 
 it('跨账号的失效关联不折叠到另一账号的待办中',()=>{
  const fixture=setup([task('账号甲事项',{priority:'high',sourceRefId:'account-a'})]);fixture.WB.store.set({data:{...fixture.data,sources:[{id:'account-a',locator:{accountId:'a'}}],replies:[{id:'different',stage:'待回复',accountId:'b',taskIds:['账号甲事项'],contact:'账号乙消息'}]}});render(<fixture.WB.pages.dashboard/>);expect(screen.queryByLabelText('关联回复')).toBeNull();expect(screen.getByRole('heading',{name:/^待回复/})).toBeTruthy();expect(screen.getByText('账号乙消息')).toBeTruthy()
+})
+
+it('首页待办右侧集中显示编辑、跳转和AI分析，操作各自独立',async()=>{
+ const fixture=setup([task('可直接操作的待办',{priority:'high',description:'任务原始内容'})]),WB=fixture.WB;
+ const edit=vi.spyOn(WB,'openTaskForm').mockImplementation(()=>{}),jump=vi.spyOn(WB,'focusTask').mockImplementation(()=>{}),analyze=vi.spyOn(WB.assistant,'openFor').mockImplementation(()=>{}),complete=vi.spyOn(WB.actions,'updateTask').mockResolvedValue(undefined);
+ render(<WB.pages.dashboard/>);const user=userEvent.setup(),row=document.querySelector('[data-task-id="可直接操作的待办"]'),controls=within(row);
+ expect(controls.queryByText('更多',{exact:true})).toBeNull();const pencil=controls.getByRole('button',{name:'编辑待办：可直接操作的待办'});expect(pencil.closest('.wb-brief-task-title')).toBeNull();expect(pencil.parentElement).toBe(controls.getByRole('button',{name:'在任务中心定位'}).parentElement);expect(pencil.closest('.wb-brief-task-footer')).toBeNull();expect(pencil.closest('details')).toBeNull();expect(controls.getByRole('button',{name:'在任务中心定位'}).closest('details')).toBeNull();
+ await user.click(pencil);expect(edit).toHaveBeenLastCalledWith(fixture.data.tasks[0],null,{presentation:'modal'});await user.click(controls.getByRole('button',{name:'可直接操作的待办',exact:true}));expect(edit).toHaveBeenCalledTimes(2);
+ await user.click(controls.getByRole('button',{name:'在任务中心定位'}));expect(jump).toHaveBeenCalledWith('可直接操作的待办');await user.click(controls.getByRole('button',{name:'AI 分析这条待办（带上下文进入会话）'}));expect(analyze).toHaveBeenCalledWith(expect.objectContaining({kind:'task',id:'可直接操作的待办'}));expect(complete).not.toHaveBeenCalled();expect(fixture.data.tasks[0].status).toBe('ready')
+})
+
+it('切换待办AI协助替换上次上下文，关闭再打开及已满引用也只选择当前待办',async()=>{
+ const fixture=setup([task('本次待办甲',{priority:'high',description:'甲的内容'}),task('本次待办乙',{priority:'high',description:'乙的内容'})]),WB=fixture.WB,user=userEvent.setup()
+ WB.store.set({assistantRefs:Array.from({length:8},(_,i)=>({kind:'knowledge',id:'old-'+i,title:'旧引用'+i}))})
+ render(<WB.pages.dashboard/>);const assist=id=>within(document.querySelector('[data-task-id="'+id+'"]')).getByRole('button',{name:'AI 分析这条待办（带上下文进入会话）'})
+ await user.click(assist('本次待办甲'));expect(WB.store.get().assistantRefs).toEqual([expect.objectContaining({kind:'task',id:'本次待办甲',body:expect.stringContaining('甲的内容')})])
+ await act(async()=>WB.assistant.close());await user.click(assist('本次待办乙'));expect(WB.store.get().assistantOpen).toBe(true);expect(WB.store.get().assistantRefs).toEqual([expect.objectContaining({kind:'task',id:'本次待办乙',body:expect.stringContaining('乙的内容')})])
+ await user.click(assist('本次待办乙'));expect(WB.store.get().assistantRefs).toHaveLength(1)
+ await act(async()=>WB.assistant.add({kind:'knowledge',id:'manual',title:'手动补充知识'}));expect(WB.store.get().assistantRefs.map(ref=>ref.id)).toEqual(['本次待办乙','manual'])
+ expect(fixture.calls.some(endpoint=>endpoint==='workbench/assistantSend')).toBe(false)
+})
+
+
+it('首页编辑以弹窗打开，不挤压列表；取消和Escape不保存，保存后刷新标题',async()=>{
+ const fixture=setup([task('弹窗编辑的待办',{priority:'high',description:'原始描述'})]),WB=fixture.WB,user=userEvent.setup();render(<fixture.App/>);
+ await user.click(screen.getByRole('button',{name:'编辑待办：弹窗编辑的待办'}));let dialog=screen.getByRole('dialog');expect(dialog.classList.contains('wb-modal')).toBe(true);expect(dialog.getAttribute('aria-modal')).toBe('true');expect(document.querySelector('.wb-context-pane')).toBeNull();expect(document.querySelector('.wb-workarea').classList.contains('is-context-open')).toBe(false);
+ await user.clear(within(dialog).getByRole('textbox',{name:'标题',exact:true}));await user.type(within(dialog).getByRole('textbox',{name:'标题',exact:true}),'取消的改动');await user.click(within(dialog).getByRole('button',{name:'取消',exact:true}));expect(screen.queryByRole('dialog')).toBeNull();expect(fixture.calls).not.toContain('workbench/updateTask');
+ await user.click(screen.getByRole('button',{name:'弹窗编辑的待办',exact:true}));dialog=screen.getByRole('dialog');expect(within(dialog).getByRole('textbox',{name:'标题',exact:true}).value).toBe('弹窗编辑的待办');await user.keyboard('{Escape}');expect(screen.queryByRole('dialog')).toBeNull();expect(fixture.calls).not.toContain('workbench/updateTask');
+ await user.click(screen.getByRole('button',{name:'编辑待办：弹窗编辑的待办'}));dialog=screen.getByRole('dialog');await user.clear(within(dialog).getByRole('textbox',{name:'标题',exact:true}));await user.type(within(dialog).getByRole('textbox',{name:'标题',exact:true}),'修改后的待办');await user.click(within(dialog).getByRole('button',{name:'保存修改'}));expect(screen.queryByRole('dialog')).toBeNull();expect(screen.getByRole('button',{name:'修改后的待办',exact:true})).toBeTruthy();expect(fixture.calls.filter(endpoint=>endpoint==='workbench/updateTask')).toHaveLength(1);expect(WB.store.get().data.tasks[0]).toMatchObject({title:'修改后的待办',description:'原始描述',status:'ready'})
+})
+
+
+it('首页消息来源直接显示，无需展开即可查看发件人、会话和原消息时间',()=>{
+ const fixture=setup([task('展示消息来源',{priority:'high',sourceRefId:'source-visible'})]);fixture.WB.store.set({data:{...fixture.data,sources:[{id:'source-visible',provider:'yunzhijia',sender:'来源发件人',locator:{groupId:'group-visible',groupName:'来源会话',sentAt:'2026-11-01T07:01:43Z'}}]}});render(<fixture.WB.pages.dashboard/>);
+ const source=screen.getByRole('group',{name:'消息来源'});expect(source.closest('details')).toBeNull();expect(source.textContent).toContain('发件人：来源发件人 · 来自：来源会话');expect(source.textContent).toContain('消息发出时间：2026-11-01 15:01:43（北京时间）');expect(screen.getByRole('button',{name:'编辑待办：展示消息来源'}).closest('.wb-brief-task-actions')).toBeTruthy()
 })

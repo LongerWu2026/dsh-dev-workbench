@@ -4,17 +4,20 @@ import {fileURLToPath} from 'node:url'
 import {randomUUID,createHash} from 'node:crypto'
 import {homedir} from 'node:os'
 import {setTimeout as delay} from 'node:timers/promises'
-import {DEVELOPMENT_STAGES,type DevelopmentTask,type DevelopmentStage} from '../../shared/development.js'
+import {DEVELOPMENT_STAGES,developmentTaskSessionIds,type DevelopmentTask,type DevelopmentStage} from '../../shared/development.js'
 import {readDevelopmentConfig,saveDevelopmentConfig,listDevelopmentTasks,readDevelopmentTask,saveDevelopmentTask,developmentConfigPath,developmentDir} from '../storage/development-store.js'
 import {developmentCommand,linkyWorkItems,detectLinky,linkyConnection,linkyIssue,linkyIssues,linkyRead,linkyRows} from '../integrations/linky.js'
 import {loadWorkbenchState,workbenchGenerationGuard} from '../storage/state-store.js'
 import {workbenchContext} from './service-context.js'
 import {directoryError,createDirectoryBaseline,ensureDirectoryBaseline,directoryChanges} from '../storage/development-directory.js'
 import {transcriptDelta,assistantTextOf} from '../assistant/transcript.js'
+import {developmentErrorText,developmentHistoryFailure,developmentCurrentSteps,developmentNativeFailure,recoverDevelopmentSession} from './development-recovery.js'
 import {createDevelopmentSession as createSession,bindDevelopmentWorkspace} from './development-sessions.js'
 
 const active=new Map<string,AbortController>(),preparing=new Set<string>()
+export function isDevelopmentTaskActive(id:string){return active.has(id)}
 const time=()=>new Date().toISOString()
+const missingTestsMessage='尚未配置工程测试命令。分析与开发已保留，请在研发设置中补充测试命令后继续验证；尚未进入自动审查或人工批准。'
 function task(id:string){const row=readDevelopmentTask(id),preparation=preparing.has(row.profile+':'+row.issue.workspaceId+':'+row.issue.id);if((!active.has(id)&&row.status==='running')||(!preparation&&row.status==='preparing')){row.status='paused';row.pauseReason='宿主曾中断，保留原会话与工作区；请检查后继续';saveDevelopmentTask(row)}return row}
 function controller(){const c=workbenchContext()?.get?.('sessionController');if(!c?.prompt)throw new Error('宿主没有原生 Harness 会话服务');return c}
 async function git(cwd:string,args:string[],signal?:AbortSignal){const r=await developmentCommand(['git',...args],cwd,30000,signal);if(r.exitCode!==0||r.truncated)throw new Error(r.truncated?'Git 输出过大，已暂停':'Git 操作失败（退出码 '+r.exitCode+'）');return r.stdout}
@@ -99,52 +102,82 @@ function prompt(row:DevelopmentTask,stage:string){
         '业务状态：'+row.issue.status,'描述：\n'+row.issue.description,
         stage==='review'?'\n真实测试记录：\n'+JSON.stringify(row.steps.filter(s=>s.stage==='test'))+'\n实际变更：\n'+row.diff:''].join('\n\n')
 }
-async function modelTurn(row:DevelopmentTask,stage:'analysis'|'implementation'|'review',signal:AbortSignal,assertCurrent:()=>void){
-    const c=controller(),sessions=workbenchContext()?.get?.('sessions')
+async function modelTurn(row:DevelopmentTask,stage:'analysis'|'implementation'|'review',signal:AbortSignal,assertCurrent:()=>void,previousError=''){
+    const c=controller(),sessions=workbenchContext()?.get?.('sessions'),guard=()=>{assertCurrent();signal.throwIfAborted()}
     if(!sessions?.get)throw new Error('宿主不能读取会话证据')
-    if(stage==='review'&&!row.reviewSessionId){await createSession(row.cwd,row.issue.code+' · 独立审查',id=>{assertCurrent();row.reviewSessionId=id;saveDevelopmentTask(row)});assertCurrent()}
-    const sid=stage==='review'?row.reviewSessionId!:row.sessionId
-    if(!sid)throw new Error('原会话创建未成功，请先恢复会话')
-    // No replacement on missing logs: requirement-number-to-session linkage is stable.
-    if(!sessions.get(sid)&&c.resolveAgent)await c.resolveAgent(sid)
-    assertCurrent()
-    const before=sessions.get(sid);if(!before)throw new Error('会话无法恢复，保留原记录等待检查')
-    if(transcriptDelta(before,0).turnActive)throw new Error('此会话仍在运行，请等待或暂停后再继续')
-    const from=Number(before.seq)||0,step={stage,status:'running' as const,at:time(),sessionId:sid}
-    row.steps.push(step);saveDevelopmentTask(row)
-    await c.prompt({requestId:'development-'+randomUUID(),sessionId:sid,mode:'queue',content:[{type:'text',text:prompt(row,stage)}]},signal)
-    assertCurrent()
-    const until=Date.now()+30*60*1000
-    while(Date.now()<until){
-        assertCurrent();signal.throwIfAborted();const live=sessions.get(sid);if(!live)throw new Error('会话已断开')
-        const events=live.snapshotEvents(from,live.seq),end=events.find((e:any)=>e.type==='turn/end')
-        const failure=events.find((e:any)=>e.type==='turn/error')
-        if(failure||(end&&end.data?.reason?.kind!=='completed'))throw new Error('Harness 轮次未正常完成（'+(end?.data?.reason?.kind||'error')+'），请查看关联会话')
-        if(end){const output=events.filter((e:any)=>e.type==='assistant/message').map((e:any)=>assistantTextOf(e.data?.message)).filter(Boolean).join('\n');if(!output)throw new Error('Harness 未产生可用输出');Object.assign(step,{status:'completed',output:output.slice(-60000)});saveDevelopmentTask(row);return}
-        await delay(800,undefined,{signal})
+    if(stage==='review'&&!row.reviewSessionId){await createSession(row.cwd,row.issue.code+' · 独立审查',id=>{guard();row.reviewSessionId=id;saveDevelopmentTask(row)});guard()}
+    const currentId=()=>stage==='review'?row.reviewSessionId!:row.sessionId
+    async function source(){const sid=currentId();if(!sid)throw Error('原会话创建未成功，请先恢复会话');if(!sessions.get(sid)&&c.resolveAgent)await c.resolveAgent(sid);guard();const live=sessions.get(sid);if(!live)throw Error('会话无法恢复，保留原记录等待检查');return live}
+    function outcome(live:any,step:any){
+        const events=live.snapshotEvents(step.fromSeq,live.seq),end=events.find((event:any)=>event.type==='turn/end'),failure=events.find((event:any)=>event.type==='turn/error')
+        if(failure||(end&&end.data?.reason?.kind!=='completed'))throw Error('Harness 轮次未正常完成：'+(developmentErrorText(failure?.data||end?.data?.reason)||end?.data?.reason?.kind||'error'))
+        if(!end)return false
+        const output=events.filter((event:any)=>event.type==='assistant/message').map((event:any)=>assistantTextOf(event.data?.message)).filter(Boolean).join('\n')
+        if(!output)throw Error('Harness 未产生可用输出')
+        Object.assign(step,{status:'completed',output:output.slice(-60000)})
+        const recovery=row.sessionRecoveries?.slice().reverse().find(item=>item.toSessionId===live.id&&item.stage===stage&&item.cycleStart===(row.cycleStart||0));if(recovery)recovery.status='completed'
+        saveDevelopmentTask(row);return true
     }
-    throw new Error('模型阶段超过30分钟，已暂停，请检查关联会话')
+    let live=await source(),last=developmentCurrentSteps(row).filter(step=>step.stage===stage).at(-1),reason=previousError
+    if(last?.status==='running'){
+        if(stage==='review'&&last.workspaceHash&&last.workspaceHash!==row.diffHash){row.cycleStart=row.steps.length;saveDevelopmentTask(row);throw Error('审查对应的代码已变化，需要重新测试与审查')}
+        if(last.sessionId!==live.id||last.fromSeq===undefined)throw Error('上次阶段结果尚不能核对，请先查看原会话，未重复提交')
+        try{if(outcome(live,last))return}catch(error){last.status='failed';last.output=developmentErrorText(error);reason=last.output;saveDevelopmentTask(row)}
+        if(last.status==='running')throw Error('上次阶段尚无可核对的结束记录，请等待或查看原会话，未重复提交')
+    }
+    if(transcriptDelta(live,0).turnActive)throw Error('此会话仍在运行，请等待或暂停后再继续')
+    const pending=row.sessionRecoveries?.slice().reverse().find(item=>item.stage===stage&&item.cycleStart===(row.cycleStart||0)&&['prepared','created','ready'].includes(item.status)&&(item.fromSessionId===live.id||item.toSessionId===live.id))
+    let recovery=pending
+    if(pending||developmentHistoryFailure([reason,last?.output,developmentNativeFailure(live,last?.fromSeq)])){
+        recovery=await recoverDevelopmentSession(row,stage,live,await changes(row),signal,assertCurrent);live=await source()
+    }
+    for(let attempt=0;attempt<2;attempt++){
+        guard();const step:any={stage,status:'running',at:time(),sessionId:live.id,fromSeq:Number(live.seq)||0,...(stage==='review'?{workspaceHash:row.diffHash}:{})};row.steps.push(step);saveDevelopmentTask(row)
+        try{
+            const content=prompt(row,stage)+(recovery?.status==='ready'?'\n\n'+recovery.context:'')
+            await c.prompt({requestId:'development-'+randomUUID(),sessionId:live.id,mode:'queue',content:[{type:'text',text:content}]},signal)
+            guard();if(recovery){recovery.status='submitted';saveDevelopmentTask(row)}
+            const until=Date.now()+30*60*1000
+            while(Date.now()<until){guard();const current=sessions.get(live.id);if(!current)throw Error('会话已断开');if(outcome(current,step))return;await delay(800,undefined,{signal})}
+            throw Error('模型阶段超过30分钟，已暂停，请检查关联会话')
+        }catch(error){
+            assertCurrent();step.status='failed';step.output=developmentErrorText(error)||String(error);if(recovery&&developmentHistoryFailure(error))recovery.status='failed';saveDevelopmentTask(row)
+            if(!developmentHistoryFailure(error))throw error
+            if(attempt>0)throw Error('兼容新会话仍缺少 reasoning_content，已停止自动重试；请检查宿主或模型适配器，历史与进度已保留')
+            if(transcriptDelta(live,0).turnActive){await c.cancel?.({sessionId:live.id});guard();if(transcriptDelta(live,0).turnActive)throw Error('原会话仍在运行，已暂停兼容恢复')}
+            recovery=await recoverDevelopmentSession(row,stage,live,await changes(row),signal,assertCurrent);live=await source()
+        }
+    }
 }
+function testCheckpoint(row:DevelopmentTask,argv:string[]){return developmentCurrentSteps(row).filter(step=>step.stage==='test'&&(JSON.stringify(step.argv)===JSON.stringify(argv)||!step.argv&&step.output?.split('\n')[0]===JSON.stringify(argv))).at(-1)}
 async function execute(row:DevelopmentTask,abort:AbortController){
-    const signal=abort.signal,assertCurrent=workbenchGenerationGuard()
+    const signal=abort.signal,assertCurrent=workbenchGenerationGuard(),previousError=row.pauseReason||''
     try{
         const stages=['analysis','implementation','test','review'] as const,start=stages.indexOf(row.stage as any)
         for(const stage of stages.slice(Math.max(0,start))){
-            assertCurrent();signal.throwIfAborted();row.stage=stage;row.status='running';row.pauseReason='';saveDevelopmentTask(row)
+            assertCurrent();signal.throwIfAborted();
+            const completedStep=developmentCurrentSteps(row).filter(step=>step.stage===stage).at(-1)
+            if(stage==='review'){const observed=await changes(row),checks=readDevelopmentConfig().checks[row.projectId]||[];if(!checks.length||!checks.every(argv=>{const step=testCheckpoint(row,argv);return step?.status==='completed'&&step.exitCode===0&&(step.workspaceHash||(!step.argv?row.diffHash:undefined))===observed.diffHash})){row.stage='test';throw Error('审查前的测试证据与当前代码或命令不匹配，需要继续验证')}}
+            if(stage!=='test'&&completedStep?.status==='completed'&&!(stage==='review'&&row.steps.slice(row.steps.indexOf(completedStep)+1).some(step=>step.stage==='test'))){if(stage==='review'&&(completedStep.workspaceHash||row.diffHash)!==(await changes(row)).diffHash){row.cycleStart=row.steps.length;row.stage='test';throw Error('已审查的代码已变化，需要重新测试与审查')}continue}
+            row.stage=stage;row.status='running';row.pauseReason='';saveDevelopmentTask(row)
             if(stage==='test'){
                 const checks=readDevelopmentConfig().checks[row.projectId]
-                if(!checks?.length)throw new Error('尚未配置工程测试命令。分析与开发已保留，请在研发设置中补充测试命令后继续验证；尚未进入自动审查或人工批准。')
+                if(!checks?.length)throw new Error(missingTestsMessage)
                 for(const argv of checks){
-                    const step:any={stage,status:'running',at:time(),output:JSON.stringify(argv)};row.steps.push(step);saveDevelopmentTask(row)
+                    const observed=await changes(row),previous=testCheckpoint(row,argv)
+                    if(previous&&['running','waiting'].includes(previous.status)){previous.status='waiting';saveDevelopmentTask(row);throw Error('上次测试尚无可核对的结束记录，请先检查测试进程和结果，未重复执行')}
+                    if(previous?.status==='completed'&&previous.exitCode===0&&(previous.workspaceHash||(!previous.argv?row.diffHash:undefined))===observed.diffHash)continue
+                    const step:any={stage,status:'running',at:time(),argv:[...argv],output:JSON.stringify(argv)};row.steps.push(step);saveDevelopmentTask(row)
                     const out=await developmentCommand(argv,row.cwd,20*60*1000,signal)
                     assertCurrent()
-                    Object.assign(step,{status:out.exitCode===0&&!out.truncated?'completed':'failed',exitCode:out.exitCode,output:JSON.stringify(argv)+'\n'+out.stdout+'\n'+out.stderr});saveDevelopmentTask(row)
+                    const workspaceHash=out.exitCode===0&&!out.truncated?(await changes(row)).diffHash:undefined
+                    Object.assign(step,{status:out.exitCode===0&&!out.truncated?'completed':'failed',exitCode:out.exitCode,workspaceHash,output:JSON.stringify(argv)+'\n'+out.stdout+'\n'+out.stderr});saveDevelopmentTask(row)
                     if(out.exitCode!==0||out.truncated)throw new Error(out.truncated?'测试输出被截断，请缩小测试范围后重试':'测试命令失败，退出码 '+out.exitCode)
                 }
             }else{
                 if(stage==='review')Object.assign(row,await changes(row))
-                assertCurrent();await modelTurn(row,stage,signal,assertCurrent)
-                if(stage==='review'&&(await changes(row)).diffHash!==row.diffHash)throw new Error('审查期间代码发生变化，需要重新测试与审查')
+                assertCurrent();await modelTurn(row,stage,signal,assertCurrent,stage===stages[Math.max(0,start)]?previousError:'')
+                if(stage==='review'&&(await changes(row)).diffHash!==row.diffHash){row.cycleStart=row.steps.length;throw new Error('审查期间代码发生变化，需要重新测试与审查')}
             }
         }
         assertCurrent();signal.throwIfAborted();row.stage='human';row.status='waiting_review';row.pauseReason='请审查实际差异、测试结果与 AI 审查意见后批准或退回'
@@ -197,17 +230,19 @@ export const developmentService={async development(request:any={}){
     if(action==='detail'){
         let workspace:any,workspaceError=''
         try{workspace=await bindDevelopmentWorkspace(row)}catch(error){workspaceError=String(error.message||error)}
-        const sessions=workbenchContext()?.get?.('sessions'),messages=[row.sessionId,row.reviewSessionId].filter(Boolean).map(id=>({sessionId:id,...(sessions?.get?.(id!)?transcriptDelta(sessions.get(id!),0):{entries:[],turnActive:false})}))
+        const sessions=workbenchContext()?.get?.('sessions'),messages=developmentTaskSessionIds(row).map(id=>({sessionId:id,...(sessions?.get?.(id!)?transcriptDelta(sessions.get(id!),0):{entries:[],turnActive:false})}))
         return {task:row,messages,workspace,workspaceError}
     }
     if(action==='start'){
         for(const id of active.keys()){const other=readDevelopmentTask(id),rel=relative(row.cwd,other.cwd),back=relative(other.cwd,row.cwd);if(id!==row.id&&(rel===''||(!rel.startsWith('..')&&!isAbsolute(rel))||(!back.startsWith('..')&&!isAbsolute(back))))throw new Error('该目录已有正在执行的研发任务，请等待或暂停后再继续')}
         if(active.has(row.id))return row
         if(!['ready','paused','rejected'].includes(row.status))throw new Error('此任务当前不能启动')
+        if(['test','human','delivery'].includes(row.stage)&&!readDevelopmentConfig().checks[row.projectId]?.length)throw new Error(missingTestsMessage)
         if(!existsSync(row.cwd))throw new Error('任务工作区不存在，请检查准备步骤')
         if(row.workspaceMode==='directory')ensureDirectoryBaseline(row)
         const abort=new AbortController();active.set(row.id,abort)
         try{await bindDevelopmentWorkspace(row);if(!row.sessionId)await createSession(row.cwd,row.issue.code+' · '+row.issue.title,id=>{row.sessionId=id;saveDevelopmentTask(row)})}catch(error){active.delete(row.id);throw error}
+        if(row.cycleStart===undefined)row.cycleStart=(row.status==='rejected'||row.stage==='implementation'&&!!row.guidance)?row.steps.length:0
         if(['human','delivery'].includes(row.stage))row.stage='test'
         row.status='running';row.approvedHash=undefined;saveDevelopmentTask(row);void execute(row,abort).catch(()=>{active.delete(row.id)});return row
     }
@@ -215,20 +250,20 @@ export const developmentService={async development(request:any={}){
     if(action==='guidance'){
         if(active.has(row.id)||row.status==='delivered')throw new Error('请先暂停执行，再补充开发要求')
         const text=String(request.text||'').trim();if(!text||text.length>16000)throw new Error('补充要求须为1到16000字')
-        row.guidance=text;row.approvedHash=undefined;row.stage='implementation';row.status='paused';row.pauseReason='已保存补充要求，继续后会重新修复、测试与审查';return saveDevelopmentTask(row)
+        row.cycleStart=row.steps.length;row.guidance=text;row.approvedHash=undefined;row.stage='implementation';row.status='paused';row.pauseReason='已保存补充要求，继续后会重新修复、测试与审查';return saveDevelopmentTask(row)
     }
     if(action==='approve'||action==='reject'){
         if(row.status!=='waiting_review')throw new Error('任务未到人工审查阶段')
         const note=String(request.note||'').trim();if(!note)throw new Error('请填写人工审查意见')
         if(action==='approve'){
-            const observed=await changes(row);if(observed.diffHash!==row.diffHash){row.status='paused';row.stage='test';row.pauseReason='代码已变化，批准失效，需要重新测试';saveDevelopmentTask(row);throw new Error(row.pauseReason)}
+            const observed=await changes(row);if(observed.diffHash!==row.diffHash){row.cycleStart=row.steps.length;row.status='paused';row.stage='test';row.pauseReason='代码已变化，批准失效，需要重新测试';saveDevelopmentTask(row);throw new Error(row.pauseReason)}
             row.approvedHash=observed.diffHash;row.status='approved';row.stage='delivery';row.pauseReason='人工审查已通过，等待确认回写 Linky'
-        }else{row.status='rejected';row.stage='implementation';row.pauseReason=note}
+        }else{row.cycleStart=row.steps.length;row.status='rejected';row.stage='implementation';row.pauseReason=note}
         row.reviewNote=note;row.steps.push({stage:'human',status:action==='approve'?'completed':'failed',at:time(),output:note});return saveDevelopmentTask(row)
     }
     if(action==='writeback'){
         if(row.status!=='approved'||!row.approvedHash)throw new Error('请先完成人工审查')
-        if((await changes(row)).diffHash!==row.approvedHash){row.status='paused';row.stage='test';row.approvedHash=undefined;row.pauseReason='批准后的代码发生变化，必须重新测试与审查';saveDevelopmentTask(row);throw new Error(row.pauseReason)}
+        if((await changes(row)).diffHash!==row.approvedHash){row.cycleStart=row.steps.length;row.status='paused';row.stage='test';row.approvedHash=undefined;row.pauseReason='批准后的代码发生变化，必须重新测试与审查';saveDevelopmentTask(row);throw new Error(row.pauseReason)}
         const content=['Harness 研发结果 · '+row.issue.code,row.workspaceMode==='directory'?'开发目录：'+row.cwd:'本地分支：'+row.branch,'Harness 会话：'+row.sessionId,'审查会话：'+row.reviewSessionId,'测试：'+row.steps.filter(s=>s.stage==='test').map(s=>s.exitCode===0?'通过':'失败').join(' / '),'人工审查：'+row.reviewNote,'变更摘要：\n'+(row.steps.filter(s=>s.stage==='implementation').at(-1)?.output||''),'说明：本地代码尚未提交或发布，业务状态需按 Linky 流程继续确认。'].join('\n')
         // Passing an argv value is intentional; no shell or token extraction is involved.
         const result=await linkyRead(['issue','comment','add',row.issue.id,'--content',content.slice(0,16000)],row.issue.workspaceId,row.profile)

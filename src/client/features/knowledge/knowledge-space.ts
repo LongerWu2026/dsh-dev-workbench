@@ -85,6 +85,7 @@ function knowPage(): any {
     const [kind, setKind] = React.useState<any>('all');
     const [query, setQuery] = React.useState<any>('');
     const [tag, setTag] = React.useState<any>('');
+    React.useEffect(()=>{const target=wbState.knowledgeFocusId;if(!target||!data)return;const item=(data.knowledge||[]).find((row:any)=>row.id===target);if(item){setQuery(item.title||'');setKind('all');setTag('')}WB.store.set({knowledgeFocusId:null})},[wbState.knowledgeFocusId,data]);
     React.useEffect(()=>setPage(0),[kind,query,tag]);
     const [createOpen, setCreateOpen] = React.useState<any>(false);
     const [formError, setFormError] = React.useState<any>('');
@@ -247,7 +248,7 @@ function knowPage(): any {
             name: 'sparkles',
             label: 'AI 分析这条知识（带上下文进入会话）',
             onClick: function (): any {
-                WB.assistant.add({
+                WB.assistant.openFor({
                     kind: 'knowledge',
                     id: item.id,
                     title: item.title,
@@ -417,12 +418,12 @@ function knowPage(): any {
         icon: 'book',
         title: '知识空间',
         sub: summary,
-        actions: h(Btn, {
+        actions: h('div',{className:'wb-row wb-row--wrap'},h(Btn,{icon:'messages',onClick:()=>WB.assistant.openHub('system','knowledge'),children:'知识库对话'}),h(Btn, {
             kind: 'primary',
             icon: 'plus',
             onClick: openCreate,
             children: '新建条目',
-        }),
+        })),
     }),h(RetrievalPanel,{data,onReview:openEdit}), h('div', {
         className: 'wb-row wb-row--wrap',
         style: { gap: 10, marginBottom: 12, alignItems: 'center' },

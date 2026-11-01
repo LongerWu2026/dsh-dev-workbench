@@ -115,6 +115,7 @@ export const newsService = {
                 return row.payloadHash === source.payloadHash;
             });
             const sourceId = duplicate ? duplicate.id : source.id;
+            if(state.tasks.some((task:any)=>task.sourceRefId===sourceId))return state;
             if (!duplicate) {
                 state.sources = ensureArray(state.sources).concat([source]);
             }

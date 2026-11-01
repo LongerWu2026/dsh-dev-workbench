@@ -25,6 +25,7 @@ beforeEach(()=>{
   if(endpoint==='workbench/automationStatus')value={enabled:false}
   if(endpoint==='workbench/assistantSessions')value={sessions:[]}
   if(endpoint==='workbench/assistantTranscript')value={entries:[],sessionId:null}
+  if(endpoint==='workbench/assistantHub'&&payload.args.request?.action==='operate')value={status:'ok',note:'方案已进入当前待办会话',job:{jobId:'fixture-task-assist',status:'queued'}}
   if(endpoint==='workbench/importMigration')value={status:'preview',incomingTotal:1,countsByColumn:{tasks:1},conflictsByColumn:{tasks:0},mappedProjects:[{id:'p',name:'项目',from:'/old/project',to:'/old/project'}]}
   return {ok:true,value}
  }
@@ -47,6 +48,7 @@ describe('办公流程与布局入口',()=>{
   const user=userEvent.setup();const view=render(<App/>);const nav=screen.getByRole('navigation',{name:'工作台导航'})
   expect(nav.className).toContain('wb-topnav');expect(view.container.querySelector('.wb-nav')).toBeNull()
   expect(within(nav).getAllByRole('button',{hidden:true}).length).toBe(12)
+  expect(within(nav).queryByRole('button',{name:'智能办公',hidden:true})).toBeNull()
   const multiAI=within(nav).getByRole('button',{name:'多 AI 对话'})
   expect(multiAI.parentElement).toBe(nav)
   expect(multiAI.closest('details')).toBeNull()
@@ -271,24 +273,31 @@ describe('办公流程与布局入口',()=>{
 
 })
 
-describe('Agent办公执行实际界面',()=>{
- it('执行记录深链直接进入智能办公历史，切换办公流程保留独立入口',async()=>{
-  WB.store.set({data:fixture,page:'office',officeView:'history'});const user=userEvent.setup();render(<WB.pages.office/>);expect(screen.getByText('历史执行记录')).toBeTruthy();expect(screen.queryByRole('button',{name:'新建研发任务'})).toBeNull();await user.click(screen.getByRole('button',{name:'办公流程'}));expect(screen.getByRole('button',{name:'新建办公流程'})).toBeTruthy();expect(WB.store.get().officeView).toBe('workflows')
+describe('办公入口合入助手',()=>{
+ it.each(['workflows','history'])('旧 office/%s 深链只读进入办公历史，保留原作业和记录',async(officeView)=>{
+  fixture.jobs=[{id:'existing-job',kind:'work_report',status:'completed',steps:[]}];fixture.runs=[{id:'existing-run',status:'completed'}];
+  WB.store.set({data:fixture,page:'office',officeView,assistantConversationId:'task:previous',assistantHubThreadId:'previous-thread',assistantRefs:[{kind:'task',id:'previous'}]});
+  expect(WB.store.get()).toMatchObject({page:'assistant',assistantOpen:true,assistantConversationId:'system:office',assistantHubThreadId:null,assistantTaskId:null,assistantRefs:[],officeView:null});
+  render(<WB.pages.office/>);expect(screen.queryByText('历史执行记录')).toBeNull();expect(screen.queryByRole('button',{name:'新建办公流程'})).toBeNull();expect(WB.store.get().data.jobs).toEqual(fixture.jobs);expect(WB.store.get().data.runs).toEqual(fixture.runs);expect(calls).toHaveLength(0)
  })
- it('选择多条待回复并提交一个批次，日报与待办模板共享入口',async()=>{
-  fixture.replies=[1,2].map(n=>({id:'reply-'+n,stage:'待回复',contact:'同事',snippet:'请求'+n}));fixture.tasks=[{id:'task-work',title:'处理工作',status:'ready',priority:'normal'}];WB.store.set({data:fixture,page:'agents'});
-  const user=userEvent.setup();render(<WB.pages.office/>);await user.click(screen.getByRole('button',{name:'新建办公流程'}));
-  const dialog=screen.getByRole('dialog');await user.click(within(dialog).getByLabelText('同事：请求1'));await user.click(within(dialog).getByLabelText('同事：请求2'));await user.click(within(dialog).getByRole('button',{name:'加入执行队列'}));
-  expect(calls.find(c=>c.endpoint==='workbench/officeWorkflowStart').args).toEqual({kind:'reply_batch',input:{replyIds:['reply-1','reply-2']}})
-  await user.click(screen.getByRole('button',{name:'新建办公流程'}));await user.selectOptions(screen.getByRole('combobox',{name:'流程类型'}),'work_report');await user.selectOptions(screen.getByRole('combobox',{name:'报告范围'}),'week');await user.click(screen.getByRole('button',{name:'加入执行队列'}));
-  expect(calls.at(-1).args).toEqual({kind:'work_report',input:{period:'week'}})
-  await user.click(screen.getByRole('button',{name:'新建办公流程'}));await user.selectOptions(screen.getByRole('combobox',{name:'流程类型'}),'task_assist');await user.selectOptions(screen.getByRole('combobox',{name:'关联待办'}),'task-work');await user.click(screen.getByRole('button',{name:'加入执行队列'}));expect(calls.at(-1).args).toEqual({kind:'task_assist',input:{taskId:'task-work'}})
+ it('旧go与函数式store链接均迁移；主导航保留任务和待回复',()=>{
+  WB.go('office');expect(WB.store.get().assistantConversationId).toBe('system:office');expect(WB.store.get().page).toBe('assistant');
+  WB.store.set(()=>({page:'office',officeView:'history'}));expect(WB.store.get().page).toBe('assistant');expect(WB.ORDER).not.toContain('office');expect(WB.NAV_GROUPS.flatMap(group=>group.items)).not.toContain('office');expect(WB.ORDER).toContain('tasks');expect(WB.ORDER).toContain('replies');expect(calls).toHaveLength(0)
  })
- it('产物可复制及采纳，取消和继续使用真实作业ID',async()=>{
-  fixture.jobs=[{id:'workflow-1',kind:'reply_batch',title:'批量回复草稿',status:'failed',createdAt:new Date().toISOString(),steps:[{id:'reply-1',label:'第一条',status:'completed',artifact:{text:'可用草稿',evidenceIds:['source-1'],at:new Date().toISOString()}},{id:'reply-2',label:'第二条',status:'failed',error:'引用校验失败'}]}];WB.store.set({data:fixture,page:'agents'});
-  const user=userEvent.setup();render(<WB.pages.office/>);await user.click(screen.getByText(/批量回复草稿 · 需处理/));expect(screen.getByText('可用草稿')).toBeTruthy();await user.click(screen.getByRole('button',{name:'存为候选知识'}));expect(calls.at(-1).args.input.reviewState).toBe('candidate');await user.click(screen.getByRole('button',{name:'采纳为回复草稿'}));expect(calls.at(-1).args).toEqual({jobId:'workflow-1',stepId:'reply-1'});
-  const copied=vi.spyOn(WB.util,'copy').mockResolvedValue();await user.click(screen.getByRole('button',{name:'复制产物'}));expect(copied).toHaveBeenCalledWith('可用草稿');copied.mockRestore();await user.click(screen.getByRole('button',{name:'继续未完成步骤'}));expect(calls.at(-1).args).toEqual({id:'workflow-1',action:'retry'});
-  await act(async()=>{fixture={...fixture,revision:11,jobs:[{...fixture.jobs[0],status:'running'}]};WB.store.set({data:fixture})});await user.click(screen.getByRole('button',{name:'取消后续步骤'}));expect(calls.at(-1).args).toEqual({id:'workflow-1',action:'cancel'});
+ it('命令面板恢复办公历史，不再前置原始执行记录',async()=>{
+  fixture.runs=[{id:'raw-run',status:'completed'}];WB.store.set({data:fixture,page:'dashboard'});const user=userEvent.setup();render(<WB.Palette open={true} onClose={()=>{}}/>);
+  expect(screen.queryByText(/查看执行记录/)).toBeNull();expect(screen.queryByText(/转到 智能办公/)).toBeNull();await user.click(screen.getByText('查看办公历史'));expect(WB.store.get()).toMatchObject({page:'assistant',assistantConversationId:'system:office'});expect(calls).toHaveLength(0)
+ })
+ it('待办方案进入该事项独立会话并使用可追溯助手操作',async()=>{
+  const task={id:'task-work',title:'处理工作',status:'ready',priority:'normal',tags:[],createdAt:new Date().toISOString()};fixture.tasks=[task];WB.store.set({data:fixture,page:'tasks',taskView:'list'});const user=userEvent.setup();render(<WB.pages.tasks/>);
+  await user.click(screen.getByRole('button',{name:'展开来源证据'}));await user.click(screen.getByRole('button',{name:'AI 整理处理方案'}));
+  await waitFor(()=>expect(calls.some(call=>call.endpoint==='workbench/assistantHub')).toBe(true));const request=calls.find(call=>call.endpoint==='workbench/assistantHub').args.request;
+  expect(request).toMatchObject({action:'operate',conversationId:'task:task-work',operation:'office.start',kind:'task_assist',input:{taskId:'task-work'},text:'整理待办处理方案'});expect(request.requestId).toMatch(/^task-assist-/);expect(WB.store.get()).toMatchObject({page:'assistant',assistantConversationId:'task:task-work',assistantTaskId:'task-work'});expect(calls.some(call=>call.endpoint==='workbench/officeWorkflowStart')).toBe(false)
+ })
+ it('待办方案提交中禁止重复操作，失败仍保留对应会话',async()=>{
+  fixture.tasks=[{id:'task-failed',title:'待处理事项',status:'ready',priority:'normal',tags:[]}];WB.store.set({data:fixture,page:'tasks'});const user=userEvent.setup();let reject;const submit=vi.spyOn(WB.actions,'assistantHub').mockImplementation(()=>new Promise((_,r)=>{reject=r})),toast=vi.spyOn(WB,'toast').mockImplementation(()=>{});render(<WB.pages.tasks/>);
+  await user.click(screen.getByRole('button',{name:'展开来源证据'}));const button=screen.getByRole('button',{name:'AI 整理处理方案'});await user.click(button);expect(button.disabled).toBe(true);await user.click(button);expect(submit).toHaveBeenCalledTimes(1);
+  await act(async()=>{reject(Error('无法启动合成任务'))});expect(toast).toHaveBeenCalledWith('无法启动合成任务','err');expect(WB.store.get()).toMatchObject({page:'assistant',assistantConversationId:'task:task-failed'});expect(fixture.tasks[0].status).toBe('ready');submit.mockRestore();toast.mockRestore()
  })
 })
 
@@ -306,21 +315,6 @@ describe('知识库自动检索界面',()=>{
  })
  it('助手可切换知识模式、项目和账号范围',async()=>{
   fixture.projects=[{id:'p-A',name:'项目A'}];fixture.sources=[{id:'source-A',locator:{accountId:'account-A'}}];WB.store.set({data:fixture,assistantOpen:true});render(<App/>);const user=userEvent.setup();
-  await user.click(screen.getByText('知识设置：自动检索'));await user.selectOptions(screen.getByRole('combobox',{name:'知识模式'}),'only');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识项目'}),'p-A');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识账号'}),'account-A');expect(screen.getByRole('combobox',{name:'知识模式'}).value).toBe('only');expect(screen.getByRole('combobox',{name:'聊天知识项目'}).value).toBe('p-A')
- })
-})
-
-
-describe('紧凑执行记录界面',()=>{
- const run=(id,status,summary)=>({id,status,summary,startedAt:'2026-10-31T01:00:00Z',endedAt:status==='completed'?'2026-10-31T01:00:02Z':null,steps:[],evidence:[]})
- it('只展示一个页面标题，统计直接筛选且无审批空卡片',async()=>{
-  fixture.runs=[run('done','completed','已交付内容'),run('active','running','正在处理内容')];WB.store.set({data:fixture,page:'office',officeView:'history'});const user=userEvent.setup();render(<WB.pages.office/>);
-  expect(screen.getAllByRole('heading',{level:1}).map(el=>el.textContent)).toEqual(['智能办公']);expect(document.querySelectorAll('.wb-page').length).toBe(1);expect(screen.queryByText('历史记录统计')).toBeNull();expect(screen.queryByText('会话审批提示')).toBeNull();expect(screen.queryByText('当前没有待审批操作')).toBeNull();expect(screen.queryByText('status completed')).toBeNull();
-  const filters=screen.getByRole('group',{name:'筛选执行记录'});await user.click(within(filters).getByRole('button',{name:'已完成 1'}));expect(screen.getAllByRole('button',{name:'展开执行详情'}).length).toBe(1);expect(within(filters).getByRole('button',{name:'已完成 1'}).getAttribute('aria-pressed')).toBe('true');await user.click(within(filters).getByRole('button',{name:'进行中 1'}));expect(screen.getAllByRole('button',{name:'展开执行详情'}).length).toBe(1);
-  await user.click(screen.getByRole('button',{name:'登记执行记录'}));expect(screen.getByRole('dialog')).toBeTruthy()
- })
- it('待审批记录默认折叠，查看详情定位对应筛选，不产生审批请求',async()=>{
-  fixture.runs=[run('waiting','waiting_approval','需要核实的记录'),run('done','completed','已完成记录')];WB.store.set({data:fixture,page:'office',officeView:'history'});const user=userEvent.setup();render(<WB.pages.office/>);
-  const approvals=document.querySelector('.wb-office-approvals');expect(approvals.open).toBe(false);await user.click(within(approvals).getByText('待审批标记'));expect(approvals.open).toBe(true);await user.click(within(approvals).getByRole('button',{name:'查看详情'}));expect(screen.getByRole('button',{name:'待审批 1'}).getAttribute('aria-pressed')).toBe('true');expect(screen.getByRole('button',{name:'收起执行详情'})).toBeTruthy();expect(calls.length).toBe(0)
+  await user.click(await screen.findByRole('button',{name:'知识设置'}));await user.selectOptions(screen.getByRole('combobox',{name:'知识模式'}),'only');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识项目'}),'p-A');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识账号'}),'account-A');expect(screen.getByRole('combobox',{name:'知识模式'}).value).toBe('only');expect(screen.getByRole('combobox',{name:'聊天知识项目'}).value).toBe('p-A')
  })
 })

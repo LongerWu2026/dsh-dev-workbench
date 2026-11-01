@@ -109,9 +109,10 @@ function TaskFormHost(props?: {embedded?:boolean}): any {
     const priorityOptions = ['urgent', 'high', 'normal', 'low'].map(function (key?: any): any {
         return { value: key, label: WB.TASK_PRIORITY[key].label };
     });
-    const Container = props?.embedded ? ContextFormPane : Modal;
+    const embedded = props?.embedded && request.presentation !== 'modal';
+    const Container = embedded ? ContextFormPane : Modal;
     return h(Container, {
-        open: !props?.embedded || !state.assistantOpen && !state.contextHidden,
+        open: !state.assistantOpen && !state.contextHidden,
         title: task ? '编辑待办' : '新建待办',
         sub: task ? task.title : '明确的事实与推测分开记录',
         onClose: close,

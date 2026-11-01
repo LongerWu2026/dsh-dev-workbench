@@ -177,7 +177,7 @@ function DashRadarMenu(props?: any): any {
             icon: 'sparkles',
             label: 'AI 分析（带上下文）',
             run: function (): any {
-                WB.assistant.add({
+                WB.assistant.openFor({
                     kind: 'radar',
                     id: item.id,
                     title: item.title,

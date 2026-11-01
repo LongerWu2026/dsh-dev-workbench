@@ -14,7 +14,13 @@ export interface DevelopmentConfig {
     agentId:string;
 }
 export interface DevelopmentIssue {id:string;code:string;title:string;type:string;status:string;workspaceId:string;description:string}
-export interface DevelopmentStep {stage:DevelopmentStage;status:'running'|'completed'|'failed'|'waiting';at:string;sessionId?:string;output?:string;exitCode?:number|null}
+export interface DevelopmentStep {stage:DevelopmentStage;status:'running'|'completed'|'failed'|'waiting';at:string;sessionId?:string;output?:string;exitCode?:number|null;fromSeq?:number;argv?:string[];workspaceHash?:string}
+export interface DevelopmentModel {provider:string;model:string;reasoningEffort?:string}
+export interface DevelopmentRecovery {
+    fromSessionId:string;toSessionId?:string;stage:DevelopmentStage;at:string;cycleStart:number;
+    model:DevelopmentModel;context:string;workspaceHash:string;adapterRevision?:string;
+    status:'prepared'|'created'|'ready'|'submitted'|'completed'|'failed';
+}
 export interface DevelopmentTask {
     id:string;issue:DevelopmentIssue;profile:string;projectId:string;cwd:string;branch:string;workspaceMode?:'directory'|'worktree';
     sessionId:string;reviewSessionId?:string;status:string;stage:DevelopmentStage;
@@ -22,6 +28,11 @@ export interface DevelopmentTask {
     diff?:string;diffHash?:string;approvedHash?:string;reviewNote?:string;commentId?:string;
     agentName?:string;agentContext?:string;contextNote?:string;
     guidance?:string;
+    cycleStart?:number;
+    sessionRecoveries?:DevelopmentRecovery[];
+}
+export function developmentTaskSessionIds(task:DevelopmentTask):string[]{
+    return [...new Set([task.sessionId,task.reviewSessionId,...(task.sessionRecoveries||[]).flatMap(item=>[item.fromSessionId,item.toSessionId])].filter((id):id is string=>!!id))]
 }
 export function issueFromLinky(row:any,workspaceId:string):DevelopmentIssue {
     const display=(value:any)=>typeof value==='string'?value:String(value?.name||value?.label||value?.value||'')

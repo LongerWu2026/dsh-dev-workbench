@@ -57,18 +57,14 @@ function paletteCommands(context?: any): any {
             },
         });
     }
-    if (context && context.runs && context.runs.length > 0) {
-        commands.push({
-            id: 'nav:office-history',
-            label: '查看执行记录（' + context.runs.length + '）',
-            hint: '智能办公 → 执行记录',
-            icon: 'agent',
-            group: '操作',
-            run: function (): any {
-                WB.store.set({page:'office',officeView:'history'});
-            },
-        });
-    }
+    commands.push({
+        id: 'nav:office-history',
+        label: '查看办公历史',
+        hint: '在 AI 助手中恢复以前的报告、草稿与处理记录',
+        icon: 'messages',
+        group: '操作',
+        run: function (): any { WB.assistant.openHub('system','office'); },
+    });
     // 搜索页结果（命令面板内联检索，只走本地路）
     const searchGroups = (context && context.searchResults && context.searchResults.groups) || [];
     const SEARCH_ICON: any = {
@@ -163,7 +159,6 @@ function Palette(props?: any): any {
     }, [query, props.open]);
     const commands = paletteCommands({
         tasks: data.tasks,
-        runs: data.runs,
         counts: WB.taskCounts(data),
         searchResults: searchResults,
         searchQuery: query.trim(),

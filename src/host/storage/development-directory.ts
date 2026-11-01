@@ -37,15 +37,24 @@ export function directoryChanges(row:DevelopmentTask){
     if(current.cwd!==baseline.cwd)throw new Error('任务目录已改变，请核对工作目录')
     const names=[...new Set([...Object.keys(baseline.files),...Object.keys(current.files)])].sort(),hash=createHash('sha256')
     let text='',bytes=0,changed=0
+    const shown=new Map<string,string>()
+    const body=(entry:Entry|undefined,label:string)=>{
+        if(!entry)return '（不存在）'
+        const key=(entry.link!==undefined?'link:':'file:')+entry.hash,first=shown.get(key)
+        if(first)return '（内容相同，见 '+first+'；SHA-256：'+entry.hash+'）'
+        shown.set(key,label)
+        return entry.link!==undefined?'符号链接 → '+entry.link:Buffer.from(entry.content||'','base64').includes(0)?'二进制文件（Base64）：\n'+entry.content:Buffer.from(entry.content||'','base64').toString('utf8')
+    }
     for(const name of names){
         const before=baseline.files[name],after=current.files[name]
         hash.update(JSON.stringify([name,after?.hash??null,after?.mode??null,after?.link??null]))
         if(before?.hash===after?.hash&&before?.mode===after?.mode&&before?.link===after?.link)continue
         if(++changed>200)throw new Error('变更超过200个文件，请拆分后审查')
-        bytes+=(before?.content?Buffer.byteLength(before.content,'base64'):0)+(after?.content?Buffer.byteLength(after.content,'base64'):0)
-        if(bytes>512*1024)throw new Error('变更内容超过512KB，请拆分后审查')
-        const body=(entry:Entry|undefined)=>!entry?'（不存在）':entry.link!==undefined?'符号链接 → '+entry.link:Buffer.from(entry.content||'','base64').includes(0)?'二进制文件（Base64）：\n'+entry.content:Buffer.from(entry.content||'','base64').toString('utf8')
-        text+='\n### '+(!before?'新增':!after?'删除':'修改')+' '+name+'\n--- 开发前\n'+body(before)+'\n+++ 当前\n'+body(after)+'\n'
+        const mode=before?.mode!==after?.mode?'\n权限：'+(before?before.mode.toString(8):'不存在')+' → '+(after?after.mode.toString(8):'不存在'):''
+        const fragment='\n### '+(!before?'新增':!after?'删除':'修改')+' '+name+mode+'\n--- 开发前\n'+body(before,name+' / 开发前')+'\n+++ 当前\n'+body(after,name+' / 当前')+'\n'
+        bytes+=Buffer.byteLength(fragment)
+        if(bytes>512*1024)throw new Error('变更审查文本超过512KB（已合并相同内容），请拆分后审查')
+        text+=fragment
     }
     return {diff:text||'（没有代码变更）',diffHash:hash.digest('hex')}
 }

@@ -1,4 +1,5 @@
 import { asString } from '../platform/runtime.js'
+import {nativeAssistantAttachments} from '../../shared/assistant-attachments.js'
 function stripAssistantBoilerplate(text?: any): any {
     const lines = String(text || '').split('\n');
     const kept: any = [];
@@ -78,9 +79,9 @@ function assistantHistoryFrom(session?: any, limit?: any): any {
                 .filter(Boolean)
                 .join('\n')
                 .trim();
-            const historyText = stripAssistantBoilerplate(text);
-            if (historyText && !isSystemInjectedText(historyText))
-                out.push({ role: 'user', text: historyText, at: event.time });
+            const attachments=nativeAssistantAttachments(content),historyText=stripAssistantBoilerplate(text);
+            if ((historyText&&!isSystemInjectedText(historyText))||attachments.length)
+                out.push({ role: 'user', text: historyText, at: event.time,...(attachments.length?{attachments}:{}) });
         }
         else if (event.type === 'assistant/message') {
             const text = assistantTextOf(event.data.message);
@@ -110,6 +111,7 @@ function sessionTitleOf(session?: any): any {
                 .trim();
             if (titleText && !isSystemInjectedText(titleText))
                 return titleText.slice(0, 40);
+            const attachments=nativeAssistantAttachments(content);if(attachments.length)return attachments[0].name.slice(0,40);
         }
     }
     catch (e) {
@@ -144,9 +146,9 @@ function transcriptOf(session?: any, limit?: any): any {
                 .filter(Boolean)
                 .join('\n')
                 .trim();
-            const transcriptText = stripAssistantBoilerplate(text);
-            if (transcriptText && !isSystemInjectedText(transcriptText))
-                entries.push({ role: 'user', text: transcriptText, at: event.time });
+            const attachments=nativeAssistantAttachments(content),transcriptText=stripAssistantBoilerplate(text);
+            if ((transcriptText&&!isSystemInjectedText(transcriptText))||attachments.length)
+                entries.push({ role: 'user', text: transcriptText, at: event.time,...(attachments.length?{attachments}:{}) });
         }
         else if (event.type === 'tool/call') {
             const name = event.data && event.data.name ? String(event.data.name) : 'tool';
@@ -203,9 +205,9 @@ function transcriptDelta(session?: any, fromSeq?: any): any {
                 .filter(Boolean)
                 .join('\n')
                 .trim();
-            const entryText = stripAssistantBoilerplate(text);
-            if (entryText && !isSystemInjectedText(entryText))
-                entries.push({ role: 'user', text: entryText, at: event.time, seq: event.seq });
+            const attachments=nativeAssistantAttachments(content),entryText=stripAssistantBoilerplate(text);
+            if ((entryText&&!isSystemInjectedText(entryText))||attachments.length)
+                entries.push({ role: 'user', text: entryText, at: event.time, seq: event.seq,...(attachments.length?{attachments}:{}) });
         }
         else if (event.type === 'assistant/message') {
             const text = assistantTextOf(event.data.message);
