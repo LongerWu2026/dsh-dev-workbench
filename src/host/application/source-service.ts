@@ -1,7 +1,9 @@
+import {createConversationReader} from '../integrations/conversation-reader.js'
+import {conversationReadKey,mergeConversationReadMark} from '../../shared/conversation-read.js'
 import {configureBusyReply} from '../integrations/busy-reply.js'
 import { REPLY_STATUSES, auditEntry, ensureArray, normalizeReplies, normalizeSource } from '../domain/model.js'
 import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store.js'
-import { probeYunzhijia, sendYzjTextReply, syncYunzhijiaMessages } from '../integrations/yunzhijia.js'
+import { probeYunzhijia, runYzj, sendYzjTextReply, syncYunzhijiaMessages } from '../integrations/yunzhijia.js'
 import { workbenchContext } from './service-context.js'
 import { asString, hostNowIso, newId } from '../platform/runtime.js'
 import {taskReplyMatches,taskReplyTarget} from '../../shared/task-reply.js'
@@ -25,7 +27,17 @@ function replySendTarget(state: any, request: any): any {
 }
 
 /** source-service: shared Remote and Agent business use cases. */
+const readConversation=createConversationReader({state:loadWorkbenchState,probe:probeYunzhijia,run:runYzj,markRead:async mark=>{
+    const snapshot=await mutateWorkbenchState((state:any)=>{
+        if(state.messageInbox?.accountId!==mark.accountId)throw Error('消息账号已变化，请重新打开会话');
+        state.conversationReadMarks=mergeConversationReadMark(state.conversationReadMarks,mark);
+        auditEntry(state,'conversation.read','已在工作台查阅会话；待回复状态保持不变');
+    });
+    return {readMark:snapshot.conversationReadMarks[conversationReadKey(mark.accountId,mark.groupId)],snapshot};
+}})
 export const sourceService = {
+    async conversationMessages(request:any){return readConversation(workbenchContext(),request)},
+    async conversationRead(request:any){return readConversation.markRead(workbenchContext(),request)},
     async busyReplyConfigure(request:any){const ctx=workbenchContext();const snapshot=await configureBusyReply(request,()=>probeYunzhijia(ctx));if(request.enabled)void syncYunzhijiaMessages(ctx).catch(()=>{});return snapshot},
 
     /** Prepare local communication evidence without reopening a reply obligation. */

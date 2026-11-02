@@ -71,6 +71,7 @@ export function backgroundRecognitionDetails(purpose:string,entry:any,submitted?
     const text=String(entry.text||''),parsed=parse(text),packet=backgroundSubmittedPacket(submitted)
     const failure=!text.trim()?(entry.terminalReason&&entry.terminalReason!=='completed'?'本轮已中断或停止，AI 未返回可展示结果。':'AI 本轮未返回可展示内容。'):!parsed||typeof parsed!=='object'||Array.isArray(parsed)?'AI 返回内容不是有效的 JSON 对象。':''
     if(purpose==='summary'){
+        if(!failure&&typeof parsed.overview==='string'&&parsed.overview.trim())return {items:[{sourceId:'batch-overview',label:'本批资讯总结',summary:cut(parsed.overview,6000),instructions:[],status:'recognized' as const}],note:'以下为 AI 实际返回的整批资讯总结；是否已保存以资讯处理结果为准。'}
         const labels:Record<string,string>={change:'技术变化',usage:'应用场景',risk:'采用风险',practice:'推荐实践'}
         const items=Object.entries(labels).map(([key,label])=>{
             const value=parsed?.[key]

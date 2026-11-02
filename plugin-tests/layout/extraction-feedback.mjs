@@ -15,10 +15,10 @@ try{
  for(const width of [800,360])for(const height of [600,320])for(const theme of ['light','dark'])for(const mode of ['rejected','running','failed','completed']){
   await page.setViewportSize({width,height});const id=`extract-${width}-${height}-${theme}-${mode}`;
   await page.evaluate(({theme,mode,id})=>{document.documentElement.className=theme;window.fixtureExtractionStartError=mode==='rejected'?'模型拒绝启动：'+('长错误说明'.repeat(25)):null;window.fixtureExtractionJob={id,kind:'analysis',status:'running',progress:{processed:3,remaining:7,failed:0,batches:1,pauseReason:null}};const data=window.WB.store.get().data;window.WB.store.set({analysisActivity:null,analysisLive:null,analysisStatusError:null,toasts:[],data:{...data,jobs:[]}});window.WB.go('dashboard');document.querySelector('.wb-scroll').scrollTo({top:0,behavior:'instant'})},{theme,mode,id});
-  await page.getByRole('button',{name:'提取消息',exact:true}).click();
+  await page.evaluate(()=>window.WB.actions.analyzeRun().catch(()=>{}));
   if(mode==='rejected')await page.waitForFunction(()=>window.WB.store.get().analysisActivity?.phase==='failed');
   else{
-   await page.getByLabel('提取进行中',{exact:true}).waitFor();await page.waitForFunction(()=>window.WB.store.get().analysisActivity?.phase==='running');
+   await page.waitForFunction(()=>window.WB.store.get().analysisActivity?.phase==='running');
    if(mode==='failed'||mode==='completed'){
     await page.evaluate(mode=>{const data=window.WB.store.get().data;window.WB.store.set({data:{...data,jobs:data.jobs.map(job=>({...job,status:mode,error:mode==='failed'?'模型历史不兼容：'+('缺少推理字段'.repeat(20)):undefined,progress:{...job.progress,processed:mode==='completed'?10:3,remaining:mode==='completed'?0:7}}))}})},mode);
     await page.waitForFunction(mode=>window.WB.store.get().analysisActivity?.phase===mode,mode);
@@ -26,7 +26,7 @@ try{
   }
   const toast=page.locator('.wb-toasts');if(mode!=='running')await toast.waitFor();
   const metrics=await page.evaluate(()=>{const root=document.querySelector('.wb-root').getBoundingClientRect(),scroll=document.querySelector('.wb-scroll'),toast=document.querySelector('.wb-toasts')?.getBoundingClientRect();return{overflow:scroll.scrollWidth-scroll.clientWidth,toastInside:!toast||(toast.left>=root.left&&toast.right<=root.right+1&&toast.bottom<=root.bottom+1),spinner:!!document.querySelector('[aria-label="提取进行中"]')}});
-  if(metrics.overflow>2||!metrics.toastInside||metrics.spinner!==(mode==='running'))throw Error(JSON.stringify({width,height,theme,mode,...metrics}));
+  if(metrics.overflow>2||!metrics.toastInside||metrics.spinner||await page.getByLabel('首页提取状态').count())throw Error(JSON.stringify({width,height,theme,mode,...metrics}));
   report.push({width,height,theme,mode,...metrics});await page.screenshot({path:resolve(out,`${width}-${height}-${theme}-${mode}.png`),animations:'disabled'});
  }
  if(errors.length)throw Error(errors.join('\n'));

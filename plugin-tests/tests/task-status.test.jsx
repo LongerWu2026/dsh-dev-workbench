@@ -1,5 +1,5 @@
 import React from 'react'
-import { beforeEach, afterEach, it, expect } from 'vitest'
+import { beforeEach, afterEach, it, expect, vi } from 'vitest'
 import { render, screen, within, act, cleanup, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { loadClientBundle } from './load-plugin.mjs'
@@ -31,13 +31,13 @@ beforeEach(() => {
 })
 afterEach(cleanup)
 
-it('列表在状态后显示完成，七种状态可直接保存且保留任务内容，完成后可以重开', async () => {
+it('列表在状态后显示完成，六种个人状态可直接保存且保留任务内容，完成后可以重开', async () => {
   const user = userEvent.setup()
   render(<WB.pages.tasks />)
   expect(screen.getAllByRole('columnheader').map(cell => cell.textContent.replace(/[↕↑↓]/g,''))).toEqual(['任务', '优先级', '状态', '完成', '消息发出时间', '截止 / 会议开始', '项目', '操作'])
   const select = screen.getByRole('combobox', { name: '状态 核对任务状态' })
   expect(within(select).getAllByRole('option').map(option => option.value)).toEqual(Object.keys(WB.TASK_STATUS))
-  for (const status of ['draft', 'ready', 'running', 'waiting_approval', 'failed', 'cancelled', 'completed']) {
+  for (const status of ['draft', 'ready', 'running', 'failed', 'cancelled', 'completed']) {
     await user.selectOptions(select, status)
     expect(updates.at(-1)).toEqual({ id: 'status-task', patch: { status } })
     expect(select.value).toBe(status)
@@ -149,4 +149,22 @@ it('高级筛选默认收起，折叠后仍显示可移除的日期条件',async
  messageTasks();const user=userEvent.setup();render(<WB.pages.tasks/>);const toggle=screen.getByRole('button',{name:'筛选',exact:true});expect(toggle.getAttribute('aria-expanded')).toBe('false');
  await user.click(toggle);fireEvent.change(screen.getByLabelText('消息发出日期起始'),{target:{value:'2026-10-29'}});await user.click(toggle);expect(toggle.getAttribute('aria-expanded')).toBe('false');
  await user.click(screen.getByRole('button',{name:'移除筛选：消息日期：2026-10-29 至 不限'}));expect(screen.getByLabelText('消息发出日期起始').value).toBe('');expect(updates).toHaveLength(0);
+})
+
+it('个人任务的筛选、列表及看板不再出现审批状态',async()=>{
+ const user=userEvent.setup();render(<WB.pages.tasks/>);expect(screen.queryByRole('button',{name:/待审批/})).toBeNull();expect(screen.queryByText('审批流程')).toBeNull();
+ expect(within(screen.getByRole('combobox',{name:'状态 核对任务状态'})).queryByRole('option',{name:'待审批'})).toBeNull();
+ await user.click(screen.getByRole('button',{name:'看板'}));expect(screen.queryByText('待审批')).toBeNull();expect(screen.getByText('核对任务状态')).toBeTruthy();expect(updates).toHaveLength(0)
+})
+
+it.each([true,false])('%s编辑或新建表单不再提供审批选项',async editing=>{
+ await act(async()=>WB.openTaskForm(editing?fixture.tasks[0]:null));render(<WB.TaskFormHost/>);
+ const dialog=screen.getByRole('dialog');expect(within(dialog).queryByRole('option',{name:'待审批'})).toBeNull();expect(within(dialog).getByRole('option',{name:'待处理'})).toBeTruthy();expect(within(dialog).getByRole('option',{name:'执行中'})).toBeTruthy();expect(updates).toHaveLength(0)
+})
+
+it('列表描述和空白可打开编辑，行内状态、完成、来源和编辑按钮不会冒泡误触',async()=>{
+ const edit=vi.spyOn(WB,'openTaskForm').mockImplementation(()=>{}),user=userEvent.setup();render(<WB.pages.tasks/>);const row=screen.getByRole('button',{name:'核对任务状态',exact:true}).closest('tr');
+ await user.click(screen.getByText('保留任务内容',{exact:true}));expect(edit).toHaveBeenCalledTimes(1);expect(edit).toHaveBeenLastCalledWith(fixture.tasks[0]);await user.click(row.children[6]);expect(edit).toHaveBeenCalledTimes(2);
+ await user.click(within(row).getByRole('button',{name:'展开来源证据'}));expect(edit).toHaveBeenCalledTimes(2);await user.selectOptions(within(row).getByRole('combobox',{name:'状态 核对任务状态'}),'running');expect(edit).toHaveBeenCalledTimes(2);await user.click(within(row).getByRole('button',{name:'完成 核对任务状态'}));expect(edit).toHaveBeenCalledTimes(2);
+ await user.click(within(row).getByRole('button',{name:'编辑',exact:true}));expect(edit).toHaveBeenCalledTimes(3);row.focus();await user.keyboard('{Enter}');expect(edit).toHaveBeenCalledTimes(4);edit.mockRestore()
 })

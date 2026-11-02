@@ -6,6 +6,7 @@ const labels:Record<string,string>={
  'analysis.status':'查看识别进度','analysis.results':'查看提取结果','analysis.updateResult':'修正提取结果','analysis.continue':'继续消息识别','analysis.retry':'重试失败消息','analysis.fetch':'获取新消息并识别',
  'radar.fetch':'获取资讯并生成摘要','radar.collect':'获取资讯','radar.summary':'生成资讯摘要','radar.update':'保存资讯摘要','radar.toTask':'将资讯转为待办','radar.toKnowledge':'将资讯保存为知识',
  'knowledge.search':'搜索知识','knowledge.read':'读取知识','knowledge.create':'创建待审核知识','knowledge.update':'预览修改知识','knowledge.delete':'预览删除知识',
+ 'development.issue.get':'查询 Linky 工作项与可用状态','development.issue.update':'修改 Linky 工作项',
  'development.continue':'继续研发任务','development.pause':'暂停研发任务','development.guidance':'补充研发要求','development.approve':'通过人工审查','development.reject':'退回研发审查','development.detail':'查看研发进度','development.writeback':'预览回写 Linky 评论',
  'busyReply.status':'查看忙碌自动回复','busyReply.configure':'设置忙碌自动回复','office.adoptReply':'采纳为回复草稿','office.saveKnowledge':'将工作成果保存为知识','office.start':'开始日常工作','office.status':'查看办公进度','office.retry':'继续办公作业','office.cancel':'停止办公作业',
  'confirm':'确认执行','cancel':'取消确认操作','search':'搜索工作台','messages.fetch':'获取消息',

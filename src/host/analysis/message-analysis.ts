@@ -75,7 +75,7 @@ function analysisRules():string {
         '字段定义：needsReply 表示沟通义务；needsAction 只表示沟通之外的业务处理（开发、提交材料、登记、参会等）。回复、回答问题、确认进度本身不算业务待办。',
         '例：对方问“什么时候能完成，请回个进度” => needsReply=true, needsAction=false；私聊“明天提交方案，完成后回复” => needsAction=true,needsReply=false；群内@本人交办并要求反馈可分别识别；“参加评审，不用回复” => needsReply=false, needsAction=true。',
         'selectionReasons 是入选原因，conversationType=1为私聊。unread仅表示会话未读，不能推定本人义务；群里明确@他人的请求、他人的承诺或无本人指向的问题，不得归为本人的待处理或待回复。mention_me才表示结构化@本人，mention_all表示面向全员。',
-        '群聊未@本人或@全员时禁止新建待办，包括未读群里的会议通知；仅可判断是否需要本人答复。没有本人指向或明确@他人的群消息不能产生本人的待回复。',
+        '群聊未结构化@本人或@全员时禁止新建待办和待回复，包括未读群里的问题、会议通知和@他人的请求；仅保留查阅信息。@本人或@全员也必须明确要求本人回答、确认或反馈，才可needsReply=true；纯知会仍无需答复。',
         '群内 @all / @全体成员 通知也面向本人。明确要求“请大家安排参加”等参会通知属于本人业务处理义务，needsAction=true,eventType=meeting；不要求答复则 needsReply=false。纯广播、宣传或转述仍不得凭 @all 自动建待办。',
         '若明确说不安排新任务或仅确认进度，不要把回复进度另建 Task。只有确有既存业务事项时才用 relatedTaskId 关联，且询问不会改变其承诺期限。',
         '聊天消息不得完成或取消已有待办；待办由实际执行结果或人工更新。收到/好的不代表业务完成；私聊待回复由最近实际发言人核对，群聊待回复仅核对对应原消息的本人答复。',
@@ -182,7 +182,7 @@ function upsertReply(state?: any, entry?: any, source?: any, stage?: any, relate
         }
         return { reply: existing, created: false };
     }
-    if (locator.intake === false || locator.direction === 'outbound')
+    if (locator.intake === false || locator.direction === 'outbound' || !canCreateMessageTask(source))
         return { reply: null, created: false };
     const reply = normalizeReplies([{ id: newId('rep'), sourceId: entry.sourceId, msgId: entry.msgId, accountId: entry.accountId || locator.accountId,
             groupId: entry.groupId || locator.groupId, groupName: locator.groupName, contact: source.sender, snippet: source.excerpt,

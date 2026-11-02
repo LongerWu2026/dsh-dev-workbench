@@ -30,7 +30,7 @@ export async function startWorkflowJob(ctx:unknown,kind:'analysis'|'summary',inp
      }
      if(reset)auditEntry(state,'analysis.retryFailed','人工重试失败消息 '+reset+' 条，重新开放本轮重试资格');
    }
-   if(!safeInput.continuous || !job) {if(state.modelHealth)delete state.modelHealth[kind]}
+   if(input.preserveModelHealth!==true&&(!safeInput.continuous || !job)) {if(state.modelHealth)delete state.modelHealth[kind]}
    if(job?.status==='queued'&&!safeInput.continuous)Object.assign(job,{nextRetryAt:null,attempts:0,error:undefined,result:undefined,updatedAt:hostNowIso()})
    if(!job){job={id:newId('job'),kind,status:'queued',input:safeInput,createdAt:hostNowIso(),updatedAt:hostNowIso(),attempts:0};if(safeInput.continuous){const rest=analysisRemainder(state);job.progress={processed:0,remaining:rest.remaining,failed:rest.failed,batches:0,pauseReason:null}}state.jobs.push(job)}
    return state

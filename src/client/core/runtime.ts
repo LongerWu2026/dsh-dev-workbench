@@ -295,6 +295,7 @@ function assistantBrief(refs?: any, instruction?: any): any {
 let wbPendingRequests = 0;
 let wbSyncInFlight: Promise<boolean> | null = null;
 let wbAnalysisStartInFlight:Promise<any>|null=null;
+let wbRefreshStartInFlight:Promise<any>|null=null;
 
 function acceptSnapshot(snapshot?: any): any {
     const current = wbStore.get().data;
@@ -391,8 +392,30 @@ const wbActions: any = {
     /** Pull @-mention messages through yzj-cli; report lands in data.lastMentionsFetch.
      *  Zero-parameter endpoint: the gateway strictly validates arg fields against
      *  the descriptor, so the payload must be exactly {}. */
+    conversationMessages(request:any):Promise<any>{return wbRpc('workbench/conversationMessages',{request})},
+    async conversationRead(request:any):Promise<any>{
+        const response=await wbRpc('workbench/conversationRead',{request}),mark=response?.readMark,current=wbStore.get().data;
+        if(response?.status!=='ok'||!mark||mark.accountId!==request.accountId||mark.groupId!==request.groupId||response.snapshot?.messageInbox?.accountId!==mark.accountId)throw Error('未能保存工作台已读状态，请重试');
+        if(current?.messageInbox?.accountId===mark.accountId)acceptSnapshot(response.snapshot);
+        return response;
+    },
     fetchMentions(): any {
         return settle(wbRpc('workbench/fetchMentions', {}), '@我 消息已拉取');
+    },
+    refreshWorkspace(scope='all'):Promise<any>{
+        if(wbRefreshStartInFlight)return wbRefreshStartInFlight;
+        wbStore.set({refreshStarting:true,refreshStatusError:null});
+        wbRefreshStartInFlight=wbRpc('workbench/refreshStart',{request:{scope}}).then((report:any)=>{
+            if(!report?.id||!report?.steps)throw Error('未取得刷新任务状态，请重试');
+            wbStore.set({workspaceRefresh:report});return report;
+        }).catch((error:any)=>{toast('刷新启动失败：'+String(error.message||error).slice(0,160),'err');throw error})
+          .finally(()=>{wbRefreshStartInFlight=null;wbStore.set({refreshStarting:false})});
+        return wbRefreshStartInFlight!;
+    },
+    async refreshStatus():Promise<any>{
+        const report=await wbRpc('workbench/refreshStatus',{});
+        const valid=report?.id&&report?.steps?report:null;
+        wbStore.set({workspaceRefresh:valid,refreshStatusError:null});return valid;
     },
     /** Fetch the configured RSS/Atom feeds; the report lands in data.lastRadarFetch.
      *  Zero-parameter endpoint — payload must be exactly {} (see fetchMentions). */
@@ -620,7 +643,6 @@ WB.TASK_STATUS = {
     draft: { label: '草稿', tone: 'idle', order: 0 },
     ready: { label: '待处理', tone: 'accent', order: 1 },
     running: { label: '执行中', tone: 'warn', order: 2 },
-    waiting_approval: { label: '待审批', tone: 'warn', order: 3 },
     completed: { label: '已完成', tone: 'ok', order: 4 },
     failed: { label: '失败', tone: 'err', order: 5 },
     cancelled: { label: '已取消', tone: 'idle', order: 6 },

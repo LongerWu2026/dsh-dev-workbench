@@ -1,0 +1,29 @@
+/** Disposable profile, real collection/normalization, deterministic official and search providers. */
+import assert from 'node:assert/strict'
+import {mkdtempSync,rmSync,readFileSync} from 'node:fs'
+import {tmpdir} from 'node:os'
+import {join,resolve} from 'node:path'
+import {build} from 'esbuild'
+const home=mkdtempSync(join(tmpdir(),'news-brief-'));process.env.DSH_HOME=home
+try{
+ const output=join(home,'fixture.mjs');await build({stdin:{contents:`export {runRadarFetchOrDiscover} from './src/host/news/discovery.ts';export {loadWorkbenchState as state,mutateWorkbenchState as mutate} from './src/host/storage/state-store.ts';export {normalizeState} from './src/host/domain/model.ts';export {newsBriefItems} from './src/shared/news-brief.ts'`,resolveDir:resolve('.'),loader:'ts'},bundle:true,platform:'node',format:'esm',packages:'external',outfile:output,logLevel:'silent'})
+ const h=await import(output),now=new Date().toISOString(),calls=[],rss=(url,title,date=now)=>`<rss><channel><item><title>${title}</title><link>${url}</link><pubDate>${date}</pubDate><description>Source excerpt, not an AI summary.</description></item></channel></rss>`
+ await h.mutate(s=>{s.settings.feeds=[{id:'custom',label:'自定义来源',url:'https://example.test/feed',topics:['AI']}];s.settings.topics=['Agent','LLM','RAG','Java'];return s})
+ let empty=false,fail=false,searchStarted=0
+ const ctx={get(name){if(name==='rssReader')return this.get('web');if(name!=='web')return;return {fetch:async({url})=>{calls.push(url);if(fail)throw Error('HTTP 503');return {statusCode:200,body:{content:empty?'<rss/>':url.includes('openai')?rss('https://openai.com/news/model-one','Official model announcement'):url.includes('deepmind')?rss('https://deepmind.google/blog/old','Old research','2020-01-01'):url.includes('huggingface')?rss('https://impostor.test/fake','Forged publisher'):rss('https://example.test/custom','Custom tool release')}}},search:async({query,maxResults})=>{searchStarted++;assert.equal(maxResults,15);if(fail)throw Error('search offline');return {sources:empty?[]:query.startsWith('site:anthropic')?[{url:'https://www.anthropic.com/engineering/agents',title:'Reliable agent engineering',publishedAt:now,snippet:'Agent engineering research'}]:query.startsWith('site:api-docs')?[{url:'https://not-deepseek.test/news',title:'Fake official publication',publishedAt:now}]:[{url:'https://openai.com/news/model-one',title:'Official model announcement',publishedAt:now},{url:'https://news.test/research',title:'Distinct multimodal research',publishedAt:now,snippet:'Research source'},{url:'https://news.test/old',title:'Outdated source',publishedAt:'2020-01-01'}, {url:'not-a-url',title:'Invalid'}]}}}}}
+ const [first,same]=await Promise.all([h.runRadarFetchOrDiscover(ctx),h.runRadarFetchOrDiscover(ctx)])
+ assert.equal(first.lastRadarFetch.at,same.lastRadarFetch.at);assert.equal(calls.length,4);assert.equal(searchStarted,7)
+ assert.equal(first.lastRadarFetch.added,4);assert.ok(first.radar.some(row=>row.source==='自定义来源'));assert.ok(first.radar.some(row=>row.source==='Anthropic 官方动态'));assert.ok(!first.radar.some(row=>/impostor|not-deepseek/.test(row.url)));assert.equal(first.radar.find(row=>row.url.includes('openai')).summary.change,'')
+ assert.ok(first.lastRadarFetch.perFeed.some(row=>row.reasons?.duplicate));assert.ok(first.lastRadarFetch.perFeed.some(row=>row.reasons?.outdated));assert.ok(first.lastRadarFetch.perFeed.some(row=>row.reasons?.irrelevant));assert.ok(first.lastRadarFetch.perFeed.some(row=>row.reasons?.invalid))
+ const ids=first.radarBrief.ids.slice(),at=first.radarBrief.at;empty=true
+ const second=await h.runRadarFetchOrDiscover(ctx);assert.equal(second.lastRadarFetch.added,0);assert.equal(second.radarBrief.at,at);assert.deepEqual(second.radarBrief.ids,ids);assert.equal(second.lastRadarFetch.nextTopicIndex,2)
+ fail=true;const failed=await h.runRadarFetchOrDiscover(ctx);assert.equal(failed.lastRadarFetch.added,0);assert.equal(failed.radarBrief.at,at);assert.deepEqual(failed.radarBrief.ids,ids);assert.ok(failed.lastRadarFetch.perFeed.every(row=>row.status==='error'))
+ const disk=JSON.parse(readFileSync(join(home,'storages/dev-workbench/state.json'),'utf8')),restored=h.normalizeState(disk).state;assert.equal(restored.radarBrief.at,at);assert.deepEqual(restored.radarBrief.ids,ids);assert.equal(restored.lastRadarFetch.perFeed.length,11)
+ await h.mutate(s=>{s.radar[0].availability='ignored';return s});assert.ok(!h.newsBriefItems(h.state()).some(row=>row.id===h.state().radar[0].id))
+ let rawCalls=0,extractCalls=0,queries=0
+ const separated={get(name){if(name==='rssReader')return {fetch:async()=>{rawCalls++;return {statusCode:200,body:{content:rss('https://openai.com/news/raw-only','Raw XML model announcement')}}}};if(name==='web')return {fetch:async()=>{extractCalls++;throw Error('AnySearch extract must not handle feeds')},search:async()=>{queries++;return {sources:[]}}}}}
+ const combined=await h.runRadarFetchOrDiscover(separated);assert.equal(rawCalls,4);assert.equal(extractCalls,0);assert.equal(queries,7);assert.ok(combined.lastRadarFetch.perFeed.some(row=>row.channel==='rss'));assert.ok(combined.lastRadarFetch.perFeed.some(row=>row.channel==='search'))
+ const withoutSearch={get(name){if(name==='rssReader')return {fetch:async()=>({statusCode:200,body:{content:rss('https://openai.com/news/raw-without-search','Standalone inference research')}})}}}
+ const rssOnly=await h.runRadarFetchOrDiscover(withoutSearch);assert.equal(rssOnly.lastRadarFetch.added,1);assert.ok(rssOnly.lastRadarFetch.perFeed.some(row=>row.channel==='rss'&&row.status==='ok'));assert.ok(rssOnly.lastRadarFetch.perFeed.some(row=>row.channel==='search'&&row.status==='unavailable'))
+ console.log('news-brief: hybrid collection, official provenance, bounded searches, dedup reasons, concurrency, empty/failure retention and restart persistence passed')
+}finally{rmSync(home,{recursive:true,force:true})}

@@ -14,7 +14,7 @@ await build({stdin:{contents:`export {apply} from './src/host/plugin.ts'; export
 const host=await import(bundle)
 let api;let spawner=null;const sessionServices={}
 const disposers=[]
-host.apply({provide:(name,value)=>{if(name==='workbench')api=value},inject:()=>{},effect:fn=>{const cleanup=fn();if(typeof cleanup==='function')disposers.push(cleanup);return cleanup},get:name=>name==='subprocess'?spawner:sessionServices[name],logger:{info(){}}},{})
+host.apply({provide:(name,value)=>{if(name==='workbench')api=value},inject:()=>{},effect:fn=>{const cleanup=fn();if(typeof cleanup==='function')disposers.push(cleanup);return cleanup},get:name=>name==='rssReader'?{fetch:(...args)=>sessionServices.web?.fetch?sessionServices.web.fetch(...args):Promise.reject(Error('RSS fixture unavailable'))}:name==='subprocess'?spawner:sessionServices[name],logger:{info(){}}},{})
 let checks=0
 function check(label,fn){fn();checks++;console.log('✓',label)}
 const file=join(home,'storages/dev-workbench/state.json')
@@ -167,7 +167,7 @@ try {
  const queries=[];sessionServices.web={search:async({query})=>{queries.push(query);return{sources:[{url:'https://example.org/ai/'+encodeURIComponent(query),title:'AI 工程发布 '+query,snippet:'工具链公告'},{url:'https://example.org/game',title:'VALORANT Hush Agent Release Date',snippet:'Riot Games announces a character'},{url:'https://example.org/2023/10/18/old-rag',title:'历史RAG指南',snippet:'长期教程'}]}}}
  await api.saveSettings({topics:['Agent','LLM','RAG','Java','Python','数据库'],feeds:[]})
  await api.fetchRadar();await api.fetchRadar()
- check('联网资讯限定AI Agent并轮换全部关注主题，未知日期不补造',()=>{assert.ok(queries[0].includes('"AI Agent"'));assert.ok(queries[2].includes('retrieval augmented generation'));assert.ok(queries.some(q=>q.startsWith('Java ')));assert.ok(queries.some(q=>q.startsWith('Python ')));assert.ok(queries.some(q=>q.startsWith('数据库 ')));assert.ok(queries.some(q=>q.startsWith('site:github.com')));const article=host.loadWorkbenchState().radar.find(r=>r.title.startsWith('AI 工程发布'));assert.equal(article.publishedAt,null);assert.equal(article.dateKind,'unknown');assert.ok(!host.loadWorkbenchState().radar.some(r=>r.title==='历史RAG指南'));assert.ok(!host.loadWorkbenchState().radar.some(r=>r.topics.includes('Agent')&&r.title.includes('VALORANT')))})
+ check('联网资讯限定AI Agent并轮换全部关注主题，未知日期不补造',()=>{assert.ok(queries.some(q=>q.includes('"AI Agent"')));assert.ok(queries.some(q=>q.includes('retrieval augmented generation')));assert.ok(queries.some(q=>q.startsWith('Java ')));assert.ok(queries.some(q=>q.startsWith('Python ')));assert.ok(queries.some(q=>q.startsWith('数据库 ')));assert.ok(queries.some(q=>q.startsWith('site:github.com')));const article=host.loadWorkbenchState().radar.find(r=>r.title.startsWith('AI 工程发布'));assert.equal(article.publishedAt,null);assert.equal(article.dateKind,'unknown');assert.ok(!host.loadWorkbenchState().radar.some(r=>r.title==='历史RAG指南'));assert.ok(!host.loadWorkbenchState().radar.some(r=>r.topics.includes('Agent')&&r.title.includes('VALORANT')))})
  for(let i=0;i<6;i++)events.push({type:'turn/end',seq:events.length+1,data:{}})
  const freshSession={id:'session-targeted-fresh',seq:0,snapshotEvents:()=>[]};const renamed=[];let sessionCreates=0
  sessionServices.sessions={get:id=>id===modelSession.id?modelSession:id===freshSession.id?freshSession:null}

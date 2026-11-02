@@ -1,3 +1,4 @@
+import {needsNewsBatchOverview,summarizeNewsBatch} from './batch-overview.js'
 import { isIgnoredNews, isUnreadableNewsError } from '../../shared/news.js'
 import { ensureBackgroundSession, hostService } from '../assistant/sessions.js'
 import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store.js'
@@ -101,14 +102,14 @@ async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<
     const input = request && typeof request === 'object' ? request : {};
     const limit = Math.max(1, Math.min(10, Number(input.limit) || 3));
     const state0 = loadWorkbenchState();
-    const onlyIds = ensureArray(input.onlyIds).map(function (id?: any): any { return String(id); });
+    const onlyIds = ensureArray(input.onlyIds?.length?input.onlyIds:needsNewsBatchOverview(loadWorkbenchState())?loadWorkbenchState().radarBrief.ids:[]).map(function (id?: any): any { return String(id); });
     const all = ensureArray(state0.radar).filter(function (item?: any): any {
         return item.url && radarNeedsSummary(item) && (Number(item.summaryAttempts) < 3 || input.retryFailed === true) && (!item.summaryRetryAt || input.retryFailed === true || new Date(item.summaryRetryAt).getTime() <= Date.now());
     });
     const candidates = (onlyIds.length > 0
         ? all.filter(function (item?: any): any { return onlyIds.indexOf(item.id) >= 0; })
         : all).slice(0, limit);
-    if (candidates.length === 0) {
+    if (candidates.length === 0 && !needsNewsBatchOverview(state0)) {
         return { status: 'ok', done: 0, failed: 0, note: '没有待摘要的资讯（都有四段摘要或没有 url）。' };
     }
     await begin();
@@ -185,23 +186,24 @@ async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<
             perItem.push({ id: item.id, ok: false, note: String((error && error.message) || error).slice(0, 160) });
         }
     }
+    const batchResult=deferred||interrupted?{}:await summarizeNewsBatch(ctx,controller,resolved,request);
     await mutateWorkbenchState(function (current?: any): any {
         current.lastRadarSummarize = {
             at: hostNowIso(),
             done: done,
             failed: failed,
             interrupted,
-            note: deferred?.note || (interrupted ? '运行恢复后等待重试，不计入失败次数' : failed > 0 ? perItem.filter(function (row?: any): any { return !row.ok; }).map(function (row?: any): any { return row.note; }).slice(0, 3).join('；') : null),
+            note: batchResult.note || deferred?.note || (interrupted ? '运行恢复后等待重试，不计入失败次数' : failed > 0 ? perItem.filter(function (row?: any): any { return !row.ok; }).map(function (row?: any): any { return row.note; }).slice(0, 3).join('；') : null),
         };
         auditEntry(current, 'radar.summarize', '摘要生成：成功 ' + done + ' / 失败 ' + failed);
         return current;
     });
     return deferred ? {...deferred,done,failed,items:perItem} : {
-        status: interrupted ? 'interrupted' : failed > 0 ? 'partial' : 'ok',
+        status: interrupted ? 'interrupted' : failed > 0 || batchResult.failed ? 'partial' : 'ok',
         done: done,
         failed: failed,
         items: perItem,
-        note: failed > 0 ? '失败条目见 lastRadarSummarize' : null,
+        note: batchResult.note || (failed > 0 ? '失败条目见 lastRadarSummarize' : null),
     };
 }
 

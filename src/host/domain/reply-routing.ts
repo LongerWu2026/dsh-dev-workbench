@@ -35,7 +35,7 @@ export function routePrivateAnalysis(state:any,source:any,analysis:any,taskIds:s
  if(replyNeeded)applyLatestPrivateReply(state,reply,source)
  return reply
 }
-/** Run under the local commit lock: collecting private unread does not wait for AI. */
+/** Collecting unread is not a reply obligation. Reconcile existing records; AI creates confirmed obligations. */
 export function seedUnreadPrivateReplies(state:any,accountId:string):number {
  const queue=new Map((state.analysisQueue||[]).map((q:any)=>[q.sourceId,q]));let count=0
  const conversations=new Map((state.messageInbox?.accountId===accountId?state.messageInbox.conversations||[]:[]).map((c:any)=>[c.groupId,c]))
@@ -47,8 +47,7 @@ export function seedUnreadPrivateReplies(state:any,accountId:string):number {
   if(['skipped','historical','cancelled'].includes(q?.status))continue
   if(q?.analysis&&['done','awaiting_human'].includes(q.status)) {routePrivateAnalysis(state,source,q.analysis,q.taskIds||[]);continue}
   let reply=sourceReply(state,source)
-  if(!reply){reply=createPending(state,source);count++}
-  else applyLatestPrivateReply(state,reply,source)
+  if(reply)applyLatestPrivateReply(state,reply,source)
  }
  return count
 }

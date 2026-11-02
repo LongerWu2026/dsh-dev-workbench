@@ -523,6 +523,8 @@ const ctx = {
     rpc: {
       call(channel, endpoint, payload) {
         rpcCalls.push({ endpoint: endpoint, args: (payload && payload.args) || {} })
+        if (endpoint === 'workbench/refreshStatus') return Promise.resolve({ok:true,value:null})
+        if (endpoint === 'workbench/refreshStart') return Promise.resolve({ok:true,value:{id:'fixture-refresh',scope:payload.args.request.scope,status:'completed',collecting:false,steps:{messages:{status:'completed',note:'已同步'}}}})
         if (endpoint === 'workbench/webAIState') return Promise.resolve({ok:true,value:{state:{topics:[],rounds:[],chatgptEnabled:false},capabilities:{chromeAvailable:false,storageScope:'synthetic'}}})
         if (endpoint === 'workbench/diagnostics') return Promise.resolve({ ok: true, value: diagnostics })
         if (endpoint === 'workbench/environment') return Promise.resolve({ ok: true, value: environmentFixture })
@@ -755,11 +757,11 @@ if (entry && entry.key !== 'dev-workbench') problems.push('main key 不是 dev-w
 if (!registrations.panellist.length) problems.push('没有注册 sidebar.panellist')
 
 const pageSpecs = [
-  ['今日简报', 'dashboard', ['AI 动态', '抓取资讯', '复制今日简报', '待回复', '张三', '处理回复']],
+  ['今日简报', 'dashboard', ['AI 动态', '抓取资讯', '复制今日简报', '待回复', '张三', '查看全部回复']],
   ['AI 助手', 'assistant', ['最近会话', '新建对话']],
   ['任务中心', 'tasks', ['看板', '规则候选（备用）', '提取候选', '筛选']],
-  ['待回复', 'replies', ['私聊未读先待识别']],
-  ['资讯', 'radar', ['生成摘要', '获取资讯']],
+  ['待回复', 'replies', ['仅跟踪需要本人答复的消息']],
+  ['资讯', 'radar', ['概览', '获取资讯', '资讯对话']],
   ['工作搜索', 'search', ['工作内容', '互联网', '消息']],
   ['研发任务', 'agents', ['研发设置', 'Linky']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
@@ -879,19 +881,22 @@ for (const [title, id, expected] of pageSpecs) {
     return renderTree('核对·' + title + '·已进入')
   }
 
-  // 首页：资讯删除入口（页面上真实可点）
-  const dashEntries = await goPage('今日简报')
+  // 首页承载重点，完整资讯页保留删除、编辑与 AI 入口。
+  const briefEntries = await goPage('今日简报')
+  if(!treeText(briefEntries).includes('概览'))problems.push('首页缺少技术简报')
+  if(!findButtons(briefEntries,[]).some(button=>button.text==='全部资讯'))problems.push('首页缺少完整资讯列表入口')
+  const dashEntries = await goPage('资讯')
   let dashLabels = labelsOf(dashEntries)
   // 操作收进「⋯」菜单：先确认菜单按钮存在，再展开核对条目
-  if (dashLabels.indexOf('这条资讯的操作') < 0) problems.push('首页缺少资讯操作菜单按钮')
+  if (dashLabels.indexOf('这条资讯的操作') < 0) problems.push('资讯页缺少资讯操作菜单按钮')
   const radarMenu = findButtons(dashEntries, []).find((button) => button.label === '这条资讯的操作')
   if (radarMenu) {
     radarMenu.onClick()
     const openedDash = await renderTree('核对·今日简报·资讯菜单展开')
     dashLabels += ' | ' + labelsOf(openedDash)
   }
-  if (dashLabels.indexOf('删除这条资讯') < 0) problems.push('首页缺少「删除资讯」入口')
-  if (dashLabels.indexOf('AI 分析（带上下文）') < 0) problems.push('首页缺少「AI 分析资讯」入口')
+  if (dashLabels.indexOf('删除这条资讯') < 0) problems.push('资讯页缺少「删除资讯」入口')
+  if (dashLabels.indexOf('AI 分析（带上下文）') < 0) problems.push('资讯页缺少「AI 分析资讯」入口')
 
   // 任务中心：候选维护入口
   const tasksEntries = await goPage('任务中心')
@@ -986,7 +991,7 @@ for (const [title, id, expected] of pageSpecs) {
       composer.onChange({ target: { value: '今天还有哪些没做完？' } })
       const typed = await renderTree('助手·已输入')
       const sendBtn = findButtons(typed, []).find(
-        (button) => button.text.indexOf('发送') >= 0 || button.label.indexOf('发送') >= 0,
+        (button) => button.text === '发送' || button.label === '发送',
       )
       if (!sendBtn) problems.push('助手抽屉缺少「发送」按钮')
       else {
@@ -1110,19 +1115,17 @@ for (const [title, id, expected] of pageSpecs) {
 /* ------------------------------------------------ empty-state rendering */
 snapshotMode = 'empty'
 {
-  // 通过真实导航按钮回到首页（今日简报是第 1 项），再点「刷新」让 Host 返回空快照
+  // 通过真实导航回到首页，再读取 Host 空快照；刷新按钮使用独立后台作业，不能代替快照夹具切换。
   const navTree = await renderTree('空态·导航')
   const nav = findNavButtons(navTree, [])
   if (nav.length > 0) nav[0].props.onClick()
   await renderTree('空态·回到首页')
-  const refresh = findButtons(await renderTree('空态·找刷新'), []).find((button) => button.text.indexOf('刷新') >= 0)
-  if (refresh) refresh.onClick()
-  else problems.push('空态场景没有找到「刷新」按钮')
+  await WB.actions.reload()
   const tree = await renderTree('空态·今日简报')
   const text = treeText(tree).replace(/\s+/g, ' ')
   const size = countNodes(tree)
   if (size < 60) problems.push('空态首页渲染节点过少：' + size)
-  for (const marker of ['还没有待办', '暂无 AI 动态', '抓取资讯', '手动添加资讯', '新建第一条待办']) {
+  for (const marker of ['还没有待办', '概览', '暂无可展示的简报', '抓取资讯', '添加资讯', '新建第一条待办']) {
     if (text.indexOf(marker) < 0) problems.push('空态首页缺少「' + marker + '」')
   }
   // 紧凑空态保留明确下一步，避免旧版插画与三步指引占用整块首屏。

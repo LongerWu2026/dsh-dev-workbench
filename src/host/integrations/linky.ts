@@ -45,9 +45,9 @@ export async function linkyIssues(type:string,offset:number,workspaceId?:string)
     const rows=linkyRows(await linkyRead(['issue','list','--assignee','me','--type',type,'--limit','50','--offset',String(Math.max(0,Math.floor(offset/50)*50))],c.workspaceId),'issues')
     return {items:rows.map(row=>issueFromLinky(row,c.workspaceId)),hasMore:rows.length===50,offset}
 }
-export async function linkyIssue(code:string,workspaceId?:string){
+export async function linkyIssue(code:string,workspaceId?:string,profile?:string){
     if(!/^[A-Za-z0-9][\w-]{0,119}$/.test(code))throw new Error('请输入工作项编号或 UUID')
-    const c={...readDevelopmentConfig(),...(workspaceId?{workspaceId}:{})},raw=await linkyRead(['issue','show',code,'--full'],c.workspaceId)
+    const c={...readDevelopmentConfig(),...(workspaceId?{workspaceId}:{})},raw=await linkyRead(['issue','show',code,'--full'],c.workspaceId,profile)
     const row=issueFromLinky(raw?.issue||raw,c.workspaceId);if(!row.id)throw new Error('Linky 工作项缺少标识')
     if(c.workspaceId&&row.workspaceId!==c.workspaceId)throw new Error('工作项不属于所选工作空间')
     return row

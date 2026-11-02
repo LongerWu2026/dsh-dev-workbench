@@ -38,9 +38,9 @@ function DashTaskRow(props?: any): any {
             cursor: 'pointer',
             overflowWrap: 'anywhere',
         },
-        title: '编辑这条待办',
+        title: '在任务中心查看这条待办',
         onClick: function (): any {
-            WB.openTaskForm(task, null, {presentation:'modal'});
+            WB.focusTask(task.id);
         },
     }, task.title)), h('div', { className: 'wb-item-sub' }, props.linked?h(Badge,{tone:ended?'ok':'idle'},'待办：'+(WB.TASK_STATUS[task.status]?.label||task.status)):null,h(Badge, { tone: priority.tone }, priority.label), task.dueAt
         ? h('span', { style: { color: dashToneColor(due.tone), fontWeight: 600 } }, due.text)

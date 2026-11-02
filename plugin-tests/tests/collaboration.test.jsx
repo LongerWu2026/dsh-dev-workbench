@@ -46,19 +46,19 @@ describe('研发协作项目联动与运行反馈',()=>{
   const {WB}=setup(),user=userEvent.setup();const data=WB.store.get().data;data.projects[0].launchCommands=[{id:'custom',name:'本地服务',argv:['node','server with spaces.js']}]
   render(<WB.pages.collab/>);await screen.findByRole('button',{name:'启动 开发服务'});expect(screen.getByRole('button',{name:'启动 构建项目'}).closest('details').open).toBe(false)
   await user.click(screen.getByRole('button',{name:'启动配置'}));expect(screen.getByRole('textbox',{name:'启动参数 1'}).value).toBe('server with spaces.js')
-  await user.type(screen.getByRole('textbox',{name:'服务地址 1'}),'http://localhost:3000/health');await user.click(screen.getByRole('button',{name:'保存启动配置'}))
+  await user.type(screen.getByRole('textbox',{name:'服务地址 1'}),'http://localhost:3000/health');await user.click(screen.getByRole('button',{name:'保存'}))
   await waitFor(()=>expect(WB.actions.saveProject).toHaveBeenCalledTimes(1));expect(WB.actions.saveProject.mock.calls[0][0]).toEqual({id:'p1',repoPath:'/fixture/front',launchCommands:[{id:'custom',name:'本地服务',argv:['node','server with spaces.js'],common:true,serviceUrl:'http://localhost:3000/health'}]})
   expect(WB.store.get().data.projects[0].name).toBe('前端项目');expect(WB.rpc.mock.calls.some(([method])=>method.endsWith('/projectStart'))).toBe(false)
  })
  it('可以从发现脚本生成配置，非法远端服务地址不会保存',async()=>{
   const {WB}=setup(),user=userEvent.setup();render(<WB.pages.collab/>);await screen.findByRole('button',{name:'启动 开发服务'});await user.click(screen.getByRole('button',{name:'启动配置'}))
   await user.selectOptions(screen.getByRole('combobox',{name:'从项目脚本添加'}),'dev');expect(screen.getByRole('textbox',{name:'启动参数 1'}).value).toBe('run\ndev')
-  await user.type(screen.getByRole('textbox',{name:'服务地址 1'}),'https://example.com/health');await user.click(screen.getByRole('button',{name:'保存启动配置'}));await screen.findByRole('alert');expect(WB.actions.saveProject).not.toHaveBeenCalled()
+  await user.type(screen.getByRole('textbox',{name:'服务地址 1'}),'https://example.com/health');await user.click(screen.getByRole('button',{name:'保存'}));await screen.findByRole('alert');expect(WB.actions.saveProject).not.toHaveBeenCalled()
   await user.click(screen.getByRole('button',{name:'取消'}));expect(screen.queryByRole('form',{name:'项目启动配置'})).toBeNull()
  })
  it('重新保存已有配置保留显式空参数及非常用标记',async()=>{
   const {WB}=setup(),user=userEvent.setup();WB.store.get().data.projects[0].launchCommands=[{id:'empty',name:'空参数',argv:['node','-e',''],common:false}]
-  render(<WB.pages.collab/>);await screen.findByRole('button',{name:'启动 开发服务'});await user.click(screen.getByRole('button',{name:'启动配置'}));await user.click(screen.getByRole('button',{name:'保存启动配置'}))
+  render(<WB.pages.collab/>);await screen.findByRole('button',{name:'启动 开发服务'});await user.click(screen.getByRole('button',{name:'启动配置'}));await user.click(screen.getByRole('button',{name:'保存'}))
   await waitFor(()=>expect(WB.actions.saveProject).toHaveBeenCalledTimes(1));expect(WB.actions.saveProject.mock.calls[0][0].launchCommands[0]).toMatchObject({argv:['node','-e',''],common:false})
  })
  it('启动中、进程运行和地址可访问分别呈现，只有确认可访问才提供打开服务',async()=>{

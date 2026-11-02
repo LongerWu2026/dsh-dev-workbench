@@ -1,3 +1,4 @@
+import {WorkspaceRefresh} from '../../components/WorkspaceRefresh.js'
 import {MessageSelectionBadges} from '../../components/MessageSelectionBadges.js'
 import {Pagination,PAGE_SIZE,pageIndex} from '../../components/Pagination.js'
 import { ReplyDraft } from './ReplyDraft.js'
@@ -19,6 +20,8 @@ function RepliesPage(): any {
     const [focusVersion,setFocusVersion]=React.useState(0);
     const [focusNotice,setFocusNotice]=React.useState('');
     const listRef=React.useRef<HTMLDivElement>(null);
+    const historyView=filter==='all'||filter==='已回复'||filter==='不需回复';
+    const actionLabels:Record<string,string>={'待回复':'恢复待回复','已确认收到':'标记已收到','已回复':'标记已回复','不需回复':'无需回复'};
     const orderedReplies = (data.replies || []).filter((row:any)=>!row.archivedAt).map((row:any) => ({...row, groupName: messageOrigin((data.sources || []).find((source:any) => source.id === row.sourceId), row), contact: messageSender((data.sources || []).find((source:any) => source.id === row.sourceId) || {locator:{groupId:row.groupId}}, row.contact)})).sort(function (a?: any, b?: any): any { return String(b.updatedAt).localeCompare(String(a.updatedAt)); });
 
     const replies = orderedReplies.filter(function (row?: any): any {
@@ -42,9 +45,9 @@ function RepliesPage(): any {
     },[selectedReply,focusVersion]);
     return h('div', { className: 'wb-inbox' },
         h(PageHead, {
-            icon: 'chat', title: '待回复',
-            sub: '私聊未读先待识别；具体事项转入待办，需答复的消息按实际回复更新。',
-            actions: h(Btn, { icon: 'refresh', onClick: () => WB.actions.fetchMentions().catch(() => {}), disabled: state.busy, children: '同步消息' }),
+            icon: 'reply', title: filter==='all'?'全部回复记录':historyView?'已处理回复':'待回复',
+            sub: filter==='all'?'当前包含待处理及已处理记录；首页仅统计仍需答复的消息。':historyView?'这里是已处理记录；切换到「待处理」可查看仍需答复的消息。':'仅跟踪需要本人答复的消息；普通未读留在消息收件箱，具体事项进入待办。',
+            actions: h(WorkspaceRefresh,{scope:'replies'}),
         }),
         focusNotice?h('p',{role:'status',className:'wb-tiny wb-muted'},focusNotice):null,
         h('div', { className: 'wb-inbox-filters' },
@@ -67,7 +70,7 @@ function RepliesPage(): any {
                 const statusActions = h('div', { className: 'wb-inbox-stage-actions', role: 'group', 'aria-label': '修改回复阶段' },
                     h('span', { className: 'wb-tiny wb-muted' }, '标记为'),
                     ['待回复', '已确认收到', '已回复', '不需回复'].filter(stage => stage !== reply.stage).map(stage =>
-                        h(Btn, { key: stage, size: 'sm', disabled: state.busy, onClick: () => WB.actions.setReplyStage(reply.id, stage).catch(() => {}), children: stage })),
+                        h(Btn, { key: stage, size: 'sm', disabled: state.busy, title:stage==='不需回复'?'已查阅且无需本人回复：仅结束本条提醒，不发送消息，不改变云之家未读状态':undefined, onClick: () => WB.actions.setReplyStage(reply.id, stage).catch(() => {}), children: actionLabels[stage]||stage })),
                     h(Btn, { icon: 'sparkles', size: 'sm', onClick: () => WB.assistant.add({ kind: 'source', id: reply.sourceId || reply.id, title: reply.contact || '待回复消息', body: reply.snippet, meta: '回复 ID：' + reply.id + '；阶段：' + reply.stage }), children: 'AI 协助' }));
                 return h('article', { key: reply.id, 'data-reply-id':reply.id, tabIndex:-1, 'aria-current':selectedReply===reply.id?'true':undefined, className: 'wb-reply-item wb-inbox-card'+(selectedReply===reply.id?' is-selected':''),style:selectedReply===reply.id?{outline:'2px solid var(--wb-accent)',outlineOffset:2,scrollMarginTop:12}:undefined },
                     h('header', { className: 'wb-inbox-card-head' },
@@ -91,7 +94,7 @@ function RepliesPage(): any {
                             const task = (data.tasks || []).find((row: any) => row.id === id);
                             return task ? h(Btn, { key: id, size: 'sm', onClick: () => WB.openTaskForm(task), children: '待办：' + task.title }) : null;
                         })) : null));
-            })) : h(Empty, { icon: 'chat', title: '当前没有需要处理的回复', hint: '同步后私聊未读先显示在这里；AI将具体事项转入待办，其余按回复义务分类。' }),
+            })) : h(Empty, { icon: 'reply', title: historyView?'没有匹配的回复记录':'当前没有需要处理的回复', hint: '未读不等于需要回复；识别出回复义务或手动添加后才显示在这里。' }),
         h(Pagination, { page, total: replies.length, onChange: setPage }),
         h(WorkflowJobs, { jobs: data.jobs || [], kind: 'analysis' }),
         h(AnalysisQueuePanel, { entries: data.analysisQueue || [], sources: data.sources || [] }));

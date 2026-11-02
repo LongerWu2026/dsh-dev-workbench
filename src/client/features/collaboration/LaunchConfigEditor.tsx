@@ -28,6 +28,6 @@ export function LaunchConfigEditor({commands,configured,onSave,onCancel,busy}:{c
             <select className="wb-select" style={{width:'auto',maxWidth:'100%'}} aria-label="从项目脚本添加" value="" disabled={busy||rows.length>=20} onChange={e=>{const command=commands.find(row=>row.id===e.target.value);if(command)add(command)}}><option value="">从项目脚本添加…</option>{commands.filter(command=>!rows.some(row=>row.id===command.id)).map(command=><option key={command.id} value={command.id}>{command.name}</option>)}</select>
         </div>
         {error&&<p role="alert" className="wb-tiny">{error}</p>}
-        <div className="wb-row" style={{justifyContent:'flex-end',gap:8}}><Btn disabled={busy} onClick={onCancel}>取消</Btn><button type="submit" className="wb-btn wb-btn--primary" disabled={busy}>保存启动配置</button></div>
+        <div className="wb-row" style={{justifyContent:'flex-end',gap:8}}><Btn disabled={busy} onClick={onCancel}>取消</Btn><button type="submit" className="wb-btn wb-btn--primary" disabled={busy}>保存</button></div>
     </form>
 }

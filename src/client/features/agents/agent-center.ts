@@ -458,10 +458,9 @@ function agentPage(): any {
             h(Btn, {
                 key: 'save',
                 kind: 'primary',
-                icon: 'save',
                 disabled: !!wbState.busy,
                 onClick: submitRecord,
-                children: editingRunId ? '保存修改' : '保存记录',
+                children: '保存',
             }),
         ],
     }, h('div', { className: 'wb-stack', style: { gap: 10 } }, h(Field, { label: '关联任务', hint: '不选择表示这是一条通用执行记录' }, h(Select, {

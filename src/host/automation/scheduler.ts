@@ -1,3 +1,4 @@
+import {newsBriefItems} from '../../shared/news-brief.js'
 import {busyReplyDue} from '../../shared/busy-reply.js'
 import {messageSyncDue} from '../../shared/message-schedule.js'
 import { drainWorkflowJobs } from './jobs.js'
@@ -121,7 +122,8 @@ async function runAutomationTick(ctx?: any, request?: {backlogOnly?:boolean;resu
         }
         if (config.summarize !== false && extractSettings.enabled && loadWorkbenchState().settings.automation.enabled) {
             try {
-                const summary = await runRadarSummarizeBatch(ctx, {});
+                const current=loadWorkbenchState(),fresh=current.lastRadarFetch?.itemIds||[],focus=newsBriefItems(current).filter((item:any)=>fresh.includes(item.id)).map((item:any)=>item.id);
+                const summary = await runRadarSummarizeBatch(ctx, focus.length&&!request?.backlogOnly?{onlyIds:focus,limit:5}:{});
                 notes.push('资讯摘要 ' + (summary.done || 0) + ' 条');
                 if (summary.status !== 'ok' && summary.status !== 'disabled') {
                     status = 'partial';

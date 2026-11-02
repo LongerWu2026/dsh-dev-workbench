@@ -20,6 +20,7 @@ export function loadClientBundle() {
     removeEventListener(...args) { globalThis.window?.removeEventListener(...args) },
     matchMedia: () => ({ matches: false, addEventListener() {}, removeEventListener() {} }),
     navigator: { platform: 'Mac' },
+    get innerWidth() { return globalThis.window?.innerWidth || 1024 },
     setTimeout,
     clearTimeout,
   }

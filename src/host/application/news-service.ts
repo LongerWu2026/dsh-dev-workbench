@@ -1,3 +1,4 @@
+import {newsBriefItems} from '../../shared/news-brief.js'
 import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store.js'
 import { auditEntry, ensureArray, normalizeRadarItem, normalizeSource, normalizeTask } from '../domain/model.js'
 import { asString, asTags, asUrl, hostNowIso } from '../platform/runtime.js'
@@ -47,6 +48,8 @@ export const newsService = {
         // 未配置 RSS 时按关注主题走联网发现（TODO 06 的默认路径）
         await runRadarFetchOrDiscover(workbenchContext());
         await refreshGithubQuality(workbenchContext());
+        const state=loadWorkbenchState(),ids=state.lastRadarFetch?.itemIds||[];
+        if(ids.length&&state.settings.aiExtract?.enabled)await startWorkflowJob(workbenchContext(),'summary',{onlyIds:newsBriefItems(state).map((item:any)=>item.id),limit:5});
         return loadWorkbenchState();
     },
 

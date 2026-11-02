@@ -14,6 +14,7 @@ import { newsService } from './news-service.js'
 import { analysisService } from './analysis-service.js'
 import { assistantService } from './assistant-service.js'
 import { systemService } from './system-service.js'
+import { refreshService } from './refresh-service.js'
 const workbenchApi: any = {
  ...developmentService,
  ...connectorService,
@@ -28,6 +29,7 @@ const workbenchApi: any = {
  ...newsService,
  ...analysisService,
  ...assistantService,
+ ...refreshService,
  ...systemService
 };
 

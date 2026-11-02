@@ -50,7 +50,7 @@ export async function reconcileYunzhijiaReplies(ctx:any,state:any,probe:any,run:
                 continue;
             }
             const messages=rows(result);
-            view={groupId:loc.groupId,groupType,messages,latest:messages.at(-1)};
+            view={groupId:loc.groupId,groupType,messages,latest:messages.at(-1),newestRead:true};
             observed.set(loc.groupId,view);
         }
         function validOwn(message:any):boolean {
@@ -60,11 +60,22 @@ export async function reconcileYunzhijiaReplies(ctx:any,state:any,probe:any,run:
         }
         const quoted=(message:any)=>validOwn(message) && messageReplyId(message)===loc.msgId;
         let evidence=(view.messages || []).find(quoted);
-        // Only a verified private conversation can use the latest-sender rule.
-        if(groupType===1 && loc.sentAt && validOwn(view.latest))evidence=view.latest;
-        if(!evidence && groupType!==1 && !report.rateLimited){
-            // A quiet/old group may no longer be in recent sessions. Scan forward
-            // from the original ID, retaining progress across bounded refreshes.
+        const privateChat=groupType===1,originalTime=Date.parse(loc.sentAt||'');
+        // A later inbound acknowledgement must not hide an earlier real reply.
+        // Only verified private chats may use an unquoted outgoing message.
+        const answersOriginal=(message:any)=>validOwn(message)&&Number.isFinite(originalTime)&&Date.parse(messageSentAt(message.sendTime)!)>originalTime;
+        if(privateChat){
+            const answered=[...(view.messages||[]),view.latest].filter(message=>answersOriginal(message));
+            answered.sort((a:any,b:any)=>Date.parse(messageSentAt(b.sendTime)!)-Date.parse(messageSentAt(a.sendTime)!));
+            if(answered.length)evidence=answered[0];
+        }
+        // Incremental collection can provide only the last message of an unchanged
+        // chat. In that case inspect the intervening messages rather than treating
+        // the last sender as proof that all earlier questions remain unanswered.
+        const needsPrivateHistory=privateChat&&Number.isFinite(originalTime)&&view.latest?.msgId!==loc.msgId&&!(view.newestRead&&(view.messages||[]).length<20);
+        if(!evidence && (!privateChat||needsPrivateHistory) && !report.rateLimited){
+            // Scan forward from the original ID, retaining bounded progress for
+            // quiet/old private chats and groups alike.
             let anchor=state.syncCursors[key]?.lastMsgId || loc.msgId;
             for(let page=0;page<2 && calls<12;page++){
                 const result=await request(['im','message','list','--group-id',loc.groupId,'--msg-id',anchor,'--type','new','--limit','20']);
@@ -73,7 +84,7 @@ export async function reconcileYunzhijiaReplies(ctx:any,state:any,probe:any,run:
                     break;
                 }
                 const messages=rows(result);
-                evidence=messages.find(quoted);
+                evidence=messages.find(privateChat?answersOriginal:quoted);
                 const next=messages.at(-1)?.msgId;
                 state.syncCursors[key]={accountId,lastMsgId:typeof next==='string' && next!==anchor ? next:anchor,at:hostNowIso()};
                 if(evidence || messages.length<20 || !next || next===anchor)break;

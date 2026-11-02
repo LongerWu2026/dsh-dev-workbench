@@ -47,6 +47,22 @@ try{
  await seed();observe(1,[msg('original'),own()],0);await h.mutateWorkbenchState(s=>{s.syncCursors['org:me:chat']={accountId:'org:me',lastMsgId:'own',intakePolicy:'focused-v1'};return s});await sync()
  check('没有新增消息且AI关闭，私聊最新消息本人发送仍立即标为已回复',()=>{const s=state(),r=s.replies[0];assert.equal(s.lastMentionsFetch.added,0);assert.equal(r.stage,'已回复');assert.equal(r.repliedAt,sentAt);assert.equal(r.evidenceMsgId,'own');assert.equal(r.humanGuard,true);assert.equal(s.tasks[0].status,'ready');assert.equal(s.replyDrafts[r.id].text,'保留人工草稿')})
  const updated=state().replies[0].updatedAt;await sync();check('重复刷新保持已回复时间及证据，不反复改写',()=>assert.equal(state().replies[0].updatedAt,updated))
+ // A reply followed by the contact's closing message still settles the earlier round.
+ const closing=()=>msg('closing','other',{content:'好的',sendTime:new Date(Date.parse(sentAt)+1000).toISOString()});
+ await seed([source('original'),source('second')]);observe(1,[msg('original'),msg('second'),own(),closing()],0);await sync();
+ check('私聊两个连续问题之后本人已答复，对方收尾不会留下两条过期待回复',()=>{assert.ok(state().replies.every(r=>r.stage==='已回复'));assert.ok(state().replies.every(r=>r.evidenceMsgId==='own'&&r.repliedAt===sentAt));assert.equal(state().tasks[0].status,'ready')});
+ await seed([source('original'),source('second')]);observe(1,[msg('original'),msg('second'),own(),closing()],0);await h.mutateWorkbenchState(s=>{s.syncCursors['org:me:chat']={accountId:'org:me',lastMsgId:'closing',intakePolicy:'focused-v1',groupType:1,unreadCount:0};return s});await sync();
+ check('会话末句未变且增量只提供收尾快照，仍向原消息之后查到实际答复',()=>{assert.ok(state().replies.every(r=>r.stage==='已回复'));assert.ok(calls.some(a=>a.includes('new')&&a.includes('--msg-id')))});
+ const newer=source('new-question');newer.locator.sentAt=new Date(Date.parse(sentAt)+2000).toISOString();
+ await seed([source('original'),newer]);observe(1,[msg('original'),own(),msg('new-question','other',{sendTime:newer.locator.sentAt})],1);await sync();
+ check('本人答复只结清之前的问题，之后的新问题仍待回复',()=>{assert.equal(state().replies[0].stage,'已回复');assert.equal(state().replies[1].stage,'待回复');assert.ok(!state().replies[1].evidenceMsgId)});
+ await seed();observe(1,[own('too-early'),msg('original'),closing()],0);history.chat[0].sendTime=new Date(Date.parse(originalAt)-1000).toISOString();await sync();
+ check('不能用本轮提问之前的本人消息关闭本轮待回复',()=>assert.equal(state().replies[0].stage,'待回复'));
+ await seed();observe(1,[msg('original'),own('same-time'),closing()],0);history.chat[1].sendTime=originalAt;await sync();
+ check('未明确引用且时间相同的本人消息不猜测先后关系',()=>assert.equal(state().replies[0].stage,'待回复'));
+ await seed([source('original','quiet',1)]);history.quiet=[msg('original'),...Array.from({length:100},(_,i)=>i===55?own('private-history-answer'):msg('private-after-'+i)),closing()];await sync();
+ check('旧私聊答复不在最近20条时保存向后查找进度，不误报已回复',()=>assert.equal(state().replies[0].stage,'待回复'));
+ await sync();check('下一轮查到旧私聊本人答复，对方已收尾仍能正确结清',()=>{assert.equal(state().replies[0].stage,'已回复');assert.equal(state().replies[0].evidenceMsgId,'private-history-answer')});
  await seed();observe(1,[msg('original')],2);await sync();check('未读私聊且最后发送人是对方，继续待回复',()=>assert.equal(state().replies[0].stage,'待回复'))
  await seed();observe(1,[msg('original')],0);await sync();check('私聊未读数为0仍保留待回复，不伪造回复时间',()=>{assert.equal(state().replies[0].stage,'待回复');assert.ok(!state().replies[0].repliedAt);assert.equal(state().lastMentionsFetch.note.includes('已读只更新标记，不关闭待回复'),true)})
  check('已读但未答复的私聊仍可由AI确认回复义务，任务保持独立',()=>{const s=state();s.replies=[];const r=h.upsertReply(s,{sourceId:'original',msgId:'original',groupId:'chat',accountId:'org:me'},s.sources.find(row=>row.id==='original'),'待回复');assert.ok(r.reply);assert.equal(s.replies.length,1);assert.equal(s.tasks[0].status,'ready')})

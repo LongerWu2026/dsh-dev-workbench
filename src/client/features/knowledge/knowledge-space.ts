@@ -338,10 +338,9 @@ function knowPage(): any {
             h(Btn, {
                 key: 'create',
                 kind: 'primary',
-                icon: 'save',
                 disabled: !!wbState.busy,
                 onClick: submitCreate,
-                children: editItem ? '保存修改' : '保存',
+                children: '保存',
             }),
         ],
     }, h('div', { className: 'wb-stack', style: { gap: 10 } }, h(Field, { label: '类型' }, h(Select, {

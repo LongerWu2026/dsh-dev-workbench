@@ -339,10 +339,9 @@ function DashRadarModal(props?: any): any {
         width: 580,
         footer: h(React.Fragment, null, h(Btn, { onClick: props.onClose, disabled: busy, children: '取消' }), h(Btn, {
             kind: 'primary',
-            icon: 'check',
             disabled: busy,
             onClick: submit,
-            children: busy ? '保存中…' : editing ? '保存修改' : '添加资讯',
+            children: busy ? '保存中…' : editing ? '保存' : '添加资讯',
         })),
     }, h('form', { onSubmit: submit, className: 'wb-stack', style: { gap: 11 } }, h(Field, { label: '标题' }, h(Input, {
         value: title,

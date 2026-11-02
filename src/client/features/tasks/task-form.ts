@@ -113,16 +113,16 @@ function TaskFormHost(props?: {embedded?:boolean}): any {
     const Container = embedded ? ContextFormPane : Modal;
     return h(Container, {
         open: !state.assistantOpen && !state.contextHidden,
-        title: task ? '编辑待办' : '新建待办',
-        sub: task ? task.title : '明确的事实与推测分开记录',
+        title: task ? embedded ? task.title : '编辑待办' : '新建待办',
+        ariaLabel: task ? '编辑待办' : '新建待办',
+        sub: task ? embedded ? null : task.title : '明确的事实与推测分开记录',
         onClose: close,
         width: 560,
         footer: h(React.Fragment, null, h(Btn, {
             kind: 'primary',
-            icon: 'check',
             disabled: busy,
             onClick: submit,
-            children: busy ? '保存中…' : task ? '保存修改' : '创建待办',
+            children: busy ? '保存中…' : task ? '保存' : '创建待办',
         }), h(Btn, { onClick: close, children: '取消' })),
     }, h('form', { onSubmit: submit, className: 'wb-stack', style: { gap: 12 } }, h(Field, { label: '标题' }, h(Input, {
         value: title,

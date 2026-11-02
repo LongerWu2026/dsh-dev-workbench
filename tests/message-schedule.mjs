@@ -10,7 +10,7 @@ await build({stdin:{contents:`export * from './src/shared/message-schedule.ts';e
 const h=await import(join(home,'host.mjs')),cleanups=[],calls=[];let checks=0
 const check=(name,fn)=>{fn();checks++;console.log('✓ '+name)},time=t=>OriginalDate.parse('2026-10-29T'+t+'+08:00'),s={settings:{automation:{enabled:true,mentions:true}},syncCursors:{}}
 const subprocess={resolveExecutable:async()=>'/fixture/yzj-cli',spawn(spec){const args=spec.argv.slice(1);calls.push(args);const data=args[0]==='whoami'?{orgId:'org',openId:'me',name:'本人'}:{list:[],more:false};const text=JSON.stringify({success:true,data});return{done:Promise.resolve({exitCode:0}),collected:{stdout:{readFrom:()=>({text})},stderr:{readFrom:()=>({text:''})}}}}}
-const ctx={provide(){},inject(){},get:k=>k==='subprocess'?subprocess:null,effect:fn=>{const d=fn();if(typeof d==='function')cleanups.push(d)}}
+const ctx={provide(){},inject(){},get:k=>k==='rssReader'?{fetch:async()=>({statusCode:200,body:{content:'<rss/>'}})}:k==='subprocess'?subprocess:null,effect:fn=>{const d=fn();if(typeof d==='function')cleanups.push(d)}}
 try{
  check('北京时间09:00开启，21:00最后一轮，21:01关闭',()=>{assert.equal(h.messageSyncDue(s,time('08:59:59')),false);assert.equal(h.messageSyncDue(s,time('09:00:00')),true);assert.equal(h.messageSyncDue(s,time('21:00:59')),true);assert.equal(h.messageSyncDue(s,time('21:01:00')),false)})
  check('同一五分钟槽不重复，下一槽到期，与资讯60分钟间隔无关',()=>{const st={...s,lastMessageSyncAttemptAt:new OriginalDate(time('09:00:30')).toISOString(),lastAutomation:{collectedAt:new OriginalDate(time('09:00:30')).toISOString()}};assert.equal(h.messageSyncDue(st,time('09:04:59')),false);assert.equal(h.messageSyncDue(st,time('09:05:00')),true)})

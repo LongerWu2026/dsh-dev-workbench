@@ -1,3 +1,4 @@
+import {developmentIssueDetail,updateDevelopmentIssue} from './development-issues.js'
 import {accessSync,constants,mkdirSync,existsSync,realpathSync,statSync,lstatSync,readlinkSync,readFileSync,readdirSync} from 'node:fs'
 import {join,relative,isAbsolute,resolve} from 'node:path'
 import {fileURLToPath} from 'node:url'
@@ -233,6 +234,8 @@ export const developmentService={async development(request:any={}){
         const sessions=workbenchContext()?.get?.('sessions'),messages=developmentTaskSessionIds(row).map(id=>({sessionId:id,...(sessions?.get?.(id!)?transcriptDelta(sessions.get(id!),0):{entries:[],turnActive:false})}))
         return {task:row,messages,workspace,workspaceError}
     }
+    if(action==='issueDetail')return developmentIssueDetail(row.id)
+    if(action==='issueUpdate')return updateDevelopmentIssue(row.id,request.patch,{fields:request.fields,comment:request.comment,assertIdle:()=>{if(active.has(row.id)||preparing.has(row.profile+':'+row.issue.workspaceId+':'+row.issue.id))throw Error('请先暂停研发执行，再修改 Linky 工作项')}})
     if(action==='start'){
         for(const id of active.keys()){const other=readDevelopmentTask(id),rel=relative(row.cwd,other.cwd),back=relative(other.cwd,row.cwd);if(id!==row.id&&(rel===''||(!rel.startsWith('..')&&!isAbsolute(rel))||(!back.startsWith('..')&&!isAbsolute(back))))throw new Error('该目录已有正在执行的研发任务，请等待或暂停后再继续')}
         if(active.has(row.id))return row

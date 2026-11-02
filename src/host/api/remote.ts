@@ -12,6 +12,8 @@ import { PLUGIN_NAME } from '../platform/runtime.js'
  * `ctx.provide('workbench', …)`, so the gateway can bind the two halves.
  * ========================================================================== */
 const WORKBENCH_REMOTE_SIGNATURES: any = [
+    {method:'refreshStart',params:['request']},
+    {method:'refreshStatus',params:[]},
     {method:'assistantHub',params:['request']},
     {method:'busyReplyConfigure',params:['request']},
     {method:'development',params:['request']},
@@ -78,6 +80,8 @@ const WORKBENCH_REMOTE_SIGNATURES: any = [
     { method: 'saveProject', params: ['input'] },
     { method: 'fetchRadar', params: [] },
     { method: 'fetchMentions', params: [] },
+    { method: 'conversationMessages', params: ['request'] },
+    { method: 'conversationRead', params: ['request'] },
     { method: 'extractCandidates', params: [] },
     { method: 'acceptCandidate', params: ['id', 'patch'] },
     { method: 'rejectCandidate', params: ['id'] },

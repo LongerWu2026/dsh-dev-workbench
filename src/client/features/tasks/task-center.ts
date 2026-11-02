@@ -1,3 +1,4 @@
+import {WorkspaceRefresh} from '../../components/WorkspaceRefresh.js'
 import {MessageSelectionBadges} from '../../components/MessageSelectionBadges.js'
 import {Pagination,PAGE_SIZE,pageIndex} from '../../components/Pagination.js'
 import {TaskMessageMetadata} from '../../components/TaskMessageMetadata.js'
@@ -85,7 +86,7 @@ function tcFindSource(data?: any, task?: any): any {
     return taskSource(task,data?.sources || []);
 }
 function tcBoardStatuses(): any {
-    return ['ready', 'running', 'waiting_approval', 'completed'];
+    return ['ready', 'running', 'completed'];
 }
 /** 未完成按到期时间升序（无截止靠后），已结束按最近更新降序。 */
 function tcSortTasks(list?: any,order='default',sources:any[]=[]): any {
@@ -166,7 +167,7 @@ function tcFilterList(list?: any, filters?: any): any {
     });
 }
 function tcTabCounts(list?: any): any {
-    const counts: any = { all: 0, open: 0, ready: 0, running: 0, waiting_approval: 0, completed: 0, overdue: 0 };
+    const counts: any = { all: 0, open: 0, ready: 0, running: 0, completed: 0, overdue: 0 };
     const now = Date.now();
     (list || []).forEach(function (task?: any): any {
         counts.all += 1;
@@ -178,8 +179,6 @@ function tcTabCounts(list?: any): any {
             counts.ready += 1;
         if (task.status === 'running')
             counts.running += 1;
-        if (task.status === 'waiting_approval')
-            counts.waiting_approval += 1;
         if (task.status !== 'completed' && task.status !== 'cancelled' && tcDueValue(task) < now)
             counts.overdue += 1;
     });
@@ -269,7 +268,7 @@ function TaskCenterRow(props?: any): any {
     const projectName = tcProjectName(data, task.projectId);
     const projectColor = tcProjectColor(data, task.projectId);
     const source = tcFindSource(data, task);
-    const tags = Array.isArray(task.tags) ? task.tags : [];
+    const tags = (Array.isArray(task.tags) ? task.tags : []).filter((tag:string)=>!task.aiExtracted||!/^AI\s*(识别|提取)$/i.test(tag));
     function updateStatus(status: string): any {
         if (busy || status === task.status)
             return;
@@ -304,54 +303,35 @@ function TaskCenterRow(props?: any): any {
     }
     return h(React.Fragment, null, h('tr', {
         ref: props.rowRef || undefined,
-        style: highlighted
+        className:'wb-task-row'+(props.editing?' is-editing':''),
+        'data-task-id':task.id,
+        'aria-selected':props.editing?true:undefined,
+        tabIndex:0,
+        onClick:(event:any)=>{
+            if(event.target?.closest?.('button,a,input,select,textarea,label,[role="button"],[role="combobox"]'))return;
+            const selection=window.getSelection?.();
+            if(selection?.toString()&&selection.anchorNode&&event.currentTarget.contains(selection.anchorNode))return;
+            WB.openTaskForm(task);
+        },
+        onKeyDown:(event:any)=>{
+            if(event.target!==event.currentTarget||!['Enter',' '].includes(event.key))return;
+            event.preventDefault();WB.openTaskForm(task);
+        },
+        style: highlighted&&!props.editing
             ? {
                 background: 'color-mix(in srgb, ' + T.accent + ' 7%, transparent)',
                 boxShadow: 'inset 2px 0 0 ' + T.accent,
             }
             : undefined,
-    }, h('td', { style: { minWidth: 220 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6, alignItems: 'center' } }, null, // Replies are maintained by Reply ID in the dedicated inbox.
-    h('button', {
-        type: 'button',
-        className: 'wb-item-title' + (done ? ' is-done' : ''),
-        style: {
-            padding: 0,
-            border: 0,
-            background: 'transparent',
-            color: T.text,
-            font: 'inherit',
-            fontSize: 12.5,
-            fontWeight: 500,
-            textAlign: 'left',
-            cursor: 'pointer',
-            overflowWrap: 'anywhere',
-        },
-        title: '编辑这条待办',
-        onClick: function (): any {
-            WB.openTaskForm(task);
-        },
-    }, task.title), task.aiExtracted ? h(Badge, { tone: 'accent' }, 'AI 提取') : null, source ? h(Badge, { tone: 'idle' }, '来源 · ' + tcProviderLabel(source.provider)) : null, task.assignee ? h(Badge, { tone: 'idle' }, task.assignee) : null), tags.length > 0
-        ? h('div', { className: 'wb-row wb-row--wrap', style: { gap: 4, marginTop: 3 } }, tags.map(function (tag?: any, index?: any): any {
-            return h('span', {
-                key: tag + ':' + index,
-                style: {
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    height: 17,
-                    padding: '0 6px',
-                    borderRadius: 999,
-                    border: '1px solid ' + T.border1,
-                    background: T.layer2,
-                    color: T.text2,
-                    fontSize: 10.5,
-                    lineHeight: 1,
-                    whiteSpace: 'nowrap',
-                },
-            }, '#' + tag);
-        }))
-        : null, task.description
-        ? h('div', { className: 'wb-tiny wb-muted wb-clamp2', style: { marginTop: 2, lineHeight: 1.5 } }, task.description)
-        : null,h(MessageSelectionBadges,{source:(data.sources||[]).find((s:any)=>s.id===task.sourceRefId),inbox:data.messageInbox}),h(TaskMessageMetadata,{task,data,showTime:false})), h('td', null, h(Badge, { tone: priority.tone }, priority.label)), h('td', null, h(TaskCenterStatusSelect, { task, busy, onChange: updateStatus })), h('td', { style: { width: 56, textAlign: 'center', verticalAlign: 'middle' } }, h('button', {
+    } , h('td', {className:'wb-task-main'},
+    h('button',{type:'button',className:'wb-item-title wb-task-title'+(done?' is-done':''),title:'编辑这条待办',onClick:()=>WB.openTaskForm(task)},task.title),
+    h('div',{className:'wb-task-meta'},task.aiExtracted?h(Badge,{tone:'accent'},'AI 提取'):null,
+        source&&!['yunzhijia','yunzhijia-calendar'].includes(source.provider)?h(Badge,{tone:'idle'},tcProviderLabel(source.provider)):null,
+        task.assignee?h(Badge,{tone:'idle'},task.assignee):null,
+        tags.map((tag:string,index:number)=>h('span',{key:tag+':'+index,className:'wb-task-tag'},'#'+tag)),
+        h(MessageSelectionBadges,{source:(data.sources||[]).find((s:any)=>s.id===task.sourceRefId),inbox:data.messageInbox})),
+    task.description?h('div',{className:'wb-tiny wb-muted wb-task-preview'},task.description):null,
+    h(TaskMessageMetadata,{task,data,showTime:false})), h('td', {'data-label':'优先级'}, h(Badge, { tone: priority.tone }, priority.label)), h('td', {'data-label':'状态'}, h(TaskCenterStatusSelect, { task, busy, onChange: updateStatus })), h('td', {'data-label':'完成', style: { width: 56, textAlign: 'center', verticalAlign: 'middle' } }, h('button', {
         type: 'button',
         className: 'wb-check' + (done ? ' is-on' : ''),
         style: { margin: '0 auto' },
@@ -359,9 +339,9 @@ function TaskCenterRow(props?: any): any {
         'aria-label': (done ? '重开 ' : '完成 ') + task.title,
         disabled: busy,
         onClick: toggleDone,
-    }, h(Icon, { name: 'check', size: 11 }))), h('td', {className:'wb-tiny',style:{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'},title:taskMessageTime(task,data.sources||[])===null?'无原消息时间':messageSentTime(source)},taskMessageTime(task,data.sources||[])===null?h('span',{className:'wb-muted'},'—'):h('time',{dateTime:source.locator.sentAt},messageSentTime(source).replace('（北京时间）',''))), h('td', null, task.dueAt
+    }, h(Icon, { name: 'check', size: 11 }))), h('td', {'data-label':'消息时间',className:'wb-tiny',style:{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'},title:taskMessageTime(task,data.sources||[])===null?'无原消息时间':messageSentTime(source)},taskMessageTime(task,data.sources||[])===null?h('span',{className:'wb-muted'},'—'):h('time',{dateTime:source.locator.sentAt},messageSentTime(source).replace('（北京时间）',''))), h('td', {'data-label':'截止 / 会议'}, task.dueAt
         ? h('span', { style: { color: tcToneColor(due.tone), fontSize: 11.5, fontWeight: 600 } }, due.text)
-        : task.meetingStart ? h('span',{className:'wb-tiny',title:'会议开始'},WB.fmt.datetime(task.meetingStart)) : h('span', { className: 'wb-tiny wb-muted' }, '—')), h('td', null, projectName
+        : task.meetingStart ? h('span',{className:'wb-tiny',title:'会议开始'},WB.fmt.datetime(task.meetingStart)) : h('span', { className: 'wb-tiny wb-muted' }, '—')), h('td', {'data-label':'项目'}, projectName
         ? h('div', { className: 'wb-row', style: { gap: 5, minWidth: 0 } }, h('span', {
             style: {
                 flex: 'none',
@@ -372,7 +352,7 @@ function TaskCenterRow(props?: any): any {
                 opacity: projectColor ? 1 : 0.55,
             },
         }), h('span', { className: 'wb-ellipsis', style: { fontSize: 11.5 } }, projectName))
-        : h('span', { className: 'wb-tiny wb-muted' }, '—')), h('td', null, h('div', { className: 'wb-row', style: { gap: 2, justifyContent: 'flex-end' } }, taskReplyTarget(data,task.id)?h(IconBtn,{name:'chat',label:'回复原会话 '+task.title,onClick:()=>setReplyOpen(!replyOpen)}):null,h(IconBtn, {
+        : h('span', { className: 'wb-tiny wb-muted' }, '—')), h('td', {className:'wb-task-row-actions'}, h('div', { className: 'wb-row', style: { gap: 2, justifyContent: 'flex-end' } }, taskReplyTarget(data,task.id)?h(IconBtn,{name:'chat',label:'回复原会话 '+task.title,onClick:()=>setReplyOpen(!replyOpen)}):null,h(IconBtn, {
         name: expanded ? 'chevronDown' : 'chevronRight',
         label: expanded ? '收起来源证据' : '展开来源证据',
         onClick: props.onToggleEvidence,
@@ -389,7 +369,7 @@ function TaskCenterRow(props?: any): any {
                 padding: '0 12px 12px',
                 background: 'color-mix(in srgb, ' + T.accent + ' 3%, transparent)',
             },
-        }, h(Btn, {size:'sm',icon:'agent',disabled:busy,onClick:prepareWithAssistant,children:'AI 整理处理方案'}),h(TaskCenterEvidence, { task: task, data: data })))
+        }, task.description?h('div',{className:'wb-task-full-description'},h('strong',null,'任务说明'),h('p',null,task.description)):null,h(Btn, {size:'sm',icon:'agent',disabled:busy,onClick:prepareWithAssistant,children:'AI 整理处理方案'}),h(TaskCenterEvidence, { task: task, data: data })))
         : null);
 }
 function TaskCenterBoardCard(props?: any): any {
@@ -415,6 +395,9 @@ function TaskCenterBoardCard(props?: any): any {
     }
     return h('div', {
         role: 'button',
+        className:'wb-task-board-card'+(props.editing?' is-editing':''),
+        'data-task-id':task.id,
+        'aria-current':props.editing?'true':undefined,
         tabIndex: 0,
         onClick: open,
         onKeyDown: function (event?: any): any {
@@ -435,7 +418,7 @@ function TaskCenterBoardCard(props?: any): any {
             padding: '8px 9px',
             border: '1px solid ' + T.border1,
             borderRadius: 11,
-            background: T.layer2,
+            background: props.editing?undefined:T.layer2,
             cursor: 'pointer',
         },
     }, h('div', { className: 'wb-row', style: { alignItems: 'flex-start', gap: 6 } }, h('span', { className: 'wb-item-title' + (done ? ' is-done' : ''), style: { fontSize: 12, lineHeight: 1.45 } }, task.title)), h('div', { className: 'wb-item-sub', style: { marginTop: 0, gap: 5 } }, h(Badge, { tone: priority.tone }, priority.label), task.dueAt ? h('span', { style: { color: tcToneColor(due.tone), fontWeight: 600 } }, due.text) : null, projectName ? h('span', { className: 'wb-ellipsis', style: { maxWidth: 110 } }, projectName) : null), tags.length > 0
@@ -459,6 +442,7 @@ function TaskCenterBoardCard(props?: any): any {
 function TaskCenterPage(): any {
     const state = WB.useStore();
     const data = state.data;
+    const editingId=state.taskForm?.open&&!state.contextHidden&&!state.assistantOpen?state.taskForm.task?.id:null;
     const [page,setPage]=React.useState(0);
     const [view, setView] = React.useState<any>('list');
     const [filtersOpen,setFiltersOpen]=React.useState(false);
@@ -581,7 +565,6 @@ function TaskCenterPage(): any {
         { value: 'open', label: '未完成', count: tabCounts.open },
         { value: 'ready', label: '待处理', count: tabCounts.ready },
         { value: 'running', label: '执行中', count: tabCounts.running },
-        { value: 'waiting_approval', label: '待审批', count: tabCounts.waiting_approval },
         { value: 'completed', label: '已完成', count: tabCounts.completed },
     ];
     const dueOptions: any = [
@@ -625,8 +608,8 @@ function TaskCenterPage(): any {
             h('div',{className:'wb-task-filter-search'},h(Input,{value:search,placeholder:'搜索标题、描述或标签','aria-label':'搜索待办',style:{paddingLeft:28},onChange:(e:any)=>setSearch(e.target.value)}),h('span',{style:{position:'absolute',left:9,top:8,color:T.text2,pointerEvents:'none'}},h(Icon,{name:'search',size:13}))),
             h('div',{style:{width:172,maxWidth:'100%'}},h(Select,{'aria-label':'待办排序',value:sortOrder,options:[{value:'default',label:'默认排序'},{value:'message-newest',label:'消息时间：最新在前'},{value:'message-oldest',label:'消息时间：最早在前'}],onChange:(e:any)=>setSortOrder(e.target.value)})),
             h('button',{type:'button',className:'wb-btn wb-btn--ghost','aria-expanded':filtersOpen,'aria-controls':'wb-task-advanced',onClick:()=>setFiltersOpen(!filtersOpen)},h(Icon,{name:'filter',size:13}),'筛选'+(applied.length?' · '+applied.length:'')),
-            h(Btn,{size:'sm',kind:'subtle',disabled:!filtersActive,onClick:resetFilters,children:'重置筛选'})),
-        h(Tabs,{items:tabItems,value:status,onChange:setStatus}),
+            filtersActive?h(Btn,{size:'sm',kind:'subtle',onClick:resetFilters,children:'重置筛选'}):null),
+        h('div',{className:'wb-task-filter-summary'},h(Tabs,{items:tabItems,value:status,onChange:setStatus}),filtersActive?h('span',{className:'wb-tiny wb-muted'},'筛选结果 '+visible.length+' 条'):null),
         applied.length?h('div',{className:'wb-task-applied','aria-label':'已选筛选条件'},applied.map(item=>h('button',{key:item.label,type:'button',className:'wb-chip is-active','aria-label':'移除筛选：'+item.label,onClick:item.clear},item.label,h(Icon,{name:'close',size:12})))):null,
         h('div',{id:'wb-task-advanced',className:'wb-task-advanced',hidden:!filtersOpen},
             group('到期',choices(dueOptions,dueFilter,setDueFilter)),group('优先级',choices(priorityOptions,priority,setPriority)),
@@ -634,7 +617,7 @@ function TaskCenterPage(): any {
             group('事项类型',choices(typeOptions,typeFilter,setTypeFilter)),
             group('消息发出时间（北京时间）',h('div',{className:'wb-row wb-row--wrap'},h('label',{className:'wb-row wb-tiny'},'从',h(Input,{type:'date','aria-label':'消息发出日期起始',value:messageFrom,max:messageTo||undefined,style:{width:148},onChange:(e:any)=>setMessageFrom(e.target.value)})),h('label',{className:'wb-row wb-tiny'},'至',h(Input,{type:'date','aria-label':'消息发出日期截止',value:messageTo,min:messageFrom||undefined,style:{width:148},onChange:(e:any)=>setMessageTo(e.target.value)})),messageFrom&&messageTo&&messageFrom>messageTo?h('span',{role:'alert',className:'wb-tiny',style:{color:T.err}},'起始日期不能晚于截止日期'):null)),
             tagList.length?group('标签',h('div',{className:'wb-row wb-row--wrap',style:{gap:5}},tagsShown.map((item:any)=>h(Chip,{key:item.tag,active:tag===item.tag,onClick:()=>setTag(tag===item.tag?null:item.tag),children:'#'+item.tag+' · '+item.count})),tagList.length>8?h(Chip,{onClick:()=>setShowAllTags(!showAllTags),children:showAllTags?'收起标签':'更多标签 · '+(tagList.length-8)}):null)):null),
-        h('span',{className:'wb-tiny wb-muted'},'共 '+visible.length+' 条结果')));
+        ));
     let content;
     if (tasks.length === 0) {
         content = h(Panel, { flush: true }, h(Empty, {
@@ -752,7 +735,7 @@ function TaskCenterPage(): any {
                         onDragEnd: function (): any {
                             setDragStatus(null);
                         },
-                    }, h(TaskCenterBoardCard, { task: task, data: data }));
+                    }, h(TaskCenterBoardCard, { task: task, data: data, editing:editingId===task.id }));
                 })
                 : h('div', { className: 'wb-tiny wb-muted', style: { textAlign: 'center', padding: '12px 0' } }, '暂无任务')));
         })), outside.length > 0
@@ -777,7 +760,7 @@ function TaskCenterPage(): any {
             : null);
     }
     else {
-        content = h('div', { className: 'wb-card wb-task-table', role: 'region', 'aria-label': '任务列表，可横向滚动查看操作', tabIndex: 0 }, h('table', { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '任务'), h('th', { style: { width: 84 } }, '优先级'), h('th', { style: { width: 130 } }, '状态'), h('th', { style: { width: 56, textAlign: 'center' } }, '完成'), h('th', {scope:'col','aria-sort':sortOrder==='message-newest'?'descending':sortOrder==='message-oldest'?'ascending':'none',style:{minWidth:174}},h('button',{type:'button','aria-label':'按消息发出时间排序',title:'点击切换最新 / 最早在前（北京时间）',onClick:()=>setSortOrder(sortOrder==='message-newest'?'message-oldest':'message-newest'),style:{display:'inline-flex',alignItems:'center',gap:5,border:0,padding:0,background:'transparent',font:'inherit',color:'inherit',cursor:'pointer'}},'消息发出时间',h('span',{'aria-hidden':true},sortOrder==='message-newest'?'↓':sortOrder==='message-oldest'?'↑':'↕'))), h('th', { style: { width: 130 } }, '截止 / 会议开始'), h('th', { style: { width: 130 } }, '项目'), h('th', { style: { width: 112, textAlign: 'right' } }, '操作'))), h('tbody', null, visible.slice(pageIndex(page,visible.length)*PAGE_SIZE,(pageIndex(page,visible.length)+1)*PAGE_SIZE).map(function (task?: any): any {
+        content = h('div', { className: 'wb-card wb-task-table', role: 'region', 'aria-label': '任务列表，可横向滚动查看操作', tabIndex: 0 }, h('table', { className: 'wb-table' }, h('colgroup',null,h('col'),...[70,116,58,168,110,110,98].map((width,index)=>h('col',{key:index,style:{width}}))),h('thead', null, h('tr', null, h('th', null, '任务'), h('th', null, '优先级'), h('th', null, '状态'), h('th', { style: { textAlign: 'center' } }, '完成'), h('th', {scope:'col','aria-sort':sortOrder==='message-newest'?'descending':sortOrder==='message-oldest'?'ascending':'none',style:{fontVariantNumeric:'tabular-nums'}},h('button',{type:'button','aria-label':'按消息发出时间排序',title:'点击切换最新 / 最早在前（北京时间）',onClick:()=>setSortOrder(sortOrder==='message-newest'?'message-oldest':'message-newest'),style:{display:'inline-flex',alignItems:'center',gap:5,border:0,padding:0,background:'transparent',font:'inherit',color:'inherit',cursor:'pointer'}},'消息发出时间',h('span',{'aria-hidden':true},sortOrder==='message-newest'?'↓':sortOrder==='message-oldest'?'↑':'↕'))), h('th', null, '截止 / 会议开始'), h('th', null, '项目'), h('th', { style: { textAlign: 'right' } }, '操作'))), h('tbody', null, visible.slice(pageIndex(page,visible.length)*PAGE_SIZE,(pageIndex(page,visible.length)+1)*PAGE_SIZE).map(function (task?: any): any {
             const isPending = pendingFocusId === task.id;
             return h(TaskCenterRow, {
                 key: task.id,
@@ -785,6 +768,7 @@ function TaskCenterPage(): any {
                 data: data,
                 expanded: expandedId === task.id,
                 highlighted: isPending || expandedId === task.id,
+                editing:editingId===task.id,
                 rowRef: isPending ? focusRowRef : null,
                 onToggleEvidence: function (): any {
                     setExpandedId(expandedId === task.id ? null : task.id);
@@ -895,7 +879,7 @@ function TaskCenterPage(): any {
                 },
             })));
         })));
-    return h('div', null, h(PageHead, {
+    return h('div', {className:'wb-task-center'}, h(PageHead, {
         icon: 'tasks',
         title: '任务中心',
         sub: '共 ' +
@@ -906,7 +890,7 @@ function TaskCenterPage(): any {
             counts.overdue +
             ' · 执行中 ' +
             counts.running,
-        actions: h('div', { className: 'wb-row', style: { gap: 8 } }, h(Segmented, {
+        actions: h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8 } }, h(WorkspaceRefresh,{scope:'tasks'}),h(Segmented, {
             items: [
                 { value: 'list', label: '列表' },
                 { value: 'board', label: '看板' },

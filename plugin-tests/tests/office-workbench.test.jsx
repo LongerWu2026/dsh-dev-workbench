@@ -19,6 +19,8 @@ beforeEach(()=>{
   if(endpoint==='workbench/knowledgeRetrieve')value={id:'retrieval-test',status:'ok',query:payload.args.request.query,scope:{},strategy:'local-bm25-chinese',elapsedMs:1,hits:[{id:'kb-test@v1:1',documentId:'kb-test',version:'v1',title:'知识验收规范',text:'发布前先完成灰度验收。',lineStart:1,lineEnd:1}]};
   if(endpoint==='workbench/knowledgeRead')value={hits:[{id:'kb-test@v1:1',documentId:'kb-test',version:'v1',title:'知识验收规范',text:'发布前先完成灰度验收。',lineStart:1,lineEnd:1}]};
   if(endpoint==='workbench/knowledgeTraces')value={items:[]};
+  if(endpoint==='workbench/refreshStart')value={id:'fixture-refresh',scope:payload.args.request.scope,status:'completed',collecting:false,steps:{messages:{status:'completed',note:'已同步'}}};
+  if(endpoint==='workbench/revision')value={revision:fixture.revision};
   if(endpoint==='workbench/analysisStatus')value={pending:0,failed:0,awaitingHuman:0,done:0,entries:[]}
   if(endpoint==='workbench/diagnostics')value={platform:'test',counts:{},tools:[],dataPath:'/fixture/state.json'}
   if(endpoint==='workbench/backups')value={backups:[]}
@@ -40,8 +42,9 @@ describe('办公流程与布局入口',()=>{
   fixture.replies=[{id:'private-reply',msgId:'private-original',stage:'待回复',contact:'合成同事',snippet:'私聊需答复',taskIds:[],createdAt:new Date().toISOString()}];WB.store.set({data:fixture,page});
   const user=userEvent.setup();render(page==='dashboard'?<WB.pages.dashboard/>:<WB.pages.replies/>);expect(screen.getByText('私聊需答复')).toBeTruthy();
   fixture={...fixture,revision:11,replies:fixture.replies.map(row=>({...row,stage:'已回复'}))};
-  await user.click(screen.getByRole('button',{name:page==='dashboard'?'刷新':'同步消息'}));
-  await waitFor(()=>expect(calls.some(call=>call.endpoint==='workbench/fetchMentions')).toBe(true));
+  await user.click(screen.getByRole('button',{name:page==='dashboard'?'刷新全部内容':'刷新待回复'}));
+  await waitFor(()=>expect(calls.some(call=>call.endpoint==='workbench/refreshStart')).toBe(true));
+  let sync;await act(async()=>{sync=WB.actions.syncCheck()});await act(async()=>{deferred.shift()({ok:true,value:fixture});await sync});
   expect(screen.queryByText('私聊需答复')).toBeNull();expect(WB.store.get().data.replies[0].stage).toBe('已回复');
  })
   it('顶部目录直接显示多 AI 对话入口，快捷新建可编辑会议字段',async()=>{
@@ -68,7 +71,7 @@ describe('办公流程与布局入口',()=>{
  it('十条待回复全部可访问，按Reply ID标记且不操作Task',async()=>{
   fixture.replies=Array.from({length:10},(_,i)=>({id:'reply-'+i,msgId:'m-'+i,stage:'待回复',contact:'同事'+i,snippet:'请求'+i,taskIds:[],createdAt:new Date().toISOString()}));WB.store.set({data:fixture,page:'replies'})
   const user=userEvent.setup();render(<WB.pages.replies/>);expect(screen.getByText('请求9')).toBeTruthy()
-  const row=screen.getByText('请求9').closest('article');await user.click(within(row).getByRole('button',{name:'已确认收到'}))
+  const row=screen.getByText('请求9').closest('article');await user.click(within(row).getByRole('button',{name:'标记已收到'}))
   expect(calls.some(c=>c.endpoint==='workbench/setReplyStage'&&c.args.id==='reply-9'&&c.args.stage==='已确认收到')).toBe(true)
   expect(calls.some(c=>c.endpoint==='workbench/updateTask')).toBe(false)
  })
@@ -96,8 +99,8 @@ describe('办公流程与布局入口',()=>{
  })
  it('资讯未知日期不冒充发布日期，摘要可展开且编辑入口有接线',async()=>{
   fixture.radar=[{id:'news-one',title:'AI工具发布',source:'test',publishedAt:null,createdAt:'2026-10-28T01:00:00Z',fetchedAt:'2026-10-28T01:00:00Z',url:'https://example.org/news',topics:['Agent'],excerpt:'可核对的原文摘录',summary:{}}];WB.store.set({data:fixture,page:'radar'})
-  const user=userEvent.setup();render(<WB.pages.radar/>);expect(screen.getByText(/日期未注明/)).toBeTruthy();expect(screen.getAllByText('AI工具发布')).toHaveLength(1)
-  await user.click(screen.getByRole('button',{name:'展开摘要'}));expect(screen.getByText('可核对的原文摘录')).toBeTruthy()
+  const user=userEvent.setup();render(<WB.pages.radar/>);expect(screen.getByText(/日期未注明/)).toBeTruthy();expect(within(document.querySelector('.wb-news-grid')).getAllByText('AI工具发布')).toHaveLength(1)
+  await user.click(screen.getByRole('button',{name:'展开摘要'}));expect(within(document.querySelector('.wb-news-grid')).getByText('可核对的原文摘录')).toBeTruthy()
   await user.click(screen.getByRole('button',{name:'这条资讯的操作'}));await user.click(screen.getByRole('button',{name:'编辑四段摘要'}));expect(screen.getByDisplayValue('AI工具发布')).toBeTruthy()
  })
  it('任务中心独立于回复，会议时间可见且事项类型筛选可重置',async()=>{
@@ -121,7 +124,7 @@ describe('办公流程与布局入口',()=>{
   const task={id:'precision-task',title:'原标题',status:'ready',priority:'normal',dueAt:'2026-10-30T15:59:59.000Z',tags:['AI 识别','待处理']}
   fixture.tasks=[task];WB.store.set({data:fixture,taskForm:{task}})
   const user=userEvent.setup();render(<WB.TaskFormHost/>);const title=screen.getByPlaceholderText('例如：评审 @张三 提到的网关限流方案')
-  await user.clear(title);await user.type(title,'只改标题');await user.click(screen.getByRole('button',{name:'保存修改'}))
+  await user.clear(title);await user.type(title,'只改标题');await user.click(screen.getByRole('button',{name:'保存'}))
   const update=calls.find(call=>call.endpoint==='workbench/updateTask');expect(update.args.patch.tags).toEqual(['AI 识别','待处理']);expect(update.args.patch.dueAt).toBe(task.dueAt)
  })
  it('自动化执行期间锁定按钮，错误显示给用户而非静默吞掉',async()=>{
@@ -156,11 +159,12 @@ describe('办公流程与布局入口',()=>{
   await WB.actions.analyzeRun();expect(calls.find(call=>call.endpoint==='workbench/analysisStart').args.request.limit).toBe(50)
  })
 
- it('首页只展示3条AI动态，不展示失效页和原始错误，更多进入资讯页',async()=>{
+ it('首页展示整批总结，不展示逐条列表和原始错误，更多进入资讯页',async()=>{
   fixture.radar=Array.from({length:5},(_,i)=>({id:'ai-'+i,title:'AI release '+i,url:'https://github.com/example/ai-'+i,topics:['AI'],createdAt:new Date().toISOString(),summary:{}}))
   fixture.radar.push({id:'expired',title:'AI expired article',topics:['AI'],summaryStatus:'failed',summaryAttempts:3,summaryError:'Unable to extract content HTTP 422 auth credential secret',summary:{}})
+  fixture.radarBrief={at:new Date().toISOString(),ids:fixture.radar.filter(row=>row.id!=='expired').map(row=>row.id),status:'done',overview:'这一批主要关注模型与开源工具的更新。'};
   WB.store.set({data:fixture});const user=userEvent.setup();render(<WB.pages.dashboard/>);
-  expect(screen.getByText('AI 动态')).toBeTruthy();expect(screen.getAllByText(/^AI release /)).toHaveLength(3);expect(screen.queryByText('AI expired article')).toBeNull();expect(screen.queryByText(/auth credential secret/)).toBeNull()
+  expect(screen.getByText('AI 动态')).toBeTruthy();const brief=screen.getByRole('region',{name:'AI 技术简报'});expect(within(brief).getByText('主要关注模型与开源工具的更新。')).toBeTruthy();expect(brief.querySelectorAll('ol,dl')).toHaveLength(0);expect(screen.queryByText('AI expired article')).toBeNull();expect(screen.queryByText(/auth credential secret/)).toBeNull()
   await user.click(screen.getByRole('button',{name:'全部资讯'}));expect(WB.store.get().page).toBe('radar')
  })
  it('资讯页提供按真实星数排序的新项目入口，已忽略内容退出列表',()=>{
@@ -178,7 +182,7 @@ describe('办公流程与布局入口',()=>{
  it('预算保存传递明确阈值，变更需打开预览后才能撤销',async()=>{
   WB.store.set({page:'settings'});const user=userEvent.setup();render(<App/>);
   const callsInput=screen.getByRole('spinbutton',{name:'每日后台调用上限'}),tokenInput=screen.getByRole('spinbutton',{name:'每日已知 Token 上限'});
-  await user.clear(callsInput);await user.type(callsInput,'20');await user.clear(tokenInput);await user.type(tokenInput,'10000');await user.click(screen.getByRole('button',{name:'保存预算'}));
+  await user.clear(callsInput);await user.type(callsInput,'20');await user.clear(tokenInput);await user.type(tokenInput,'10000');await user.click(screen.getByRole('button',{name:'保存'}));
   expect(calls.find(call=>call.endpoint==='workbench/saveSettings').args.patch.aiPolicy).toEqual({dailyCallLimit:20,dailyTokenLimit:10000});
   await user.click(screen.getByRole('button',{name:'查看变更记录'}));await user.click(await screen.findByRole('button',{name:'查看前后变化'}));
   expect(screen.getByText(/旧标题/)).toBeTruthy();expect(calls.some(call=>call.endpoint==='workbench/undoChange')).toBe(false);
@@ -310,7 +314,7 @@ describe('知识库自动检索界面',()=>{
  })
  it('资料导入作为候选，审核可显式确认项目与有效期',async()=>{
   fixture.knowledge=[{id:'candidate-1',title:'待审核材料',body:'资料正文',reviewState:'candidate',kind:'note',tags:[]}];WB.store.set({data:fixture,page:'knowledge'});const user=userEvent.setup();render(<WB.pages.knowledge/>);
-  await user.click(screen.getByRole('button',{name:/审核待确认知识/}));await user.selectOptions(screen.getByRole('combobox',{name:'知识状态'}),'confirmed');await user.click(screen.getByRole('button',{name:'保存修改'}));expect(calls.at(-1).args.patch.reviewState).toBe('confirmed');
+  await user.click(screen.getByRole('button',{name:/审核待确认知识/}));await user.selectOptions(screen.getByRole('combobox',{name:'知识状态'}),'confirmed');await user.click(screen.getByRole('button',{name:'保存'}));expect(calls.at(-1).args.patch.reviewState).toBe('confirmed');
   await user.click(screen.getByRole('button',{name:'导入文本资料'}));await user.type(screen.getByRole('textbox',{name:'资料标题'}),'导入验收');await user.type(screen.getByRole('textbox',{name:'资料正文'}),'接口发布前先灰度验收。');await user.click(screen.getByRole('button',{name:'保存为待审核资料'}));expect(calls.at(-1).args.input.reviewState).toBe('candidate')
  })
  it('助手可切换知识模式、项目和账号范围',async()=>{

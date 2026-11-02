@@ -30,6 +30,8 @@ window.mountWorkbench=()=>{
   if(endpoint==='workbench/assistantSend')value={status:'ok',sessionId:'synthetic-session',fromSeq:0,retrieval}
   if(endpoint==='workbench/assistantDelta')value={status:'ok',entries:[{role:'assistant',text:'发布前完成灰度验收 [知识:synthetic-knowledge@v1:1]'}],nextSeq:3,turnEnded:true}
   if(endpoint==='workbench/revision')value={revision:1}
+  if(endpoint==='workbench/refreshStatus')value=window.fixtureWorkspaceRefresh||null
+  if(endpoint==='workbench/refreshStart')value=window.fixtureWorkspaceRefresh||{id:'fixture-refresh',scope:payload.args.request.scope,status:'completed',collecting:false,steps:{messages:{status:'completed',note:'已同步'}},startedAt:new Date().toISOString()}
   if(endpoint==='workbench/analysisStatus')value={entries:[],pending:0,done:0,failed:0,jobs:(WB.store.get().data.jobs||[]).filter(job=>job.kind==='analysis')}
   if(endpoint==='workbench/analysisStart'){
    if(window.fixtureExtractionStartError)throw Error(window.fixtureExtractionStartError)

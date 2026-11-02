@@ -1,4 +1,5 @@
 import {normalizeBusyReply} from '../../shared/busy-reply.js'
+import {normalizeConversationReadMarks} from '../../shared/conversation-read.js'
 import {normalizeMessageSelection,normalizeMessageInbox} from '../../shared/message-intake.js'
 import {normalizeLaunchCommands} from '../../shared/developer-tools.js'
 import { knowledgeMode } from '../../shared/knowledge.js'
@@ -14,7 +15,7 @@ import { HOST_STATE_VERSION, asEvidence, asIso, asSteps, asString, asTags, asUrl
  * updatedAt, Project). Everything is plain JSON so a snapshot round-trips
  * through the Remote channel without a codec.
  * ========================================================================== */
-const TASK_STATUSES: any = ['draft', 'ready', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled'];
+const TASK_STATUSES: any = ['draft', 'ready', 'running', 'completed', 'failed', 'cancelled'];
 const TASK_PRIORITIES: any = ['urgent', 'high', 'normal', 'low'];
 const RUN_STATUSES: any = ['queued', 'running', 'waiting_approval', 'completed', 'failed', 'cancelled'];
 const KNOWLEDGE_KINDS: any = ['bookmark', 'note', 'snippet'];
@@ -54,6 +55,7 @@ function emptyWorkbenchState(): any {
         /** TODO 16 重构：回复义务（平行于待办；一条消息可同时产生回复与待办） */
         replies: [],
         syncCursors: {},
+        conversationReadMarks: {},
         lastAutomation: null,
         audit: [],
     };
@@ -229,16 +231,20 @@ function normalizeFetchReport(raw?: any): any {
         at: asIso(raw.at) || hostNowIso(),
         added: Number.isFinite(Number(raw.added)) ? Math.max(0, Math.round(Number(raw.added))) : 0,
         skipped: Number.isFinite(Number(raw.skipped)) ? Math.max(0, Math.round(Number(raw.skipped))) : 0,
+        nextTopicIndex:Math.max(0,Number(raw.nextTopicIndex)||0),
+        itemIds:ensureArray(raw.itemIds).filter((id:any)=>typeof id==='string').slice(0,60),
         perFeed: ensureArray(raw.perFeed)
-            .slice(0, 12)
+            .slice(0, 40)
             .map(function (row?: any): any {
             const item = row && typeof row === 'object' ? row : {};
             return {
+                channel:item.channel==='rss'?'rss':item.channel==='search'?'search':null,
                 id: asString(item.id, 80),
                 label: asString(item.label, 80),
                 status: asString(item.status, 20) || 'ok',
                 added: Number.isFinite(Number(item.added)) ? Math.max(0, Math.round(Number(item.added))) : 0,
                 skipped: Number.isFinite(Number(item.skipped)) ? Math.max(0, Math.round(Number(item.skipped))) : 0,
+                reasons:Object.fromEntries(['duplicate','outdated','irrelevant','invalid'].map(key=>[key,Math.max(0,Number(item.reasons?.[key])||0)])),
                 note: asString(item.note, 300),
             };
         }),
@@ -312,7 +318,9 @@ function normalizeTask(raw?: any, existing?: any): Task {
     const input = raw && typeof raw === 'object' ? raw : {};
     const base = existing || {};
     const createdAt = base.createdAt || hostNowIso();
-    const status = TASK_STATUSES.indexOf(input.status) >= 0 ? input.status : base.status || 'ready';
+    // Legacy personal tasks remain actionable after removing the collaboration-only approval stage.
+    const requestedStatus = input.status === 'waiting_approval' ? 'ready' : input.status;
+    const status = TASK_STATUSES.indexOf(requestedStatus) >= 0 ? requestedStatus : TASK_STATUSES.indexOf(base.status) >= 0 ? base.status : 'ready';
     const priority = TASK_PRIORITIES.indexOf(input.priority) >= 0 ? input.priority : base.priority || 'normal';
     const confidenceRaw = input.confidence === undefined ? base.confidence : input.confidence;
     const confidence = typeof confidenceRaw === 'number' && confidenceRaw >= 0 && confidenceRaw <= 1 ? confidenceRaw : null;
@@ -562,6 +570,7 @@ function normalizeState(raw?: any): any {
         updatedAt: asIso(raw.updatedAt) || hostNowIso(),
         settings: normalizeSettings(raw.settings),
         messageInbox:normalizeMessageInbox(raw.messageInbox),
+        conversationReadMarks:normalizeConversationReadMarks(raw.conversationReadMarks),
         // 恢复时必须把「已存的记录自身」当作 base 传入：normalizeX(raw, null) 会把
         // base 当成空对象，从而为每条记录重新生成 ID，导致 projectId / taskId /
         // runIds / sourceRefId 等关联在每次加载后全部失效。
@@ -644,6 +653,7 @@ function normalizeState(raw?: any): any {
                 note: asString(raw.lastRadarSummarize.note, 200) || null,
             }
             : null,
+        radarBrief:raw.radarBrief&&asIso(raw.radarBrief.at)?{at:asIso(raw.radarBrief.at),overview:asString(raw.radarBrief.overview,1600),status:asString(raw.radarBrief.status,20)||'pending',error:asString(raw.radarBrief.error,200)||null,overviewAt:asIso(raw.radarBrief.overviewAt),ids:ensureArray(raw.radarBrief.ids).filter((id:any)=>typeof id==='string').slice(0,60)}:null,
         lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),
         lastMentionsFetch: normalizeMentionsReport(raw.lastMentionsFetch),
         audit: ensureArray(raw.audit).slice(-AUDIT_LIMIT),

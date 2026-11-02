@@ -27,7 +27,7 @@ try{
   await page.getByRole('link',{name:'打开服务'}).waitFor();await page.getByRole('button',{name:'启动配置',exact:true}).click()
   await page.getByRole('textbox',{name:'启动参数 1'}).waitFor();assert.equal(await page.getByRole('textbox',{name:'启动参数 1'}).inputValue(),'server with spaces.js')
   for(const name of ['启动项名称 1','执行程序 1','启动参数 1','服务地址 1']){await page.getByLabel(name,{exact:true}).scrollIntoViewIfNeeded();assert.equal(await page.getByLabel(name,{exact:true}).isVisible(),true)}
-  await page.getByRole('button',{name:'保存启动配置'}).scrollIntoViewIfNeeded()
+  await page.getByRole('button',{name:'保存'}).scrollIntoViewIfNeeded()
   const metrics=await page.locator('.wb-scroll').evaluate(el=>({overflow:el.scrollWidth-el.clientWidth,rootOverflow:document.querySelector('.wb-root').scrollWidth-document.querySelector('.wb-root').clientWidth}))
   report.push({width,theme,...metrics});assert.ok(metrics.overflow<=2&&metrics.rootOverflow<=2,JSON.stringify(metrics));await page.screenshot({path:resolve(out,`${width}-${theme}-config.png`)})
   await page.getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('combobox',{name:'当前项目'}).selectOption('back');await page.getByText('back 流水线',{exact:true}).waitFor();assert.equal(await page.getByText('front 流水线',{exact:true}).count(),0)

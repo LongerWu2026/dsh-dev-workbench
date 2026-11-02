@@ -640,9 +640,8 @@ function SettingsPage(): any {
                 setProjectEdit(null);
             },
             children: '取消',
-        }), h('div', { className: 'wb-spacer' }), h(Btn, {
+        }), h(Btn, {
             kind: 'primary',
-            icon: 'save',
             disabled: !projectEdit || !String(projectEdit.name || '').trim(),
             onClick: function (): any {
                 if (!projectEdit)

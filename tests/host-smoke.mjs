@@ -48,6 +48,7 @@ const ctx = {
     return fn()
   },
   get(name) {
+    if(name==='rssReader')return {fetch:(...args)=>webMock?.fetch?webMock.fetch(...args):Promise.reject(Error('RSS fixture unavailable'))}
     if (name === 'web' && webMock) return webMock
     if (name === 'subprocess' && yzjSpawner) return yzjSpawner
     if (name === 'sessions' && fakeSessions) return fakeSessions
@@ -229,8 +230,9 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 115 个 Remote 描述符', invocations.length === 115, '实际 ' + invocations.length)
+check('注册了 119 个 Remote 描述符', invocations.length === 119, '实际 ' + invocations.length)
 check('回复发送只有显式页面入口，不暴露后台发送工具', invocations.some(entry => entry.method === 'sendReply') && !tools.some(tool => /send_reply|send_message/.test(tool.name)))
+check('统一刷新启动及进度读取接口已接线',invocations.some(entry=>entry.method==='refreshStart')&&invocations.some(entry=>entry.method==='refreshStatus'))
 check('待办原会话回复准备入口已接线',invocations.some(entry=>entry.method==='prepareTaskReply'))
 const missing = invocations.filter((entry) => typeof api[entry.method] !== 'function')
 check('每个描述符都有对应方法', missing.length === 0, missing.map((entry) => entry.method).join(', '))
@@ -284,15 +286,16 @@ check('删除项目', !projState.projects.some((item) => item.id === project.id)
 check('删除项目后任务解绑', projState.tasks.find((item) => item.id === linkedTask.id).projectId === null)
 
 // 技术雷达抓取：逐源降级、按 URL 去重、报告落库
+let rssOnlyFixture=true
 const FAKE_RSS = [
   '<?xml version="1.0"?><rss version="2.0"><channel><title>t</title>',
   '<item><title><![CDATA[Pratt parsing 写作]]></title>',
   '<description><![CDATA[<p>关于 pratt parsing 的长文。</p>]]></description>',
-  '<pubDate>Tue, 27 Oct 2026 06:02:23 +0000</pubDate>',
+  '<pubDate>'+new Date(Date.now()-86400000).toUTCString()+'</pubDate>',
   '<link>https://example.com/pratt</link></item>',
   '<item><title>SQLite WAL 实践</title>',
   '<description>如何调参。</description>',
-  '<pubDate>Mon, 26 Oct 2026 10:00:00 +0000</pubDate>',
+  '<pubDate>'+new Date(Date.now()-86400000).toUTCString()+'</pubDate>',
   '<link>https://example.com/sqlite-wal</link></item>',
   '</channel></rss>',
 ].join('')
@@ -308,6 +311,7 @@ webMock = {
     return Promise.resolve({ statusCode: 200, url: request.url, body: { kind: 'text', content: FAKE_RSS } })
   },
   search(request) {
+    if(rssOnlyFixture)return Promise.resolve({sources:[]})
     return Promise.resolve({
       sources: [
         { url: 'https://example.org/news/' + encodeURIComponent(String(request.query)).slice(0, 20), title: 'Agent 框架发布新版本 · ' + String(request.query).slice(0, 12), snippet: '新版本支持工具编排', publishedAt: '2026-10-26T08:00:00Z' },
@@ -360,6 +364,7 @@ try {
 }
 
 // 无 RSS 时：有联网能力 → 按关注主题发现；没有联网能力 → 如实说明
+rssOnlyFixture=false
 await api.saveSettings({ feeds: [], topics: ['Agent'] })
 state = await api.fetchRadar()
 check(
@@ -863,7 +868,7 @@ const relIds = {
   await api.saveSettings({ automation: { enabled: true, intervalMinutes: 5, radar: true, mentions: false }, feeds: [], topics: ['Agent'] })
   webMock = {
     fetch: () => Promise.resolve({ statusCode: 200, url: 'x', body: { kind: 'text', content: FAKE_RSS } }),
-    search: () => Promise.resolve({ sources: [{ url: 'https://example.org/auto', title: '自动化发现的资讯', snippet: 's', publishedAt: null }], truncated: false }),
+    search: () => Promise.resolve({ sources: [{ url: 'https://example.org/auto', title: '自动化发现的 AI Agent 技术资讯', snippet: 's', publishedAt: null }], truncated: false }),
   }
   const ran = await api.automationRun()
   check('开启后 tick 执行', ran.ran === true, JSON.stringify(ran))

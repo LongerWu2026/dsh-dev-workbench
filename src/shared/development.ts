@@ -13,7 +13,7 @@ export interface DevelopmentConfig {
     adapterPermissionMode:'read-only'|'workspace-write';
     agentId:string;
 }
-export interface DevelopmentIssue {id:string;code:string;title:string;type:string;status:string;workspaceId:string;description:string}
+export interface DevelopmentIssue {id:string;code:string;title:string;type:string;status:string;statusKey?:string;workspaceId:string;description:string}
 export interface DevelopmentStep {stage:DevelopmentStage;status:'running'|'completed'|'failed'|'waiting';at:string;sessionId?:string;output?:string;exitCode?:number|null;fromSeq?:number;argv?:string[];workspaceHash?:string}
 export interface DevelopmentModel {provider:string;model:string;reasoningEffort?:string}
 export interface DevelopmentRecovery {
@@ -38,7 +38,7 @@ export function issueFromLinky(row:any,workspaceId:string):DevelopmentIssue {
     const display=(value:any)=>typeof value==='string'?value:String(value?.name||value?.label||value?.value||'')
     const description=typeof row?.description==='string'?row.description:row?.description?.full||row?.description?.text||row?.description?.excerpt||''
     return {id:String(row?.id||row?.issue_id||''),code:String(row?.code||row?.number||row?.gf_number||row?.id||''),
-        title:String(row?.title||row?.name||''),type:display(row?.type||row?.issue_type),status:display(row?.status_label||row?.status),
+        title:String(row?.title||row?.name||''),type:display(row?.type||row?.issue_type),status:display(row?.status_label||row?.status),statusKey:String(row?.status?.key||row?.status_key||''),
         workspaceId:String(row?.workspace_id||row?.workspace?.id||workspaceId),description:String(description).slice(0,60000)}
 }
 export function checkedArgv(value:unknown):string[] {

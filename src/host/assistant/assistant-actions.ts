@@ -8,7 +8,8 @@ import {knowledgeService} from '../application/knowledge-service.js'
 import {analysisService} from '../application/analysis-service.js'
 import {newsService} from '../application/news-service.js'
 import {developmentService} from '../application/development-service.js'
-import {readDevelopmentTask} from '../storage/development-store.js'
+import {readDevelopmentTask,listDevelopmentTasks} from '../storage/development-store.js'
+import type {DevelopmentIssueUpdateResult,DevelopmentIssueDetailResult} from '../application/development-issues.js'
 import {officeService} from '../workflows/office-service.js'
 import {workflowService} from '../application/workflow-service.js'
 import {defaultKnowledgeScope} from '../knowledge/retrieval.js'
@@ -44,7 +45,7 @@ function checkedTaskPatch(patch:any,strict=false){
 }
 
 /** Tool execution identity, never a model-supplied conversation ID, determines ownership. */
-export function assistantToolConversation(execution:any):string|null {const id=execution?.agent?.session?.id;if(!id)return null;return hubSessionOwner(id)||(taskThreadOwner(id)?'task:'+taskThreadOwner(id):null)}
+export function assistantToolConversation(execution:any):string|null {const id=execution?.agent?.session?.id;if(!id)return null;return hubSessionOwner(id)||(taskThreadOwner(id)?'task:'+taskThreadOwner(id):null)||(listDevelopmentTasks().find(task=>task.sessionId===id)?'development:'+listDevelopmentTasks().find(task=>task.sessionId===id)!.id:null)}
 export function assistantToolKnowledgeScope(execution:any){const id=execution?.agent?.session?.id;return id?hubSessionKnowledgeScope(id)||{}:{}}
 
 async function confirm(ctx:any,request:any){
@@ -119,7 +120,7 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
    }else throw Error('未知的识别操作')
   }else if(operation.startsWith('radar.')){
    const s=scope(request);if(!(s.kind==='radar'||s.kind==='system'&&s.entityId==='radar'))throw Error('请在资讯会话中操作')
-   if(operation==='radar.fetch'){await newsService.fetchRadar();const job=await newsService.radarSummaryStart({});result={status:'ok',note:'资讯已更新，摘要正在后台处理。',job,items:state().radar}}
+   if(operation==='radar.fetch'){await newsService.fetchRadar();result={status:'ok',note:state().settings.aiExtract?.enabled?'资讯已更新，新增重点会在后台归纳。':'资讯已更新，可查看来源与原文摘录。',items:state().radar}}
    else if(operation==='radar.summary'){const job=await newsService.radarSummaryStart(s.kind==='radar'?{onlyIds:[s.entityId],retryFailed:true}:{});result={status:'ok',note:'已启动资讯摘要。',job}}
    else if(operation==='radar.toTask'){const row=target(request,'radar','radar'),snapshot=await newsService.createTaskFromRadar(row.id);result={status:'ok',note:'已根据资讯建立待办，保留原文来源。',items:snapshot.tasks}}
    else if(operation==='radar.toKnowledge'){const row=target(request,'radar','radar');await knowledgeService.createKnowledge({title:row.title,body:[row.excerpt,...Object.values(row.summary||{})].filter(Boolean).join('\n'),url:row.url,reviewState:'candidate'});result={status:'ok',note:'已保存为待审核知识，保留资讯来源。'}}
@@ -133,7 +134,17 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
    result=preview(request,operation,(patch?'确认修改知识「':'确认删除工作台知识「')+item.title+'」',item,patch?{...item,...patch}:null,{id:item.id,patch,knowledgeScope:knowledgeScope(request,item)})
   }else if(operation.startsWith('development.')){
    const s=scope(request);if(s.kind!=='development')throw Error('请在对应研发事项会话中操作');if(request.id&&request.id!==s.entityId)throw Error('研发事项不匹配');const before=clean(readDevelopmentTask(s.entityId))
-   if(operation==='development.writeback'){if(before.status!=='approved'||!before.approvedHash)throw Error('请先完成人工审查，再确认回写');result=preview(request,operation,'确认回写 Linky 结果评论',before,{issue:before.issue,reviewNote:before.reviewNote,description:'仅回写评论，不提交代码、不关闭工作项。'},{id:before.id})}
+   if(operation==='development.issue.get'||operation==='development.issue.update'){
+    if(request.sessionId&&request.sessionId!==before.sessionId)throw Error('请切回当前研发主会话后操作工作项，历史或审查会话仅供查看')
+    if(request.executionOrigin==='tool'&&request.executionSessionId!==before.sessionId)throw Error('只能在当前研发主会话中修改工作项，审查或历史会话不能代替操作')
+    if(operation==='development.issue.get'){
+     const detail=await developmentService.development({action:'issueDetail',id:s.entityId}) as DevelopmentIssueDetailResult
+     const statusChoices={current:detail.issue.status,targets:detail.targets.filter((target:any)=>target.allowed===true),pending:detail.reconciliation==='pending'}
+     result={status:'ok',note:(request.requestedStatus?'当前 Linky 业务状态为「'+detail.issue.status+'」。请从下方选择具体流程状态；本次尚未修改。':'已读取 Linky 工作项「'+detail.issue.code+'」。\n标题：'+detail.issue.title+'\n业务状态：'+detail.issue.status+'\n可流转至：'+(statusChoices.targets.map((target:any)=>target.name).join('、')||'暂无可用状态')+'\n描述：'+String(detail.issue.description||'暂无描述').slice(0,1200))+'\n本地研发执行状态单独保留，业务状态不代表测试或审查已通过。'+(detail.reconciliation==='pending'?'\n上次修改仍待核实，当前回读与目标不一致，请核对 Linky 操作历史，勿重复提交。':detail.reconciliation==='confirmed'?'\n上次修改已回读核实，无需重复提交。':''),...detail,statusChoices}
+    }else{
+     const changed=await developmentService.development({action:'issueUpdate',id:s.entityId,patch:request.patch,fields:request.fields,comment:request.comment}) as DevelopmentIssueUpdateResult;result={status:'ok',note:(changed.changed?'已修改并回读 Linky 工作项「':'Linky 工作项已经是目标内容「')+changed.after.code+'」：'+Object.keys(request.patch||{}).map(key=>key==='status'?'业务状态「'+changed.after.status+'」':key==='title'?'标题「'+changed.after.title+'」':'描述').join('、')+'已核实；本地测试与审查记录保持真实状态。',...changed}
+    }
+   }else if(operation==='development.writeback'){if(before.status!=='approved'||!before.approvedHash)throw Error('请先完成人工审查，再确认回写');result=preview(request,operation,'确认回写 Linky 结果评论',before,{issue:before.issue,reviewNote:before.reviewNote,description:'仅回写评论，不提交代码、不关闭工作项。'},{id:before.id})}
    else if(operation==='development.continue'&&!['ready','paused','rejected'].includes(before.status)){
     const reasons:Record<string,string>={waiting_review:'当前正在等待人工审查，请先填写审查意见并通过或退回；本次没有重新启动开发。',approved:'人工审查已通过，下一步是核对并确认回写；本次没有重新启动开发。',delivered:'该研发任务已经交付，本次没有重复启动开发。',running:'研发流程正在执行，请等待本轮结果或先暂停；本次没有重复启动。',preparing:'研发工程仍在准备，请等待准备完成后继续。'}
     result={status:'error',code:'development_not_startable',blocked:true,failurePhase:'execution',note:reasons[before.status]||before.pauseReason||'当前研发阶段暂不能启动，请查看进度并处理尚未满足的条件；本次没有启动开发。',task:before}
@@ -187,7 +198,7 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
    }else throw Error('未知的办公操作')
   }else throw Error('不支持的助手操作')
   const output={...result,operation:result.operation||operation}
-  const savedResult:any={};for(const key of ['draft','text','job','progress','item','task','busyReply','artifacts','blocked','failurePhase','code'])if(output[key]!==undefined)savedResult[key]=clean(output[key]);
+  const savedResult:any={};for(const key of ['draft','text','job','progress','item','task','busyReply','artifacts','blocked','failurePhase','code','statusChoices'])if(output[key]!==undefined)savedResult[key]=clean(output[key]);
   if(output.items)savedResult.items=output.items.map((item:any)=>({id:item.id,kind:item.kind,conversationId:item.conversationId,title:item.title,body:item.body,excerpt:item.excerpt,url:item.url,status:item.status,stage:item.stage,updatedAt:item.updatedAt,sourceId:item.sourceId,sourceText:item.sourceText,analysisEntryId:item.analysisEntryId,runId:item.runId,dueAt:item.dueAt,priority:item.priority}));
   if(output.jobs)savedResult.jobIds=output.jobs.map((job:any)=>job.id);
   if(output.existing&&output.conversationId)savedResult.relatedConversationId=output.conversationId;
@@ -200,7 +211,7 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
 function clarificationReason(text:string,matchedWrite=false):string|undefined {
  if(/^无需回复[。！!]*$/.test(text))return undefined
  // Everything after an explicit body/title replacement is user data, including its punctuation.
- const shell=text.match(/^(?:请|请帮我|帮我)?(?:把)?(?:知识)?(?:标题|正文)(?:改为|改成|更新为|替换为)[：:]?\s*/)?.[0]
+ const shell=text.match(/^(?:请|请帮我|帮我)?(?:把|将)?(?:当前|这条|这个|该)?(?:知识|研发需求|研发任务|需求|缺陷|用户故事|工作项|任务)?(?:的)?(?:标题|正文|描述|内容)(?:改为|改成|修改为|修改成|更新为|替换为|设为|设置为)[：:]?\s*/)?.[0]
  const intent=shell||text
  if((/[？?]|(?:是否|能否|可否|要不要|是不是)|(?:吗|(?<!什)么)[。！!]*$/.test(intent))&&(matchedWrite||/(?:确认|同意|删除|移除|修改|更新|替换|改为|改成|标记|设置|完成|开启|关闭|启用|停用|取消|发送|生成|起草|新建|创建|收集|拉取|同步|继续|开始|恢复|暂停|回写)/.test(intent)))return '这条消息是在询问操作，先确认你的意图，不直接修改。'
  if(/^(?:(?:请|请帮我|帮我|麻烦)\s*)?(?:不要|别|不用|无需|暂不|先不|如果|假如|假设)/.test(intent))return '这条消息包含否定或假设，先理解你的意思，不直接修改。'
@@ -252,12 +263,19 @@ export function recognizeAssistantCommand(request:any,onClarification?:(reason:s
   else if(kind==='knowledge'&&/^(?:请|帮我)?删除(?:这条|该|当前)?(?:知识|条目)?$/.test(plain))action={operation:'knowledge.delete'}
   else if(kind==='knowledge'){const change=text.match(/^(?:请|帮我)?(?:把)?(?:知识)?(标题|正文)(?:改为|改成|更新为|替换为)[：:]?\s*([\s\S]+)$/);if(change)action={operation:'knowledge.update',patch:{[change[1]==='标题'?'title':'body']:change[2]}}}
  }else if(kind==='development'){
-  if(/^(?:请|帮我)?(?:继续|(?:继续|开始|恢复)(?:开发|修复)(?:任务)?|继续研发(?:任务)?)$/.test(plain))action={operation:'development.continue'}
+  const change=text.replace(/^(?:请帮我|麻烦帮我|麻烦你|帮忙|请你|麻烦)\s*/,'').match(/^(?:请|帮我)?(?:把|将)?(?:当前|这条|这个|该)?(?:的)?(?:研发需求|研发任务|需求|缺陷|用户故事|工作项|任务)?(?:的)?(业务状态|状态|标题|描述|内容|正文)(?:改为|改成|修改为|修改成|更新为|设为|设置为|：|:)\s*([\s\S]+)$/)
+  const mark=plain.match(/^(?:请|帮我)?(?:把|将)?(?:当前|这条|这个|该)?(?:研发需求|研发任务|需求|缺陷|用户故事|工作项|任务)?(?:的)?(?:业务状态|状态)?(?:标记为|标记成|标记|设置为)\s*(.+)$/)
+  if(change)action={operation:'development.issue.update',patch:{[/状态/.test(change[1])?'status':change[1]==='标题'?'title':'description']:/状态/.test(change[1])?change[2].replace(/[。！!？?]+$/,''):change[2]}}
+  else if(mark)action={operation:'development.issue.update',patch:{status:mark[1]}}
+  else if(/^(?:请|帮我)?(?:查看|查询|刷新)(?:当前|这条|这个)?(?:研发需求|需求|缺陷|用户故事|工作项)?(?:详情|内容|业务状态|可用状态|可用流转|可修改状态)$/.test(plain))action={operation:'development.issue.get'}
+  else if(/^(?:请|帮我)?(?:继续|(?:继续|开始|恢复)(?:开发|修复)(?:任务)?|继续研发(?:任务)?)$/.test(plain))action={operation:'development.continue'}
   else if(/^(?:请|帮我)?暂停(?:开发|研发|执行|修复)?(?:任务)?$/.test(plain))action={operation:'development.pause'}
   else if(/^(?:请)?回写(?:Linky|linky)?(?:结果|评论)?$/.test(plain))action={operation:'development.writeback'}
   else if(/^(?:请|帮我)?(?:查看|刷新|看看)(?:研发|开发|修复|任务)?(?:进度|状态)$/.test(plain))action={operation:'development.detail'}
+  // “完成” does not identify a Linky workflow node; resolve it with real choices, never AI guesses.
+  if(action?.operation==='development.issue.update'&&/^(?:已)?完成(?:了)?$/.test(action.patch?.status||''))action={operation:'development.issue.get',requestedStatus:action.patch.status}
  }
- const readOnly=new Set(['busyReply.status','analysis.status','analysis.results','knowledge.search','development.detail','office.status'])
+ const readOnly=new Set(['busyReply.status','analysis.status','analysis.results','knowledge.search','development.detail','development.issue.get','office.status'])
  const reason=clarificationReason(text,!!action&&!readOnly.has(action.operation))
  if(reason&&!readOnly.has(action?.operation)){onClarification?.(reason);return null}
  return action

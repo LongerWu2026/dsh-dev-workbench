@@ -1,7 +1,7 @@
 /** Shared business contracts. Runtime input remains untrusted until validated. */
 export type PageId = 'dashboard' | 'assistant' | 'tasks' | 'replies' | 'radar' | 'knowledge' | 'search' | 'agents' | 'office' | 'toolbox' | 'collab' | 'settings' | 'web-ai'
 export type ReplyStage = '已自动回复' | '待回复' | '已确认收到' | '已回复' | '不需回复'
-export type TaskStatus = 'draft' | 'ready' | 'running' | 'waiting_approval' | 'completed' | 'failed' | 'cancelled'
+export type TaskStatus = 'draft' | 'ready' | 'running' | 'completed' | 'failed' | 'cancelled'
 export type EventType = 'meeting' | 'feature' | 'logging' | 'other'
 export interface SourceLocator { sentAtVerified?:boolean; groupId: string | null; msgId: string | null; groupName: string | null; groupType?: number | null; accountId?: string | null; direction?: 'inbound' | 'outbound'; intake?: boolean; replyToMsgId?: string | null; senderId?: string | null; sentAt?: string | null }
 export interface Source { selection?:import('./message-intake.js').MessageSelection|null;calendarMeta?:any;projectId?: string | null; id: string; provider: string; externalId: string | null; url: string | null; title: string; excerpt: string; fetchedAt: string; sender: string | null; locator: SourceLocator | null; payloadHash: string }

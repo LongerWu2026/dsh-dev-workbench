@@ -7,6 +7,7 @@ const WB_ICON_PATHS: any = {
     tasks: ['M9 11l3 3 8-8', 'M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11'],
     agent: ['M12 8V5H9', 'M5 8h14v12H5z', 'M9.5 13h.01', 'M14.5 13h.01', 'M9 17h6'],
     messages: ['M7 14l-4 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H7z', 'M17 7h2a2 2 0 0 1 2 2v12l-4-4h-6a2 2 0 0 1-2-2v-1'],
+    reply: ['M9 4L4 9l5 5', 'M4 9h9a7 7 0 0 1 7 7v4'],
     radar: ['M12 12l5-5', 'M12 3a9 9 0 1 1-9 9', 'M12 7a5 5 0 1 0 5 5', 'M12 12h.01'],
     toolbox: ['M3 8h18v11H3z', 'M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2', 'M3 13h18'],
     book: ['M12 6c-2-1.4-4.2-2-8-2v14c3.8 0 6 .6 8 2', 'M12 6c2-1.4 4.2-2 8-2v14c-3.8 0-6 .6-8 2', 'M12 6v14'],
@@ -141,7 +142,7 @@ function Panel(props?: any): any {
     const head = props.title || props.sub || props.actions
         ? h('div', { className: 'wb-card-head' }, props.icon ? h('span', { className: 'wb-card-icon' }, h(Icon, { name: props.icon, size: 15 })) : null, h('div', { className: 'wb-card-titles' }, props.title
             ? h('h3', { className: 'wb-card-title' }, props.title, props.badge || null)
-            : null, props.sub ? h('p', { className: 'wb-card-sub' }, props.sub) : null), props.actions ? h('div', { className: 'wb-card-actions' }, props.actions) : null)
+            : null, props.sub ? h('p', { className: 'wb-card-sub' }, props.sub) : null), props.headerExtra || null, props.actions ? h('div', { className: 'wb-card-actions' }, props.actions) : null)
         : null;
     return h('section', {
         className: 'wb-card' + (props.className ? ' ' + props.className : ''),

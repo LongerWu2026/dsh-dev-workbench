@@ -1,3 +1,4 @@
+import {WorkspaceRefresh,WorkspaceRefreshMonitor} from '../components/WorkspaceRefresh.js'
 import {AnalysisMonitor} from '../components/AnalysisActivity.js'
 import {KnowledgeSources} from '../components/KnowledgeSources.js'
 import {AssistantSessionsNav} from '../components/AssistantSessionsNav.js'
@@ -28,7 +29,7 @@ WB.PAGE_META = {
     dashboard: { title: '今日简报', icon: 'dashboard', hint: '今天要处理的事、资讯与连接状态' },
     assistant: { title: 'AI 助手', icon: 'messages', hint: '处理日常工作、继续事项对话并查看结果' },
     tasks: { title: '任务中心', icon: 'tasks', hint: '查看待办、来源和处理进展' },
-    replies: { title: '待回复', icon: 'chat', hint: '独立跟踪需要回复的消息与来源' },
+    replies: { title: '待回复', icon: 'reply', hint: '独立跟踪需要回复的消息与来源' },
     radar: { title: '资讯', icon: 'radar', hint: '联网发现、原文摘要与收藏' },
     search: { title: '工作搜索', icon: 'search', hint: '查找工作内容，或单独搜索互联网' },
     agents: { title: '研发任务', icon: 'agent', hint: 'Linky 工作项、独立工作区、Harness 开发与审查' },
@@ -550,13 +551,7 @@ function Toolbar(props?: any): any {
         kind: 'primary',
         onClick: function (): any { WB.openTaskForm(null); },
         children: '新建待办',
-    }), h(IconBtn, {
-        name: 'refresh',
-        label: '重新读取 Host 数据',
-        onClick: function (): any {
-            WB.actions.reload().catch(function (): any { });
-        },
-    }), h(IconBtn, {
+    }), h(WorkspaceRefresh,{scope:'all',iconOnly:true}), h(IconBtn, {
         name: 'sparkles',
         label: '工作台助手（携带上下文进入会话）',
         active: !!props.assistantOpen,
@@ -646,7 +641,7 @@ function WorkbenchApp(): any {
           page!=='web-ai'&&page!=='assistant'?h('div',{key:'business-page',className:'wb-page'},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
           (webAIVisited||page==='web-ai')&&WebAIPage?h('div',{key:'web-ai-surface',className:'wb-page wb-chat-page',hidden:page!=='web-ai'},h(WebAIPage)):null)),
         h(AssistantHubEntry,{Legacy:AssistantDrawer}),h(TaskFormHost,{embedded:true})),
-      WB.Palette?h(WB.Palette,{open:paletteOpen,onClose:()=>setPaletteOpen(false)}):null,h(AnalysisMonitor),h(Toaster));
+      WB.Palette?h(WB.Palette,{open:paletteOpen,onClose:()=>setPaletteOpen(false)}):null,h(AnalysisMonitor),h(WorkspaceRefreshMonitor),h(Toaster));
 }
 /* -------------------------------------------------------------------- apply */
 WB.apply = function apply(ctx?: any): any {
