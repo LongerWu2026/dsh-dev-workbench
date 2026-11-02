@@ -17,7 +17,13 @@ const cliCode=cli.outputFiles[0].text
 const banner = '/** Generated from TypeScript modules by scripts/build.mjs. Do not edit. */\n'
 const hostCode = banner + host.outputFiles[0].text
 const clientCode = banner + 'window.__ModuleLoader__.load({ id: ' + JSON.stringify(pkg.name) + ', factory(require) {\nconst module = { exports: {} }; const exports = module.exports;\n' + client.outputFiles[0].text + '\nreturn module.exports;\n} });\n'
-if (check && (readFileSync(join(root,'index.js'),'utf8') !== hostCode || readFileSync(join(root,'client.js'),'utf8') !== clientCode)) throw new Error('构建产物与源码不一致，请先 pnpm build')
+// Shared dependencies can sit outside an isolated checkout. esbuild includes
+// their relative locations in source comments and CommonJS factory labels;
+// those labels do not change the bundled module or its imports.
+const comparable = code => code
+  .replace(/^\/\/ (?:\.\.\/)+node_modules\//gm, '// node_modules/')
+  .replace(/^(\s*)"(?:\.\.\/)+node_modules\/([^"\n]+)"(\([^\n)]*\) \{)$/gm, '$1"node_modules/$2"$3')
+if (check && (comparable(readFileSync(join(root,'index.js'),'utf8')) !== comparable(hostCode) || comparable(readFileSync(join(root,'client.js'),'utf8')) !== comparable(clientCode))) throw new Error('构建产物与源码不一致，请先 pnpm build')
 if(check&&readFileSync(join(root,'bin/harness-linky.mjs'),'utf8')!==cliCode)throw new Error('CLI 构建产物与源码不一致，请先 pnpm build')
 if (!check) {
   mkdirSync(join(root,'bin'),{recursive:true})
