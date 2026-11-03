@@ -3,7 +3,7 @@ import {join} from 'node:path'
 import {randomUUID} from 'node:crypto'
 import {workbenchDir} from '../platform/runtime.js'
 
-export interface HubThread {id:string;title:string;createdAt:string;lastAt:string;nativeTitle?:string;knowledgeScope?:{projectId?:string|null;accountId?:string|null}}
+export interface HubThread {id:string;title:string;createdAt:string;lastAt:string;nativeTitle?:string;knowledgeScope?:{projectId?:string|null;accountId?:string|null;spaceId?:string|null}}
 export interface OfficeTopic {kind:'work_report'|'reply_batch';input:{period?:'day'|'week';replyIds?:string[]};date?:string;from?:string;to?:string}
 export interface HubConversation {id:string;title:string;activeId:string;threads:HubThread[];pinned?:boolean;createdAt?:string;officeTopic?:OfficeTopic;selection?:{sessionId:string;primarySessionId?:string}}
 export interface HubRunLink {sessionId:string;fromSeq:number;toSeq:number;purpose:string;accountId?:string}
@@ -20,7 +20,7 @@ export function hubSessionOwner(sessionId:string):string|undefined{return hubInd
 export function hubSessionKnowledgeScope(sessionId:string){return hubIndex().conversations.flatMap(row=>row.threads).find(row=>row.id===sessionId)?.knowledgeScope}
 export function hubSessionNativeTitle(sessionId:string){return hubIndex().conversations.flatMap(row=>row.threads).find(row=>row.id===sessionId)?.nativeTitle}
 export function rememberHubNativeTitle(sessionId:string,title:string){const value=hubIndex(),thread=value.conversations.flatMap(row=>row.threads).find(row=>row.id===sessionId);if(!thread)throw Error('找不到会话归属');thread.nativeTitle=title;save(value)}
-export function setHubSessionKnowledgeScope(sessionId:string,scope:{projectId?:string|null;accountId?:string|null}){const value=hubIndex(),thread=value.conversations.flatMap(row=>row.threads).find(row=>row.id===sessionId);if(!thread)throw Error('找不到会话归属');thread.knowledgeScope=scope;save(value)}
+export function setHubSessionKnowledgeScope(sessionId:string,scope:{projectId?:string|null;accountId?:string|null;spaceId?:string|null}){const value=hubIndex(),thread=value.conversations.flatMap(row=>row.threads).find(row=>row.id===sessionId);if(!thread)throw Error('找不到会话归属');thread.knowledgeScope=scope;save(value)}
 export function rememberHubConversation(id:string,title:string){const value=hubIndex();if(!value.conversations.some(row=>row.id===id)){value.conversations.push({id,title,activeId:'',threads:[]});save(value)}}
 export function rememberOfficeTopic(id:string,title:string,topic:OfficeTopic){const value=hubIndex(),existing=value.conversations.find(row=>row.id===id);if(existing){if(JSON.stringify(existing.officeTopic)!==JSON.stringify(topic))throw Error('主题身份与已有会话不一致');return existing}const row:HubConversation={id,title,activeId:'',threads:[],createdAt:new Date().toISOString(),officeTopic:topic};value.conversations.push(row);save(value);return row}
 export function pinHubConversation(id:string,title:string,pinned:boolean){if(typeof pinned!=='boolean')throw Error('请明确置顶或取消置顶');const value=hubIndex();let row=value.conversations.find(row=>row.id===id);if(!row){row={id,title,activeId:'',threads:[],createdAt:new Date().toISOString()};value.conversations.push(row)}row.pinned=pinned;save(value);return row}

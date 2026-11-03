@@ -2,12 +2,12 @@ import * as React from 'react'
 import type { PageId } from '../../shared/contracts.js'
 import { Icon, WB } from '../core/runtime.js'
 interface Props { page: PageId; data?: unknown }
-const primary: PageId[] = ['dashboard', 'assistant', 'agents', 'tasks', 'replies', 'radar', 'knowledge', 'web-ai', 'search']
+const primary: PageId[] = ['dashboard', 'assistant', 'agents', 'tasks', 'replies', 'radar', 'knowledge', 'web-ai']
 export function TopNavigation({ page }: Props): React.ReactElement {
   const navRef = React.useRef<HTMLElement>(null), measureRef = React.useRef<HTMLDivElement>(null)
   const detailsRef = React.useRef<HTMLDetailsElement>(null)
   // Keep navigation order stable as entries move between the bar and overflow menu.
-  const order: PageId[] = [...primary.filter(id=>WB.ORDER.includes(id)), ...WB.ORDER.filter((id:PageId)=>!primary.includes(id))]
+  const order: PageId[] = [...primary.filter(id=>WB.ORDER.includes(id)), ...WB.ORDER.filter((id:PageId)=>id!=='search'&&!primary.includes(id))]
   const orderKey=order.join('|')
   const [visibleCount,setVisibleCount]=React.useState(primary.length)
   const countRef=React.useRef(visibleCount);countRef.current=visibleCount

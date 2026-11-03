@@ -762,7 +762,7 @@ const pageSpecs = [
   ['任务中心', 'tasks', ['看板', '规则候选（备用）', '提取候选', '筛选']],
   ['待回复', 'replies', ['仅跟踪需要本人答复的消息']],
   ['资讯', 'radar', ['概览', '获取资讯', '资讯对话']],
-  ['工作搜索', 'search', ['工作内容', '互联网', '消息']],
+  ['搜索结果', 'search', ['工作内容', '互联网', '消息']],
   ['研发任务', 'agents', ['研发设置', 'Linky']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
   ['研发协作', 'collab', ['添加仓库目录', '端口占用', 'PR 与 CI', '进程 CPU / 内存']],
@@ -779,13 +779,14 @@ if (countNodes(shell) < 60) problems.push('首屏渲染节点过少：' + countN
 for (const [title, id, expected] of pageSpecs) {
   const before = await renderTree('导航:' + title)
   const nav = findNavButtons(before, [])
-  if (nav.length !== pageSpecs.length) {
-    problems.push('导航项数量不符：期望 ' + pageSpecs.length + '，实际 ' + nav.length)
+  if (nav.length !== pageSpecs.length-1) {
+    problems.push('导航项数量不符：期望 ' + (pageSpecs.length-1) + '，实际 ' + nav.length)
     break
   }
   const index = nav.findIndex((item) => treeText(item.children).trim() === title)
   try {
-    nav[index].props.onClick()
+    if(id==='search')WB.go('search')
+    else nav[index].props.onClick()
   } catch (e) {
     problems.push(title + ' 导航点击抛错：' + String((e && e.message) || e))
     continue
@@ -1106,9 +1107,7 @@ for (const [title, id, expected] of pageSpecs) {
     // 键盘路径：Enter 执行第一条 → 应写入 searchPreset 并跳转
     const firstInput = findInputs(withResults, [])[0]
     firstInput.onKeyDown({ key: 'Enter', preventDefault: function () {} })
-    const preset = ((WB.store && WB.store.get) ? WB.store.get().searchPreset : null)
-    if (!preset || String(preset.query) !== '限流') problems.push('回车执行没有写入 searchPreset')
-    if (preset && preset.groups && preset.groups[0] !== 'tasks') problems.push('回车执行没有携带来源分组')
+    if (WB.store.get().page !== 'tasks' || WB.store.get().focusTaskId !== 'task-1') problems.push('回车未打开对应待办')
   }
 }
 

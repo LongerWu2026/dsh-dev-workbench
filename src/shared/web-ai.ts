@@ -17,6 +17,11 @@ export interface WebAITopic {id:string;title:string;createdAt:string;version?:nu
 export interface WebAIState {topics:WebAITopic[];rounds:WebAIRound[];chatgptEnabled:boolean;revision?:number}
 export const WEB_AI_ACTIVE = new Set<WebAIStatus>(['queued','preparing','generating'])
 export function webAIProvider(id:string){const p=WEB_AI_PROVIDERS.find(p=>p.id===id);if(!p)throw new Error('不支持的网页 AI 厂商');return p}
+/** Temporary authentication navigation only; these URLs must never be persisted as conversations. */
+export const WEB_AI_LOGIN_HOSTS:Readonly<Record<string,readonly string[]>>={chatgpt:['auth.openai.com','accounts.google.com']}
+export function webAINavigationUrl(id:string,value:unknown):string|null {
+ try{const provider=webAIProvider(id),url=new URL(String(value));return url.protocol==='https:'&&!url.username&&!url.password&&!url.port&&[...provider.hosts,...(WEB_AI_LOGIN_HOSTS[id]||[])].includes(url.hostname)?url.href:null}catch{return null}
+}
 /** Preserve only conversation identifiers; never auth callbacks or arbitrary query data. */
 export function webAIConversationUrl(id:string,value:unknown):string|null {
  try {const p=webAIProvider(id),u=new URL(String(value));if(u.protocol!=='https:'||u.username||u.password||u.port||!p.hosts.some(h=>h===u.hostname)||/login|oauth|callback|authorize|sign[-_]?in/i.test(u.pathname))return null;const query=new URLSearchParams();for(const key of ['chatId','conversationId','conversation_id','sessionId','dialogueId','cid']){const v=u.searchParams.get(key);if(v&&/^[\w-]{1,160}$/.test(v))query.set(key,v)}const hash=/^#\/(chat|conversation|c)\/[\w/-]{1,200}$/.test(u.hash)?u.hash:'';return u.origin+u.pathname+(query.size?'?'+query:'')+hash}catch{return null}

@@ -109,6 +109,11 @@ describe('回答归属及恢复采集',()=>{
 })
 describe('采集时序与连续追问',()=>{
  const signal=()=>new AbortController().signal
+ it('750毫秒观察一次，正文未变化不重复持久化，明确结束仍需稳定复核',async()=>{
+  let now=0,reads=0;const updates=[],delays=[]
+  await collectWebsiteAnswer({execute:async()=>({status:'ready',busy:++reads<5,answerCount:1,userCount:1,turns:[turn('a',0,'问题','相同正文',reads>=5)]})},'问题',{answerCount:0,userCount:0},async p=>updates.push(p),signal(),()=>now,async ms=>{delays.push(ms);now+=ms})
+  expect(delays.every(ms=>ms===750)).toBe(true);expect(updates.filter(p=>p.status==='generating')).toHaveLength(1);expect(updates.at(-1).status).toBe('completed');expect(reads).toBe(5)
+ })
  it('停止按钮短暂消失和正文暂停不能提前结束；等待本轮明确完成信号',async()=>{
   let now=0,reads=0;const updates=[]
   const states=[{busy:true,turns:[turn('a',0,'问题','第一段')]},{busy:false,turns:[turn('a',0,'问题','第一段')]},{busy:true,turns:[turn('a',0,'问题','第一段\n第二段')]},{busy:false,turns:[turn('a',0,'问题','第一段\n第二段\nEND',true)]}]

@@ -25,8 +25,8 @@ export async function startWorkflowJob(ctx:unknown,kind:'analysis'|'summary',inp
      let reset=0;
      for(const row of state.analysisQueue){
        const source=sources.get(row.sourceId);
-       if(row.status!=='failed'||onlyIds.length&&!onlyIds.includes(row.id)&&!onlyIds.includes(row.sourceId)||!source||messageSkipReason(state,source,row))continue;
-       Object.assign(row,{status:'pending',attempts:0,nextRetryAt:null,lastError:null,leaseUntil:null});reset++;
+       if(!(row.status==='failed'||row.status==='awaiting_human'&&row.reviewKind==='recognition')||onlyIds.length&&!onlyIds.includes(row.id)&&!onlyIds.includes(row.sourceId)||!source||messageSkipReason(state,source,row))continue;
+       Object.assign(row,{status:'pending',attempts:0,nextRetryAt:null,lastError:null,leaseUntil:null,reviewKind:null,reviewReason:null,rejectedEvidence:[]});reset++;
      }
      if(reset)auditEntry(state,'analysis.retryFailed','人工重试失败消息 '+reset+' 条，重新开放本轮重试资格');
    }

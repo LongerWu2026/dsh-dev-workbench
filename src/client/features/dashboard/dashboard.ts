@@ -317,16 +317,16 @@ function DashboardPage(): any {
                 .slice(0, 6)
                 .map(function (entry?: any): any {
                 const sourceRow = (data.sources || []).find(function (row?: any): any { return row.id === entry.sourceId; });
+                const canConfirm=entry.status==='awaiting_human'&&entry.analysis&&entry.reviewKind!=='recognition';
                 return h('div', { key: entry.id, className: 'wb-item' }, h(Badge, { tone: entry.status === 'failed' ? 'err' : 'warn' }, entry.status === 'failed' ? '失败' : '待确认'), h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title wb-ellipsis' }, WB.util.truncate((sourceRow && sourceRow.excerpt) || entry.msgId || entry.sourceId, 46)), entry.status === 'failed'
                     ? h('div', { className: 'wb-item-sub' }, '已失败 ' + (entry.attempts || 0) + ' 次' + ((entry.attempts || 0) >= 3 ? ' · 需手动重试' : '') + (entry.lastError ? ' · ' + entry.lastError : ''))
-                    : h('div', { className: 'wb-item-sub' }, (entry.analysis && entry.analysis.summary) || '已识别，待确认建档')), entry.status === 'awaiting_human'
+                    : h('div', { className: 'wb-item-sub' }, entry.reviewReason || (entry.analysis && entry.analysis.summary) || '需要核对原消息后重试')), ['awaiting_human','failed'].includes(entry.status)
                     ? h(Btn, {
                         size: 'sm',
-                        kind: 'primary',
-                        icon: 'check',
+                        kind: canConfirm?'primary':'subtle',
+                        icon: canConfirm?'check':'refresh',
                         onClick: function (): any {
-                            WB.actions
-                                .analyzeConfirm(entry.id)
+                            (canConfirm?WB.actions.analyzeConfirm(entry.id):WB.actions.analysisRetry(entry.id).then(()=>WB.actions.analyzeRun(1,[entry.id])))
                                 .then(function (): any {
                                 return WB.actions.analysisStatus();
                             })
@@ -334,9 +334,9 @@ function DashboardPage(): any {
                                 setAnalysis(status);
                                 WB.actions.reload().catch(function (): any { });
                             })
-                                .catch(function (): any { });
+                                .catch(function (error: any): any {if(!error?.workbenchAnalysisNotified)WB.toast(error?.message||String(error),'err')});
                         },
-                        children: '确认建档',
+                        children: canConfirm?'确认建档':'重试本条',
                     })
                     : null);
             }))

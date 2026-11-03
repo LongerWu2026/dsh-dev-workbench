@@ -381,6 +381,7 @@ function workbenchToolDefinitions(): any {
                 properties: {
                     query: { type: 'string', description: '检索词。' },
                     includeWeb: { type: 'boolean', description: '是否查互联网（默认 true）。' },
+                    scope: {type:'string',enum:['local','work','web'],description:'local 仅检索已保存的工作内容，不联网；work 检索工作与企业来源；web 仅检索互联网。查找已有待办、知识、资讯或消息时优先使用 local。'},
                 },
                 required: ['query'],
                 additionalProperties: false,
@@ -391,6 +392,7 @@ function workbenchToolDefinitions(): any {
                 const result = await runUnifiedSearch(workbenchCtx, {
                     query: input.query,
                     includeWeb: input.includeWeb !== false,
+                    ...(['local','work','web'].includes(input.scope)?{scope:input.scope}:{}),
                 });
                 const lines: any = [];
                 for (const group of result.groups) {

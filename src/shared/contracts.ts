@@ -10,13 +10,14 @@ export interface Task { id: string; title: string; description: string; status: 
 export interface Reply {
     autoReplyId?:string|null;autoRepliedAt?:string|null; triage?:'pending'|'reply'|'task'|'noise'|null; id: string; sourceId: string | null; msgId: string; groupId: string | null; groupName: string | null; accountId: string | null; contact: string | null; snippet: string | null; stage: ReplyStage; humanGuard: boolean; evidenceMsgId: string | null; taskIds: string[]; repliedAt: string | null; createdAt: string; updatedAt: string }
 export interface AnalysisItem { title: string; needsReply: boolean; needsAction: boolean; eventType?: EventType | null; relatedTaskId?: string | null; relatedReplyId?: string | null; replyToMsgId?: string | null; replyStage?: string | null; dueAt?: string | null; deliverable?: string | null; meetingStart?: string | null; meetingEnd?: string | null; meetingLocation?: string | null; registrationTarget?: string | null; completed?: boolean; cancelled?: boolean; evidence?: string }
-export interface AnalysisResult { noise: boolean; relevance?: 'relevant' | 'irrelevant' | 'uncertain' | null; summary?: string; items: AnalysisItem[] }
+export interface AnalysisResult { noise: boolean; needsReview?:boolean; reviewReason?:string|null; relevance?: 'relevant' | 'irrelevant' | 'uncertain' | null; summary?: string; items: AnalysisItem[] }
 export interface WorkbenchSnapshot { version: number; revision: number; tasks: Task[]; sources: Source[]; replies: Reply[]; updatedAt: string; [key: string]: unknown }
 export type ContextPane = { kind: 'closed' } | { kind: 'assistant'; refs: Array<{ kind: string; id: string }> } | { kind: 'task' | 'reply' | 'article'; id: string }
 export function isRecord(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value) }
 export function assertAnalysisShape(value: unknown): asserts value is AnalysisResult {
   if (!isRecord(value) || typeof value.noise !== 'boolean' || !Array.isArray(value.items) || value.items.length > 3) throw new Error('识别结构无效')
   if (value.relevance != null && !['relevant', 'irrelevant', 'uncertain'].includes(String(value.relevance))) throw new Error('相关性判断无效')
+  if (value.needsReview != null && typeof value.needsReview !== 'boolean') throw new Error('识别结构无效：needsReview 必须为布尔值')
   if (value.relevance === 'irrelevant' && (!value.noise || value.items.length)) throw new Error('无关判断与事项结果冲突')
   for (const item of value.items) {
     if (!isRecord(item) || typeof item.title !== 'string' || !item.title.trim() || typeof item.needsReply !== 'boolean' || typeof item.needsAction !== 'boolean') throw new Error('识别事项字段无效')

@@ -53,6 +53,7 @@ function invalid(sourceId:string,summary:string,reason:string):BackgroundRecogni
 function recognized(sourceId:string,analysis:any,sourceText=''):BackgroundRecognitionItem {
     if(!analysis||typeof analysis.noise!=='boolean'||!Array.isArray(analysis.items)||analysis.items.length>3)return invalid(sourceId,cut(sourceText),'识别结构无效：需要 noise 和最多 3 个 items。')
     if(analysis.items.some((item:any)=>!item||typeof item.title!=='string'||!item.title.trim()||typeof item.needsAction!=='boolean'||typeof item.needsReply!=='boolean'))return invalid(sourceId,cut(sourceText),'事项缺少标题、是否需待办或是否需回复的有效判断。')
+    if(analysis.needsReview===true)return {sourceId,summary:cut(analysis.summary)||cut(sourceText),instructions:['需要人工确认，可核对原消息后重试本条'],status:'recognized',reason:cut(analysis.reviewReason)||'AI 无法可靠判断本条消息'}
     const instructions:string[]=[]
     if(analysis.noise)instructions.push('无需处理（AI 判定无待办或回复义务）')
     else for(const item of analysis.items){

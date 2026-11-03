@@ -7,6 +7,7 @@ import { messageSkipReason, skipHistoricalMessages } from '../domain/message-pol
 import { captureModelUsage, AiBudgetError } from '../assistant/usage.js'
 import { selectRelatedItems } from './context-selection.js'
 import { selectQueueEntries, effectiveBatchSize } from './queue-policy.js'
+import {sourceEvidence,rejectedEvidence,isRecognitionError,markRecognitionReview,recoverRecognitionReviews} from './recognition-review.js'
 import { assertAnalysisShape } from '../../shared/contracts.js'
 import { EVENT_TYPES, auditEntry, ensureArray, normalizeHumanGuard, normalizeReplies } from '../domain/model.js'
 import { asIso, asString, hostNowIso, newId, createHash, runtimeCheckpoint, RuntimeInterruptedError, isRuntimeInterrupted } from '../platform/runtime.js'
@@ -57,6 +58,7 @@ function analysisScope(state?: any, source?: any): any {
     // their unselected raw chat messages never return as model context.
     const businessSources=new Set(ensureArray(state.sources).filter((row:any)=>row.id===source.id||!!loc.groupId&&row.locator?.groupId===loc.groupId&&(row.locator?.accountId||null)===(loc.accountId||null)&&(row.projectId||null)===(source.projectId||null)).map((row:any)=>row.id));
     return {
+        quoted: loc.replyToMsgId ? ensureArray(state.sources).find((row:any)=>sourceIds.has(row.id) && row.locator?.msgId===loc.replyToMsgId && row.id!==source.id && Date.parse(row.locator?.sentAt||row.fetchedAt)<=Date.parse(loc.sentAt||source.fetchedAt)) || null : null,
         tasks: ensureArray(state.tasks).filter(function (row?: any): any {
             return businessSources.has(row.sourceRefId) || ensureArray(row.sourceRefs).some(function (ref?: any): any { return businessSources.has(ref.sourceId); });
         }),
@@ -84,6 +86,8 @@ function analysisRules():string {
         '当前消息有 replyToMsgId，且被引用消息已有待回复时，必须给出该 relatedReplyId 和明确 replyStage，不能只关联 Task。收到/好的为已确认收到；无答复进展仍为待答复；Task 是否完成继续独立判断。',
         '不要仅凭相似标题合并；已有对象 ID 必须来自上面的同会话列表。日期/地点/登记对象未知留 null，禁止猜测会议时长。',
         'evidence 必须逐字复制当前消息原文，可直接复制全文，保留标点和书名括号，不改写、不拼接其它消息、不加省略号。',
+        'replyContext 为当前消息明确引用的原消息，仅用于理解，不可充当当前消息的 evidence。status=missing 表示未找到引用原文。不得根据会话历史猜测引用内容。',
+        '无法确定消息含义、处理对象或引用原文缺失影响判断时，返回 needsReview=true、reviewReason=具体原因，noise=false、items=[]；不要编造事项或直接当作无事可做。能可靠判断时 needsReview=false。',
         'eventType=logging 时，registrationTarget 填写原文明确给出的登记系统或表单（例如功能登记表）；eventType=meeting 时，将明确的日期、时间、地点分别填入会议字段。',
         '事项类型：开发、实现功能、代码交付用 feature；登记、填报用 logging；开会、参会用 meeting；其它实际处理用 other。不要把单纯回复进度归为开发任务。',
     ].join('\n');
@@ -95,6 +99,7 @@ function analysisPrompt(source?: any, scope?: any): any {
         '原消息时间：' + (loc.sentAt || source.fetchedAt) + '；时区：Asia/Shanghai。相对日期只能以原消息时间为基准。',
         '方向：' + (loc.direction || 'inbound') + '；可新建事项：' + (loc.intake !== false),
         '当前消息：' + JSON.stringify({ msgId: loc.msgId, replyToMsgId: loc.replyToMsgId, text: source.excerpt || source.title }),
+        '引用原文：' + JSON.stringify(scope.quoted ? sourceMessage(scope.quoted) : null),
         '双方上下文：' + JSON.stringify(scope.context.map(function (row?: any): any { return { msgId: row.locator && row.locator.msgId, direction: row.locator && row.locator.direction, at: row.fetchedAt, text: String(row.excerpt || '').slice(0, 600) }; })),
         '同会话已有待办：' + JSON.stringify(scope.tasks.slice(-20).map(function (row?: any): any { return { id: row.id, title: row.title, status: row.status }; })),
         '同会话已有待回复：' + JSON.stringify(scope.replies.slice(-20).map(function (row?: any): any { return { id: row.id, msgId: row.msgId, text: row.snippet, stage: row.stage }; })),
@@ -126,9 +131,11 @@ function validateAnalysis(parsed?: any, source?: any, scope?: any): any {
             throw new Error('模型关联了会话范围外的任务');
         if (item.relatedReplyId && !scope.replies.some(function (row?: any): any { return row.id === item.relatedReplyId; }))
             throw new Error('模型关联了会话范围外的回复');
-        if (item.evidence && !String(source.excerpt || '').includes(String(item.evidence)))
+        const evidence = item.evidence ? sourceEvidence(String(source.excerpt || source.title || ''), item.evidence) : null;
+        if (item.evidence && !evidence)
             throw new Error('识别依据不在原消息中');
         const out = Object.assign({}, item, { title: asString(item.title, 200), eventType: EVENT_TYPES.includes(item.eventType) ? item.eventType : null });
+        if (evidence) out.evidence = evidence;
         const stages:Record<string,string> = {'待回复':'待答复','待答复':'待答复','已确认收到':'已确认收到','已回复':'已实质答复','已实质答复':'已实质答复','不需回复':'不需答复','不需答复':'不需答复'};
         if (item.replyStage != null && !stages[item.replyStage]) throw new Error('回复阶段无法识别');
         out.replyStage = item.replyStage == null ? null : stages[item.replyStage];
@@ -154,7 +161,10 @@ function validateAnalysis(parsed?: any, source?: any, scope?: any): any {
     });
     const referenced = source.locator?.direction === 'outbound' && source.locator.replyToMsgId && scope.replies.find((reply:any)=>reply.msgId===source.locator.replyToMsgId && ['待回复','已确认收到','已自动回复'].includes(reply.stage));
     if (!parsed.noise && referenced && !items.some((item:any)=>(item.relatedReplyId===referenced.id || item.replyToMsgId===referenced.msgId) && item.replyStage)) throw new Error('引用了待回复消息，但未判定回复阶段，请重新识别');
-    return { noise: parsed.noise, relevance: parsed.relevance || null, summary: asString(parsed.summary, 400), items: parsed.noise ? [] : items };
+    const vague = String(source.excerpt || source.title || '').replace(/@\S+/g,'').replace(/[\s。！!？?]/g,'');
+    const missingQuote = source.locator?.replyToMsgId && !scope.quoted && /^(?:(?:你|您|大家|麻烦|请|帮忙|帮我|麻烦你))*(?:看下|看一下|看看|处理一下|处理下|确认下|确认一下|跟进下|跟进一下|这个|这个问题)$/.test(vague);
+    return { noise: parsed.noise, relevance: parsed.relevance || null, summary: asString(parsed.summary, 400), items: parsed.noise ? [] : items,
+        needsReview: parsed.needsReview===true || !!missingQuote, reviewReason: missingQuote?'未找到被引用的原消息，当前消息不足以确定具体事项；请补充上下文后重试本条':parsed.needsReview===true?asString(parsed.reviewReason,200)||'AI 无法可靠判断，请核对原消息后重试本条':null };
 }
 function findTaskBySourceRef(state?: any, sourceId?: any): any {
     return ensureArray(state.tasks).find(function (task?: any): any { return task.sourceRefId === sourceId || ensureArray(task.sourceRefs).some(function (ref?: any): any { return ref.sourceId === sourceId; }); }) || null;
@@ -328,9 +338,9 @@ function conversationKey(source:any):string {
     const loc=source.locator || {};
     return createHash('sha256').update(JSON.stringify([loc.accountId || '__local',loc.groupId || source.provider || '__local',source.projectId || null])).digest('hex');
 }
-function sourceMessage(source:any):any {
+function sourceMessage(source:any,scope?:any):any {
     const loc=source.locator || {};
-    return {sourceId:source.id,msgId:loc.msgId || null,replyToMsgId:loc.replyToMsgId || null,direction:loc.direction || 'inbound',intake:loc.intake!==false,selectionReasons:source.selection?.reasons||[],conversationType:loc.groupType||null,at:loc.sentAt || source.fetchedAt,text:source.excerpt || source.title};
+    return {sourceId:source.id,msgId:loc.msgId || null,replyToMsgId:loc.replyToMsgId || null,...(scope&&loc.replyToMsgId?{replyContext:scope.quoted?{status:'available',...sourceMessage(scope.quoted)}:{status:'missing',msgId:loc.replyToMsgId}}:{}),direction:loc.direction || 'inbound',intake:loc.intake!==false,selectionReasons:source.selection?.reasons||[],conversationType:loc.groupType||null,at:loc.sentAt || source.fetchedAt,text:source.excerpt || source.title};
 }
 function compactionSeq(session:any):number {
     return Math.max(0,...(session?.snapshotEvents?.() || []).filter((event:any)=>event.type==='compaction/end').map((event:any)=>Number(event.seq)||0));
@@ -365,7 +375,8 @@ export function buildAnalysisPacket(state:any,sources:any[],session:any,batchId:
         for(const row of context)sent[row.id]=sourceFingerprint(row);
         return {key,tasks:selectRelatedItems<any>(scope.tasks,rows,state.sources).map((row:any)=>({id:row.id,title:row.title,status:row.status,dueAt:row.dueAt || null})),replies:selectRelatedItems<any>(scope.replies,rows,state.sources).map((row:any)=>({id:row.id,msgId:row.msgId,stage:row.stage,taskIds:row.taskIds,text:row.snippet})),contextDelta:context.map((row:any)=>({...sourceMessage(row),text:String(row.excerpt || row.title).slice(0,600)}))};
     });
-    const payload={protocol:ANALYSIS_BATCH_PROTOCOL,batchId,hostRevision:state.revision,allowNewTasks:state.settings.aiExtract.autoRegister,conversations,messages:sources.map(source=>({...sourceMessage(source),conversation:conversationKey(source),needsHistoricalReview:!!historicalReviewReason(state,source)}))};
+    const messages=sources.map(source=>{const scope=analysisScope(state,source);if(scope.quoted)sent[scope.quoted.id]=sourceFingerprint(scope.quoted);return {...sourceMessage(source,scope),conversation:conversationKey(source),needsHistoricalReview:!!historicalReviewReason(state,source)}});
+    const payload={protocol:ANALYSIS_BATCH_PROTOCOL,batchId,hostRevision:state.revision,allowNewTasks:state.settings.aiExtract.autoRegister,conversations,messages};
     const data=JSON.stringify(payload);
     return {text:(includeRules?batchAnalysisRules()+'\n':'')+data,payload,sent,includeRules,compacted,contextCount:conversations.reduce((n,row)=>n+row.contextDelta.length,0)};
 }
@@ -404,7 +415,7 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
     if(typeof controller?.prompt!=='function')return {status:'unavailable',processed:0,failures:0,note:'宿主没有模型会话控制服务'};
     analysisBatchInFlight=true;
     const assertCurrent=workbenchGenerationGuard(),claimed=new Set<string>();
-    let processed=0,failures=0,interrupted=false,deferred:any=null,runStatus='ok';
+    let processed=0,failures=0,reviewed=0,interrupted=false,deferred:any=null,runStatus='ok';
     const startedAt=Date.now();
     const metrics={inputCount:0,modelCalls:0,promptChars:0,ruleInitializations:0,contextMessages:0,batches:0,reusedBatches:0};
     try {
@@ -413,6 +424,8 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
         let entries:any[]=[];
         await mutateWorkbenchState((state:any)=>{
             skipHistoricalMessages(state);
+            const recovered=recoverRecognitionReviews({analysisQueue:state.analysisQueue.filter((row:any)=>!onlyIds.size||onlyIds.has(row.id)||onlyIds.has(row.sourceId))},hostNowIso(),request?.analysisJobId);
+            reviewed+=recovered;processed+=recovered;
             if(!onlyIds.size)for(const row of state.analysisQueue){
                 if(row.status!=='pending')continue;
                 const source=state.sources.find((source:any)=>source.id===row.sourceId),reason=source && historicalReviewReason(state,source);
@@ -427,7 +440,7 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
             return state;
         });
         metrics.inputCount=entries.length;
-        if(entries.length)await begin();
+        if(entries.length||reviewed)await begin();
         if(!entries.length&&onlyIds.size&&loadWorkbenchState().analysisQueue.some((row:any)=>onlyIds.has(row.id)&&['pending','failed'].includes(row.status))) {runStatus='deferred';return {status:'deferred',processed:0,failures:0,...metrics,retryAt:new Date(Date.now()+60000).toISOString(),note:'指定消息仍在会话补采或重试等待中，保留作业，下一轮继续核对'};}
         let remaining=entries.slice();
         while(remaining.length && loadWorkbenchState().settings.aiExtract.enabled){
@@ -445,12 +458,12 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
             let packet=buildAnalysisPacket(loadWorkbenchState(),sources,session,batchId);
             while(chunk.length>1 && packet.text.length>ANALYSIS_PACKET_CHARS){chunk=chunk.slice(0,-1);sources=sources.slice(0,-1);packet=buildAnalysisPacket(loadWorkbenchState(),sources,session,batchId)}
             const ids=new Set(chunk.map(entry=>entry.id));remaining=remaining.filter(entry=>!ids.has(entry.id));
-            const generation=runtimeCheckpoint();let usedSession=session;
-            const call=async(input:any)=>{
+            const generation=runtimeCheckpoint();let usedSession=session,replacementPacket:any=null;
+            const call=async(input:any,targets=sources)=>{
                 metrics.modelCalls++;metrics.promptChars+=input.text.length;metrics.ruleInitializations+=input.includeRules?1:0;metrics.contextMessages+=input.contextCount;
-                const recovery=buildAnalysisPacket(loadWorkbenchState(),sources,session,batchId,true);
-                const parsed=await waitStructuredReply(ctx,controller,usedSession,input.text,Math.min(180000,ANALYSIS_TURN_TIMEOUT_MS+(sources.length-1)*5000),'analysis',{hubRunId:request?.analysisJobId,backgroundKey:session.workbenchThreadKey,recoveryText:recovery.text,onSubmitted:(value,recovered)=>{usedSession=value;if(recovered){metrics.modelCalls++;metrics.promptChars+=recovery.text.length;metrics.ruleInitializations++;metrics.contextMessages+=recovery.contextCount;packet=recovery}}});
-                return decodeAnalysisBatch(parsed,batchId,sources);
+                const recovery=buildAnalysisPacket(loadWorkbenchState(),targets,usedSession,input.payload.batchId,true);
+                const parsed=await waitStructuredReply(ctx,controller,usedSession,input.text,Math.min(180000,ANALYSIS_TURN_TIMEOUT_MS+(targets.length-1)*5000),'analysis',{hubRunId:request?.analysisJobId,backgroundKey:session.workbenchThreadKey,recoveryText:recovery.text,onSubmitted:(value,recovered)=>{usedSession=value;if(recovered){metrics.modelCalls++;metrics.promptChars+=recovery.text.length;metrics.ruleInitializations++;metrics.contextMessages+=recovery.contextCount;if(targets===sources)packet=recovery;else replacementPacket=recovery}}});
+                return decodeAnalysisBatch(parsed,input.payload.batchId,targets);
             };
             try {
                 let results:Map<string,any>;
@@ -462,49 +475,78 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
                     results=await call(packet); // One bounded protocol repair, on the same session.
                 }
                 assertCurrent();await resetModelHealth('analysis');
+                // Correct only evidence mismatches once, in this same native session.
+                // Successful neighbours never re-enter the model or get committed twice.
+                const correctionSources=sources.filter(source=>rejectedEvidence(results.get(source.id),source).length>0);
+                if(correctionSources.length){
+                    const repair=buildAnalysisPacket(current,correctionSources,usedSession,newId('batch'),true);
+                    const corrections=correctionSources.map(source=>({sourceId:source.id,reason:'识别依据不在原消息中；evidence 只能逐字引用本条 text，不能引用上下文或改写。无法判断则 needsReview=true。',rejectedEvidence:rejectedEvidence(results.get(source.id),source)}));
+                    repair.payload={...repair.payload,corrections};
+                    repair.text=batchAnalysisRules()+'\n'+JSON.stringify(repair.payload);
+                    try{const corrected=await call(repair,correctionSources);for(const [id,value] of corrected)results.set(id,value)}
+                    catch(error){
+                        if(isRuntimeInterrupted(error)||runtimeCheckpoint()!==generation||error?.code==='WORKBENCH_BACKGROUND_BUSY')throw error;
+                        if(isModelServiceFailure(error))deferred=await recordModelFailure('analysis',error);
+                        // Preserve original rejected output for review, never accept it.
+                    }
+                }
                 metrics.batches++;metrics.reusedBatches+=packet.includeRules?0:1;
                 await mutateWorkbenchState((state:any)=>{
                     const links=new Map<string,any>();
                     for(const entry of chunk){
                         const row=state.analysisQueue.find((row:any)=>row.id===entry.id),source=state.sources.find((source:any)=>source.id===entry.sourceId);
                         if(!row||row.status!=='running'||!source)continue;
-                        if(sourceFingerprint(source)!==packet.sent[source.id]){Object.assign(row,{status:'pending',leaseUntil:null,lastError:'消息内容已变化，等待重新识别'});continue;}
+                        const scope=analysisScope(state,source),sentQuote=packet.payload.messages.find((message:any)=>message.sourceId===source.id)?.replyContext;
+                        const quoteChanged=source.locator?.replyToMsgId && (sentQuote?.sourceId!==scope.quoted?.id || scope.quoted && sourceFingerprint(scope.quoted)!==packet.sent[scope.quoted.id]);
+                        if(sourceFingerprint(source)!==packet.sent[source.id]||quoteChanged){Object.assign(row,{status:'pending',leaseUntil:null,lastError:'消息或引用内容已变化，等待重新识别'});continue;}
                         try{
                             if(!results.has(source.id))throw Error('本批未返回该消息的识别结果');
                             const resolved=resolveBatchReferences(results.get(source.id),source,links);
-                            const analysis=validateAnalysis(resolved,source,analysisScope(state,source));
+                            const analysis=validateAnalysis(resolved,source,scope);
+                            if(analysis.needsReview){markRecognitionReview(row,analysis.reviewReason,hostNowIso(),request?.analysisJobId,resolved);reviewed++;processed++;auditEntry(state,'analysis.review',source.id+'：'+row.reviewReason);continue;}
                             const merged=mergeAnalysisIntoState(state,row,analysis);
                             const contextOnly=source.locator?.intake===false||source.locator?.direction==='outbound';
                             const pending=merged.requiresReview || !contextOnly&&canCreateMessageTask(source)&&analysis.items.some((item:any)=>item.needsAction)&&!merged.created.length&&!merged.updated.length;
-                            Object.assign(row,{status:pending?'awaiting_human':'done',reviewReason:merged.reviewReason,analysis,analyzedAt:hostNowIso(),leaseUntil:null,lastError:null,taskIds:merged.created.concat(merged.updated).map((task:any)=>task.id)});
+                            Object.assign(row,{status:pending?'awaiting_human':'done',reviewKind:null,rejectedEvidence:[],reviewReason:merged.reviewReason,analysis,analyzedAt:hostNowIso(),leaseUntil:null,nextRetryAt:null,lastError:null,taskIds:merged.created.concat(merged.updated).map((task:any)=>task.id)});
                             if(request?.analysisJobId)row.analysisJobId=request.analysisJobId;
                             merged.itemLinks.forEach((link:any,index:number)=>links.set(source.id+':'+index,{...link,conversation:conversationKey(source)}));
                             processed++;auditEntry(state,'analysis.run',source.id+'：待办 '+merged.created.length+'，回复 '+merged.createdReplies.length);
-                        }catch(error){failures++;const attempts=row.attempts||0;Object.assign(row,{status:'failed',attempts:attempts+1,leaseUntil:null,lastError:String(error?.message||error).slice(0,200),nextRetryAt:new Date(Date.now()+2**attempts*60000).toISOString()})}
+                        }catch(error){
+                            row.attempts=(row.attempts||0)+1;
+                            if(isRecognitionError(error)){markRecognitionReview(row,String(error.message||error),hostNowIso(),request?.analysisJobId,results.get(source.id));reviewed++;processed++;auditEntry(state,'analysis.review',source.id+'：'+row.reviewReason)}
+                            else {failures++;Object.assign(row,{status:'failed',leaseUntil:null,lastError:String(error?.message||error).slice(0,200),nextRetryAt:new Date(Date.now()+2**(row.attempts-1)*60000).toISOString()})}
+                        }
                     }
                     const thread=state.backgroundThreads?.[session.workbenchThreadKey];
                     if(thread?.sessionId===usedSession.id){
+                        const remembered=replacementPacket||packet;
                         const compacted=compactionSeq(usedSession);
-                        thread.protocol=packet.includeRules || compacted<=packet.compacted ? ANALYSIS_BATCH_PROTOCOL : null;
+                        thread.protocol=remembered.includeRules || compacted<=remembered.compacted ? ANALYSIS_BATCH_PROTOCOL : null;
                         thread.rulesHash=thread.protocol?ANALYSIS_RULES_HASH:null;
                         thread.compactionSeq=compacted;
-                        thread.seen=Object.fromEntries(Object.entries({...thread.seen,...packet.sent}).slice(-256));
+                        thread.seen=Object.fromEntries(Object.entries({...thread.seen,...remembered.sent}).slice(-256));
                     }
                     return state;
                 });
+                if(deferred)break;
             }catch(error){
                 if(isRuntimeInterrupted(error)||runtimeCheckpoint()!==generation){interrupted=true;break;}
                 if(isModelServiceFailure(error)){deferred=await recordModelFailure('analysis',error);break;}
                 if(error?.code==='WORKBENCH_BACKGROUND_BUSY')throw error;
                 await mutateWorkbenchState((state:any)=>{
-                    for(const entry of chunk){const row=state.analysisQueue.find((row:any)=>row.id===entry.id);if(row?.status!=='running')continue;const attempts=row.attempts||0;failures++;Object.assign(row,{status:'failed',attempts:attempts+1,leaseUntil:null,lastError:String(error?.message||error).slice(0,200),nextRetryAt:new Date(Date.now()+2**attempts*60000).toISOString()})}
+                    for(const entry of chunk){
+                        const row=state.analysisQueue.find((row:any)=>row.id===entry.id);if(row?.status!=='running')continue;
+                        const attempts=row.attempts||0;row.attempts=attempts+1;
+                        if(isRecognitionError(error)||row.attempts>=3&&/模型处理超时/.test(String(error?.message||error))){markRecognitionReview(row,String(error.message||error),hostNowIso(),request?.analysisJobId);reviewed++;processed++;auditEntry(state,'analysis.review',row.sourceId+'：'+row.reviewReason)}
+                        else {failures++;Object.assign(row,{status:'failed',leaseUntil:null,lastError:String(error?.message||error).slice(0,200),nextRetryAt:new Date(Date.now()+2**attempts*60000).toISOString()})}
+                    }
                     const thread=state.backgroundThreads?.[session.workbenchThreadKey];if(thread){thread.protocol=null;thread.seen={}}
                     return state;
                 });
             }
         }
         runStatus=deferred?'deferred':interrupted?'interrupted':failures?'partial':'ok';
-        return {...(deferred || {}),status:runStatus,processed,failures,...metrics,note:deferred?.note || (interrupted?'运行恢复后将自动重试未完成条目，不计入失败次数':undefined)};
+        return {...(deferred || {}),status:runStatus,processed,failures,reviewed,...metrics,note:deferred?.note || (interrupted?'运行恢复后将自动重试未完成条目，不计入失败次数':reviewed?reviewed+' 条消息需人工确认，其余消息继续处理':undefined)};
     }catch(error){
         if(error?.code==='WORKBENCH_BACKGROUND_BUSY'){runStatus='busy';return {status:'busy',processed,failures,...metrics,note:error.message}}
         if(isModelServiceFailure(error)){runStatus='deferred';return {...await recordModelFailure('analysis',error),processed,failures,...metrics}}
@@ -512,7 +554,7 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
     }finally{
         try{assertCurrent();if(claimed.size)await mutateWorkbenchState((state:any)=>{
             for(const row of state.analysisQueue)if(claimed.has(row.id)&&row.status==='running')Object.assign(row,{status:'pending',leaseUntil:null});
-            state.lastAnalysisBatch={durationMs:Date.now()-startedAt,at:hostNowIso(),status:runStatus,processed,failures,...metrics};return state;
+            state.lastAnalysisBatch={durationMs:Date.now()-startedAt,at:hostNowIso(),status:runStatus,processed,failures,reviewed,...metrics};return state;
         })}finally{analysisBatchInFlight=false}
     }
 }
@@ -521,12 +563,14 @@ async function confirmAnalysis(ctx?: any, entryId?: any): Promise<any> {
         const entry = ensureArray(state.analysisQueue).find(function (row?: any): any { return row.id === entryId; });
         if (!entry || !entry.analysis)
             throw new Error('找不到已分析条目');
+        if(entry.reviewKind==='recognition')throw new Error('本条尚无可靠识别结果，请补充上下文后重试本条，不能直接确认建档');
         if (entry.status === 'done')
             return state;
         const source = state.sources.find(function (row?: any): any { return row.id === entry.sourceId; });
         const skipReason = messageSkipReason(state,source,entry);
         if (skipReason) throw new Error(skipReason);
         const analysis = validateAnalysis(entry.analysis, source, analysisScope(state, source));
+        if(analysis.needsReview)throw new Error(analysis.reviewReason);
         const merged = mergeAnalysisIntoState(state, entry, analysis, { forceCreate: true });
         Object.assign(entry, { status: 'done', reviewReason:null, taskIds: merged.created.concat(merged.updated).map(function (row?: any): any { return row.id; }), leaseUntil: null });
         auditEntry(state, 'analysis.confirmed', entry.sourceId);

@@ -124,6 +124,10 @@ edit('apps/desktop/src/browser-guests.ts',text=>{
             .catch((_error: unknown) => { console.error('desktop browser: persistent storage flush failed') })
         })`)
  text=replace(text,'this.allowedNavigation(url)) {','this.allowedNavigation(url, lease.persistent)) {')
+ text=replace(text,'        return { action: \'deny\' }',`        if (attachedLease !== undefined && lease?.guest === guest && lease.owner === owner && !owner.isDestroyed() && postBody !== undefined) {
+          lease.persistent?.reportBlockedNavigation?.(url, 'popup_post')
+        }
+        return { action: 'deny' }`)
  text=replace(text,'this.allowedNavigation(event.url)) event.preventDefault()','this.allowedNavigation(event.url, attachedLease === undefined ? undefined : this.leases.get(attachedLease)?.persistent)) event.preventDefault()')
  text=replace(text,'this.allowedNavigation(url)) event.preventDefault()','this.allowedNavigation(url, attachedLease === undefined ? undefined : this.leases.get(attachedLease)?.persistent)) event.preventDefault()')
  text=replace(text,'private configureSession(browserSession: Session): void','private configureSession(browserSession: Session, account?: PersistentBrowserAccount): void')
@@ -158,7 +162,12 @@ export interface DesktopPersistentBrowserReservation extends DesktopBrowserReser
 })
 edit('apps/desktop/src/main.ts',text=>{
  text=replace(text,"import { DesktopBrowserGuests } from './browser-guests.ts'","import { DesktopBrowserGuests } from './browser-guests.ts'\nimport { DesktopBrowserPersistence } from './browser-persistence.ts'\nimport { workbenchBrowserPolicy } from './workbench-browser-policy.ts'")
- text=replace(text,'new DesktopBrowserGuests(() => hostUrl)','new DesktopBrowserGuests(() => hostUrl, new DesktopBrowserPersistence(paths.profile, [workbenchBrowserPolicy]))')
+ text=replace(text,'  const browserGuests = new DesktopBrowserGuests(() => hostUrl)',`  let browserNavigationLog = Promise.resolve()
+  const browserGuests = new DesktopBrowserGuests(() => hostUrl, new DesktopBrowserPersistence(paths.profile, [workbenchBrowserPolicy], entry => {
+    if (entry.providerId !== 'chatgpt') return
+    const diagnostic = JSON.stringify({ at: new Date().toISOString(), ...entry })
+    browserNavigationLog = browserNavigationLog.then(() => writeFile(join(app.getPath('logs'), 'workbench-browser-navigation.json'), diagnostic, { mode: 0o600 })).catch(() => undefined)
+  }))`)
  text=replace(text,'  ipcMain.handle(DESKTOP_IPC.browserRelease,',`  ipcMain.handle(DESKTOP_IPC.browserAcquirePersistent, (event, request: unknown) => {
     assertProductSender(event)
     return browserGuests.acquirePersistent(event.sender, request)

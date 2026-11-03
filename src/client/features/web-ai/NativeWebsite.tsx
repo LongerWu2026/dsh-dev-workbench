@@ -1,10 +1,11 @@
 import * as React from 'react'
 import {WB,Btn} from '../../core/runtime.js'
-import {webAIConversationUrl,webAIProvider} from '../../../shared/web-ai.js'
+import {webAIConversationUrl,webAINavigationUrl,webAIProvider} from '../../../shared/web-ai.js'
 import {webAIUploadScript} from '../../../shared/web-ai-upload.js'
 import type {WebAIFile} from '../../../shared/web-ai-attachments.js'
 import {webAIPageScript} from '../../../shared/web-ai-page.js'
 import {webAIAuthScript,type WebAIAuthentication} from '../../../shared/web-ai-auth.js'
+import {webAIAuthInspectionScript} from '../../../shared/web-ai-auth-inspection.js'
 import {authenticationSummary} from './authentication.js'
 import {acquireWebsiteSession,browserSessionMode,browserSessionMessage,nativeWebAIBridge,type BrowserLease,type BrowserSessionMode} from './browser-session.js'
 export {nativeWebAIBridge} from './browser-session.js'
@@ -18,15 +19,22 @@ export function NativeWebsite({providerId,scope,url,visible,onController,onNavig
  const navigation=React.useRef(onNavigate);navigation.current=onNavigate
  const authentication=React.useRef(onAuthentication);authentication.current=onAuthentication
  const authRevision=React.useRef(0)
+ const authFlight=React.useRef<{node:Guest;version:number;promise:Promise<WebAIAuthentication>}|null>(null)
  target.current=url
- const checkAuthentication=React.useCallback(async()=>{
-  const node=guest.current,version=documentVersion.current,revision=++authRevision.current
-  if(!mounted.current||!node||!ready.current)return authenticationSummary(null)
-  let timer:ReturnType<typeof setTimeout>|undefined,result=authenticationSummary(null)
-  try{result=authenticationSummary(await Promise.race([node.executeJavaScript(webAIAuthScript(providerId),false),new Promise(resolve=>{timer=setTimeout(()=>resolve(null),3000)})]))}catch{}finally{clearTimeout(timer)}
-  if(!mounted.current||version!==documentVersion.current)return authenticationSummary(null)
-  if(revision===authRevision.current)authentication.current?.(result)
-  return result
+ const checkAuthentication=React.useCallback(()=>{
+  const node=guest.current,version=documentVersion.current
+  if(!mounted.current||!node||!ready.current)return Promise.resolve(authenticationSummary(null))
+  if(authFlight.current?.node===node&&authFlight.current.version===version)return authFlight.current.promise
+  const revision=++authRevision.current
+  const run=async()=>{
+   let timer:ReturnType<typeof setTimeout>|undefined,result=authenticationSummary(null)
+   try{result=authenticationSummary(await Promise.race([node.executeJavaScript(webAIAuthScript(providerId),false),new Promise(resolve=>{timer=setTimeout(()=>resolve(null),3000)})]))}catch{}finally{clearTimeout(timer)}
+   if(!mounted.current||version!==documentVersion.current)return authenticationSummary(null)
+   if(revision===authRevision.current)authentication.current?.(result)
+   return result
+  }
+  const promise=run().finally(()=>{if(authFlight.current?.promise===promise)authFlight.current=null})
+  authFlight.current={node,version,promise};return promise
  },[providerId])
  const controller=React.useMemo<WebsiteController>(()=>({
   authentication:checkAuthentication,
@@ -45,7 +53,7 @@ export function NativeWebsite({providerId,scope,url,visible,onController,onNavig
     if(auth.status==='needs_login'||auth.status==='verification')return {status:'needs_login',note:auth.note}
    }
    const version=documentVersion.current;let timer:ReturnType<typeof setTimeout>|undefined
-   try{const result=await Promise.race([node.executeJavaScript(webAIPageScript(providerId,action,question,requestId,ownedAttachmentSignature.current),action==='prepare'||action==='submit'),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('官网操作超时，请核对页面；不会自动重发')),10000)})]);if(!mounted.current||version!==documentVersion.current&&!(action==='submit'&&result?.status==='generating'))throw new Error('官网页面已变化，请核对本轮是否已发送');return result}finally{clearTimeout(timer)}
+   try{const result=await Promise.race([node.executeJavaScript(webAIPageScript(providerId,action,question,requestId,ownedAttachmentSignature.current),action==='prepare'||action==='submit'),new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('官网操作超时，请核对页面；不会自动重发')),10000)})]);if(!mounted.current||version!==documentVersion.current&&!(action==='submit'&&result?.status==='generating'))throw new Error('官网页面已变化，请核对本轮是否已发送');if(action==='inspect'){let inspectionTimer:ReturnType<typeof setTimeout>|undefined;try{result.diagnostics={...result.diagnostics,authentication:await Promise.race([node.executeJavaScript(webAIAuthInspectionScript(providerId),false),new Promise(resolve=>{inspectionTimer=setTimeout(()=>resolve({unavailable:true}),2000)})])}}finally{clearTimeout(inspectionTimer)}if(!mounted.current||version!==documentVersion.current)throw new Error('官网页面已变化，请重新检查')}return result}finally{clearTimeout(timer)}
   },
   async attach(files,question,requestId,signal){
    if(signal.aborted)throw new Error('附件处理已停止；请在官网核对，不会自动重传')
@@ -97,10 +105,12 @@ export function NativeWebsite({providerId,scope,url,visible,onController,onNavig
   const domReady=()=>{if(disposed)return;if(initial){initial=false;void node.loadURL(target.current).catch(()=>{if(!disposed){setLoading(false);setError('官网加载失败，请重试。')}});return}ready.current=true;setLoading(false);setError('');onController(controller);reportNavigation();void checkAuthentication()}
   const failed=(event:any)=>{if(event.errorCode===-3||event.isMainFrame===false)return;ready.current=false;documentVersion.current++;authentication.current?.(authenticationSummary(null));setLoading(false);setError('官网暂时无法加载，请检查网络或稍后重试。')}
   const inPage=()=>{documentVersion.current++;authRevision.current++;authentication.current?.(authenticationSummary(null));reportNavigation();void checkAuthentication()}
+  const stopped=()=>{if(disposed||initial||!webAINavigationUrl(providerId,node.getURL()))return;ready.current=true;setLoading(false);onController(controller);void checkAuthentication()}
   node.addEventListener('did-start-navigation',navigationStarted);node.addEventListener('dom-ready',domReady);node.addEventListener('did-fail-load',failed)
   node.addEventListener('did-navigate-in-page',inPage)
-  const off=bridge.onOpenRequested(lease.lease,next=>{if(webAIConversationUrl(providerId,next))void node.loadURL(next).catch(()=>{});else WB.toast('该登录跳转尚未适配内嵌，请保留当前页面；不会另开浏览器窗口','warn')})
-  return()=>{disposed=true;documentVersion.current++;authRevision.current++;onController(null);node.removeEventListener('did-start-navigation',navigationStarted);node.removeEventListener('dom-ready',domReady);node.removeEventListener('did-fail-load',failed);node.removeEventListener('did-navigate-in-page',inPage);off()}
+  node.addEventListener('did-stop-loading',stopped)
+  const off=bridge.onOpenRequested(lease.lease,next=>{const destination=webAINavigationUrl(providerId,next);if(destination)void node.loadURL(destination).catch(()=>{if(!disposed){setLoading(false);setError('登录页面跳转失败，请重试或检查网络。')}});else WB.toast('该登录跳转尚未适配内嵌，请保留当前页面；不会另开浏览器窗口','warn')})
+  return()=>{disposed=true;documentVersion.current++;authRevision.current++;onController(null);node.removeEventListener('did-start-navigation',navigationStarted);node.removeEventListener('dom-ready',domReady);node.removeEventListener('did-fail-load',failed);node.removeEventListener('did-navigate-in-page',inPage);node.removeEventListener('did-stop-loading',stopped);off()}
  },[lease,controller])
  React.useEffect(()=>{if(!visible||!lease)return;void checkAuthentication();const timer=setInterval(()=>{void checkAuthentication()},5000);return()=>clearInterval(timer)},[visible,lease,checkAuthentication])
  return <div className={'wb-website'+(!visible?' is-background-guest':'')} aria-hidden={!visible} {...(!visible?{inert:''}:{})}>

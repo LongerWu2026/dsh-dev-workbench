@@ -43,6 +43,9 @@ const wbStore = (function (): any {
         assistantOpenSeq: 0,
         /** 命令面板 → 搜索页的交接：{query, groups} */
         searchPreset: null,
+        searchOpen: false,
+        searchInitialQuery: '',
+        searchResult: null,
     };
     const listeners = new Set();
     return {
@@ -324,6 +327,8 @@ function settle(promise?: any, okText?: any): any {
 }
 
 const wbActions: any = {
+    knowledgeEngine(request:any){return wbRpc('workbench/knowledgeEngine',{request})},
+    knowledgeSpace(request:any){return wbRpc('workbench/knowledgeSpace',{request})},
     knowledgeRetrieve(request:any){return wbRpc('workbench/knowledgeRetrieve',{request})},
     knowledgeRead(request:any){return wbRpc('workbench/knowledgeRead',{request})},
     knowledgeTraces(request:any){return wbRpc('workbench/knowledgeTraces',{request})},
@@ -474,7 +479,7 @@ const wbActions: any = {
     /** Unified search. Returns {query, at, total, groups[]} — NOT a snapshot. */
     search(query?: any, options?: any): any {
         return wbRpc('workbench/search', {
-            request: { query: query, includeWeb: !options || options.includeWeb !== false, ...(options?.scope==='work'||options?.scope==='web'?{scope:options.scope}:{}) },
+            request: { query: query, includeWeb: !options || options.includeWeb !== false, ...(['local','work','web'].includes(options?.scope)?{scope:options.scope}:{}),...(options?.includeEnterprise===false?{includeEnterprise:false}:{}) },
         });
     },
     /** Read-only engineering environment: git status per project + docker ps. */
@@ -742,6 +747,8 @@ WB.setSearchPreset = function (preset?: any): any {
 WB.clearSearchPreset = function (): any {
     wbStore.set({ searchPreset: null });
 };
+WB.openSearch = function(query=''): any { wbStore.set({searchOpen:true,searchInitialQuery:query}); };
+WB.closeSearch = function(): any { wbStore.set({searchOpen:false}); };
 
 WB.toast = toast;
 

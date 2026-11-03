@@ -102,7 +102,7 @@ describe('统一助手真实业务入口',()=>{
  it('知识范围改变后查询、详情和操作均携带同一项目范围',async()=>{
   const {WB,calls}=setup({id:'system:knowledge'}),user=userEvent.setup();await screen.findByRole('textbox',{name:'助手消息'});await act(async()=>WB.store.set({assistantHubThreadId:'old-scope',data:{...WB.store.get().data,projects:[{id:'project-a',name:'项目甲'}]}}))
   await openMore(user);await user.click(screen.getByRole('button',{name:'知识设置'}));await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识项目'}),'project-a');await user.click(screen.getByRole('button',{name:'完成',exact:true}));await waitFor(()=>expect(calls.some(c=>c.action==='detail'&&c.knowledgeScope?.projectId==='project-a')).toBe(true))
-  await user.type(screen.getByRole('textbox',{name:'助手消息'}),'查找知识：部署');await user.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(calls.find(c=>c.action==='send')?.knowledgeScope).toEqual({projectId:'project-a'}));expect(calls.find(c=>c.action==='send')?.projectId).toBe('project-a');expect(WB.store.get().assistantHubThreadId).toBeNull();expect(calls.filter(c=>c.action==='detail'&&c.knowledgeScope?.projectId==='project-a').every(c=>!c.sessionId)).toBe(true)
+  await user.type(screen.getByRole('textbox',{name:'助手消息'}),'查找知识：部署');await user.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(calls.find(c=>c.action==='send')?.knowledgeScope).toEqual({projectId:'project-a',spaceId:'personal'}));expect(calls.find(c=>c.action==='send')?.projectId).toBe('project-a');expect(WB.store.get().assistantHubThreadId).toBeNull();expect(calls.filter(c=>c.action==='detail'&&c.knowledgeScope?.projectId==='project-a').every(c=>!c.sessionId)).toBe(true)
  })
 
  it('原生毫秒时间和业务ISO时间在同一时间线按真实顺序排列',async()=>{
@@ -527,4 +527,53 @@ it('完成意图在原研发会话展示真实状态，选择后修改并回读�
  await user.type(screen.getByLabelText('评审人员（必填）'),'明确指定的评审人');expect(screen.getByRole('button',{name:'修改为需求评审完成'}).disabled).toBe(true)
  await user.type(screen.getByLabelText('流转说明（必填）'),'用户明确提供的评审说明');await user.click(screen.getByRole('button',{name:'修改为需求评审完成'}))
  await screen.findByText('Linky：需求评审完成 · 执行：已暂停');expect(calls.filter(request=>request.operation==='development.issue.update').at(-1)).toMatchObject({patch:{status:'reviewed'},fields:{reviewer:'明确指定的评审人'},comment:'用户明确提供的评审说明'})
+})
+
+function deletionFixture(options={}){
+ let seeded=false
+ const temporary={id:'chat:temporary',kind:'chat',title:'临时讨论',canDelete:true,nativeBinding:{workspaceState:'unbound'}}
+ return setup({id:options.id||temporary.id,hub:(request,context)=>{
+  const {conversations,value}=context
+  if(!seeded){seeded=true;conversations.push(temporary,{id:'chat:project',kind:'chat',title:'工程对话',canDelete:false,nativeBinding:{workspaceState:'bound',workspaceTitle:'工程'}},{id:'chat:unknown',kind:'chat',title:'归属待确认',canDelete:false,nativeBinding:{workspaceState:'unavailable'}})}
+  const override=options.hub?.(request,context);if(override!==undefined)return override
+  if(request.action==='delete'){
+   if(options.failure)return {status:'error',note:options.failure}
+   conversations.splice(conversations.findIndex(row=>row.id===request.conversationId),1)
+   return {status:'ok',conversationId:request.conversationId,archived:true}
+  }
+  return value
+ }})
+}
+describe('只有临时会话支持确认后删除',()=>{
+ it('系统、事项、工程和归属未知会话无删除入口，取消确认不提交删除',async()=>{
+  const {calls}=deletionFixture(),user=userEvent.setup();await ready()
+  expect(screen.getAllByRole('button',{name:/删除临时会话：/})).toHaveLength(1)
+  await user.click(screen.getByRole('button',{name:'删除临时会话：临时讨论'}))
+  const dialog=screen.getByRole('dialog',{name:'删除临时会话'});expect(dialog.textContent).toContain('已归档会话')
+  expect(calls.some(request=>request.action==='delete')).toBe(false)
+  await user.click(within(dialog).getByRole('button',{name:'取消'}));expect(screen.queryByRole('dialog',{name:'删除临时会话'})).toBeNull()
+  expect(calls.some(request=>request.action==='delete')).toBe(false);expect(screen.getByRole('button',{name:'会话：临时讨论'})).toBeTruthy()
+ })
+ it('确认成功移除当前临时会话并回到固定入口，不新建原生会话',async()=>{
+  const {WB,calls}=deletionFixture(),user=userEvent.setup();await ready();await user.type(screen.getByRole('textbox',{name:'助手消息'}),'临时草稿')
+  await user.click(screen.getByRole('button',{name:'删除临时会话：临时讨论'}));await user.click(within(screen.getByRole('dialog',{name:'删除临时会话'})).getByRole('button',{name:'确认删除'}))
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'会话：临时讨论'})).toBeNull())
+  expect(WB.store.get().assistantConversationId).toBe('system:analysis');expect(calls.filter(request=>request.action==='delete')).toMatchObject([{conversationId:'chat:temporary',confirmed:true}])
+  expect(calls.some(request=>request.action==='reset'||request.action==='send')).toBe(false)
+ })
+ it('删除失败保留列表、当前会话和未发送草稿，显示真实错误',async()=>{
+  const {WB}=deletionFixture({failure:'会话已绑定研发任务，不能删除'}),user=userEvent.setup();await ready();await user.type(screen.getByRole('textbox',{name:'助手消息'}),'需要保留的草稿')
+  await user.click(screen.getByRole('button',{name:'删除临时会话：临时讨论'}));await user.click(within(screen.getByRole('dialog',{name:'删除临时会话'})).getByRole('button',{name:'确认删除'}))
+  expect((await screen.findByRole('alert')).textContent).toContain('不能删除');expect(WB.store.get().assistantConversationId).toBe('chat:temporary')
+  await user.click(within(screen.getByRole('dialog',{name:'删除临时会话'})).getByRole('button',{name:'取消'}));expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('需要保留的草稿');expect(screen.getByRole('button',{name:'会话：临时讨论'})).toBeTruthy()
+ })
+ it('删除非当前临时会话不影响事项草稿，删除前的迟到列表不能带回旧会话',async()=>{
+  let release,requested=false;const {WB}=deletionFixture({id:'task:a',hub:(request,{conversations})=>{
+   if(request.action==='list'&&request.query==='临时'&&!requested){requested=true;const old=conversations.map(row=>({...row}));return new Promise(resolve=>{release=()=>resolve({status:'ok',conversations:old})})}
+  }}),user=userEvent.setup();await ready();await user.type(screen.getByRole('textbox',{name:'助手消息'}),'事项草稿不丢')
+  await user.type(screen.getByRole('textbox',{name:'搜索会话或事项'}),'临时');await waitFor(()=>expect(requested).toBe(true))
+  await user.click(screen.getByRole('button',{name:'删除临时会话：临时讨论'}));await user.click(within(screen.getByRole('dialog',{name:'删除临时会话'})).getByRole('button',{name:'确认删除'}))
+  await waitFor(()=>expect(screen.queryByRole('button',{name:'会话：临时讨论'})).toBeNull());await act(async()=>release())
+  expect(screen.queryByRole('button',{name:'会话：临时讨论'})).toBeNull();expect(WB.store.get().assistantConversationId).toBe('task:a');expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('事项草稿不丢')
+ })
 })

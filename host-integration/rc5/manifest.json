@@ -5,7 +5,7 @@
   "files": [
     {
       "path": "apps/desktop/src/browser-guests.ts",
-      "sha256": "a04dafebd97deb2960fb286f7b8252d1957ca66579161a32a8e3d818c6c23114"
+      "sha256": "f0d993b32493326b0ebebd3a6d6aad4f79581d83d3cca402af9ca206f5def29b"
     },
     {
       "path": "apps/desktop/src/preload-browser.ts",
@@ -21,7 +21,7 @@
     },
     {
       "path": "apps/desktop/src/main.ts",
-      "sha256": "adff8678d4cf28a8420bcbf16d0ef8054ae7baa85aa0f55221c6f487ac2076a0"
+      "sha256": "bcf6deafc256e3f2e924cb4c37852f0b7a30b51ab9f1b46729cd4deb54ef4979"
     },
     {
       "path": "tsconfig.client.json",
@@ -29,11 +29,11 @@
     },
     {
       "path": "apps/desktop/src/browser-persistence.ts",
-      "sha256": "48e0fe8ac300a104884bd841fc74420eaf146ccd85e2c1099dd01c7e7bb39f3e"
+      "sha256": "e1ca897da7f6d947f5ea57a8ac6cdc42849cb69bb816f2234ee103b9a6db2fe9"
     },
     {
       "path": "apps/desktop/src/workbench-browser-policy.ts",
-      "sha256": "b263a34674012db6f33fa9b87dcd5f1bafb8a89d6bef354eecac5642699b5b54"
+      "sha256": "02ae00b9f941ae755147c132e31ad0a01dbdf326e2515ac3009c4130dbc25a20"
     }
   ]
 }

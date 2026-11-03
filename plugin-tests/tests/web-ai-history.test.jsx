@@ -47,8 +47,9 @@ describe('本地问答历史',()=>{
   const round=fixture().rounds[0],save=vi.fn(async()=>{}),close=vi.fn(),user=userEvent.setup();render(<QuestionEditor round={round} onSave={save} onClose={close}/>);expect(screen.getByRole('textbox',{name:'本地问题正文'}).value).toBe('本地修订问题');await user.click(screen.getByRole('button',{name:'恢复原问题'}));expect(save).not.toHaveBeenCalled();await user.click(screen.getByRole('button',{name:'保存'}));expect(save).toHaveBeenCalledWith('官网原问题');expect(round.question).toBe('官网原问题');expect(close).toHaveBeenCalled()
  })
  it('冷启动不恢复已删除的最后选中问答',()=>{const s=fixture();expect(restoreWebAITopic('scope',s.topics,{getItem:()=> 't41'})).toBe('t40')})
- it('打开历史管理时收起移动端会话列表，避免遮挡管理区域',async()=>{
-  const manage=vi.fn(),user=userEvent.setup();render(<ConversationSidebar state={fixture()} selected="" disabled={false} onNew={()=>{}} onSelect={()=>{}} onManage={manage}/>)
-  await user.click(screen.getByRole('button',{name:'会话历史',exact:true}));expect(screen.getByRole('button',{name:'会话历史',exact:true}).getAttribute('aria-expanded')).toBe('true');await user.click(screen.getByRole('button',{name:'管理历史与回收站'}));expect(manage).toHaveBeenCalledTimes(1);expect(screen.getByRole('button',{name:'会话历史',exact:true}).getAttribute('aria-expanded')).toBe('false')
+ it('打开历史管理时收起移动端抽屉，避免遮挡管理区域',async()=>{
+  const manage=vi.fn(),user=userEvent.setup()
+  function Mobile(){const [collapsed,setCollapsed]=React.useState(false);return <ConversationSidebar state={fixture()} selected="" disabled={false} compact collapsed={collapsed} onCollapse={setCollapsed} onNew={()=>{}} onSelect={()=>{}} onManage={manage}/>}
+  render(<Mobile/>);expect(screen.getByRole('navigation',{name:'会话历史',exact:true})).toBeTruthy();await user.click(screen.getByRole('button',{name:'管理历史与回收站'}));expect(manage).toHaveBeenCalledTimes(1);expect(screen.queryByRole('navigation',{name:'会话历史',exact:true})).toBeNull()
  })
 })

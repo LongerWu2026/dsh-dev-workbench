@@ -41,27 +41,27 @@ try{
 
  await seed(2);await h.mutateWorkbenchState(s=>{for(const row of s.analysisQueue)Object.assign(row,{status:'failed',attempts:3,lastError:'模型处理超时',nextRetryAt:'2999-01-01T00:00:00Z'});return s});
  const exhaustedOrdinary=await api.analysisStart();await finish(exhaustedOrdinary.jobId);
- check('普通提取不重置耗尽条目，不发送空模型请求',()=>{assert.equal(job(exhaustedOrdinary.jobId).status,'failed');assert.equal(packets.length,0);assert.ok(state().analysisQueue.every(row=>row.attempts===3))});
+ check('普通提取将耗尽内容识别转待确认，不发送空模型请求',()=>{assert.equal(job(exhaustedOrdinary.jobId).status,'completed');assert.equal(job(exhaustedOrdinary.jobId).progress.awaitingHuman,2);assert.equal(packets.length,0);assert.ok(state().analysisQueue.every(row=>row.attempts===3&&row.status==='awaiting_human'))});
  const explicitRetry=await api.analysisStart({retryFailed:true});await finish(explicitRetry.jobId);
- check('明确重试恢复耗尽条目并真正发出模型请求，不影响旧作业记录',()=>{assert.equal(job(explicitRetry.jobId).status,'completed');assert.equal(job(exhaustedOrdinary.jobId).status,'failed');assert.equal(packets.length,1);assert.equal(packets[0].messages.length,2);assert.ok(state().analysisQueue.every(row=>row.status==='done'&&row.attempts===0))});
+ check('明确重试恢复耗尽条目并真正发出模型请求，不影响旧作业记录',()=>{assert.equal(job(explicitRetry.jobId).status,'completed');assert.equal(job(exhaustedOrdinary.jobId).status,'completed');assert.equal(packets.length,1);assert.equal(packets[0].messages.length,2);assert.ok(state().analysisQueue.every(row=>row.status==='done'&&row.attempts===0))});
  await seed(3);await h.mutateWorkbenchState(s=>{for(const row of s.analysisQueue)Object.assign(row,{status:'failed',attempts:3,lastError:'超时'});s.analysisQueue[2].status='done';return s});
  const oneRetry=await api.analysisStart({retryFailed:true,onlyIds:['e-0'],limit:1});await finish(oneRetry.jobId);
  check('指定重试只恢复选中失败项，未选和已完成结果保持不变',()=>{assert.equal(state().analysisQueue[0].status,'done');assert.equal(state().analysisQueue[1].attempts,3);assert.equal(state().analysisQueue[1].status,'failed');assert.equal(state().analysisQueue[2].status,'done');assert.equal(packets.length,1);assert.equal(packets[0].messages.length,1)});
  await seed(1);await h.mutateWorkbenchState(s=>{Object.assign(s.analysisQueue[0],{status:'failed',attempts:3,lastError:'旧超时'});return s});onPrompt=p=>({batchId:p.batchId,results:p.messages.map(m=>({sourceId:m.sourceId,analysis:{noise:false,items:[{title:'无效结果'}]}}))});
- const boundedRetry=await api.analysisStart({retryFailed:true});await finish(boundedRetry.jobId);await resume(boundedRetry.jobId);await resume(boundedRetry.jobId);
- check('人工重试后仍最多自动尝试3次，不无限重置或重复发请求',()=>{assert.equal(job(boundedRetry.jobId).status,'failed');assert.equal(state().analysisQueue[0].attempts,3);assert.equal(packets.length,3);assert.match(job(boundedRetry.jobId).progress.pauseReason,/停止发送请求/)});
+ const boundedRetry=await api.analysisStart({retryFailed:true});await finish(boundedRetry.jobId);
+ check('人工重试仍无法识别则回到待确认，不无限重试或假报业务完成',()=>{assert.equal(job(boundedRetry.jobId).status,'completed');assert.equal(state().analysisQueue[0].status,'awaiting_human');assert.equal(state().analysisQueue[0].attempts,1);assert.equal(packets.length,1);assert.equal(job(boundedRetry.jobId).progress.awaitingHuman,1)});
  const boundedCalls=packets.length;await h.drainWorkflowJobs(ctx);check('再次自动调度不会重新发送已耗尽的作业',()=>assert.equal(packets.length,boundedCalls));
  await seed(4);const targeted=await api.analysisStart({limit:1,onlyIds:['e-2']});await finish(targeted.jobId)
  check('识别本条仍只处理指定消息，不扩展到整个队列',()=>{assert.equal(packets.length,1);assert.equal(packets[0].messages.length,1);assert.equal(packets[0].messages[0].sourceId,'s-2');assert.equal(state().analysisQueue.filter(row=>row.status==='pending').length,3)})
 
  await seed(12);onPrompt=p=>({batchId:p.batchId,results:p.messages.map((m,i)=>({sourceId:m.sourceId,analysis:i===0?{noise:false,items:[{title:'字段不全'}]}:{noise:true,items:[]}}))})
  const partial=await api.analysisStart();await finish(partial.jobId)
- check('部分失败保留11条成功，只为失败条目等待自动重试并显示原始原因',()=>{const j=job(partial.jobId);assert.equal(j.status,'queued');assert.equal(j.progress.processed,11);assert.equal(j.progress.remaining,1);assert.equal(j.progress.failed,1);assert.match(j.progress.pauseReason,/自动重试/);assert.ok(j.nextRetryAt);assert.equal(packets.length,1)})
- onPrompt=null;await resume(partial.jobId)
- check('等待结束后无需用户再点，自动续跑失败条目，累计不重复',()=>{assert.equal(job(partial.jobId).status,'completed');assert.equal(job(partial.jobId).progress.processed,12);assert.equal(job(partial.jobId).progress.failed,0);assert.equal(packets.at(-1).messages.length,1)})
+ check('部分内容无法识别转待确认，11条成功结果保留且自动流程结束',()=>{const j=job(partial.jobId);assert.equal(j.status,'completed');assert.equal(j.progress.processed,12);assert.equal(j.progress.remaining,0);assert.equal(j.progress.failed,0);assert.equal(j.progress.awaitingHuman,1);assert.equal(j.nextRetryAt,null);assert.equal(packets.length,1)})
+ onPrompt=null;await api.analysisRetry('e-0');const retryOne=await api.analysisStart({onlyIds:['e-0'],limit:1});await finish(retryOne.jobId)
+ check('待确认单条重试只处理问题条目，不重复成功结果',()=>{assert.equal(job(retryOne.jobId).status,'completed');assert.ok(state().analysisQueue.every(row=>row.status==='done'));assert.equal(packets.at(-1).messages.length,1)})
 
  await seed(2);await h.mutateWorkbenchState(s=>{Object.assign(s.analysisQueue[0],{status:'failed',attempts:3,lastError:'原消息证据校验失败'});return s});const exhausted=await api.analysisStart();await finish(exhausted.jobId)
- check('其他消息正常排完后，达到重试上限明确暂停，不能假报完成',()=>{const j=job(exhausted.jobId);assert.equal(j.status,'failed');assert.equal(j.progress.processed,1);assert.equal(j.progress.remaining,1);assert.match(j.progress.pauseReason,/3 次重试上限.*原消息证据校验失败/);assert.equal(j.nextRetryAt,null)})
+ check('旧证据失败转待确认，其他消息正常处理，不再暂停整队',()=>{const j=job(exhausted.jobId);assert.equal(j.status,'completed');assert.equal(j.progress.processed,2);assert.equal(j.progress.remaining,0);assert.equal(j.progress.awaitingHuman,1);assert.equal(j.progress.pauseReason,null);assert.equal(j.nextRetryAt,null)})
 
  await seed(2);onPrompt=()=>{throw Error('HTTP 401 model provider unavailable')};const unavailable=await api.analysisStart();await finish(unavailable.jobId)
  check('模型认证故障保留消息与累计进度，显示服务错误及自动恢复时间',()=>{const j=job(unavailable.jobId);assert.equal(j.status,'queued');assert.equal(j.progress.processed,0);assert.equal(j.progress.remaining,2);assert.match(j.progress.pauseReason,/HTTP 401/);assert.ok(j.nextRetryAt);assert.ok(state().analysisQueue.every(row=>row.attempts===0&&row.status==='pending'))})

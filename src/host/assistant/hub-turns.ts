@@ -1,3 +1,4 @@
+import {knowledgeScopeKey} from '../knowledge/scope.js'
 import {existsSync,mkdirSync,readFileSync,writeFileSync,renameSync} from 'node:fs'
 import {join} from 'node:path'
 import {randomUUID} from 'node:crypto'
@@ -12,7 +13,7 @@ export interface HubCommand {id:string;label:string;operation:string;parameters?
 export interface HubTurn {
  id:string;conversationId:string;text:string;at:string;source:'rule'|'ai'|'system';mode:'execute'|'reinterpret';status:HubTurnStatus
  sessionId?:string;requestId?:string;fromSeq?:number;toSeq?:number;reply?:string;commands:HubCommand[];refs?:any[]
- knowledgeScope?:{projectId?:string|null;accountId?:string|null};reinterpretsTurnId?:string;jobIds?:string[];operationSignature?:string
+ knowledgeScope?:{projectId?:string|null;accountId?:string|null;spaceId?:string|null};reinterpretsTurnId?:string;jobIds?:string[];operationSignature?:string
  /** Native user boundary, never inferred from prompt text or model-provided IDs. */
  userSeq?:number;nativeTurn?:number;legacy?:boolean;trigger?:'manual'|'operation'|'system'
  attachments?:AssistantAttachment[];attachmentSignature?:string;attachmentOnly?:boolean;attachmentAccepted?:boolean;attachmentRetryable?:boolean
@@ -34,7 +35,7 @@ function read():TurnStore {
 }
 function write(store:TurnStore){mkdirSync(workbenchDir(),{recursive:true});const temp=path()+'.'+randomUUID()+'.tmp';writeFileSync(temp,JSON.stringify(store),{mode:0o600});renameSync(temp,path())}
 const clone=<T>(value:T):T=>JSON.parse(JSON.stringify(value))
-const scopeKey=(scope:HubTurn['knowledgeScope'])=>JSON.stringify({projectId:scope?.projectId||null,accountId:scope?.accountId||null})
+const scopeKey=(scope:HubTurn['knowledgeScope'])=>knowledgeScopeKey(scope)
 function matches(row:HubTurn,conversationId:string,query:HubTurnQuery={}){
  return row.conversationId===conversationId&&(!query.sessionId||!row.sessionId||row.sessionId===query.sessionId)&&
   (!(conversationId==='system:knowledge'||Object.hasOwn(query,'knowledgeScope'))||scopeKey(row.knowledgeScope)===scopeKey(query.knowledgeScope))

@@ -1,3 +1,5 @@
+import {knowledgeAllowed} from '../knowledge/retrieval.js'
+import {knowledgeSpaceOf} from '../../shared/knowledge.js'
 import {officeJobOwners,officeJobAllowed,officeArtifacts,busyReplyView} from './office-results.js'
 import {loadWorkbenchState} from '../storage/state-store.js'
 import {hashText} from '../platform/runtime.js'
@@ -27,8 +29,8 @@ function entity(collection:string,id:string){const row=(state()[collection]||[])
 function target(request:any,kind:string,collection:string){const s=scope(request);if(s.kind!==kind)throw Error('请在对应事项会话中执行此操作');if(request.id&&request.id!==s.entityId)throw Error('操作对象与当前会话不一致');return entity(collection,s.entityId)}
 function systemScope(request:any,name:string){const s=scope(request);if(s.kind!=='system'||s.entityId!==name)throw Error('请在对应系统会话中执行此操作')}
 function busyReplyScope(request:any){const s=scope(request),collections:any={task:'tasks',reply:'replies',radar:'radar',knowledge:'knowledge'};if(collections[s.kind])entity(collections[s.kind],s.entityId);if(s.kind==='development')readDevelopmentTask(s.entityId);if(s.kind==='chat'&&!hubIndex().conversations.some(row=>row.id===s.id))throw Error('找不到当前工作会话');return s}
-function knowledgeScope(request:any,item?:any){const s=scope(request);return defaultKnowledgeScope(state(),s.kind==='knowledge'&&item?{projectId:item.projectId||null,accountId:item.accountId||null}:request.knowledgeScope||{})}
-function knowledgeTarget(request:any){const s=scope(request);if(!(s.kind==='chat'||s.kind==='knowledge'||s.kind==='system'&&s.entityId==='knowledge'))throw Error('请在知识库或对应知识会话中操作');const id=s.kind==='knowledge'?s.entityId:String(request.id||'');if(s.kind==='knowledge'&&request.id&&request.id!==id)throw Error('知识条目与当前会话不一致');if(!id)throw Error('请先搜索并选择具体知识条目');const item=entity('knowledge',id),allowed=knowledgeScope(request,item);if(item.projectId&&item.projectId!==allowed.projectId||item.accountId&&item.accountId!==allowed.accountId)throw Error('该知识不属于当前项目或账号范围');return item}
+function knowledgeScope(request:any,item?:any){const s=scope(request);return defaultKnowledgeScope(state(),s.kind==='knowledge'&&item?{projectId:item.projectId||null,spaceId:knowledgeSpaceOf(item)}:request.knowledgeScope||{})}
+function knowledgeTarget(request:any){const s=scope(request);if(!(s.kind==='chat'||s.kind==='knowledge'||s.kind==='system'&&s.entityId==='knowledge'))throw Error('请在知识库或对应知识会话中操作');const id=s.kind==='knowledge'?s.entityId:String(request.id||'');if(s.kind==='knowledge'&&request.id&&request.id!==id)throw Error('知识条目与当前会话不一致');if(!id)throw Error('请先搜索并选择具体知识条目');const item=entity('knowledge',id),allowed=knowledgeScope(request,item);if(!knowledgeAllowed(item,allowed,true))throw Error('该知识不属于当前知识空间或项目范围');return item}
 function replyEvidence(id:string){const s=state(),reply=entity('replies',id),source=s.sources.find((r:any)=>r.id===reply.sourceId);return {reply,source,draft:s.replyDrafts?.[id]||null}}
 function publicConfirmation(row:AssistantConfirmation){const {id,conversationId,operation,title,before,after,expiresAt,state,turnId}=row;return {id,conversationId,operation,title,before,after,expiresAt,state,turnId}}
 function preview(request:any,operation:string,title:string,before:any,after:any,payload:any,versionValue=before){const confirmation=saveAssistantConfirmation({turnId:request.assistantTurnId,conversationId:request.conversationId,operation,title,before:clean(before),after:clean(after),fingerprint:fingerprint(versionValue),payload:clean(payload)});return {status:'confirmation_required',note:title+'，请核对后确认。',operation,confirmation:publicConfirmation(confirmation)}}
@@ -54,7 +56,7 @@ async function confirm(ctx:any,request:any){
  try{
   let result:any
   if(row.operation.startsWith('knowledge.')){
-   if(scope(request).kind!=='knowledge'&&request.knowledgeScope&&['projectId','accountId'].some(key=>request.knowledgeScope[key]!==undefined&&request.knowledgeScope[key]!==row.payload.knowledgeScope?.[key]))throw Error('当前知识范围已切换，请返回原范围或重新预览')
+   if(scope(request).kind!=='knowledge'&&request.knowledgeScope&&['projectId','accountId','spaceId'].some(key=>request.knowledgeScope[key]!==undefined&&request.knowledgeScope[key]!==row.payload.knowledgeScope?.[key]))throw Error('当前知识范围已切换，请返回原范围或重新预览')
    const item=knowledgeTarget({...request,id:row.payload.id,knowledgeScope:row.payload.knowledgeScope});if(fingerprint(item)!==row.fingerprint)throw Error('知识已更新，原确认失效，请重新预览差异')
    const snapshot=row.operation==='knowledge.delete'?await knowledgeService.deleteKnowledge(item.id,row.fingerprint):await knowledgeService.updateKnowledge(item.id,row.payload.patch,row.fingerprint)
    result={status:'ok',note:row.operation==='knowledge.delete'?'已删除该工作台知识条目，未删除外部原文。':'知识已更新，进入待审核状态。',item:snapshot.knowledge.find((k:any)=>k.id===item.id)||null}
@@ -127,7 +129,7 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
    else throw Error('未知的资讯操作')
   }else if(operation==='knowledge.search'){
    const s=scope(request);if(!(s.kind==='chat'||s.kind==='knowledge'||s.kind==='system'&&s.entityId==='knowledge'))throw Error('请在知识会话中查询')
-   const selected=s.kind==='knowledge'?entity('knowledge',s.entityId):undefined,query=String(request.query||'').trim().toLowerCase(),allowed=knowledgeScope(request,selected),items=state().knowledge.filter((k:any)=>(s.kind!=='knowledge'||k.id===s.entityId)&&(!k.projectId||k.projectId===allowed.projectId)&&(!k.accountId||k.accountId===allowed.accountId)&&(!query||[k.title,k.body].join(' ').toLowerCase().includes(query))).slice(0,100)
+   const selected=s.kind==='knowledge'?entity('knowledge',s.entityId):undefined,query=String(request.query||'').trim().toLowerCase(),allowed=knowledgeScope(request,selected),items=state().knowledge.filter((k:any)=>(s.kind!=='knowledge'||k.id===s.entityId)&&knowledgeAllowed(k,allowed,true)&&(!query||[k.title,k.body].join(' ').toLowerCase().includes(query))).slice(0,100)
    result={status:'ok',note:'找到 '+items.length+' 条知识。',items}
   }else if(operation==='knowledge.update'||operation==='knowledge.delete'){
    const item=knowledgeTarget(request),patch=operation==='knowledge.update'?knowledgePatch(request.patch):null
@@ -222,7 +224,7 @@ function clarificationReason(text:string,matchedWrite=false):string|undefined {
 export function recognizeAssistantCommand(request:any,onClarification?:(reason:string)=>void):any|null{
  const {id,kind,entityId}=scope(request),text=String(request.text||'').trim(),plain=text.replace(/[。！!？?]+$/,'').replace(/^(?:请帮我|麻烦帮我|麻烦你|帮忙|请你|麻烦)\s*/,'');let action:any=null
  const currentKnowledgeScope=id==='system:knowledge'?knowledgeScope(request):null
- const pending=assistantConfirmations(id).filter(c=>c.state==='pending'&&Date.parse(c.expiresAt)>Date.now()&&(!currentKnowledgeScope||!c.operation.startsWith('knowledge.')||['projectId','accountId'].every(key=>(c.payload.knowledgeScope?.[key]||null)===(currentKnowledgeScope[key as keyof typeof currentKnowledgeScope]||null))))
+ const pending=assistantConfirmations(id).filter(c=>c.state==='pending'&&Date.parse(c.expiresAt)>Date.now()&&(!currentKnowledgeScope||!c.operation.startsWith('knowledge.')||['projectId','accountId','spaceId'].every(key=>(c.payload.knowledgeScope?.[key]||null)===(currentKnowledgeScope[key as keyof typeof currentKnowledgeScope]||null))))
  if(/^(确认|确认修改|确认删除|确认发送|确认回写|同意执行)$/.test(plain)){
   const required:Record<string,string>={'确认修改':'knowledge.update','确认删除':'knowledge.delete','确认发送':'reply.send','确认回写':'development.writeback'}
   if(pending.length!==1||required[plain]&&pending[0]?.operation!==required[plain])action={operation:'confirm',recognitionError:pending.length>1?'有多个待确认操作，请点击具体确认卡片。':pending.length?'确认的动作与待执行操作不一致，请核对确认卡片。':'没有待确认的操作，请先预览。'}

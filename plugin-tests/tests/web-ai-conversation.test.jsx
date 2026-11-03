@@ -1,6 +1,6 @@
 import React from 'react'
 import {afterEach,describe,expect,it,vi} from 'vitest'
-import {cleanup,fireEvent,render,screen,within} from '@testing-library/react'
+import {cleanup,fireEvent,render,screen,within,waitFor} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {ConversationThread} from '../../src/client/features/web-ai/ConversationThread.tsx'
 import {ConversationSidebar} from '../../src/client/features/web-ai/ConversationSidebar.tsx'
@@ -28,14 +28,14 @@ describe('聚合聊天记录',()=>{
   view.rerender(<ConversationThread {...p} authentication={{kimi:{status:'authenticated'}}}/>);expect(screen.getByRole('button',{name:'发送给Kimi'})).toBeTruthy()
   view.rerender(<ConversationThread {...p} rounds={[{...r,answers:[{...a,submission:undefined}]}]}/>);expect(screen.queryByRole('button',{name:'查看登录页'})).toBeNull()
  })
- it('按轮次显示问题和厂商回答，增量更新同一回答容器，完成后停止流式标记',()=>{
+ it('按轮次显示问题和厂商回答，增量更新同一回答容器，完成后停止流式标记',async()=>{
   const p=props([round('r1','第一问'),round('r2','第二问')]);const view=render(<ConversationThread {...p}/>)
   expect([...view.container.querySelectorAll('.wb-chat-question h3')].map(node=>node.textContent)).toEqual(['第一问','第二问'])
-  const body=view.container.querySelector('.wb-chat-answer-body');expect(body.getAttribute('aria-live')).toBe('polite')
+  const body=view.container.querySelector('.wb-chat-answer-body');expect(body.getAttribute('aria-busy')).toBe('true');expect(body.getAttribute('aria-live')).toBe('off')
   view.rerender(<ConversationThread {...p} rounds={[round('r1','第一问',{text:'第一段\n追加内容'}),round('r2','第二问')]}/> )
-  expect(view.container.querySelector('.wb-chat-answer-body')).toBe(body);expect(body.textContent).toContain('追加内容')
+  expect(view.container.querySelector('.wb-chat-answer-body')).toBe(body);await waitFor(()=>expect(body.textContent).toContain('追加内容'))
   view.rerender(<ConversationThread {...p} rounds={[round('r1','第一问',{status:'completed',text:'完整回答'}),round('r2','第二问')]}/> )
-  expect(body.getAttribute('aria-live')).toBe('off')
+  expect(body.getAttribute('aria-busy')).toBe('false');expect(body.getAttribute('aria-live')).toBe('off')
  })
  it('切换厂商只筛选显示，恢复全部后仍保留各厂商内容',()=>{
   const item={...round('r','问题',{text:'Kimi 内容'}),answers:[answer({text:'Kimi 内容'}),answer({providerId:'glm',text:'智谱内容'})]},p=props([item]),view=render(<ConversationThread {...p} filter="kimi"/> )

@@ -4,8 +4,8 @@ import {IconBtn} from '../core/runtime.js'
 const narrow=()=>typeof window!=='undefined'&&window.innerWidth<=640
 
 /** Layout state never changes the selected conversation, draft, attachments or running turn. */
-export function useAssistantSidebar(){
- const rootRef=React.useRef<HTMLElement|null>(null)
+export function useAssistantSidebar(externalRoot?:React.RefObject<HTMLElement>){
+ const ownRoot=React.useRef<HTMLElement|null>(null),rootRef=externalRoot||ownRoot
  const [compact,setCompact]=React.useState(narrow),[collapsed,updateCollapsed]=React.useState(narrow)
  const compactRef=React.useRef(compact),desktopCollapsed=React.useRef(false),restoreFocus=React.useRef(false)
  function setCollapsed(value:boolean){
@@ -32,15 +32,15 @@ export function useAssistantSidebar(){
  return {rootRef,compact,collapsed,setCollapsed}
 }
 
-export function AssistantSidebarToggle({collapsed,onClick,trigger=false}:{collapsed:boolean;onClick:()=>void;trigger?:boolean}){
+export function AssistantSidebarToggle({collapsed,onClick,trigger=false,controls='wb-hub-conversations'}:{collapsed:boolean;onClick:()=>void;trigger?:boolean;controls?:string}){
  const label=collapsed?'展开会话列表':'收起会话列表'
- return <button type="button" className="wb-iconbtn wb-hub-sidebar-toggle" data-sidebar-trigger={trigger?'true':undefined} aria-label={label} title={label} aria-expanded={!collapsed} aria-controls="wb-hub-conversations" onClick={onClick}>
+ return <button type="button" className="wb-iconbtn wb-hub-sidebar-toggle" data-sidebar-trigger={trigger?'true':undefined} aria-label={label} title={label} aria-expanded={!collapsed} aria-controls={controls} onClick={onClick}>
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/><path d={collapsed?'m13 9 3 3-3 3':'m16 9-3 3 3 3'}/></svg>
  </button>
 }
 
-export function AssistantSidebar({collapsed,compact,onChange,onNew,busy,children}:{collapsed:boolean;compact:boolean;onChange:(value:boolean)=>void;onNew:()=>void;busy:boolean;children:React.ReactNode}){
- if(collapsed)return compact?null:<nav className="wb-hub-sidebar-rail" aria-label="会话列表快捷栏"><AssistantSidebarToggle collapsed onClick={()=>onChange(false)} trigger/><IconBtn name="plus" label="新建对话" disabled={busy} onClick={onNew}/></nav>
+export function AssistantSidebar({collapsed,compact,onChange,onNew,busy,children,label='助手会话列表',listId='wb-hub-conversations',newLabel='新建对话',className=''}:{collapsed:boolean;compact:boolean;onChange:(value:boolean)=>void;onNew:()=>void;busy:boolean;children:React.ReactNode;label?:string;listId?:string;newLabel?:string;className?:string}){
+ if(collapsed)return compact?null:<nav className="wb-hub-sidebar-rail" aria-label="会话列表快捷栏"><AssistantSidebarToggle collapsed onClick={()=>onChange(false)} trigger controls={listId}/><IconBtn name="plus" label={newLabel} disabled={busy} onClick={onNew}/></nav>
  function keyboard(event:React.KeyboardEvent<HTMLElement>){
   if(!compact)return
   if(event.key==='Escape'){event.preventDefault();event.stopPropagation();onChange(true);return}
@@ -52,8 +52,8 @@ export function AssistantSidebar({collapsed,compact,onChange,onNew,busy,children
  }
  return <>
   {compact&&<button className="wb-hub-sidebar-backdrop" type="button" tabIndex={-1} aria-label="关闭会话列表" onClick={()=>onChange(true)}/>}
-  <nav id="wb-hub-conversations" className="wb-assistant-sessions" aria-label="助手会话列表" onKeyDown={keyboard}>
-   <div className="wb-hub-sidebar-head"><strong>会话</strong><IconBtn name="plus" label="新建对话" disabled={busy} onClick={onNew}/><AssistantSidebarToggle collapsed={false} onClick={()=>onChange(true)} trigger={!compact}/></div>
+  <nav id={listId} className={'wb-assistant-sessions'+(className?' '+className:'')} aria-label={label} onKeyDown={keyboard}>
+   <div className="wb-hub-sidebar-head"><strong>会话</strong><IconBtn name="plus" label={newLabel} disabled={busy} onClick={onNew}/><AssistantSidebarToggle collapsed={false} onClick={()=>onChange(true)} trigger={!compact} controls={listId}/></div>
    {children}
   </nav>
  </>

@@ -43,7 +43,8 @@ try{
  }
  for(const width of [800,360])for(const theme of ['light','dark']){
   await page.setViewportSize({width,height:600});await page.evaluate(t=>{document.documentElement.className=t;window.WB.go('web-ai');const now=new Date().toISOString();window.WB.store.set({data:{...window.WB.store.get().data,revision:5,webAI:{topics:Array.from({length:40},(_,i)=>({id:'history-'+i,title:'长历史名称'.repeat(20)+i,createdAt:now,conversations:{}})),rounds:[],chatgptEnabled:false}}})},theme)
-  if(!await page.getByRole('button',{name:'管理历史与回收站',exact:true}).isVisible())await page.getByRole('button',{name:'会话历史',exact:true}).click();
+  await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+  if(!await page.getByRole('button',{name:'管理历史与回收站',exact:true}).isVisible())await page.getByRole('button',{name:'展开会话列表',exact:true}).click();
   await page.getByRole('button',{name:'管理历史与回收站',exact:true}).click();await page.getByRole('textbox',{name:'搜索历史问答'}).waitFor();await page.getByRole('button',{name:'历史下一页'}).click();await page.getByRole('button',{name:/重命名问答/}).first().click();await page.getByRole('textbox',{name:'问答名称'}).waitFor()
   const metrics=await page.evaluate(()=>({pageOverflow:document.querySelector('.wb-scroll').scrollWidth-document.querySelector('.wb-scroll').clientWidth,dialogOverflow:Math.max(0,document.querySelector('.wb-modal').getBoundingClientRect().right-innerWidth)}));report.push({section:'web-ai-history-pagination-edit',width,theme,...metrics});await page.screenshot({path:resolve(out,`history-${width}-${theme}.png`)});await page.getByRole('dialog').getByRole('button',{name:'取消',exact:true}).click();await page.getByRole('button',{name:'收起历史',exact:true}).click()
  }

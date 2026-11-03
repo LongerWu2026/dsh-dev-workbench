@@ -10,6 +10,7 @@ export const workbenchBrowserPolicy: PersistentBrowserPolicy = {
     { id: 'doubao', origins: ['https://www.doubao.com'] },
     { id: 'yuanbao', origins: ['https://yuanbao.tencent.com'] },
     { id: 'qianwen', origins: ['https://www.qianwen.com', 'https://qianwen.com'] },
-    { id: 'chatgpt', origins: ['https://chatgpt.com'] },
+    // OAuth pages stay in the same isolated partition; the renderer cannot add destinations.
+    { id: 'chatgpt', origins: ['https://chatgpt.com', 'https://auth.openai.com', 'https://accounts.google.com'] },
   ],
 }

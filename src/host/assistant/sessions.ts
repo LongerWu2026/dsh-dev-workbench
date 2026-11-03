@@ -1,5 +1,5 @@
 import {MESSAGE_INTAKE_POLICY} from '../../shared/message-intake.js'
-import { retrieveAssistantKnowledge, knowledgePrompt, recordRetrieval, validateKnowledgeCitations } from '../knowledge/context.js'
+import { retrieveAssistantKnowledge, assertKnowledgeSessionScope, knowledgePrompt, recordRetrieval, validateKnowledgeCitations } from '../knowledge/context.js'
 import { setKnowledgeOnlySession } from '../knowledge/guards.js'
 import { stripAssistantBoilerplate, isSystemInjectedText, assistantTextOf, assistantHistoryFrom, sessionTitleOf, sessionLastAt, transcriptOf, transcriptDelta } from './transcript.js'
 import { reserveModelCall } from './usage.js'
@@ -454,6 +454,7 @@ async function sendAssistantPrompt(ctx?: any, request?: any): Promise<any> {
         if (!session)
             return { status: 'unavailable', note: '当前宿主没有可用的 sessions / sessionController 服务。' };
     }
+    assertKnowledgeSessionScope(loadWorkbenchState(),session.id,retrieval.scope);
     const lines: string[] = buildAssistantContext(loadWorkbenchState(), input.refs);
     const knowledge=knowledgePrompt(retrieval);if(knowledge)lines.push(knowledge);
     if(lines.join('\n').length>48000)throw new Error('知识与手动引用合计超过48000字符，请减少上下文');
@@ -547,6 +548,7 @@ async function runAssistantAsk(ctx?: any, request?: any): Promise<any> {
     }
     let fromSeq = session.seq;
     // 上下文引用拼进提示（保持可见、可回溯），Agent 可直接调用 workbench_* 工具回写
+    assertKnowledgeSessionScope(loadWorkbenchState(),session.id,retrieval.scope);
     const lines: string[] = buildAssistantContext(loadWorkbenchState(), input.refs);
     const knowledge=knowledgePrompt(retrieval);if(knowledge)lines.push(knowledge);
     if(lines.join('\n').length>48000)throw new Error('知识与手动引用合计超过48000字符，请减少上下文');

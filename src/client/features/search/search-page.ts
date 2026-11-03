@@ -1,5 +1,6 @@
 import { Badge, Btn, Chip, Empty, Icon, Input, PageHead, Panel, Select, Spinner, WB, h, useStore } from '../../core/runtime.js'
 import * as React from 'react'
+import {openSearchResult,continueSearchResult,searchInternetWithAssistant} from './search-navigation.js'
 /* ============================================================================
  * dev-workbench — 搜索 (search)
  *
@@ -58,7 +59,9 @@ function SearchResultRow(props?: any): any {
         })
             .catch(function (): any { });
     }
-    return h('div', { className: 'wb-item', style: { alignItems: 'flex-start' } }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title', style: { display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' } }, h(Badge, { tone: meta.tone }, meta.label), item.url
+    return h('div', { className: 'wb-item', style: { alignItems: 'flex-start' } }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title', style: { display: 'flex', gap: 7, alignItems: 'center', flexWrap: 'wrap' } }, h(Badge, { tone: meta.tone }, meta.label), ['task','knowledge','radar','source','reply'].includes(item.kind)
+        ? h('button',{type:'button',className:'wb-link',style:{font:'inherit',fontWeight:500,textAlign:'left',border:0,background:'none',padding:0,cursor:'pointer'},onClick:()=>openSearchResult(item,props.groupLabel)},item.title)
+        : item.url
         ? h('a', {
             href: item.url,
             target: '_blank',
@@ -120,16 +123,9 @@ function SearchResultRow(props?: any): any {
         size: 'sm',
         kind: 'subtle',
         icon: 'sparkles',
-        children: 'AI 分析',
+        children: 'AI 继续处理',
         onClick: function (): any {
-            WB.assistant.add({
-                kind: 'source',
-                id: item.id,
-                title: item.title,
-                url: item.url || null,
-                body: item.snippet || '',
-                meta: '来源分组：' + props.groupLabel,
-            });
+            continueSearchResult(item,props.groupLabel);
         },
     })));
 }
@@ -143,6 +139,7 @@ const WORK_TYPES = [
 function SearchPage(): any {
  const state=useStore(),data=state.data;
  const [mode,setMode]=React.useState('work'),[draft,setDraft]=React.useState(''),[query,setQuery]=React.useState('');
+ const [workScope,setWorkScope]=React.useState('local');
  const [busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[result,setResult]=React.useState<any>(null);
  const [history,setHistory]=React.useState<Record<string,string[]>>({work:[],web:[]}),[category,setCategory]=React.useState('all');
  const [dateFilter,setDateFilter]=React.useState('all'),[projectFilter,setProjectFilter]=React.useState('');
@@ -153,12 +150,12 @@ function SearchPage(): any {
   if(next===mode)return;
   version.current++;setMode(next);setResult(null);setError('');setBusy(false);setCategory('all');setDateFilter('all');setProjectFilter('');setLimits({});
  }
- async function run(nextQuery=draft,scope=mode){
+ async function run(nextQuery=draft,scope=mode,localScope=workScope){
   const text=String(nextQuery).trim();if(!text)return;
   const requestVersion=++version.current;
   setDraft(text);setQuery(text);setBusy(true);setError('');setResult(null);setLimits({});
   try{
-   const value=await WB.actions.search(text,{scope,includeWeb:scope==='web'});
+   const value=await WB.actions.search(text,{scope:scope==='web'?'web':localScope,includeWeb:scope==='web'});
    if(requestVersion!==version.current)return;
    setResult(value);setHistory(old=>({...old,[scope]:[text,...old[scope].filter(item=>item!==text)].slice(0,6)}));
   }catch(e){if(requestVersion===version.current)setError(e instanceof Error?e.message:String(e))}
@@ -167,10 +164,11 @@ function SearchPage(): any {
  const preset=state.searchPreset;
  React.useEffect(()=>{
   if(!preset||consumed.current===preset)return;consumed.current=preset;
-  const group=preset.groups?.[0],scope=group==='web'||preset.category==='web'?'web':'work';
+  const group=preset.groups?.[0],scope=preset.scope==='web'||group==='web'||preset.category==='web'?'web':'work';
+  const nextScope=preset.scope==='work'?'work':'local';setWorkScope(nextScope);
   version.current++;setMode(scope);setResult(null);setDateFilter('all');setProjectFilter('');
-  setCategory(WORK_TYPES.find(type=>type.groups?.includes(group))?.id||'all');
-  WB.clearSearchPreset();if(preset.query)void run(preset.query,scope);
+  setCategory(({task:'tasks',source:'messages',knowledge:'knowledge',radar:'radar'} as Record<string,string>)[preset.category]||WORK_TYPES.find(type=>type.groups?.includes(group))?.id||'all');
+  WB.clearSearchPreset();if(preset.query)void run(preset.query,scope,nextScope);
  },[preset]);
  const categoryGroups=WORK_TYPES.find(type=>type.id===category)?.groups;
  function itemPasses(item:any){
@@ -188,8 +186,8 @@ function SearchPage(): any {
  const total=visible.reduce((sum:number,group:any)=>sum+group.items.length,0);
  const filterCount=Number(dateFilter!=='all')+Number(!!projectFilter);
  const groupLabel=(group:any)=>({tasks:'待办',knowledge:'知识',radar:'资讯',sources:'消息来源',web:'网页'} as Record<string,string>)[group.id]||group.label;
- return h('div',{className:'wb-work-search'},h(PageHead,{icon:'search',title:'工作搜索',sub:mode==='work'?'查找待办、知识、资讯和工作消息':'搜索互联网，查看网页来源'}),
-  h('div',{className:'wb-row',role:'tablist','aria-label':'搜索范围',style:{gap:6,marginBottom:16}},['work','web'].map(scope=>h('button',{key:scope,type:'button',role:'tab','aria-selected':mode===scope,className:'wb-tab'+(mode===scope?' is-active':''),onClick:()=>changeMode(scope)},scope==='work'?'工作内容':'互联网'))),
+ return h('div',{className:'wb-work-search'},h('style',null,'.wb-work-search .wb-item-title .wb-link{max-width:100%;overflow-wrap:anywhere}@container content (max-width:640px){.wb-work-search .wb-item{flex-direction:column;gap:8px}.wb-work-search .wb-item-main{width:100%}.wb-work-search .wb-item-actions{width:100%;flex-wrap:wrap;justify-content:flex-end}}'),h(PageHead,{icon:'search',title:'搜索结果',sub:mode==='work'?'查找待办、知识、资讯和工作消息':'搜索互联网，查看网页来源',actions:h(Btn,{icon:'search',size:'sm',onClick:()=>WB.openSearch(query||draft),children:'打开快速搜索'})}),
+  h('div',{className:'wb-row wb-row--wrap',style:{gap:6,marginBottom:16}},h('div',{role:'tablist','aria-label':'搜索范围',className:'wb-row'},['work','web'].map(scope=>h('button',{key:scope,type:'button',role:'tab','aria-selected':mode===scope,className:'wb-tab'+(mode===scope?' is-active':''),onClick:()=>changeMode(scope)},scope==='work'?'工作内容':'互联网'))),h('span',{className:'wb-spacer'}),h(Btn,{icon:'sparkles',size:'sm',onClick:()=>searchInternetWithAssistant(draft||query),children:'在助手中搜索互联网'})),
   h('form',{onSubmit:(event:any)=>{event.preventDefault();void run()},className:'wb-row',style:{gap:8,marginBottom:12}},h(Input,{'aria-label':'工作搜索关键词',autoFocus:true,value:draft,placeholder:mode==='work'?'搜索待办、知识、资讯或消息…':'输入互联网搜索关键词…',onChange:(event:any)=>setDraft(event.target.value)}),h('button',{type:'submit',className:'wb-btn wb-btn--primary',onClick:(event:any)=>{event?.preventDefault();void run()},disabled:busy||!draft.trim()},busy?'搜索中…':'搜索')),
   h('div',{className:'wb-row wb-row--wrap',style:{gap:6,marginBottom:14}},mode==='work'&&WORK_TYPES.map(type=>h(Chip,{key:type.id,active:category===type.id,onClick:()=>{setCategory(type.id);setLimits({})},children:type.label})),
    h('details',{className:'wb-search-filters'},h('summary',{style:{cursor:'pointer',fontSize:12,padding:'5px 10px'}},'筛选'+(filterCount?' · '+filterCount:'')),h('div',{className:'wb-row wb-row--wrap',style:{gap:12,padding:10}},

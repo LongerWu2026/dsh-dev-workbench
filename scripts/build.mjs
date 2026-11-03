@@ -14,6 +14,8 @@ const host = await build({ ...common, plugins:[sqlGrammarPlugin], entryPoints: [
 const client = await build({ ...common, define:{__WORKBENCH_VERSION__:JSON.stringify(pkg.version)}, entryPoints: ['src/client.ts'], platform: 'browser', format: 'cjs', external: ['react', 'react/*'], jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment' })
 const cli = await build({ ...common, entryPoints: ['src/cli/harness-linky.ts'], platform: 'node', format: 'esm', packages: 'external' })
 const cliCode=cli.outputFiles[0].text
+const embeddingWorker=await build({ ...common, entryPoints:['src/host/knowledge/embedding-worker.ts'],platform:'node',format:'esm',packages:'external'})
+const workerCode=embeddingWorker.outputFiles[0].text
 const banner = '/** Generated from TypeScript modules by scripts/build.mjs. Do not edit. */\n'
 const hostCode = banner + host.outputFiles[0].text
 const clientCode = banner + 'window.__ModuleLoader__.load({ id: ' + JSON.stringify(pkg.name) + ', factory(require) {\nconst module = { exports: {} }; const exports = module.exports;\n' + client.outputFiles[0].text + '\nreturn module.exports;\n} });\n'
@@ -25,10 +27,11 @@ const comparable = code => code
   .replace(/^(\s*)"(?:\.\.\/)+node_modules\/([^"\n]+)"(\([^\n)]*\) \{)$/gm, '$1"node_modules/$2"$3')
 if (check && (comparable(readFileSync(join(root,'index.js'),'utf8')) !== comparable(hostCode) || comparable(readFileSync(join(root,'client.js'),'utf8')) !== comparable(clientCode))) throw new Error('构建产物与源码不一致，请先 pnpm build')
 if(check&&readFileSync(join(root,'bin/harness-linky.mjs'),'utf8')!==cliCode)throw new Error('CLI 构建产物与源码不一致，请先 pnpm build')
+if(check&&readFileSync(join(root,'bin/knowledge-embedding-worker.mjs'),'utf8')!==workerCode)throw new Error('Embedding Worker 构建产物与源码不一致，请先 pnpm build')
 if (!check) {
   mkdirSync(join(root,'bin'),{recursive:true})
   // Touching an unchanged Client artifact needlessly reloads the desktop panel.
-  for (const [name, code] of [['index.js', hostCode], ['client.js', clientCode], ['bin/harness-linky.mjs',cliCode]]) {
+  for (const [name, code] of [['index.js', hostCode], ['client.js', clientCode], ['bin/harness-linky.mjs',cliCode],['bin/knowledge-embedding-worker.mjs',workerCode]]) {
     const path=join(root,name)
     let previous
     try { previous=readFileSync(path,'utf8') } catch {}

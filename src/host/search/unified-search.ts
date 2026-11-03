@@ -186,6 +186,7 @@ async function runUnifiedSearch(ctx?: any, request?: any): Promise<any> {
     }
     const state = loadWorkbenchState();
     const groups = searchLocalGroups(state, query);
+    if(request?.scope==='local')return {query,at:hostNowIso(),total:groups.reduce((sum:number,group:any)=>sum+group.items.length,0),groups};
     // 本地项目（文件名 + 文本片段）：不受联网与凭据影响，始终可用
     groups.push(await searchLocalFiles(ctx, query));
     if (!request || request.includeEnterprise !== false) {

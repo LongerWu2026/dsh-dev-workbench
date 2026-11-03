@@ -46,21 +46,51 @@ export function observeWebAIPage(req:WebAIPageRequest){
  const hasAttachmentDraft=attachmentPreviews.length>0
 
  const ignored='script,style,button,[role="button"],svg,nav,aside,[hidden],[aria-hidden="true"],.thinking-content,.reasoning-content,.think-content,[data-role="reasoning"],[data-testid="thinking"]'
- const render=(node:Node):string=>{
+ // Code is sometimes a standalone <code> or a line-based editor rather than
+ // <pre><code>. Preserve its physical lines before serializing to Markdown.
+ const codeText=(node:Node):string=>{
   if(node.nodeType===Node.TEXT_NODE)return node.textContent||''
+  if(!(node instanceof Element)||node.matches(ignored)||/line[-_]?numbers?|linenumber|lineno/i.test(node.getAttribute('class')||''))return ''
+  if(node.tagName==='BR')return '\n'
+  const value=[...node.childNodes].map(codeText).join('')
+  return /^(DIV|P)$/.test(node.tagName)||node.matches('.cm-line,.view-line,[data-code-line]')?value.endsWith('\n')?value:value+'\n':value
+ }
+ const codeBlock=(value:string,language=''):string=>{
+  const content=value.replace(/\u00a0/g,' ').replace(/\r\n?/g,'\n').trimEnd()
+  const fence='`'.repeat(Math.max(3,...(content.match(/`+/g)||[]).map(part=>part.length+1)))
+  return '\n\n'+fence+language+'\n'+content+'\n'+fence+'\n\n'
+ }
+ const render=(node:Node):string=>{
+  if(node.nodeType===Node.TEXT_NODE)return (node.textContent||'').replace(/([\\`*_[\]~|])/g,'\\$1')
   if(!(node instanceof Element)||node.matches(ignored)||!visible(node))return ''
-  if(node.matches('.cm-content'))return '\n\n```\n'+[...node.children].filter(el=>el.classList.contains('cm-line')).map(el=>el.textContent||'').join('\n').replace(/\u00a0/g,' ')+'\n```\n\n'
+  if(node.matches('.cm-content'))return codeBlock(codeText(node))
   if(node.tagName==='PRE'){
    const code=node.querySelector('code'),language=code?.className.match(/language-([\w+-]+)/)?.[1]||''
-   const source=code||node,copy=source.cloneNode(true) as Element
-   for(const el of copy.querySelectorAll('*'))if(el.matches('button,svg,[role="button"],[aria-hidden="true"]')||/line[-_]?numbers?|linenumber|lineno/i.test(el.getAttribute('class')||''))el.remove()
-   return '\n\n```'+language+'\n'+(copy.textContent||'').replace(/\u00a0/g,' ').trimEnd()+'\n```\n\n'
+   return codeBlock(codeText(code||node),language)
   }
   if(node.tagName==='BR')return '\n'
+  if(node.tagName==='CODE'){
+   const value=codeText(node)
+   if(value.includes('\n'))return codeBlock(value,node.className.match(/language-([\w+-]+)/)?.[1]||'')
+   const runs=value.match(/`+/g)||[],fence='`'.repeat(Math.max(0,...runs.map(part=>part.length))+1)
+   return fence+' '+value+' '+fence
+  }
+  if(node.tagName==='TABLE'){
+   const rows=[...node.querySelectorAll('tr')].filter(row=>row.closest('table')===node&&visible(row)).map(row=>[...row.children].filter(cell=>/^(TH|TD)$/.test(cell.tagName)).map(cell=>[...cell.childNodes].map(render).join('').trim().replace(/\n+/g,' ')))
+   const width=Math.max(0,...rows.map(row=>row.length));if(!width)return ''
+   const line=(cells:string[])=>'| '+Array.from({length:width},(_,i)=>cells[i]||'').join(' | ')+' |'
+   const hasHeader=!!node.querySelector('tr th'),header=hasHeader?rows.shift()!:Array.from({length:width},()=> '')
+   return '\n\n'+[line(header),line(Array.from({length:width},()=> '---')),...rows.map(line)].join('\n')+'\n\n'
+  }
   const content=[...node.childNodes].map(render).join('')
   if(node.tagName==='A'){
-   try{const url=new URL(node.getAttribute('href')||'',location.href);if(['http:','https:'].includes(url.protocol)&&!url.username&&!url.password&&content.trim())return '['+content.trim()+']('+url.href+')'}catch{}
+   try{const url=new URL(node.getAttribute('href')||'',location.href);if(['http:','https:'].includes(url.protocol)&&!url.username&&!url.password&&content.trim())return '['+content.trim()+']('+url.href.replace(/\(/g,'%28').replace(/\)/g,'%29')+')'}catch{}
   }
+  if(/^(STRONG|B)$/.test(node.tagName))return '**'+content+'**'
+  if(/^(EM|I)$/.test(node.tagName))return '*'+content+'*'
+  if(/^(DEL|S|STRIKE)$/.test(node.tagName))return '~~'+content+'~~'
+  if(node.tagName==='BLOCKQUOTE')return '\n\n'+content.trim().split('\n').map(line=>'> '+line).join('\n')+'\n\n'
+  if(node.tagName==='HR')return '\n\n---\n\n'
   if(/^H[1-6]$/.test(node.tagName))return '\n\n'+'#'.repeat(Number(node.tagName[1]))+' '+content.trim()+'\n\n'
   if(node.tagName==='LI'){
    const list=node.parentElement
@@ -68,12 +98,11 @@ export function observeWebAIPage(req:WebAIPageRequest){
     const items=[...list.children].filter(el=>el.tagName==='LI'),step=list.hasAttribute('reversed')?-1:1
     let number=Number(list.getAttribute('start')||(step<0?items.length:1))
     for(const item of items){if(item.hasAttribute('value'))number=Number(item.getAttribute('value'));if(item===node)break;number+=step}
-    return '\n'+number+'. '+content.trim()
+    const prefix=number+'. ';return '\n'+prefix+content.trim().replace(/\n{2,}/g,'\n').replace(/\n/g,'\n'+' '.repeat(prefix.length))
    }
-   return '\n- '+content.trim()
+   return '\n- '+content.trim().replace(/\n{2,}/g,'\n').replace(/\n/g,'\n  ')
   }
   if(node.tagName==='TR')return '\n'+[...node.children].map(el=>render(el).trim()).join(' | ')
-  if(node.tagName==='CODE')return '`'+content+'`'
   return /^(P|DIV|SECTION|UL|OL|TABLE|BLOCKQUOTE)$/.test(node.tagName)?'\n'+content+'\n':content
  }
  const bodyText=(el:Element)=>render(el).trim()
@@ -103,7 +132,9 @@ export function observeWebAIPage(req:WebAIPageRequest){
   const scope=(req.adapter.endScope?root.closest(req.adapter.endScope):null)||root
   const composerReady=!req.adapter.ready?.length||find(req.adapter.ready).length>0
   const endControl=composerReady&&(req.adapter.done||[]).some(selector=>find([selector],scope).some(enabled))
-  const completionEvidence=attribute?'attribute':endControl?'turn-control':null
+  // Doubao finishes search/preamble fragments before mounting the actual answer.
+  // Fragment (and wrapper) attributes cannot prove the whole agent turn has ended.
+  const completionEvidence=req.adapter.completionScope==='controls'?(endControl?'turn-control':null):attribute?'attribute':endControl?'turn-control':null
   return {id:identity(root),ordinal,question,userIndex,text:content.slice(0,60000),truncated:content.length>60000,complete:!stopping&&!!completionEvidence,completionEvidence}
  }).filter((t):t is NonNullable<typeof t>=>t!==null)
  const last=turns.at(-1)

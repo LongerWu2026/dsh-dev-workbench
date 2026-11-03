@@ -24,7 +24,7 @@ try{
  check('无答案保留empty，与错误分开',()=>assert.equal(h.retrieveKnowledge(s,'完全无关的蝴蝶标本').status,'empty'))
  const audit=h.validateKnowledgeCitations('[知识:'+scoped.hits[0].id+'] [知识:fake]',scoped)
  check('引用审核标出不存在的ID，缺少引用可检测',()=>{assert.deepEqual(audit.invalid,['fake']);assert.equal(h.validateKnowledgeCitations('无引用回答',scoped).missing,true)})
- const long={...base,knowledge:[doc('long','```\n'+'abc '.repeat(4000)+'\n```')]};check('过长代码块不静默截断或冒充未找到',()=>assert.match(h.retrieveKnowledge(long,'abc').note,/预算/))
+ const long={...base,knowledge:[doc('long','```\n'+'abc '.repeat(4000)+'\n```')]};check('过长代码块切成有界片段且保留同一行的独立引用',()=>{const chunks=h.chunkKnowledge(long.knowledge[0]);assert.ok(chunks.length>1);assert.ok(chunks.every(chunk=>chunk.text.length<=350));assert.equal(new Set(chunks.map(chunk=>chunk.id)).size,chunks.length);assert.ok(h.retrieveKnowledge(long,'abc').hits.length)})
  await api.createKnowledge({title:'接口发布验收规范',body:'接口发布前必须通过灰度验收，失败后先回滚。',reviewState:'confirmed'});const saved=h.loadWorkbenchState().knowledge[0]
  const miss=await api.assistantSend({text:'完全无关的蝴蝶标本',knowledgeMode:'only'});check('仅知识库无命中不调用模型',()=>{assert.equal(miss.status,'knowledge_empty');assert.equal(calls,0)})
  const sent=await api.assistantSend({text:'接口发布前如何验收',knowledgeMode:'only'});check('渐进聊天默认注入真实知识及原文，不需要手动refs',()=>{assert.equal(sent.retrieval.hits[0].documentId,saved.id);assert.ok(lastPrompt.includes('接口发布前必须通过灰度验收'));assert.equal(calls,1)})

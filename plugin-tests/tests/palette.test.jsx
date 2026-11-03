@@ -67,7 +67,7 @@ beforeAll(async () => {
 })
 
 describe('命令面板（真实 React + userEvent）', () => {
-  it('输入 → 本地检索分组出现 → 回车写入 searchPreset 并跳搜索页', async () => {
+  it('输入 → 本地检索分组出现 → 回车直接打开对应待办', async () => {
     const user = userEvent.setup()
     render(React.createElement(WB.Palette, { open: true, onClose: () => {} }))
 
@@ -85,12 +85,8 @@ describe('命令面板（真实 React + userEvent）', () => {
     const input = screen.getByPlaceholderText('搜索待办、知识、资讯，或输入命令…')
     await user.type(input, '{Enter}')
 
-    await waitFor(() => {
-      const preset = WB.store.get().searchPreset
-      expect(preset).toBeTruthy()
-      expect(preset.query).toBe('限流')
-      expect(preset.groups).toEqual(['tasks'])
-    })
+    expect(WB.store.get().page).toBe('tasks')
+    expect(WB.store.get().focusTaskId).toBe('task-1')
     expect(WB.store.get().status).toBe('ready')
   })
 })

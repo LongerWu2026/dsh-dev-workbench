@@ -6,9 +6,9 @@ export function AnalysisJobProgress({job}:{job:Job}):React.ReactElement|null {
  const progress=job.progress
  if(!progress)return null
  return <div role="status" className="wb-tiny" style={{overflowWrap:'anywhere'}}>
-  <p>累计处理 {progress.processed} 条 · 剩余 {progress.remaining} 条 · 失败 {progress.failed} 条 · 已执行 {progress.batches} 批（每批最多 50 条）</p>
+  <p>累计处理 {progress.processed} 条 · 剩余 {progress.remaining} 条 · 失败 {progress.failed} 条{progress.awaitingHuman?` · 待确认 ${progress.awaitingHuman} 条`:''} · 已执行 {progress.batches} 批（每批最多 50 条）</p>
   {progress.pauseReason&&<p>暂停原因：{progress.pauseReason}{job.nextRetryAt&&`；预计 ${new Date(job.nextRetryAt).toLocaleString('zh-CN',{timeZone:'Asia/Shanghai',hour12:false})}（北京时间）自动继续`}</p>}
-  {job.status==='completed'&&<p>本次识别队列已处理完毕{progress.processed ? '，需要人工确认的事项请在待确认列表核对' : ''}。</p>}
+  {job.status==='completed'&&<p>{progress.awaitingHuman?`识别已结束，${progress.awaitingHuman} 条消息待确认，可核对原因或单条重试。`:'本次识别队列已处理完毕'+(progress.processed ? '，需要人工确认的事项请在待确认列表核对' : '')+'。'}</p>}
  </div>
 }
 export function WorkflowJobs({jobs,kind}:{jobs:Job[];kind:'analysis'|'summary'}):React.ReactElement|null {

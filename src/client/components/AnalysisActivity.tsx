@@ -48,7 +48,8 @@ export function AnalysisMonitor() {
       const key=(before?.requestId||'automatic')+':'+job.id+':'+(failure?'failure':next.phase);
       if((failure||next.phase==='completed')&&!notified.current.has(key)){
        notified.current.add(key);
-       WB.toast(failure?'提取失败：'+(next.message||'请查看提取状态').slice(0,180):'提取完成',failure?'err':'ok');
+       const reviewed=job.progress?.awaitingHuman||job.result?.reviewed||0;
+       WB.toast(failure?'提取失败：'+(next.message||'请查看提取状态').slice(0,180):reviewed?'识别已结束，'+reviewed+' 条消息待确认，可单条重试':'提取完成',failure?'err':reviewed?'warn':'ok');
        void WB.actions.syncCheck();
       }
      }

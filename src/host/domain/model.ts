@@ -2,7 +2,7 @@ import {normalizeBusyReply} from '../../shared/busy-reply.js'
 import {normalizeConversationReadMarks} from '../../shared/conversation-read.js'
 import {normalizeMessageSelection,normalizeMessageInbox} from '../../shared/message-intake.js'
 import {normalizeLaunchCommands} from '../../shared/developer-tools.js'
-import { knowledgeMode } from '../../shared/knowledge.js'
+import { knowledgeMode, knowledgeSpaceOf } from '../../shared/knowledge.js'
 import {normalizeWebAI} from '../../shared/web-ai.js'
 import { normalizeAiPolicy } from '../../shared/ai-policy.js'
 import type { Source, Reply, Task } from '../../shared/contracts.js'
@@ -46,6 +46,7 @@ function emptyWorkbenchState(): any {
         sources: [],
         runs: [],
         knowledge: [],
+        knowledgeSpaces: [],
         radar: [],
         connectors: [],
         candidates: [],
@@ -149,7 +150,8 @@ function normalizeAnalysisQueue(raw?: any): any {
             accountId: asString(row.accountId, 120) || null,
             nextRetryAt: asIso(row.nextRetryAt),
             leaseUntil: asIso(row.leaseUntil),
-            status: row.status==='awaiting_human' && row.reviewReason && !analysis ? 'historical' : ANALYSIS_STATUSES.indexOf(row.status) >= 0 ? row.status : 'pending',
+            status: row.status==='awaiting_human' && row.reviewReason && !analysis && row.reviewKind!=='recognition' ? 'historical' : ANALYSIS_STATUSES.indexOf(row.status) >= 0 ? row.status : 'pending',
+            ...(row.reviewKind==='recognition'?{reviewKind:'recognition',rejectedEvidence:ensureArray(row.rejectedEvidence).slice(0,3).map((value:any)=>asString(value,400)).filter(Boolean)}:{}),
             attempts: Number(row.attempts) || 0,
             lastError: asString(row.lastError, 200) || null,
             reviewReason: asString(row.reviewReason, 200) || null,
@@ -158,6 +160,7 @@ function normalizeAnalysisQueue(raw?: any): any {
             analysis: analysis
                 ? {
                     noise: analysis.noise === true,
+                    ...(analysis.needsReview===true?{needsReview:true,reviewReason:asString(analysis.reviewReason,200)}:{}),
                     relevance: ['relevant','irrelevant','uncertain'].includes(analysis.relevance) ? analysis.relevance : null,
                     items: (ensureArray(analysis.items).slice(0, 6).map(function (item?: any): any {
                         const one = item && typeof item === 'object' ? item : {};
@@ -177,6 +180,7 @@ function normalizeAnalysisQueue(raw?: any): any {
                             replyToMsgId: asString(one.replyToMsgId, 80) || null,
                             completed: one.completed === true,
                             cancelled: one.cancelled === true,
+                            ...(one.evidence?{evidence:asString(one.evidence,12000)}:{}),
                             replyStage: REPLY_STAGES.indexOf(one.replyStage) >= 0 ? one.replyStage : null,
                         };
                     })).filter(function (item?: any): any { return item.title; }),
@@ -309,6 +313,7 @@ function normalizeProject(raw?: any, existing?: any): any {
     return {
         id: base.id || newId('proj'),
         name: asString(input.name === undefined ? base.name : input.name, 120) || '未命名项目',
+        knowledgeSpaceId: asString(input.knowledgeSpaceId===undefined?base.knowledgeSpaceId:input.knowledgeSpaceId,600)||'personal',
         repoPath: asString(input.repoPath === undefined ? base.repoPath : input.repoPath, 500),
         color: asString(input.color === undefined ? base.color : input.color, 20) || null,
         launchCommands: normalizeLaunchCommands(input.launchCommands === undefined ? base.launchCommands || [] : input.launchCommands),
@@ -458,6 +463,8 @@ function normalizeKnowledge(raw?: any, existing?: any): any {
         id: base.id || newId('kb'),
         projectId: asString(input.projectId===undefined?base.projectId:input.projectId,80)||null,
         accountId: asString(input.accountId===undefined?base.accountId:input.accountId,120)||null,
+        spaceId: asString(input.spaceId===undefined?base.spaceId:input.spaceId,600)||knowledgeSpaceOf({...base,...input}),
+        sharedAcrossSpaces: input.sharedAcrossSpaces===undefined?base.sharedAcrossSpaces===true:input.sharedAcrossSpaces===true,
         reviewState: ['candidate','confirmed','obsolete'].includes(input.reviewState)?input.reviewState:base.reviewState||'candidate',
         validUntil: asIso(input.validUntil===undefined?base.validUntil:input.validUntil),
         sourceLabel: asString(input.sourceLabel===undefined?base.sourceLabel:input.sourceLabel,200),
@@ -623,6 +630,7 @@ function normalizeState(raw?: any): any {
         replyDrafts: raw.replyDrafts && typeof raw.replyDrafts==='object' ? raw.replyDrafts : {},
         qualityReviews: ensureArray(raw.qualityReviews),
         qualityEvaluation: raw.qualityEvaluation || null,
+        knowledgeSpaces: ensureArray(raw.knowledgeSpaces).filter((row:any)=>row&&typeof row.id==='string'&&typeof row.name==='string').map((row:any)=>({id:asString(row.id,600),name:asString(row.name,80)})).slice(0,100),
         retrievalTraces: ensureArray(raw.retrievalTraces).slice(-100),
         webAI: normalizeWebAI(raw.webAI,true),
         jobs: ensureArray(raw.jobs).map((row:any)=>Object.assign({},row,row.input?.observed&&['running','queued'].includes(row.status)?{status:'failed',error:'上次同步执行中断；后续处理由原调度继续',nextRetryAt:null}:{status:row.status === 'running' ? 'queued' : row.status},Array.isArray(row.steps)?{steps:row.steps.map((step:any)=>({...step,status:step.status==='running'?'pending':step.status}))}:{})),

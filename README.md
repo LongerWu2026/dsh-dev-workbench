@@ -5,7 +5,7 @@ DeepSeek Harness 原生插件，把 AI 助手、消息跟进、研发任务、�
 - **AI 助手**：在统一会话中读取消息识别、资讯、知识和事项上下文，结合规则与 AI 处理操作，保留进度、结果及确认回执。
 - **办公跟进**：今日简报、待办与待回复、云之家会话阅读、持续消息识别和日报周报。
 - **研发协作**：Linky 工作项、本地工程、专属 Harness 会话、测试与独立审查。
-- **分析与复用**：多 AI 统一提问、开发工具与数据查询、历史搜索和带来源的知识问答。
+- **分析与复用**：多 AI 统一提问、开发工具与数据查询、全局本地搜索，以及按空间和项目隔离的本地知识检索。
 
 [源码仓库](https://github.com/LongerWu2026/dsh-dev-workbench) · [版本与下载](https://github.com/LongerWu2026/dsh-dev-workbench/releases) · [npm](https://www.npmjs.com/package/dsh-dev-workbench) · [问题反馈](https://github.com/LongerWu2026/dsh-dev-workbench/issues)
 
@@ -22,7 +22,7 @@ DeepSeek Harness 原生插件，把 AI 助手、消息跟进、研发任务、�
 通过 npm 安装下列版本；若 registry 或镜像暂未同步，可使用下一节的 GitHub 预构建包。
 
 ```sh
-dsh plugin --profile desktop add dsh-dev-workbench@0.4.1
+dsh plugin --profile desktop add dsh-dev-workbench@0.4.2
 ```
 
 将 `desktop` 替换为实际宿主使用的 profile。使用指定版本便于核对安装结果；桌面端也可使用应用自己的插件管理入口。
@@ -32,7 +32,7 @@ dsh plugin --profile desktop add dsh-dev-workbench@0.4.1
 从 [Releases](https://github.com/LongerWu2026/dsh-dev-workbench/releases) 下载 `dsh-dev-workbench-<版本>.tgz`，或直接安装：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.1/dsh-dev-workbench-0.4.1.tgz
+dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.2/dsh-dev-workbench-0.4.2.tgz
 ```
 
 升级后按宿主机制重载插件组件或重启 Harness，再打开侧栏「智能工作台」。只刷新页面不会重新注册新增 Host 接口；遇到 `/api/workbench/...` 返回 404，先重载插件组件。升级前建议备份工作台数据，位置见下文。
@@ -57,9 +57,9 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 | 办公工具（AI 助手内） | 生成日报周报、批量回复草稿和待办方案，恢复既有产物，在聊天中查看自动回复设置 |
 | 任务中心与待回复 | 独立管理交付与回复责任，支持搜索、筛选、状态切换、来源回查和确认后回复 |
 | AI 资讯 | 联网与 RSS 采集、读取原文、生成摘要和本轮概览，展开同批资讯或查看完整目录 |
-| 知识空间 | 保存候选知识、人工审核、限定项目和账号范围，检索原文并显示版本、行号与引用 |
+| 知识空间 | 人工审核资料，按空间和项目隔离；关键词与可选本地语义检索，返回原文、版本、行号和引用 |
 | 多 AI 对话 | 同一问题发给选定厂商，逐轮切换查看回答，管理附件和本地历史，将选中回答保存为候选知识 |
-| 工作搜索 | 在工作台记录中查找任务、回复、资料与问答，回到对应内容继续处理 |
+| 全局搜索 | 顶部搜索图标或 Cmd/Ctrl+K 查询已保存的待办、知识、资讯与消息，预览正文并回到原事项；快速查询不联网 |
 | 开发工具箱 | 数据连接、JSON、Diff、HTTP/MCP 调试、日志、SQL、正则、类型生成及常用转换工具 |
 | 研发协作 | 管理本地工程、启动命令，联动 VS Code、IDEA 和终端，查看运行日志 |
 
@@ -98,13 +98,25 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 
 页面使用方式及工程选择见[研发任务说明](docs/DEVELOPMENT-UX-2026-10-31.md)。完整真实业务修复与回写仍需用户在实际工作项中验证，隔离测试不代表业务已完成。
 
+### 全局搜索
+
+点击顶部搜索图标或按 Cmd/Ctrl+K，在同一个弹窗中筛选并查找已保存的待办、知识、资讯和消息。可查看完整正文、打开原事项，或把当前结果交给对应助手会话继续处理。快速搜索只查本地记录，不把输入发送给企业 CLI 或互联网服务；联网搜索入口只预填可编辑指令，明确发送后才执行。详见[全局搜索说明](docs/GLOBAL-WORK-SEARCH-2026-11-03.md)。
+
 ### 多 AI 对话与历史
 
 内嵌 Kimi、智谱清言、豆包、元宝和千问，ChatGPT 可选。统一输入问题，选择发送厂商，每轮通过厂商标签查看回答；各厂商保持自己的官网会话，新厂商不会自动继承其他厂商的历史上下文。
 
+新增回答支持增量展示和 Markdown 排版，保留表格、代码语言及文件树结构；复制、导出和保存知识使用完整已采集正文。官网更新仍通过 DOM 观察获取，历史中已丢失的格式不会自动复原。各厂商的登录状态可单独检查，遇到登录或验证码由用户在官网完成。
+
 支持选择、粘贴和拖入图片或文档，发送前预览和移除。每次最多 5 个附件，单文件 10 MB、合计 20 MB；历史仅保留附件元数据，刷新后需重选原文件。回答可保存、搜索、重命名、归档或放入本地回收站，选中内容可加入候选知识。恢复采集只读取回答；仅明确未提交的厂商可由用户点击补发，提交结果不确定时不自动重发。
 
 登录、验证码、站点繁忙及附件格式受各厂商规则约束。**跨 Harness 重启的网页登录持久化需要另行适配宿主扩展，安装本插件不会自动修改桌面应用**；普通原版宿主不保证这一能力。详见[聊天与补发](docs/WEB-AI-CHAT-REDESIGN-2026-10-30.md)、[历史管理](docs/WEB-AI-LOCAL-HISTORY-2026-10-29.md)、[真实站点验证](docs/WEB-AI-LIVE-ACCEPTANCE-2026-10-30.md)及[可选 rc.5 宿主扩展](host-integration/rc5/README.md)。
+
+### 本地知识检索与范围隔离
+
+默认使用关键词检索；可在「知识空间 → 本地语义检索」中按需下载并启用本地模型。固定版本的 BGE-small-zh-v1.5 INT8 与 WASM 运行时合计约 47 MB，逐文件校验大小与 SHA-256，模型不捆绑进插件包。无需安装 Python 或 Ollama，下载完成后向量计算在本地 Worker 中执行，空闲时自动释放；模型未就绪或索引过多时回退关键词检索。
+
+当前项目检索同项目与同空间公共资料，其他空间、其他项目不会自动纳入；个人通用知识需明确允许跨空间复用。已确认且有效的资料可自动增量索引，原文回读校验资料版本和引用范围。这里的范围隔离用于个人本地工作台，不提供多人服务的成员权限认证。PDF、Word 和图片未解析时不会被当作已入库正文。详见[本地 RAG 与知识空间](docs/LOCAL-KNOWLEDGE-RAG-2026-11-02.md)。
 
 ### 开发工具与数据查询
 
@@ -132,6 +144,7 @@ AI 助手的办公工具将工作记录组织为回复草稿、日报周报和�
 | 研发配置、任务和适配器记录 | `development/` |
 | 助手会话索引、事项绑定、操作与轮次回执 | `assistant-*.json` |
 | 托管云之家 CLI | `tools/yunzhijia/` |
+| 本地语义模型、运行时与派生向量索引 | `knowledge-engine/` |
 
 迁移工具提供预检、备份、关联检查、合并或替换。**现有业务导出不会包含独立的 `development/`，备份研发记录时须一并保存该目录。助手会话索引及回执保存在独立的 `assistant-*.json` 中，现有业务导出不包含这些文件；需要保留助手归属时也应一并备份。** 模型凭据、厂商登录状态和原生 Harness 会话另行管理。
 
@@ -139,7 +152,7 @@ AI 助手的办公工具将工作记录组织为回复草稿、日报周报和�
 
 ## 开发与验证
 
-源码采用 TypeScript 和 React/TSX：`src/host.ts` 为 Host 入口，`src/client.ts` 为 Client 入口，`src/shared/` 维护共享契约，`src/cli/harness-linky.ts` 为 CLI 入口。构建生成 `index.js`、`client.js` 和 `bin/harness-linky.mjs`；不要直接编辑生成文件。模块职责见[源码导航](src/README.md)。
+源码采用 TypeScript 和 React/TSX：`src/host.ts` 为 Host 入口，`src/client.ts` 为 Client 入口，`src/shared/` 维护共享契约，`src/cli/harness-linky.ts` 为 CLI 入口。构建生成 `index.js`、`client.js`、`bin/harness-linky.mjs` 和 `bin/knowledge-embedding-worker.mjs`；不要直接编辑生成文件。模块职责见[源码导航](src/README.md)。
 
 ```sh
 pnpm install --frozen-lockfile

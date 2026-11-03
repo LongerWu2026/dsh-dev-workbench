@@ -1,3 +1,4 @@
+import {activateLocalEmbedding} from './knowledge/local-embedding.js'
 import {activateDeveloperServices} from './application/developer-service.js'
 import { knowledgeToolGuard } from './knowledge/guards.js'
 import { registerWorkbenchToolNames, setShared_workbenchCtx, workbenchApi, workbenchCtx } from './application/workbench-service.js'
@@ -26,6 +27,7 @@ import {attachmentOnlyToolGuard} from './assistant/hub-attachments.js'
 export function apply(ctx?: any, config?: any): any {
     const releaseOwnership=claimWorkbenchOwnership();
     const disposeDeveloper=activateDeveloperServices();
+    const disposeEmbedding=activateLocalEmbedding();
     setShared_workbenchCtx(ctx);
     const settings = config && typeof config === 'object' ? config : {};
     ctx.provide('workbench', workbenchApi);
@@ -83,6 +85,7 @@ export function apply(ctx?: any, config?: any): any {
         }
         return function (): any {
             disposeDeveloper();
+            disposeEmbedding();
             workbenchApi.disposeWebAI();
             if(releaseOwnership()) setShared_workbenchCtx(null);
         };

@@ -31,6 +31,8 @@ export function advanceAnalysisJob(state: any, job: any, result: any): void {
     const previous: AnalysisProgress = job.progress || { processed: 0, remaining: 0, failed: 0, batches: 0, pauseReason: null };
     const progress: AnalysisProgress = { processed: analysisProcessedCount(state, job), remaining: rest.remaining, failed: rest.failed, batches: previous.batches + (result.inputCount > 0 ? 1 : 0), pauseReason: null };
     job.progress = progress;
+    const awaitingHuman=state.analysisQueue.filter((row:any)=>row.analysisJobId===job.id&&row.status==='awaiting_human').length;
+    if(awaitingHuman)progress.awaitingHuman=awaitingHuman;
     job.error = undefined;
     job.nextRetryAt = null;
     if (!rest.remaining) job.status = 'completed';
@@ -49,5 +51,5 @@ export function advanceAnalysisJob(state: any, job: any, result: any): void {
         job.nextRetryAt = rest.retryAt;
         progress.pauseReason = rest.failed ? '失败消息等待自动重试：' + (rest.error || '识别结果无效') : '消息正在补采、被其他识别占用或内容已变化，稍后自动继续';
     }
-    job.result = { ...result, processed: progress.processed, failures: progress.failed, note: progress.pauseReason || (rest.remaining ? '按每批 50 条自动连续识别' : '本次识别队列已处理完毕') };
+    job.result = { ...result, processed: progress.processed, failures: progress.failed, reviewed:awaitingHuman, note: progress.pauseReason || (rest.remaining ? '按每批 50 条自动连续识别' : awaitingHuman?'识别已结束，'+awaitingHuman+' 条消息待确认；可单条重试':'本次识别队列已处理完毕') };
 }

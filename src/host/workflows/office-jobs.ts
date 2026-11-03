@@ -1,3 +1,4 @@
+import {assistantKnowledgeScope} from '../knowledge/scope.js'
 import { retrieveKnowledgeAsync } from '../knowledge/semantic.js'
 import { retrieveKnowledge,readKnowledgeChunks } from '../knowledge/retrieval.js'
 import { recordRetrieval } from '../knowledge/context.js'
@@ -30,7 +31,7 @@ function periodInput(s:any,period:string,now:number){
 }
 export function prepareOfficeSteps(s:any,kind:OfficeWorkflowKind,input:any,now=Date.now()):OfficeStep[]{
  const items=kind==='reply_batch'?input.replyIds.map((id:string)=>({id,label:s.replies.find((r:any)=>r.id===id)?.snippet||id,data:replyInput(s,id)})):kind==='task_assist'?[{id:input.taskId,label:'整理依据 → 生成方案 → 验证产物',data:taskInput(s,input.taskId)}]:[{id:input.period,label:input.period==='week'?'近七日工作报告':'今日工作报告',data:periodInput(s,input.period,now)}]
- return items.map((item:any)=>{if(JSON.stringify(item.data).length>40000)throw new Error('事项上下文超过40000字符，请缩小范围');const projectId=item.data.task?.projectId||item.data.tasks?.[0]?.projectId||s.settings?.defaultProjectId||null,accountId=item.data.source?.locator?.accountId||null;const retrieval=kind==='work_report'?null:retrieveKnowledge(s,[item.data.task?.title,item.data.task?.description,item.data.source?.excerpt].filter(Boolean).join(' '),{scope:{projectId,accountId}});return{id:item.id,label:String(item.label).slice(0,120),status:'pending',attempts:0,input:{...item.data,...(retrieval?{knowledge:retrieval}:{})}}})
+ return items.map((item:any)=>{if(JSON.stringify(item.data).length>40000)throw new Error('事项上下文超过40000字符，请缩小范围');const knowledgeScope=kind==='work_report'?{}:assistantKnowledgeScope(s,{taskId:item.data.task?.id,refs:[...(item.data.reply?[{kind:'reply',id:item.data.reply.id}]:[]),...(item.data.source?[{kind:'source',id:item.data.source.id}]:[]),...(item.data.tasks||[]).map((task:any)=>({kind:'task',id:task.id}))]});const retrieval=kind==='work_report'?null:retrieveKnowledge(s,[item.data.task?.title,item.data.task?.description,item.data.source?.excerpt].filter(Boolean).join(' '),{scope:knowledgeScope});return{id:item.id,label:String(item.label).slice(0,120),status:'pending',attempts:0,input:{...item.data,...(retrieval?{knowledge:retrieval}:{})}}})
 }
 export async function enqueueOfficeWorkflow(kind:string,input:any={},onSelected?:(id:string)=>void,validateAt?:(now:number)=>void){
  if(!isOfficeWorkflow(kind))throw new Error('未知办公工作流')

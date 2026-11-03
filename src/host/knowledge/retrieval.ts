@@ -1,5 +1,5 @@
 import { hashText, newId } from '../platform/runtime.js'
-import { knowledgeMode, type KnowledgeScope, type KnowledgeHit, type RetrievalResult } from '../../shared/knowledge.js'
+import { knowledgeMode, knowledgeSpaceOf, knowledgeSpaces, legacyKnowledgeSpace, PERSONAL_KNOWLEDGE_SPACE, type KnowledgeScope, type KnowledgeHit, type RetrievalResult } from '../../shared/knowledge.js'
 
 /** Derived index only; every lookup rechecks document hash and scope against current records. */
 const cache=new Map<string,{version:string;chunks:KnowledgeHit[]}>()
@@ -12,26 +12,34 @@ export function knowledgeTokens(text:string):string[]{
 export function expandKnowledgeQuery(query:string):string{
  return query+' '+SYNONYMS.filter(group=>group.some(term=>query.toLowerCase().includes(term))).flat().join(' ')
 }
-export function knowledgeVersion(doc:any):string{return hashText(JSON.stringify([doc.title,doc.body,doc.tags,doc.url,doc.projectId||null,doc.accountId||null,doc.reviewState||'candidate',doc.validUntil||null]))}
+export function knowledgeVersion(doc:any):string{return hashText(JSON.stringify(['chunks-v2',doc.title,doc.body,doc.tags,doc.url,doc.projectId||null,doc.accountId||null,knowledgeSpaceOf(doc),!!doc.sharedAcrossSpaces,doc.reviewState||'candidate',doc.validUntil||null]))}
 export function knowledgeAllowed(doc:any,scope:KnowledgeScope,includeCandidates=false):boolean{
- return !doc.archivedAt && doc.reviewState!=='obsolete' && (doc.reviewState==='confirmed'||includeCandidates) && (!doc.validUntil||Date.parse(doc.validUntil)>Date.now()) && (!doc.projectId||doc.projectId===scope.projectId) && (!doc.accountId||doc.accountId===scope.accountId)
+ const space=scope.spaceId||(scope.accountId?legacyKnowledgeSpace(scope.accountId):PERSONAL_KNOWLEDGE_SPACE),own=knowledgeSpaceOf(doc)
+ const shared=own===PERSONAL_KNOWLEDGE_SPACE&&!doc.projectId&&doc.sharedAcrossSpaces===true
+ return !doc.archivedAt && doc.reviewState!=='obsolete' && (doc.reviewState==='confirmed'||includeCandidates) && (!doc.validUntil||Date.parse(doc.validUntil)>Date.now()) && (!doc.projectId||doc.projectId===scope.projectId) && (own===space||shared)
 }
 export function defaultKnowledgeScope(state:any,request:KnowledgeScope={}):KnowledgeScope{
  const projectId=request.projectId===undefined?state.settings?.defaultProjectId||null:request.projectId
  if(projectId&&!state.projects.some((p:any)=>p.id===projectId))throw new Error('知识检索项目不存在')
- const accounts=[...new Set<string>((state.sources||[]).map((s:any)=>s.locator?.accountId).filter(Boolean))]
- const accountId=request.accountId===undefined?(accounts.length===1?accounts[0]:null):request.accountId
- return {projectId,accountId:accountId||null}
+ const project=projectId?(state.projects||[]).find((p:any)=>p.id===projectId):null
+ const known=knowledgeSpaces(state),legacy=request.accountId?legacyKnowledgeSpace(request.accountId):null
+ const spaceId=request.spaceId|| (legacy&&known.some(space=>space.id===legacy)?legacy:project?.knowledgeSpaceId||PERSONAL_KNOWLEDGE_SPACE)
+ if(!knowledgeSpaces(state).some(space=>space.id===spaceId))throw new Error('知识空间不存在，请重新选择')
+ if(project&&request.spaceId&&spaceId!==(project.knowledgeSpaceId||PERSONAL_KNOWLEDGE_SPACE))throw new Error('项目不属于当前知识空间')
+ return {projectId,accountId:request.accountId||null,spaceId}
 }
 export function chunkKnowledge(doc:any):KnowledgeHit[]{
  const version=knowledgeVersion(doc),prior=cache.get(doc.id)
  if(prior?.version===version)return prior.chunks
- const lines=String(doc.body||'').split('\n'),chunks:KnowledgeHit[]=[];let start=0,buffer='',fenced=false
- const flush=(end:number)=>{if(buffer.trim())chunks.push({id:doc.id+'@'+version.slice(0,16)+':'+(start+1),documentId:doc.id,version,title:doc.title,text:buffer.trim(),lineStart:start+1,lineEnd:end,score:0,url:doc.url||null});buffer='';start=end}
+ const lines=String(doc.body||'').split('\n'),chunks:KnowledgeHit[]=[];let start=0,buffer=''
+ const flush=(end:number)=>{if(buffer.trim())chunks.push({id:doc.id+'@'+version.slice(0,16)+':'+(start+1)+':'+(chunks.length+1),documentId:doc.id,version,title:doc.title,text:buffer.trim(),lineStart:start+1,lineEnd:Math.max(start+1,end),score:0,url:doc.url||null});buffer='';start=end}
+ // Bounded Chinese-sized fragments fit the 512-token embedding model even for
+ // long single-line paragraphs/code. Fragment ordinal disambiguates one line.
  for(let i=0;i<lines.length;i++){
-  const line=lines[i];if(/^\s*```/.test(line))fenced=!fenced
-  if(buffer&&!fenced&&(buffer.length+line.length>1000||/^#{1,6}\s/.test(line)))flush(i)
-  buffer+=line+'\n'
+  const line=lines[i]
+  if(buffer&&(buffer.length+line.length>350||/^#{1,6}\s/.test(line)))flush(i)
+  if(line.length>350){for(let offset=0;offset<line.length;offset+=350){start=i;buffer=line.slice(offset,offset+350);flush(i+1)}}
+  else{if(!buffer)start=i;buffer+=line+'\n'}
  }
  flush(lines.length)
  cache.set(doc.id,{version,chunks});if(cache.size>500)cache.delete(cache.keys().next().value!)

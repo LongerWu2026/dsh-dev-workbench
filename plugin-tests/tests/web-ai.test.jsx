@@ -72,7 +72,7 @@ describe('六家适配器隔离DOM回归',()=>{
  const cases=[
   ['kimi','https://www.kimi.com/','<div contenteditable="true" class="chat-input-editor"></div><button class="send-button">发送</button>','<div class="segment-assistant" data-streaming="false"><div class="markdown">隔离回答</div></div>'],
   ['glm','https://chatglm.cn/','<div id="search-input-box"><textarea></textarea><div class="enter-icon-container">发送</div></div>','<div class="message-assistant" data-streaming="false"><div class="markdown-body">隔离回答</div></div>'],
-  ['doubao','https://www.doubao.com/chat/','<textarea data-testid="chat_input_input"></textarea><button data-testid="chat_input_send_button">发送</button>','<div data-testid="receive_message" data-streaming="false"><div class="md-box-root">隔离回答</div></div>'],
+  ['doubao','https://www.doubao.com/chat/','<textarea data-testid="chat_input_input"></textarea><button data-testid="chat_input_send_button">发送</button>','<div data-testid="receive_message" data-streaming="false"><div class="md-box-root">隔离回答</div><button data-testid="message_action_regenerate"></button></div>'],
   ['yuanbao','https://yuanbao.tencent.com/','<div contenteditable="true" class="ql-editor"></div><div id="yuanbao-send-btn">发送</div>','<div class="agent-chat__bubble--ai" data-streaming="false"><div class="hyc-content-md">隔离回答</div></div>'],
   ['qianwen','https://www.qianwen.com/','<div contenteditable="true" data-slate-editor="true"></div><button aria-label="发送消息">发送</button>','<div class="message-assistant" data-streaming="false"><div class="markdown">隔离回答</div></div>'],
   ['chatgpt','https://chatgpt.com/','<div id="prompt-textarea" contenteditable="true"></div><button data-testid="send-button">发送</button>','<div data-message-author-role="assistant" data-streaming="false"><div class="markdown">隔离回答</div></div>'],
@@ -88,6 +88,18 @@ function setup(options={}){
  WB.store.set({data,status:'ready',page:'web-ai'});WB.apply({get(){},effect:fn=>fn(),connection:{rpc:{call}},slots:{inject(_n,fn){return fn()},register(d,c){if(d.name==='main')App=c;return()=>{}}},locale:{register:()=>()=>{},bind:()=>()=>''}});render(<App/>);return{WB,calls}
 }
 describe('网页 AI 独立工作台',()=>{
+ it.each([1280,360])('会话折叠与窄屏抽屉保持当前会话、草稿、附件和厂商选择（%ipx）',async width=>{
+  const previous=window.innerWidth;Object.defineProperty(window,'innerWidth',{configurable:true,value:width})
+  try{
+   const {calls}=setup(),user=userEvent.setup();await screen.findByRole('heading',{name:'合成验收主题',level:2});const editor=screen.getByRole('textbox',{name:'多 AI 对话问题'});await user.type(editor,'保留这份未发送草稿');await user.upload(screen.getByLabelText('选择问题附件'),new File(['local-draft'],'草稿资料.txt',{type:'text/plain'}));const providers=document.querySelector('.wb-chat-provider-picker summary').textContent
+   if(width<=640)await user.click(screen.getByRole('button',{name:'展开会话列表',exact:true}));await user.type(screen.getByRole('textbox',{name:'搜索会话'}),'合成')
+   if(width<=640){expect(document.querySelector('.wb-chat-main').getAttribute('aria-hidden')).toBe('true');await user.keyboard('{Escape}')}
+   else await user.click(screen.getByRole('button',{name:'收起会话列表',exact:true}))
+   expect(screen.getByRole('textbox',{name:'多 AI 对话问题'})).toBe(editor);expect(editor.value).toBe('保留这份未发送草稿');expect(screen.getByText('草稿资料.txt')).toBeTruthy();expect(document.querySelector('.wb-chat-provider-picker summary').textContent).toBe(providers)
+   await user.click(screen.getByRole('button',{name:'展开会话列表',exact:true}));expect(screen.getByRole('textbox',{name:'搜索会话'}).value).toBe('合成');await user.click(screen.getByRole('button',{name:'选择会话 合成验收主题'}));expect(screen.getByRole('textbox',{name:'多 AI 对话问题'}).value).toBe('保留这份未发送草稿');expect(calls.some(call=>/webAIStart|webAIClaim|webAIUpdate/.test(call))).toBe(false)
+  }finally{Object.defineProperty(window,'innerWidth',{configurable:true,value:previous})}
+ })
+
  it('厂商与回答菜单点击外部关闭，Escape关闭，不影响菜单内选择',async()=>{
   setup();const user=userEvent.setup();await screen.findByRole('heading',{name:'合成验收主题',level:2})
   const picker=document.querySelector('.wb-chat-provider-picker');await user.click(picker.querySelector('summary'));expect(picker.open).toBe(true)

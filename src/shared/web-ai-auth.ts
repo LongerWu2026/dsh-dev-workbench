@@ -1,8 +1,9 @@
-import {webAIProvider} from './web-ai.js'
+import {webAIProvider,WEB_AI_LOGIN_HOSTS} from './web-ai.js'
+import {WEB_AI_ADAPTERS} from './web-ai-adapters.js'
 
 export type WebAIAuthenticationStatus='authenticated'|'needs_login'|'verification'|'unknown'
 export interface WebAIAuthentication {status:WebAIAuthenticationStatus;note:string;evidence:string[]}
-export interface WebAIAuthenticationRequest {providerId:string;hosts:readonly string[]}
+export interface WebAIAuthenticationRequest {providerId:string;hosts:readonly string[];loginHosts?:readonly string[];messages?:readonly string[]}
 
 /** Read-only, serialized into the guest. Never inspect credentials or mutate the page. */
 export function observeWebAIAuthentication(req:WebAIAuthenticationRequest):WebAIAuthentication {
@@ -15,25 +16,30 @@ export function observeWebAIAuthentication(req:WebAIAuthenticationRequest):WebAI
   doubao:{routes:/^\/(?:login|auth\/login)(?:\/|$)/i,accounts:/^(?:账户菜单|账号菜单|个人菜单|个人中心|用户菜单)$/},
   yuanbao:{routes:/^\/(?:login|auth\/login)(?:\/|$)/i,accounts:/^(?:账户菜单|账号菜单|个人菜单|个人中心|用户菜单)$/},
   qianwen:{routes:/^\/(?:login|auth\/login)(?:\/|$)/i,accounts:/^(?:账户菜单|账号菜单|个人菜单|个人中心|用户菜单)$/},
-  chatgpt:{routes:/^\/(?:login|auth\/(?:login|signin|sign-in))(?:\/|$)/i,accounts:/^(?:open (?:profile|account|user) menu|(?:profile|account|user) menu|打开个人资料菜单|账户菜单|个人菜单)$/i},
+  chatgpt:{routes:/^\/(?:login|auth\/(?:login(?:_with)?|signin|sign-in))(?:\/|$)/i,accounts:/^(?:open (?:profile|account|user) menu|(?:profile|account|user) menu|打开个人资料菜单|账户菜单|个人菜单)$/i},
  }
  const site=Object.prototype.hasOwnProperty.call(sites,req.providerId)?sites[req.providerId]:undefined
  if(!site)return result('unknown','不支持此厂商的登录状态识别。','未知厂商')
  const pageUrl=new URL(location.href)
+ if(pageUrl.protocol==='https:'&&!pageUrl.port&&!pageUrl.username&&!pageUrl.password&&req.loginHosts?.includes(pageUrl.hostname))return result('needs_login','正在官网身份验证页面，请在原页面完成登录。','官网身份验证域名')
  if(pageUrl.protocol!=='https:'||pageUrl.port||pageUrl.username||pageUrl.password||!req.hosts.includes(pageUrl.hostname))return result('unknown','当前页面不在所选厂商的聊天官网，暂不能确认登录状态。','官网域名不匹配')
+ const visibility=new WeakMap<Element,boolean>(),styles=new WeakMap<Element,CSSStyleDeclaration>()
+ const styleOf=(el:Element)=>{let style=styles.get(el);if(!style){style=getComputedStyle(el);styles.set(el,style)}return style}
  const visible=(el:Element)=>{
-  if(!el.getClientRects().length&&getComputedStyle(el).display!=='contents'||el.closest('[hidden],[aria-hidden="true"],[inert]'))return false
+  if(visibility.has(el))return visibility.get(el)!
+  const resolved=(value:boolean)=>{visibility.set(el,value);return value}
+  if(!el.getClientRects().length&&styleOf(el).display!=='contents'||el.closest('[hidden],[aria-hidden="true"],[inert]'))return resolved(false)
   for(let node:Element|null=el;node;node=node.parentElement){
-   const style=getComputedStyle(node)
-   if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse'||style.opacity==='0'||node.matches('.sr-only,.visually-hidden,.screen-reader-only'))return false
+   const style=styleOf(node)
+   if(style.display==='none'||style.visibility==='hidden'||style.visibility==='collapse'||style.opacity==='0'||node.matches('.sr-only,.visually-hidden,.screen-reader-only'))return resolved(false)
    if(style.display!=='contents'){
     const rect=node.getBoundingClientRect()
-    if(/hidden|clip/.test(style.overflowY)&&rect.height===0||/hidden|clip/.test(style.overflowX)&&rect.width===0)return false
+    if(/hidden|clip/.test(style.overflowY)&&rect.height===0||/hidden|clip/.test(style.overflowX)&&rect.width===0)return resolved(false)
    }
   }
-  return true
+  return resolved(true)
  }
- const transcript='article,[data-message-author-role],[data-testid*="conversation-turn"],[data-testid="send_message"],[data-testid="receive_message"],[class*="markdown"],.segment-user,.segment-assistant,[class*="message-content"],.agent-chat__bubble--human,.agent-chat__bubble--ai'
+ const transcript=['article','[data-message-author-role]','[data-testid*="conversation-turn"]','[data-testid="send_message"]','[data-testid="receive_message"]','[class*="markdown"]','.segment-user','.segment-assistant','[class*="message-content"]','.agent-chat__bubble--human','.agent-chat__bubble--ai',...(req.messages||[])].join(',')
  const find=(selectors:string,root:ParentNode=document)=>[...root.querySelectorAll(selectors)].filter(el=>!el.closest(transcript)&&visible(el))
  const text=(el:Element)=>((el as HTMLElement).innerText||el.textContent||'').replace(/\s+/g,' ').trim()
  const label=(el:Element)=>el.getAttribute('aria-label')?.trim()||el.getAttribute('title')?.trim()||text(el)
@@ -44,6 +50,10 @@ export function observeWebAIAuthentication(req:WebAIAuthenticationRequest):WebAI
  const route=location.pathname==='/'&&location.hash.startsWith('#/')?location.hash.slice(1).split(/[?#]/)[0]:location.pathname
  if(site.routes.test(route))return result('needs_login','官网正在登录页面，请在原页面完成登录。','官网登录路由')
  const loginLabel=/^(?:登录|登录\/注册|登录或注册|登录并继续|立即登录|手机号登录|账号登录|扫码登录|微信登录|sign in|log in|login|continue with (?:email|google|apple|microsoft))$/i
+ const namedAvatar=(el:Element)=>{
+  const image=el.querySelector('img'),name=(text(el)||el.getAttribute('aria-label')||image?.getAttribute('alt')||'').trim()
+  return !!image&&!!name&&!loginLabel.test(name)&&!/^(?:头像|用户头像|user avatar|avatar|千问|qwen|豆包|doubao|logo)$/i.test(name)
+ }
  const forms=[...new Set([...dialogs,...find('form,[class*="login-panel"],[class*="loginPanel"],[data-testid="login-form"]')])]
  const loginForm=forms.some(form=>{
   const intent=find('button,[role="button"],h1,h2,h3,[role="heading"],input[type="submit"]',form).some(el=>loginLabel.test(label(el)))
@@ -60,9 +70,13 @@ export function observeWebAIAuthentication(req:WebAIAuthenticationRequest):WebAI
   const semantic=site.accounts.test(el.getAttribute('aria-label')?.trim()||el.getAttribute('title')?.trim()||'')
   return semantic&&(el.getAttribute('aria-haspopup')==='menu'||el.getAttribute('aria-haspopup')==='true')
  })
- const accountMenu=find('[role="menu"],[role="dialog"][aria-label="账户菜单"],[role="dialog"][aria-label="Account menu"]').some(menu=>find('button,[role="menuitem"],a',menu).some(el=>/^(?:退出登录|退出账号|退出账户|log out|sign out)$/i.test(label(el))))
+ const accountMenu=find('[role="menu"],[role="dialog"][aria-label="账户菜单"],[role="dialog"][aria-label="Account menu"]').some(menu=>find('button,[role="menuitem"],a,div,span',menu).some(el=>[label(el),text(el)].some(value=>/^(?:退出登录|退出账号|退出账户|log out|sign out)$/i.test(value))))
  if(accountTrigger||accountMenu)return result('authenticated','官网显示已登录的账户菜单。',accountTrigger?'可见个人账户菜单入口':'可见账户退出菜单')
  if(req.providerId==='glm'){
+  // Verified live collapsed sidebar: the signed-in user entry is distinct from
+  // a generic avatar, and remains mounted when its nickname/points are hidden.
+  const sidebarAccount=find('aside.aside-container .userInfoBar.sidebar-mode .sidebar-user-entry').some(entry=>!loginLabel.test(text(entry))&&find('.sidebar-avatar img',entry).length>0)
+  if(sidebarAccount)return result('authenticated','官网显示侧栏的已登录账户入口。','智谱折叠侧栏账户入口')
   // Verified live sidebar: account name + points, together with chat/history navigation.
   // Match only compact visible elements outside messages; return no identity or balance.
   const leaves=find('div,span,button,a')
@@ -71,6 +85,28 @@ export function observeWebAIAuthentication(req:WebAIAuthenticationRequest):WebAI
   const navigation=leaves.some(el=>text(el)==='新对话')&&leaves.some(el=>text(el)==='最近对话')
   const profile=leaves.some(el=>el.querySelectorAll('*').length<15&&/^\S.{0,59}\s+积分\s+[\d,.]+$/.test(text(el)))
   if(profile&&navigation)return result('authenticated','官网显示账户积分区域和历史会话导航。','智谱账户区域及历史导航')
+ }
+ if(req.providerId==='yuanbao'){
+  // Live new-framework navigation mounts the account avatar in its user footer.
+  const account=find('.yb-nav__user .yb-common-nav__ft__avatar').some(el=>!loginLabel.test(text(el))&&find('.image-container img',el).length>0)
+  const navigation=find('.yb-new-chat-entry [role="button"]').some(el=>text(el)==='新建对话')
+  if(account&&navigation)return result('authenticated','官网显示用户导航中的账户入口。','元宝用户侧栏账户入口')
+ }
+ if(req.providerId==='qianwen'){
+  // Live account menu has no aria-label; model/tool menus do not share this
+  // full-width account-button structure. Never return its displayed identity.
+  const account=find('.tongyiDI-view-container button.flex-1.min-w-0[aria-haspopup="menu"]').some(namedAvatar)
+  if(account)return result('authenticated','官网显示用户账户菜单入口。','千问用户账户菜单入口')
+ }
+ if(req.providerId==='doubao'){
+  // Verified Work footer: the account popup and the dedicated footer-settings
+  // control are direct siblings. Project/skill/model popups lack this context.
+  const account=find('[data-testid="sidebar_footer_setting_entry"]').some(settings=>{
+   if(!settings.parentElement)return false
+   const entries=find('button[aria-haspopup="menu"]',settings.parentElement)
+   return entries.length===1&&entries[0].parentElement===settings.parentElement&&namedAvatar(entries[0])
+  })
+  if(account)return result('authenticated','官网显示豆包工作侧栏账户菜单。','豆包工作账户菜单及侧栏设置入口')
  }
  // Kimi's live account trigger has no account aria-label. Require the matching avatar/name pair,
  // the adjacent upgrade action AND the site's visible history/navigation structure; never an avatar alone.
@@ -100,5 +136,6 @@ export function observeWebAIAuthentication(req:WebAIAuthenticationRequest):WebAI
 /** The host supplies no arbitrary origins or selectors. Unknown providers throw. */
 export function webAIAuthScript(providerId:string):string {
  const provider=webAIProvider(providerId)
- return '('+observeWebAIAuthentication.toString()+')('+JSON.stringify({providerId:provider.id,hosts:provider.hosts})+')'
+ const adapter=WEB_AI_ADAPTERS[provider.id]
+ return '('+observeWebAIAuthentication.toString()+')('+JSON.stringify({providerId:provider.id,hosts:provider.hosts,loginHosts:WEB_AI_LOGIN_HOSTS[providerId]||[],messages:[...(adapter.roots||[]),...(adapter.users||[])]})+')'
 }

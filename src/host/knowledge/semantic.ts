@@ -1,3 +1,5 @@
+import {scheduleKnowledgeIndex} from './engine.js'
+import {localEmbeddingEnabled,localEmbeddingVectors} from './local-embedding.js'
 import { retrieveKnowledge, knowledgeAllowed, chunkKnowledge } from './retrieval.js'
 import { hashText } from '../platform/runtime.js'
 import type { KnowledgeHit } from '../../shared/knowledge.js'
@@ -6,7 +8,9 @@ function cosine(a:number[],b:number[]){const norm=Math.hypot(...a)*Math.hypot(..
 /** Optional Ollama /api/embed provider. No endpoint/model configured => no network or new dependency. */
 export async function retrieveKnowledgeAsync(state:any,query:string,request:any={}){
  const local=retrieveKnowledge(state,query,request),endpoint=process.env.AWB_EMBEDDING_URL,model=process.env.AWB_EMBEDDING_MODEL
- if(local.status==='off'||!endpoint||!model)return local
+ if(local.status==='off')return local
+ if(await localEmbeddingEnabled())return retrieveLocalHybrid(state,query,request,local)
+ if(!endpoint||!model)return local
  const began=performance.now(),controller=new AbortController();let timer:any
  try{
   const url=new URL(endpoint);if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search)throw new Error('Embedding地址格式无效')
@@ -35,4 +39,25 @@ export async function retrieveKnowledgeAsync(state:any,query:string,request:any=
   for(const item of [...fused.values()].sort((a,b)=>b.score-a.score)){if(hits.length>=Math.min(8,Number(request.limit)||5))break;if(docs.has(item.hit.documentId)||chars+item.hit.text.length>12000)continue;docs.add(item.hit.documentId);chars+=item.hit.text.length;hits.push({...item.hit,score:item.score})}
   return {...local,status:hits.length?'ok' as const:'empty' as const,hits,note:hits.length?undefined:local.note,strategy:'hybrid-bm25-vector-rrf',elapsedMs:Math.round(performance.now()-began)}
  }catch(error){return {...local,status:local.hits.length?local.status:'error' as const,note:'语义检索不可用，已保留本地全文检索：'+String(error.message||error).slice(0,120),elapsedMs:Math.round(performance.now()-began)}}finally{clearTimeout(timer)}
+}
+
+async function retrieveLocalHybrid(state:any,query:string,request:any,local:any){
+ const began=performance.now()
+ try{
+  const chunks=(state.knowledge||[]).filter((doc:any)=>knowledgeAllowed(doc,local.scope)&&doc.body?.trim()).flatMap(chunkKnowledge)
+  if(!chunks.length)return local
+  if(chunks.length>20000)return {...local,note:'当前范围超过20000片段，请缩小项目范围；已保留关键词检索'}
+  const vectors=await localEmbeddingVectors(chunks.map((hit:any)=>({id:hit.id,text:String(hit.title||'').slice(0,80)+'\n'+hit.text})),false,{maxMissing:8})
+  const [question]=await localEmbeddingVectors([{id:'query',text:query}],true)
+  const semantic=chunks.map((hit:any,index:number)=>({...hit,similarity:cosine(question,vectors[index])})).filter((hit:any)=>hit.similarity>=0.35).sort((a:any,b:any)=>b.similarity-a.similarity)
+  const fused=new Map<string,{hit:KnowledgeHit;score:number}>()
+  for(const list of [local.hits,semantic])list.forEach((hit:KnowledgeHit,index:number)=>{const row=fused.get(hit.id)||{hit,score:0};row.score+=1/(61+index);fused.set(hit.id,row)})
+  const hits:KnowledgeHit[]=[],perDoc=new Map<string,number>();let chars=0
+  for(const row of [...fused.values()].sort((a,b)=>b.score-a.score)){
+   if(hits.length>=Math.min(8,Math.max(1,Number(request.limit)||5)))break
+   if((perDoc.get(row.hit.documentId)||0)>=2||chars+row.hit.text.length>10000)continue
+   perDoc.set(row.hit.documentId,(perDoc.get(row.hit.documentId)||0)+1);chars+=row.hit.text.length;hits.push({...row.hit,score:row.score})
+  }
+  return {...local,status:hits.length?'ok':'empty',hits,note:hits.length?undefined:'当前范围未找到相关知识',strategy:'local-hybrid-bm25-bge-rrf',elapsedMs:Math.round(performance.now()-began)}
+ }catch(error:any){void scheduleKnowledgeIndex(local.scope).catch(()=>{});return {...local,note:'本地语义检索暂不可用，已保留关键词检索：'+String(error.message||error).slice(0,120),elapsedMs:Math.round(performance.now()-began)}}
 }

@@ -8,7 +8,7 @@ import { auditEntry, ensureArray, normalizeAnalysisQueue, normalizeCandidate, no
 /* Versioned portable business data. Precheck is pure; commit is queued and backed up. */
 const MIGRATION_FORMAT = 'dsh-dev-workbench-migration';
 const MIGRATION_FORMAT_VERSION = 2;
-const MIGRATION_COLUMNS: any = ['projects', 'tasks', 'sources', 'runs', 'knowledge', 'radar', 'candidates', 'replies', 'analysisQueue', 'operations', 'jobs', 'retrievalTraces', 'changeHistory', 'qualityReviews'];
+const MIGRATION_COLUMNS: any = ['projects', 'knowledgeSpaces', 'tasks', 'sources', 'runs', 'knowledge', 'radar', 'candidates', 'replies', 'analysisQueue', 'operations', 'jobs', 'retrievalTraces', 'changeHistory', 'qualityReviews'];
 const PLUGIN_EXPORT_VERSION = '0.2.1';
 function migrationStableStringify(value?: any): any {
     return JSON.stringify(value, function (key?: any, inner?: any): any {
@@ -70,7 +70,7 @@ function migrationPrecheck(payload?: any, request?: any, currentState?: any): an
         }
         for (const column of MIGRATION_COLUMNS) {
             const rows = data[column];
-            if (rows === undefined && (Number(payload.version) === 1 || ['changeHistory','qualityReviews','retrievalTraces'].includes(column))) {
+            if (rows === undefined && (Number(payload.version) === 1 || ['changeHistory','qualityReviews','retrievalTraces','knowledgeSpaces'].includes(column))) {
                 warnings.push(column + ' 未包含，保留当前集合');
                 continue;
             }

@@ -1,5 +1,7 @@
+import {KnowledgeEnginePanel} from './KnowledgeEnginePanel.js'
+import {KnowledgeScopeFields} from '../../components/KnowledgeScopeFields.js'
 import {RetrievalPanel} from './RetrievalPanel.js'
-import {KNOWLEDGE_REVIEW_OPTIONS} from '../../../shared/knowledge.js'
+import {KNOWLEDGE_REVIEW_OPTIONS,knowledgeSpaceOf,knowledgeSpaces,PERSONAL_KNOWLEDGE_SPACE} from '../../../shared/knowledge.js'
 import {Pagination,PAGE_SIZE,pageIndex} from '../../components/Pagination.js'
 import { Badge, Btn, Chip, Empty, Field, Icon, IconBtn, Input, Modal, PageHead, Select, T, Tabs, Textarea, WB, h } from '../../core/runtime.js'
 import * as React from 'react'
@@ -80,13 +82,14 @@ function knowSortItems(items?: any): any {
 function knowPage(): any {
     const wbState = WB.useStore();
     const data = wbState && wbState.data ? wbState.data : null;
-    const items = data && Array.isArray(data.knowledge) ? data.knowledge.filter((row:any)=>!row.archivedAt) : [];
+    const [scope,setScope]=React.useState<any>(()=>{const project=(data?.projects||[]).find((row:any)=>row.id===data?.settings?.defaultProjectId);return {spaceId:project?.knowledgeSpaceId||PERSONAL_KNOWLEDGE_SPACE,projectId:project?.id||null}})
+    const items = data && Array.isArray(data.knowledge) ? data.knowledge.filter((row:any)=>!row.archivedAt&&knowledgeSpaceOf(row)===(scope.spaceId||PERSONAL_KNOWLEDGE_SPACE)&&(!row.projectId||row.projectId===scope.projectId)) : [];
     const [page,setPage]=React.useState(0);
     const [kind, setKind] = React.useState<any>('all');
     const [query, setQuery] = React.useState<any>('');
     const [tag, setTag] = React.useState<any>('');
-    React.useEffect(()=>{const target=wbState.knowledgeFocusId;if(!target||!data)return;const item=(data.knowledge||[]).find((row:any)=>row.id===target);if(item){setQuery(item.title||'');setKind('all');setTag('')}WB.store.set({knowledgeFocusId:null})},[wbState.knowledgeFocusId,data]);
-    React.useEffect(()=>setPage(0),[kind,query,tag]);
+    React.useEffect(()=>{const target=wbState.knowledgeFocusId;if(!target||!data)return;const item=(data.knowledge||[]).find((row:any)=>row.id===target);if(item){setScope({spaceId:knowledgeSpaceOf(item),projectId:item.projectId||null});setQuery(item.title||'');setKind('all');setTag('')}WB.store.set({knowledgeFocusId:null})},[wbState.knowledgeFocusId,data]);
+    React.useEffect(()=>setPage(0),[kind,query,tag,scope.spaceId,scope.projectId]);
     const [createOpen, setCreateOpen] = React.useState<any>(false);
     const [formError, setFormError] = React.useState<any>('');
     const [form, setForm] = React.useState<any>(function (): any {
@@ -125,7 +128,7 @@ function knowPage(): any {
     }
     function openCreate(): any {
         setEditItem(null);
-        setForm({ kind: 'note', title: '', url: '', body: '', tags: '' });
+        setForm({ kind: 'note', title: '', url: '', body: '', tags: '',spaceId:scope.spaceId,projectId:scope.projectId||null });
         setFormError('');
         setCreateOpen(true);
     }
@@ -139,7 +142,7 @@ function knowPage(): any {
             url: item.url || '',
             body: item.body || '',
             tags: Array.isArray(item.tags) ? item.tags.join(', ') : '',
-            reviewState:item.reviewState||'candidate',projectId:item.projectId||'',accountId:item.accountId||'',validUntil:item.validUntil||'',sourceLabel:item.sourceLabel||'',
+            reviewState:item.reviewState||'candidate',projectId:item.projectId||'',spaceId:knowledgeSpaceOf(item),sharedAcrossSpaces:item.sharedAcrossSpaces===true,accountId:item.accountId||'',validUntil:item.validUntil||'',sourceLabel:item.sourceLabel||'',
         });
         setFormError('');
         setCreateOpen(true);
@@ -166,7 +169,7 @@ function knowPage(): any {
         }
         const input: any = {
             kind: form.kind,
-            reviewState:form.reviewState||'confirmed',projectId:form.projectId||null,accountId:form.accountId||null,validUntil:form.validUntil||null,sourceLabel:form.sourceLabel||'',
+            reviewState:form.reviewState||'confirmed',projectId:form.projectId||null,spaceId:form.spaceId||scope.spaceId,sharedAcrossSpaces:form.sharedAcrossSpaces===true,accountId:form.accountId||null,validUntil:form.validUntil||null,sourceLabel:form.sourceLabel||'',
             title: title,
             body: String(form.body || '').trim(),
             tags: String(form.tags || '')
@@ -189,7 +192,7 @@ function knowPage(): any {
             setCreateOpen(false);
             setEditItem(null);
             setFormError('');
-            setForm({ kind: 'note', title: '', url: '', body: '', tags: '' });
+            setForm({ kind: 'note', title: '', url: '', body: '', tags: '',spaceId:scope.spaceId,projectId:scope.projectId||null });
         })
             .catch(function (error?: any): any {
             setFormError(String((error && error.message) || error));
@@ -303,7 +306,7 @@ function knowPage(): any {
     const emptyState = !items.length
         ? h(Empty, {
             icon: 'book',
-            title: '知识空间还是空的',
+            title: '当前知识范围暂无资料',
             hint: '可以从技术雷达收藏条目，或直接在对话里让 Agent 记录一条笔记 / 片段；本页展示 Host 持久化的全部知识条目。',
             action: h(Btn, {
                 kind: 'primary',
@@ -349,7 +352,7 @@ function knowPage(): any {
         onChange: function (event?: any): any {
             patchForm({ kind: event.target.value });
         },
-    })), h(Field,{label:'知识状态'},h(Select,{value:form.reviewState||'confirmed',options:KNOWLEDGE_REVIEW_OPTIONS,onChange:(e:any)=>patchForm({reviewState:e.target.value})})),h(Field,{label:'所属项目'},h(Select,{value:form.projectId||'',options:[{value:'',label:'个人通用'},...((data&&data.projects)||[]).map((p:any)=>({value:p.id,label:p.name}))],onChange:(e:any)=>patchForm({projectId:e.target.value})})),h(Field,{label:'账号范围标识',hint:'留空为个人通用；专属资料填写来源账号标识'},h(Input,{value:form.accountId||'',onChange:(e:any)=>patchForm({accountId:e.target.value})})),h(Field,{label:'有效期',hint:'留空长期有效；使用ISO日期时间，例如2026-12-31T23:59:59+08:00'},h(Input,{value:form.validUntil||'',onChange:(e:any)=>patchForm({validUntil:e.target.value})})), h(Field, { label: '标题' }, h(Input, {
+    })), h(Field,{label:'知识状态'},h(Select,{value:form.reviewState||'confirmed',options:KNOWLEDGE_REVIEW_OPTIONS,onChange:(e:any)=>patchForm({reviewState:e.target.value})})),h(KnowledgeScopeFields,{data,scope:{spaceId:form.spaceId||scope.spaceId,projectId:form.projectId||null},onChange:(value:any)=>patchForm({...value,sharedAcrossSpaces:false}),prefix:'资料知识'}),form.accountId?h('p',{className:'wb-tiny wb-muted'},'来源账号：'+form.accountId):null,form.spaceId===PERSONAL_KNOWLEDGE_SPACE&&!form.projectId?h('label',{className:'wb-row',style:{gap:8}},h('input',{type:'checkbox',checked:form.sharedAcrossSpaces===true,onChange:(event:any)=>patchForm({sharedAcrossSpaces:event.target.checked})}),'允许其他知识空间检索此通用资料'):null,h(Field,{label:'有效期',hint:'留空长期有效；使用ISO日期时间，例如2026-12-31T23:59:59+08:00'},h(Input,{value:form.validUntil||'',onChange:(e:any)=>patchForm({validUntil:e.target.value})})), h(Field, { label: '标题' }, h(Input, {
         value: form.title,
         placeholder: '例如：Harness 插件热更新排查记录',
         onChange: function (event?: any): any {
@@ -417,13 +420,13 @@ function knowPage(): any {
         icon: 'book',
         title: '知识空间',
         sub: summary,
-        actions: h('div',{className:'wb-row wb-row--wrap'},h(Btn,{icon:'messages',onClick:()=>WB.assistant.openHub('system','knowledge'),children:'知识库对话'}),h(Btn, {
+        actions: h('div',{className:'wb-row wb-row--wrap'},h(Btn,{icon:'messages',onClick:()=>{WB.store.set({assistantHubKnowledgeScope:scope});WB.assistant.openHub('system','knowledge')},children:'知识库对话'}),h(Btn, {
             kind: 'primary',
             icon: 'plus',
             onClick: openCreate,
             children: '新建条目',
         })),
-    }),h(RetrievalPanel,{data,onReview:openEdit}), h('div', {
+    }),h(KnowledgeEnginePanel,{data,scope}),h(RetrievalPanel,{data,scope,onScope:setScope,onReview:openEdit}), h('div', {
         className: 'wb-row wb-row--wrap',
         style: { gap: 10, marginBottom: 12, alignItems: 'center' },
     },h(Tabs, {

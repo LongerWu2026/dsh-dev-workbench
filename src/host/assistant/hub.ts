@@ -1,3 +1,4 @@
+import {assistantKnowledgeScope,knowledgeScopeKey} from '../knowledge/scope.js'
 import {officeJobOwners,officeJobAllowed,busyReplyView,legacyOfficeTurns,officeArtifacts,officeProjectionSnapshot} from './office-results.js'
 import {isOfficeWorkflow} from '../../shared/office-workflow.js'
 import {hashText} from '../platform/runtime.js'
@@ -16,7 +17,7 @@ import {assistantActionEvents,assistantConfirmations} from './action-store.js'
 import {retrieveAssistantKnowledge,knowledgePrompt,recordRetrieval,validateKnowledgeCitations} from '../knowledge/context.js'
 import {buildAssistantContext} from '../../shared/assistant-context.js'
 import {setKnowledgeOnlySession} from '../knowledge/guards.js'
-import {defaultKnowledgeScope} from '../knowledge/retrieval.js'
+import {knowledgeAllowed,defaultKnowledgeScope} from '../knowledge/retrieval.js'
 import {backgroundDisplayText,backgroundRecognitionDetails,backgroundSubmittedPacket,backgroundMessageOrder,readBackgroundSnapshot} from './hub-background.js'
 import {listAnalysisResults,analysisResultTarget} from './analysis-results.js'
 import {ensureHubNativeIdentity,readHubNativeTitle} from './hub-native.js'
@@ -25,6 +26,7 @@ import {feedbackTurns,ruleCommand,operationJobs} from './hub-feedback.js'
 import {isDevelopmentTaskActive} from '../application/development-service.js'
 import {readHubWorkspace,ensureHubWorkspace,createHubWorkspaceSession} from './hub-workspace.js'
 import {prepareHubAttachments,hubImageLimits,attachmentFailureMessage,attachmentAdmissionRejected} from './hub-attachments.js'
+import {hubDeletionPolicy,isArchivedHubChat,deleteHubConversation} from './hub-deletion.js'
 
 const SYSTEMS=[{id:'system:analysis',kind:'system',title:'消息识别'},{id:'system:radar',kind:'system',title:'AI 资讯'},{id:'system:knowledge',kind:'system',title:'知识库'}]
 const collections:Record<string,string>={task:'tasks',reply:'replies',radar:'radar',knowledge:'knowledge'}
@@ -32,7 +34,7 @@ const creationLocks=new Map<string,Promise<any>>()
 const attachmentRequestLocks=new Set<string>()
 function split(id:string){const index=id.indexOf(':');return {kind:id.slice(0,index),entityId:id.slice(index+1)}}
 function titleOf(kind:string,row:any){return kind==='reply'?row.snippet||row.contact||'待回复':kind==='development'?[row.issue?.code,row.issue?.title].filter(Boolean).join(' · '):row.title||'工作会话'}
-function knowledgeInScope(row:any,state:any,input:any={}){const scope=defaultKnowledgeScope(state,input);return (!row.projectId||row.projectId===scope.projectId)&&(!row.accountId||row.accountId===scope.accountId)}
+function knowledgeInScope(row:any,state:any,input:any={}){const scope=defaultKnowledgeScope(state,input);return knowledgeAllowed(row,scope,true)}
 function describe(ctx:any,id:string,snapshot?:{state:any;index:ReturnType<typeof hubIndex>}):any {
     if(typeof id!=='string'||id.length>240||!id.includes(':'))throw Error('请选择有效的助手会话')
     const fixed=SYSTEMS.find(row=>row.id===id);if(fixed)return {...fixed,fixed:true}
@@ -49,6 +51,7 @@ function describe(ctx:any,id:string,snapshot?:{state:any;index:ReturnType<typeof
         return {id,kind,entityId,title:titleOf(kind,row),status:row.status,updatedAt:row.updatedAt,sessionId:row.sessionId}
     }
     if(kind==='chat'){
+        if(isArchivedHubChat(ctx,id))throw Error('该临时会话已删除，可从 Harness 已归档会话恢复')
         const session=hostService(ctx,'sessions')?.get?.(entityId),owner=index.conversations.find(row=>row.threads.some(thread=>thread.id===entityId))?.id
         if(developmentSessionIds().has(entityId)||taskThreadOwner(entityId)||owner&&owner!==id||isWorkbenchBackgroundSession(state,entityId,session))throw Error('该会话属于其他业务，请从对应事项进入')
         if(!session&&!saved&&state.settings.assistantSessionId!==entityId)throw Error('找不到该工作会话')
@@ -74,7 +77,7 @@ function selectedSession(conversation:any,request:any,snapshot=bindingSnapshot()
     if(request.sessionId&&!rows.some(row=>row.id===request.sessionId))throw Error('会话与当前事项不匹配')
     if(conversation.kind==='chat')return conversation.id.slice(5)
     if(conversation.id==='system:knowledge'){
-        const scope=defaultKnowledgeScope(loadWorkbenchState(),request.knowledgeScope||{}),matching=rows.filter(row=>JSON.stringify(row.knowledgeScope)===JSON.stringify(scope))
+        const scope=defaultKnowledgeScope(loadWorkbenchState(),request.knowledgeScope||{}),matching=rows.filter(row=>knowledgeScopeKey(row.knowledgeScope)===knowledgeScopeKey(scope))
         if(request.sessionId&&!matching.some(row=>row.id===request.sessionId))throw Error('历史会话不属于当前知识范围，请切换范围后重新选择会话')
         return request.sessionId||matching.find(row=>row.id===saved?.activeId)?.id||matching.at(-1)?.id||null
     }
@@ -124,6 +127,7 @@ function list(ctx:any,request:any={}){
     for(const row of listDevelopmentTasks())rows.set('development:'+row.id,describe(ctx,'development:'+row.id,cached))
     const developmentIds=developmentSessionIds()
     for(const session of hostService(ctx,'sessions')?.list?.()||[]){
+        if(isArchivedHubChat(ctx,'chat:'+session.id))continue
         if(developmentIds.has(session.id)||taskThreadOwner(session.id)||snapshot.index.conversations.some(row=>row.threads.some(thread=>thread.id===session.id))||isWorkbenchBackgroundSession(state,session.id,session))continue
         const id='chat:'+session.id;rows.set(id,describe(ctx,id,cached))
     }
@@ -133,13 +137,13 @@ function list(ctx:any,request:any={}){
         if([entity.id,entity.title,entity.code,entity.contact,entity.groupName,entity.snippet].filter(Boolean).join(' ').toLowerCase().includes(query)){const id=kind+':'+entity.id;rows.set(id,{...describe(ctx,id,cached),queryMatch:true})}
     }
     const bindings={state,index:snapshot.index,tasks:taskThreads()},annotated=[...rows.values()].map(row=>{const binding=nativeBinding(ctx,row,request,undefined,undefined,bindings);return {...row,sessionId:binding.sessionId,nativeBinding:binding}})
-    const conversations=conversationSummaries(annotated,state,request,snapshot).filter(row=>!query||row.fixed||row.queryMatch||[row.title,row.entityId,row.id,row.latestPreview].join(' ').toLowerCase().includes(query));conversations.sort((a,b)=>Number(!!b.fixed)-Number(!!a.fixed)||(!a.fixed?Number(b.pinned)-Number(a.pinned)||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')):0))
+    const conversations=conversationSummaries(annotated,state,request,snapshot).map(row=>({...row,...hubDeletionPolicy(ctx,row,state,snapshot.index,row.nativeBinding)})).filter(row=>!query||row.fixed||row.queryMatch||[row.title,row.entityId,row.id,row.latestPreview].join(' ').toLowerCase().includes(query));conversations.sort((a,b)=>Number(!!b.fixed)-Number(!!a.fixed)||(!a.fixed?Number(b.pinned)-Number(a.pinned)||String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')):0))
     return {status:'ok',conversations}
 }
 function item(kind:string,row:any){return {id:row.id,kind,title:titleOf(kind,row),status:row.status||row.stage||row.reviewState,body:row.description||row.body||row.snippet||Object.values(row.summary||{}).filter(Boolean).join('\n'),url:row.url,conversationId:kind+':'+row.id}}
 function eventsFor(conversation:any,state:any,scope:any={}){
     const changed=(state.changeHistory||[]).filter((row:any)=>conversation.id==='system:knowledge'?row.collection==='knowledge'&&knowledgeInScope(row.after||row.before||{},state,scope):row.collection===collections[conversation.kind]&&row.entityId===conversation.entityId).map((row:any)=>({id:row.id,at:row.at,kind:'change',text:row.reason||'事项已更新',actor:row.actor,before:row.before,after:row.after,status:row.after?.status||row.after?.stage,entityId:row.entityId}))
-    const selected=defaultKnowledgeScope(state,scope),actions=assistantActionEvents(conversation.id).filter(event=>conversation.id!=='system:knowledge'||event.knowledgeScope&&JSON.stringify(event.knowledgeScope)===JSON.stringify(selected))
+    const selected=defaultKnowledgeScope(state,scope),actions=assistantActionEvents(conversation.id).filter(event=>conversation.id!=='system:knowledge'||event.knowledgeScope&&knowledgeScopeKey(event.knowledgeScope)===knowledgeScopeKey(selected))
     return [...changed,...actions].sort((a,b)=>String(a.at).localeCompare(String(b.at)))
 }
 function runRows(conversation:any,state:any){
@@ -159,12 +163,12 @@ function itemRows(conversation:any,state:any,runs:any[],scope:any={}){
     return []
 }
 async function detail(ctx:any,request:any){
-    const conversation=describe(ctx,request.conversationId),state=loadWorkbenchState(),sessionId=selectedSession(conversation,request),runs=runRows(conversation,state),threads=threadRows(conversation).filter(row=>conversation.id!=='system:knowledge'||JSON.stringify(row.knowledgeScope)===JSON.stringify(defaultKnowledgeScope(state,request.knowledgeScope||{})))
+    const conversation=describe(ctx,request.conversationId),state=loadWorkbenchState(),sessionId=selectedSession(conversation,request),runs=runRows(conversation,state),threads=threadRows(conversation).filter(row=>conversation.id!=='system:knowledge'||knowledgeScopeKey(row.knowledgeScope)===knowledgeScopeKey(defaultKnowledgeScope(state,request.knowledgeScope||{})))
     let history:any={messages:[],hasMore:false,before:null,turnActive:false},historyError:string|undefined,legacyTurns:any[]=[],native:any
     if(sessionId)try{native=await restore(ctx,sessionId);reconcileHubTurns(conversation.id,native,{sessionId,...(conversation.id==='system:knowledge'?{knowledgeScope:defaultKnowledgeScope(state,request.knowledgeScope||{})}:{})});history=pageMessages(native,request);const first=history.messages[0]?.seq??0,last=history.messages.at(-1)?.seq??native.seq;legacyTurns=projectLegacyHubTurns(conversation.id,native,conversation.id==='system:knowledge'?{knowledgeScope:defaultKnowledgeScope(state,request.knowledgeScope||{})}:{}).filter(turn=>(turn.toSeq??turn.userSeq??0)>=first&&(turn.userSeq??0)<=last);history.messages=markHubMessages(sessionId,history.messages,legacyTurns)}catch(error){historyError=String(error.message||error)}
     const entity=entityFor(conversation,state),events=eventsFor(conversation,state,request.knowledgeScope)
     const selectedScope=defaultKnowledgeScope(state,request.knowledgeScope||{})
-    const confirmations=assistantConfirmations(conversation.id).filter(row=>row.state==='pending'&&Date.parse(row.expiresAt)>Date.now()&&(conversation.id!=='system:knowledge'||JSON.stringify(row.payload?.knowledgeScope)===JSON.stringify(selectedScope))).map(({id,conversationId,operation,title,before,after,expiresAt,state,turnId})=>({id,conversationId,operation,title,before,after,expiresAt,state,turnId}))
+    const confirmations=assistantConfirmations(conversation.id).filter(row=>row.state==='pending'&&Date.parse(row.expiresAt)>Date.now()&&(conversation.id!=='system:knowledge'||knowledgeScopeKey(row.payload?.knowledgeScope)===knowledgeScopeKey(selectedScope))).map(({id,conversationId,operation,title,before,after,expiresAt,state,turnId})=>({id,conversationId,operation,title,before,after,expiresAt,state,turnId}))
     for(const event of events)if(event.confirmation&&!confirmations.some(row=>row.id===event.confirmation.id))delete event.confirmation
     if(conversation.kind==='development')for(const [index,step] of (entity?.steps||[]).entries())events.push({id:'development-step-'+index,at:step.at,kind:'development',text:step.output||step.stage,status:step.status,stage:step.stage,exitCode:step.exitCode})
     const retrievals=sessionId?(state.retrievalTraces||[]).filter((row:any)=>row.sessionId===sessionId):[],retrieval=retrievals.at(-1)||null
@@ -230,11 +234,11 @@ async function history(ctx:any,request:any){
 }
 async function ensureSession(ctx:any,conversation:any,request:any){
     const wanted=selectedSession(conversation,request)
-    const knowledgeScope=defaultKnowledgeScope(loadWorkbenchState(),request.knowledgeScope||{})
-    if(conversation.id==='system:knowledge'&&wanted&&JSON.stringify(hubSessionKnowledgeScope(wanted))!==JSON.stringify(knowledgeScope))throw Error('当前知识会话范围已变化，请重新选择对应范围，未创建替代会话')
-    if(wanted)return restore(ctx,wanted)
+    const knowledgeScope=assistantKnowledgeScope(loadWorkbenchState(),request,entityFor(conversation,loadWorkbenchState()))
+    if(conversation.id==='system:knowledge'&&wanted&&knowledgeScopeKey(hubSessionKnowledgeScope(wanted))!==knowledgeScopeKey(knowledgeScope))throw Error('当前知识会话范围已变化，请重新选择对应范围，未创建替代会话')
+    if(wanted){const prior=hubSessionKnowledgeScope(wanted);if(prior&&knowledgeScopeKey(prior)!==knowledgeScopeKey(knowledgeScope))throw Error('知识范围已变化，请为当前事项新建会话，原历史已保留');return restore(ctx,wanted)}
     if(conversation.kind==='development')throw Error('研发工程尚未准备原生会话，请先在研发任务中确认工程；未创建未分组讨论')
-    const lock=conversation.id+(conversation.id==='system:knowledge'?JSON.stringify(knowledgeScope):'')
+    const lock=conversation.id+(conversation.id==='system:knowledge'?knowledgeScopeKey(knowledgeScope):'')
     if(creationLocks.has(lock))return creationLocks.get(lock)
     const promise=(async()=>{const assertCurrent=workbenchGenerationGuard(),session=await createHubWorkspaceSession(ctx,conversation,id=>{assertCurrent();rememberHubSession(conversation.id,id,conversation.title);setHubSessionKnowledgeScope(id,knowledgeScope);if(conversation.kind==='task')rememberTaskThread(conversation.entityId,id,conversation.title)});assertCurrent();return session})()
     creationLocks.set(lock,promise)
@@ -243,7 +247,7 @@ async function ensureSession(ctx:any,conversation:any,request:any){
 async function prepareAttachments(ctx:any,request:any){
     const conversation=describe(ctx,request.conversationId)
     if(conversation.deleted)throw Error('该事项已删除，可查看历史，不能继续发送附件')
-    const knowledgeScope=defaultKnowledgeScope(loadWorkbenchState(),request.knowledgeScope||{})
+    const knowledgeScope=assistantKnowledgeScope(loadWorkbenchState(),request,entityFor(conversation,loadWorkbenchState()))
     request={...request,knowledgeScope};selectedSession(conversation,request)
     const session=await ensureSession(ctx,conversation,request)
     await checkDevelopmentController(ctx,conversation,request,session)
@@ -255,8 +259,8 @@ async function send(ctx:any,request:any){
     const conversation=describe(ctx,request.conversationId),mode=request.action==='reinterpret'?'reinterpret':'execute'
     const original=mode==='reinterpret'?getHubTurn(String(request.turnId||'')):undefined
     if(mode==='reinterpret'&&(!original||original.conversationId!==conversation.id||original.source!=='rule'))throw Error('只能重新识别当前会话中已记录的规则指令')
-    const knowledgeScope=defaultKnowledgeScope(loadWorkbenchState(),request.knowledgeScope||{})
-    if(original&&conversation.id==='system:knowledge'&&JSON.stringify(original.knowledgeScope)!==JSON.stringify(knowledgeScope))throw Error('原指令不属于当前知识范围，请切回对应范围')
+    const knowledgeScope=assistantKnowledgeScope(loadWorkbenchState(),request,entityFor(conversation,loadWorkbenchState()))
+    if(original&&conversation.id==='system:knowledge'&&knowledgeScopeKey(original.knowledgeScope)!==knowledgeScopeKey(knowledgeScope))throw Error('原指令不属于当前知识范围，请切回对应范围')
     if(original&&['recognizing','executing'].includes(original.status))throw Error('原指令仍在处理，请先等待其执行结果')
     const batch=prepareHubAttachments(original?undefined:request.attachments,hostService(ctx,'attachments')?.imageLimits),hasAttachments=batch.metadata.length>0
     if(hasAttachments&&(typeof request.sessionId!=='string'||!request.sessionId))throw Error('请先准备当前会话再发送附件')
@@ -305,7 +309,7 @@ async function send(ctx:any,request:any){
     const controller=hostService(ctx,'sessionController')
     if(typeof controller?.prompt!=='function')throw Error('当前宿主没有模型会话服务')
     const state=loadWorkbenchState(),runs=runRows(conversation,state),entity=entityFor(conversation,state)
-    const retrieval=await retrieveAssistantKnowledge(state,text,request)
+    const retrieval=await retrieveAssistantKnowledge(state,text,{...request,...knowledgeScope,knowledgeScope})
     if(retrieval.mode==='only'&&retrieval.status!=='ok'){const note=retrieval.note||'知识库未找到依据，未调用模型';turn=updateHubTurn(turn.id,{status:'failed',reply:note});return {status:'knowledge_empty',note,retrieval,turn,turnId:turn.id,requestId}}
     const background=await backgroundMessages(ctx,conversation,{limit:10})
     const selectedResults=conversation.id==='system:analysis'?(Array.isArray(request.refs)?request.refs:[]).filter((ref:any)=>['task','reply'].includes(ref.kind)).map((ref:any)=>({kind:ref.kind,id:ref.id,record:analysisResultTarget(state,ref.kind,ref.id)})):[]
@@ -335,7 +339,7 @@ async function send(ctx:any,request:any){
     rememberHubSession(conversation.id,session.id,conversation.kind==='chat'&&conversation.title==='新对话'?text.slice(0,60):conversation.title,{selected:!!request.sessionId,primarySessionId:conversation.kind==='development'?entityFor(conversation,loadWorkbenchState())?.sessionId:undefined})
     await ensureHubNativeIdentity(ctx,conversation.id,session.id,text,session)
     const scope=defaultKnowledgeScope(state,request.knowledgeScope||{}),previousScope=hubSessionKnowledgeScope(session.id)
-    if(transcriptDelta(session,0).turnActive&&previousScope&&JSON.stringify(previousScope)!==JSON.stringify(scope))throw Error('当前轮仍在处理，请等待结束后切换知识范围')
+    if(transcriptDelta(session,0).turnActive&&previousScope&&knowledgeScopeKey(previousScope)!==knowledgeScopeKey(scope))throw Error('当前轮仍在处理，请等待结束后切换知识范围')
     setHubSessionKnowledgeScope(session.id,scope)
     await checkDevelopmentController(ctx,conversation,request,session)
     if(conversation.kind==='development')assertNativeSend(ctx,conversation,request,session)
@@ -364,6 +368,11 @@ export async function assistantHub(ctx:any,request:any={}){
     try{
         const action=request.action||'list'
         if(action==='list')return list(ctx,request)
+        if(action==='delete'){
+            const conversation=describe(ctx,request.conversationId)
+            const annotated=conversationSummaries([conversation],loadWorkbenchState(),request)[0]
+            return await deleteHubConversation(ctx,annotated,request.confirmed)
+        }
         if(action==='officeTopic')return officeTopicTarget(loadWorkbenchState(),request.kind,request.input)
         if(action==='pin'){const conversation=describe(ctx,request.conversationId||request.id);const saved=pinHubConversation(conversation.id,conversation.title,request.pinned);return {status:'ok',conversationId:conversation.id,pinned:!!saved.pinned}}
         if(action==='detail')return await detail(ctx,request)

@@ -11,6 +11,7 @@ import * as React from 'react'
 import { mdInline, mdParse } from '../features/toolbox/tools-extra.js'
 import { TopNavigation, WB_LAYOUT_CSS } from './layout.js'
 import { TaskFormHost } from '../features/tasks/task-form.js'
+import {SearchResultPreview} from '../features/search/SearchResultPreview.js'
 /* ============================================================================
  * dev-workbench shell
  *
@@ -31,7 +32,7 @@ WB.PAGE_META = {
     tasks: { title: '任务中心', icon: 'tasks', hint: '查看待办、来源和处理进展' },
     replies: { title: '待回复', icon: 'reply', hint: '独立跟踪需要回复的消息与来源' },
     radar: { title: '资讯', icon: 'radar', hint: '联网发现、原文摘要与收藏' },
-    search: { title: '工作搜索', icon: 'search', hint: '查找工作内容，或单独搜索互联网' },
+    search: { title: '搜索结果', icon: 'search', hint: '查看完整结果并筛选工作内容' },
     agents: { title: '研发任务', icon: 'agent', hint: 'Linky 工作项、独立工作区、Harness 开发与审查' },
     'web-ai': { title: '多 AI 对话', icon: 'messages', hint: '统一提问、连续追问与多家 AI 回答对比' },
     toolbox: { title: '开发工具箱', icon: 'toolbox', hint: '本地执行、数据不出浏览器的高频工具' },
@@ -41,7 +42,7 @@ WB.PAGE_META = {
 };
 WB.ORDER = ['dashboard', 'assistant', 'agents', 'tasks', 'replies', 'radar', 'knowledge', 'web-ai', 'search', 'toolbox', 'collab', 'settings'];
 WB.NAV_GROUPS = [
-    { label: '工作', items: ['dashboard', 'assistant', 'agents', 'tasks', 'search'] },
+    { label: '工作', items: ['dashboard', 'assistant', 'agents', 'tasks'] },
     { label: '工具', items: ['toolbox', 'collab'] },
     { label: '沉淀', items: ['knowledge'] },
     { label: '系统', items: ['settings'] },
@@ -545,7 +546,7 @@ function Toolbar(props?: any): any {
             title: '查看逾期任务',
             style: { color: T.err, borderColor: 'color-mix(in srgb, ' + T.err + ' 45%, transparent)' },
         }, h(Icon, { name: 'alert', size: 12 }), counts.overdue + ' 项逾期')
-        : null, h(Btn, {
+        : null, h(IconBtn,{name:'search',label:'搜索工作内容（⌘K / Ctrl+K）',active:state.searchOpen,onClick:()=>WB.openSearch()}), h(Btn, {
         icon: 'plus',
         size: 'sm',
         kind: 'primary',
@@ -578,7 +579,6 @@ function MissingPage(props?: any): any {
 function WorkbenchApp(): any {
     const [webAIVisited,setWebAIVisited]=React.useState(false);
     const state = useStore();
-    const [paletteOpen, setPaletteOpen] = React.useState<any>(false);
     React.useEffect(function (): any {
         if (!WB.store.get().data)
             WB.actions.reload().catch(function (): any { });
@@ -607,14 +607,13 @@ function WorkbenchApp(): any {
             const key = event.key.toLowerCase();
             if (key === 'k') {
                 event.preventDefault();
-                setPaletteOpen(function (open?: any): any {
-                    return !open;
-                });
+                if(WB.store.get().searchOpen)WB.closeSearch();else WB.openSearch();
                 return;
             }
-            if (key >= '1' && key <= String(WB.ORDER.length)) {
+            const navigation=WB.ORDER.filter((id:string)=>id!=='search');
+            if (key >= '1' && key <= '9') {
                 const index = Number(key) - 1;
-                const page = WB.ORDER[index];
+                const page = navigation[index];
                 if (page) {
                     event.preventDefault();
                     WB.go(page);
@@ -641,7 +640,7 @@ function WorkbenchApp(): any {
           page!=='web-ai'&&page!=='assistant'?h('div',{key:'business-page',className:'wb-page'},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
           (webAIVisited||page==='web-ai')&&WebAIPage?h('div',{key:'web-ai-surface',className:'wb-page wb-chat-page',hidden:page!=='web-ai'},h(WebAIPage)):null)),
         h(AssistantHubEntry,{Legacy:AssistantDrawer}),h(TaskFormHost,{embedded:true})),
-      WB.Palette?h(WB.Palette,{open:paletteOpen,onClose:()=>setPaletteOpen(false)}):null,h(AnalysisMonitor),h(WorkspaceRefreshMonitor),h(Toaster));
+      WB.Palette?h(WB.Palette,{open:state.searchOpen,initialQuery:state.searchInitialQuery,onClose:()=>WB.closeSearch()}):null,h(SearchResultPreview),h(AnalysisMonitor),h(WorkspaceRefreshMonitor),h(Toaster));
 }
 /* -------------------------------------------------------------------- apply */
 WB.apply = function apply(ctx?: any): any {

@@ -14,7 +14,9 @@ export interface PersistentBrowserAccount {
   readonly partition: string
   readonly providerId: string
   readonly allowsNavigation: (value: string) => boolean
+  readonly reportBlockedNavigation?: (value: string, reason: 'policy' | 'popup_post') => void
 }
+export interface BrowserNavigationDiagnostic { readonly providerId: string; readonly origin: string; readonly reason: 'policy' | 'popup_post' }
 
 /** Stores stable identities and flush ownership independently from guest leases. */
 export class DesktopBrowserPersistence {
@@ -23,7 +25,7 @@ export class DesktopBrowserPersistence {
   private readonly flushing = new Map<string, Promise<void>>()
 
   /** @param profile - profile selected by Desktop, never supplied by a renderer. @param policies - trusted registrations. */
-  constructor(private readonly profile: string, private readonly policies: readonly PersistentBrowserPolicy[]) {}
+  constructor(private readonly profile: string, private readonly policies: readonly PersistentBrowserPolicy[], private readonly onNavigationDenied?: (entry: BrowserNavigationDiagnostic) => void) {}
 
   /** @param request - parsed at the IPC boundary. @returns approved persistent identity and navigation policy. */
   resolve(request: unknown): PersistentBrowserAccount {
@@ -38,13 +40,22 @@ export class DesktopBrowserPersistence {
     let account = this.accounts.get(identity)
     if (account === undefined) {
       const origins = new Set(provider.origins)
+      const reportBlockedNavigation = (value: string, reason: 'policy' | 'popup_post'): void => {
+        try {
+          const url = new URL(value)
+          if (url.protocol === 'https:' || url.protocol === 'http:') this.onNavigationDenied?.({ providerId: provider.id, origin: url.origin, reason })
+        } catch { /* Diagnostics never affect navigation and never expose paths, queries, headers or form bodies. */ }
+      }
       account = {
         partition: `persist:dsh-browser-v1-${createHash('sha256').update(identity).digest('hex')}`,
         providerId: provider.id,
+        reportBlockedNavigation,
         allowsNavigation(value) {
           if (!URL.canParse(value)) return false
           const url = new URL(value)
-          return url.username === '' && url.password === '' && origins.has(url.origin)
+          const allowed = url.username === '' && url.password === '' && origins.has(url.origin)
+          if (!allowed) reportBlockedNavigation(value, 'policy')
+          return allowed
         },
       }
       this.accounts.set(identity, account)

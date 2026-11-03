@@ -11,6 +11,63 @@ function observe(html='',provider='kimi',url){
 const login='<form><h2>登录</h2><input type="tel" value="PRIVATE-PHONE"><button>登录</button></form>'
 
 describe('网页 AI 登录状态只读识别',()=>{
+ it.each(['<img src="PRIVATE.png">PRIVATE-NAME PRIVATE-TEAM','<img alt="PRIVATE-NAME" src="PRIVATE.png">'])('豆包工作账户菜单与侧栏设置同级，项目菜单与匿名入口不能冒充：%s',identity=>{
+  const account='<button class="min-w-0 flex-1 w-full flex h-48" aria-haspopup="menu">'+identity+'</button>'
+  const live='<div class="flex items-stretch gap-2 w-full h-full">'+account+'<button data-testid="sidebar_footer_setting_entry">设置</button></div>'
+  expect(observe(live,'doubao').status).toBe('authenticated');expect(JSON.stringify(observe(live,'doubao'))).not.toContain('PRIVATE')
+  expect(observe(live.replace('sidebar_footer_setting_entry','project_setting'),'doubao').status).toBe('unknown')
+  expect(observe(live.replace(identity,'<img alt="头像">登录'),'doubao').status).toBe('unknown')
+  expect(observe(live.replace(identity,'<img alt="头像">'),'doubao').status).toBe('unknown')
+  expect(observe(live.replace(account,account+account),'doubao').status).toBe('unknown')
+  expect(observe(live.replace(account,'<section>'+account+'</section>'),'doubao').status).toBe('unknown')
+  expect(observe('<div hidden>'+live+'</div>','doubao').status).toBe('unknown')
+  expect(observe('<div data-testid="send_message">'+live+'</div>','doubao').status).toBe('unknown')
+  expect(observe(live+login,'doubao').status).toBe('needs_login')
+ })
+ it('千问头像替代文字可以提供账户名称，不要求额外展示昵称文本',()=>{
+  const live='<div class="tongyiDI-view-container"><button class="min-w-0 flex-1" aria-haspopup="menu"><img alt="PRIVATE-Qwen3390"></button></div>'
+  expect(observe(live,'qianwen').status).toBe('authenticated');expect(JSON.stringify(observe(live,'qianwen'))).not.toContain('PRIVATE')
+  expect(observe(live.replace('PRIVATE-Qwen3390','Qwen'),'qianwen').status).toBe('unknown')
+  expect(observe(live.replace('PRIVATE-Qwen3390','登录'),'qianwen').status).toBe('unknown')
+  expect(observe(live.replace('alt="PRIVATE-Qwen3390"',''),'qianwen').status).toBe('unknown')
+ })
+ it('账户菜单中的退出文字可独立于快捷键标题识别，普通页面文字仍无效',()=>{
+  expect(observe('<div role="menu"><div role="menuitem" title="⇧⌘Q"><span>退出登录</span></div></div>','doubao').status).toBe('authenticated')
+  expect(observe('<div>退出登录</div>','doubao').status).toBe('unknown')
+ })
+ it.each([
+  ['yuanbao','<div class="yb-new-chat-entry"><div role="button" class="yb-new-chat-entry__item">新建对话</div></div><div class="yb-nav__user"><div class="yb-common-nav__ft"><div class="yb-common-nav__ft__avatar"><div class="image-container"><img src="PRIVATE.png"></div></div></div></div>'],
+  ['qianwen','<div class="tongyiDI-view-container"><div><button class="flex min-w-0 flex-1 cursor-pointer items-center" aria-haspopup="menu"><img src="PRIVATE.png"><span>PRIVATE-ACCOUNT</span></button></div></div>'],
+ ])('%s 实站账号结构支持无账号标签的入口，并排除匿名、隐藏和消息伪造',(provider,live)=>{
+  expect(observe(live,provider).status).toBe('authenticated')
+  expect(JSON.stringify(observe(live,provider))).not.toContain('PRIVATE')
+  expect(observe(live.replace(/<img[^>]*>/g,''),provider).status).toBe('unknown')
+  expect(observe('<div hidden>'+live+'</div>',provider).status).toBe('unknown')
+  expect(observe('<article>'+live+'</article>',provider).status).toBe('unknown')
+  expect(observe(live+login,provider).status).toBe('needs_login')
+  expect(observe(live,provider==='yuanbao'?'qianwen':'yuanbao').status).toBe('unknown')
+  if(provider==='yuanbao')expect(observe(live.replace('新建对话','普通文本'),provider).status).toBe('unknown')
+  else{expect(observe(live.replace('PRIVATE-ACCOUNT','登录'),provider).status).toBe('unknown');expect(observe(live.replace('aria-haspopup="menu"',''),provider).status).toBe('unknown');expect(observe(live.replace('<img','<img hidden'),provider).status).toBe('authenticated')}
+ })
+ it('智谱实站折叠侧栏识别专属账户入口，普通头像、登录入口和消息不能冒充',()=>{
+  const account='<div class="userInfoBar collapsed sidebar-mode"><div class="sidebar-user-entry el-tooltip__trigger"><div class="sidebar-avatar"><img src="avatar.png"></div></div></div>'
+  const live='<aside class="el-aside aside-container collapse-aside">'+account+'</aside>'
+  expect(observe(live,'glm').status).toBe('authenticated')
+  expect(observe(account,'glm').status).toBe('unknown')
+  expect(observe(live.replace('<img src="avatar.png">',''),'glm').status).toBe('unknown')
+  expect(observe(live.replace('<img src="avatar.png">','<img src="avatar.png"><span>登录</span>'),'glm').status).toBe('unknown')
+  expect(observe('<div hidden>'+live+'</div>','glm').status).toBe('unknown')
+  expect(observe('<div class="answer">'+live+'</div>','glm').status).toBe('unknown')
+  expect(observe(live+login,'glm').status).toBe('needs_login')
+ })
+ it.each([['glm','answer'],['glm','message-assistant'],['doubao','unused'],['yuanbao','agent-chat__bubble--human'],['qianwen','message-card-wrap question']])('%s 的消息卡片不能冒充账号或登录表单',(provider,className)=>{
+  const attrs=provider==='doubao'?'data-testid="receive_message"':'class="'+className+'"'
+  const fake='<div '+attrs+'><button aria-label="账户菜单" aria-haspopup="menu">账号</button>'+login+'</div>'
+  expect(observe(fake,provider).status).toBe('unknown')
+ })
+ it.each(['https://chatgpt.com/auth/login_with?state=DO-NOT-PERSIST','https://auth.openai.com/oauth/authorize?state=DO-NOT-PERSIST','https://accounts.google.com/v3/signin/identifier?state=DO-NOT-PERSIST'])('ChatGPT 登录跳转 %s 不误报未知或登录成功',url=>{
+  const result=observe('<h1>继续登录</h1>','chatgpt',url);expect(result.status).toBe('needs_login');expect(JSON.stringify(result)).not.toContain('DO-NOT-PERSIST')
+ })
  it('智谱折叠侧栏的账户弹层以积分、设置、退出三项联合识别',()=>{
   const panel='<div><span>PRIVATE</span><div>积分 100</div><div>主题外观</div><div>退出登录</div></div>'
   expect(observe(panel,'glm').status).toBe('authenticated');expect(observe('<article>'+panel+'</article>','glm').status).toBe('unknown');expect(observe(panel.replace('主题外观','普通内容'),'glm').status).toBe('unknown')

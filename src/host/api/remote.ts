@@ -42,6 +42,8 @@ const WORKBENCH_REMOTE_SIGNATURES: any = [
     {method:'webAIManageTopic',params:['request']},
     {method:'webAIEditQuestion',params:['request']},
     {method:'webAIOpenExternal',params:['request']},
+    {method:'knowledgeEngine',params:['request']},
+    {method:'knowledgeSpace',params:['request']},
     {method:'knowledgeRetrieve',params:['request']},
     {method:'knowledgeRead',params:['request']},
     {method:'knowledgeTraces',params:['request']},

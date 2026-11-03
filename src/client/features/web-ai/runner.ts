@@ -37,9 +37,9 @@ export async function runWebsiteQuestion(controller:WebsiteController,question:s
 export async function collectWebsiteAnswer(controller:WebsiteController,question:string,before:any,update:Update,signal:AbortSignal,clock=()=>Date.now(),pause=(ms:number)=>new Promise<void>(r=>setTimeout(r,ms))){
  const check=()=>{if(signal.aborted)throw new Error('已停止采集；不会发送问题')}
  const baseline=Array.isArray(before.answers)?before.answers:null,baselineCount=Number.isFinite(before.answerCount)?before.answerCount:(baseline?.length||0)
- const started=clock();let previousTime=started,last='',stable=0,sawBusy=false,accepted=false,lastIdentity=''
+ const started=clock();let previousTime=started,last='',stable=0,sawBusy=false,accepted=false,lastIdentity='',published=false
  while(clock()-started<300000){
-  await pause(1500);check();const now=clock();if(now-previousTime>45000)throw new Error('检测到休眠或运行暂停，请核对官网；不会重新发送');previousTime=now
+  await pause(750);check();const now=clock();if(now-previousTime>45000)throw new Error('检测到休眠或运行暂停，请核对官网；不会重新发送');previousTime=now
   const next=await controller.execute('observe',question);check()
   if(next.status==='needs_login'){await update({status:'needs_login',note:next.note,url:next.url});return}
   if(next.status==='unsupported'&&/弹窗/.test(next.note||'')){await update({status:'uncertain',note:next.note,url:next.url});return}
@@ -53,7 +53,7 @@ export async function collectWebsiteAnswer(controller:WebsiteController,question
    if(turn?.text){
     const same=turn.id===lastIdentity&&turn.text===last;stable=same?stable+1:0;lastIdentity=turn.id;last=turn.text
     if(turn.truncated){await update({status:'uncertain',text:last,note:'回答超过60000字符，已保留前段，请在官网查看完整内容。',url:next.url});return}
-    await update({status:'generating',text:last,note:'正在采集官网本轮完整回答',url:next.url})
+    if(!same||!published){await update({status:'generating',text:last,note:'正在采集官网本轮完整回答',url:next.url});published=true}
     if(!next.busy&&turn.complete&&stable>=1){await update({status:'completed',text:last,note:'已采集官网完整回答',url:next.url});return}
    }
    if(!accepted&&clock()-started>15000){await update({status:'prepared',note:'官网尚未确认接收问题，请在原对话核对；不会重复点击发送。',url:next.url});return}
@@ -67,7 +67,7 @@ export async function collectWebsiteAnswer(controller:WebsiteController,question
   const changed=tail&&(count>baselineCount||baseline!==null&&tail!==baseline.at(-1))
   accepted||=!!next.busy||newUser||!!changed
   if(!accepted&&clock()-started>12000){await update({status:'prepared',note:'官网尚未确认接收问题，请登录或在原对话核对；不会重复点击发送。',url:next.url});return}
-  if(changed){stable=tail===last?stable+1:0;last=tail;await update({status:'generating',text:tail,url:next.url,note:'正在采集官网本轮回答'})
+  if(changed){const same=tail===last;stable=same?stable+1:0;last=tail;if(!same||!published){await update({status:'generating',text:tail,url:next.url,note:'正在采集官网本轮回答'});published=true}
    if(!next.busy&&(sawBusy||next.complete===true)&&stable>=1){await update({status:'completed',text:tail,url:next.url,note:'已采集官网回答'});return}
    if(!next.busy&&!sawBusy&&next.complete!==true&&stable>=3){await update({status:'uncertain',text:tail,url:next.url,note:'已采集新内容，但未识别官网结束状态，请核对后保存。'});return}}
  }

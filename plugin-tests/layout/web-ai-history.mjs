@@ -33,7 +33,9 @@ try{
    window.historyFixture={revision:++window.historyVersion,topics:Array.from({length:3},(_,i)=>({id:'bulk-'+i,title:'PDF与Word附件验收：'+('Validation code 与分隔说明，'.repeat(8))+i,version:0,createdAt:'2026-10-30T08:00:00Z',conversations:{}})),rounds:[],chatgptEnabled:false}
    window.WB.store.set({data:{...window.WB.store.get().data,revision:window.historyVersion,webAI:window.historyFixture}});window.WB.go('web-ai')
   },theme)
-  const manage=page.getByRole('button',{name:'管理历史与回收站',exact:true});if(!await manage.isVisible())await page.getByRole('button',{name:'会话历史',exact:true}).click();await manage.click()
+  // Wait for ResizeObserver to finish the responsive sidebar transition before opening it.
+  await page.waitForFunction(()=>{const el=document.querySelector('.wb-web-ai');return el&&el.classList.contains('is-compact')===(el.getBoundingClientRect().width<=640)});
+  const manage=page.getByRole('button',{name:'管理历史与回收站',exact:true});if(!await manage.isVisible())await page.getByRole('button',{name:'展开会话列表',exact:true}).click();await manage.click()
   await page.getByRole('button',{name:'历史（3）',exact:true}).click()
   await page.getByRole('checkbox',{name:'全选本页',exact:true}).check();await page.getByRole('button',{name:'批量删除',exact:true}).click()
   const dialog=page.getByRole('dialog');await dialog.getByRole('button',{name:'确认',exact:true}).waitFor()

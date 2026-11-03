@@ -46,6 +46,10 @@ it('重复启动提交共用同一次请求，不产生重复通知',async()=>{
 it('有部分结果失败的任务不能报成提取成功',async()=>{
  const f=setup();f.jobs=[running({status:'completed',result:{status:'partial',processed:1,failures:1,note:'其中一条解析失败'}})];await startExtraction(f);await flush();expect(f.WB.store.get().analysisActivity.phase).toBe('failed');expect(f.WB.store.get().toasts.some(t=>t.kind==='ok')).toBe(false);expect(document.querySelector('.wb-toasts').textContent).toContain('其中一条解析失败')
 });
+it('无法识别转待确认后提示需要核对，不报失败或全部成功',async()=>{
+ const f=setup();f.jobs=[running({status:'completed',progress:{processed:103,remaining:0,failed:0,awaitingHuman:1,batches:3,pauseReason:null},result:{status:'ok',processed:103,failures:0,reviewed:1}})];await startExtraction(f);await flush();
+ expect(f.WB.store.get().analysisActivity.phase).toBe('completed');expect(f.WB.store.get().toasts.some(t=>t.kind==='err'||t.kind==='ok')).toBe(false);expect(document.querySelector('.wb-toasts').textContent).toContain('1 条消息待确认，可单条重试')
+});
 it('新一轮启动后忽略旧状态请求的迟到失败',async()=>{
  const f=setup();f.jobs=[running()];await startExtraction(f);await flush();let resolveOld;f.statusRead=()=>new Promise(r=>resolveOld=r);await tick();f.statusRead=null;f.jobs=[running({id:'second-extract'})];f.start=async()=>({jobId:'second-extract'});await act(async()=>f.WB.actions.analyzeRun(1,['second-entry']));await flush();await act(async()=>resolveOld({jobs:[running({status:'failed',error:'旧轮次迟到失败'})]}));expect(f.WB.store.get().analysisActivity.jobId).toBe('second-extract');expect(f.WB.store.get().analysisActivity.phase).toBe('running');expect(f.WB.store.get().toasts).toHaveLength(0)
 });

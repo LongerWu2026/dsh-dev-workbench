@@ -50,12 +50,12 @@ describe('办公流程与布局入口',()=>{
   it('顶部目录直接显示多 AI 对话入口，快捷新建可编辑会议字段',async()=>{
   const user=userEvent.setup();const view=render(<App/>);const nav=screen.getByRole('navigation',{name:'工作台导航'})
   expect(nav.className).toContain('wb-topnav');expect(view.container.querySelector('.wb-nav')).toBeNull()
-  expect(within(nav).getAllByRole('button',{hidden:true}).length).toBe(12)
+  expect(within(nav).getAllByRole('button',{hidden:true}).length).toBe(11)
   expect(within(nav).queryByRole('button',{name:'智能办公',hidden:true})).toBeNull()
   const multiAI=within(nav).getByRole('button',{name:'多 AI 对话'})
   expect(multiAI.parentElement).toBe(nav)
   expect(multiAI.closest('details')).toBeNull()
-  expect(within(nav).getByRole('button',{name:'工作搜索'}).parentElement).toBe(nav)
+  expect(within(nav).queryByRole('button',{name:'工作搜索',hidden:true})).toBeNull();expect(screen.getByRole('button',{name:'搜索工作内容（⌘K / Ctrl+K）'})).toBeTruthy()
   await user.click(nav.querySelector('summary'));expect(nav.querySelector('details').open).toBe(true)
   await user.click(screen.getAllByRole('button',{name:'新建待办'})[0]);const type=screen.getByRole('combobox',{name:'事项类型'});await user.selectOptions(type,'meeting');expect(screen.getByLabelText('会议开始')).toBeTruthy();expect(screen.getByLabelText('会议地点')).toBeTruthy()
   expect(nav.querySelector('details').open).toBe(false)
@@ -317,8 +317,8 @@ describe('知识库自动检索界面',()=>{
   await user.click(screen.getByRole('button',{name:/审核待确认知识/}));await user.selectOptions(screen.getByRole('combobox',{name:'知识状态'}),'confirmed');await user.click(screen.getByRole('button',{name:'保存'}));expect(calls.at(-1).args.patch.reviewState).toBe('confirmed');
   await user.click(screen.getByRole('button',{name:'导入文本资料'}));await user.type(screen.getByRole('textbox',{name:'资料标题'}),'导入验收');await user.type(screen.getByRole('textbox',{name:'资料正文'}),'接口发布前先灰度验收。');await user.click(screen.getByRole('button',{name:'保存为待审核资料'}));expect(calls.at(-1).args.input.reviewState).toBe('candidate')
  })
- it('助手可切换知识模式、项目和账号范围',async()=>{
-  fixture.projects=[{id:'p-A',name:'项目A'}];fixture.sources=[{id:'source-A',locator:{accountId:'account-A'}}];WB.store.set({data:fixture,assistantOpen:true});render(<App/>);const user=userEvent.setup();
-  await user.click(await screen.findByRole('button',{name:'知识设置'}));await user.selectOptions(screen.getByRole('combobox',{name:'知识模式'}),'only');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识项目'}),'p-A');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识账号'}),'account-A');expect(screen.getByRole('combobox',{name:'知识模式'}).value).toBe('only');expect(screen.getByRole('combobox',{name:'聊天知识项目'}).value).toBe('p-A')
+ it('助手可切换知识模式、空间和项目范围',async()=>{
+  fixture.projects=[{id:'p-A',name:'项目A',knowledgeSpaceId:'company'}];fixture.knowledgeSpaces=[{id:'company',name:'公司资料'}];fixture.sources=[{id:'source-A',locator:{accountId:'account-A'}}];WB.store.set({data:fixture,assistantOpen:true});render(<App/>);const user=userEvent.setup();
+  await user.click(await screen.findByRole('button',{name:'知识设置'}));await user.selectOptions(screen.getByRole('combobox',{name:'知识模式'}),'only');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识空间'}),'company');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识项目'}),'p-A');expect(screen.getByRole('combobox',{name:'知识模式'}).value).toBe('only');expect(screen.getByRole('combobox',{name:'聊天知识项目'}).value).toBe('p-A')
  })
 })
