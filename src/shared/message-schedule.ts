@@ -8,7 +8,12 @@ export function messageSyncDue(state:any,now=Date.now()):boolean {
  const config=state.settings?.automation
  if(!config?.enabled||config.mentions===false||!messageWindowOpen(now))return false
  const pending=state.syncCursors?.['__pending:'+state.messageInbox?.accountId]
- if(Date.parse(pending?.retryAt)>now)return false
+ const retryAt=Date.parse(pending?.retryAt)
+ if(retryAt>now)return false
+ if(Number.isFinite(retryAt)&&retryAt<=now&&(Date.parse(state.lastMessageSyncAttemptAt||'')||0)<retryAt){
+  const accountPrefix=state.messageInbox?.accountId+':',hasBackfill=pending?.pendingGroups?.length||Object.entries(state.syncCursors||{}).some(([key,cursor]:[string,any])=>key.startsWith(accountPrefix)&&cursor?.intakePolicy==='focused-v1'&&cursor.resumeBefore)
+  if(hasBackfill)return true
+ }
  const slot=Math.floor(now/300000)*300000
  const last=Math.max(Date.parse(state.lastMessageSyncAttemptAt||'')||0,Date.parse(state.messageInbox?.at||'')||0)
  return last<slot

@@ -1,3 +1,6 @@
+import {analysisEntryWait} from '../automation/analysis-readiness.js'
+import {analysisRemainder} from '../automation/analysis-progress.js'
+import {workflowGuard,isWorkflowStopped,dispatchPaused} from '../automation/job-control.js'
 import {recordHubRun} from '../assistant/hub-store.js'
 import {observeBackgroundBatch} from '../automation/observed-batch.js'
 import {canCreateMessageTask,isFreshPrivateHead} from '../../shared/message-intake.js'
@@ -10,10 +13,12 @@ import { selectQueueEntries, effectiveBatchSize } from './queue-policy.js'
 import {sourceEvidence,rejectedEvidence,isRecognitionError,markRecognitionReview,recoverRecognitionReviews} from './recognition-review.js'
 import { assertAnalysisShape } from '../../shared/contracts.js'
 import { EVENT_TYPES, auditEntry, ensureArray, normalizeHumanGuard, normalizeReplies } from '../domain/model.js'
+import {backgroundModelKey,normalizeBackgroundModels} from '../../shared/background-models.js'
 import { asIso, asString, hostNowIso, newId, createHash, runtimeCheckpoint, RuntimeInterruptedError, isRuntimeInterrupted } from '../platform/runtime.js'
 import { applyCreateTask, applyUpdateTask } from '../domain/task-commands.js'
 import { ensureBackgroundSession, replaceIncompatibleBackgroundSession, recordBackgroundReasoningSuccess, BackgroundReasoningRecoveryError, backgroundSessionKey, hostService, sleepMs, submitPrompt, transcriptDelta } from '../assistant/sessions.js'
 import { loadWorkbenchState, mutateWorkbenchState, workbenchGenerationGuard } from '../storage/state-store.js'
+import {finalAssistantOutput} from '../assistant/final-output.js'
 /* Structured message understanding. All model waits happen outside the commit queue. */
 const ANALYSIS_TURN_TIMEOUT_MS = 90000;
 const ANALYSIS_POLL_MS = 350;
@@ -34,6 +39,8 @@ export async function recordModelFailure(purpose:string,error:any):Promise<any> 
     if(error instanceof AiBudgetError)return {status:'deferred',retryAt:error.retryAt,note:error.message};
     let gate:any;
     await mutateWorkbenchState((state:any)=>{
+        const currentModel=backgroundModelKey(normalizeBackgroundModels(state.settings.backgroundModels)[purpose as 'analysis'|'summary']);
+        if(typeof error?.backgroundModelKey==='string'&&error.backgroundModelKey!==currentModel){gate={status:'deferred',retryAt:null,note:'模型配置已更新，本批保留，下一轮使用新模型重试。'};return state}
         state.modelHealth ||= {};
         const failures=error?.reasoningRecoveryBlocked===true?3:Math.min(3,(state.modelHealth[purpose]?.failures||0)+1);
         const blocked=failures>=3;
@@ -107,17 +114,8 @@ function analysisPrompt(source?: any, scope?: any): any {
     ].join('\n');
 }
 function extractJsonFromReply(reply?: any): any {
-    const text = String(reply || '');
-    const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text);
-    const braced = /\{[\s\S]*\}/.exec(text);
-    for (const candidate of [fenced && fenced[1], braced && braced[0]].filter(Boolean)) {
-        try {
-            const parsed = JSON.parse(String(candidate));
-            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
-                return parsed;
-        }
-        catch (e) { }
-    }
+    const text = String(reply || '').trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'');
+    try {const parsed=JSON.parse(text);if(parsed&&typeof parsed==='object'&&!Array.isArray(parsed))return parsed;}catch{}
     return null;
 }
 function validateAnalysis(parsed?: any, source?: any, scope?: any): any {
@@ -269,7 +267,8 @@ export function isReasoningHistoryFailure(error:any):boolean {
     const message=String(error?.message || error);
     return /reasoning_content/i.test(message) && /Missing required|must.*(?:pass|send)|needs? the reasoning|reasoning_content.*(?:required|missing)/i.test(message);
 }
-async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any,timeout:any,purpose?:string,options?:{hubRunId?:string;backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void}):Promise<any> {
+async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any,timeout:any,purpose?:string,options?:{hubRunId?:string;backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void;checkActive?:()=>void}):Promise<any> {
+    options={...options,checkActive:options?.checkActive||workflowGuard(options?.hubRunId)};options.checkActive?.();
     const key=options?.backgroundKey || session?.workbenchThreadKey || (purpose ? backgroundSessionKey(purpose) : null);
     const current=key && loadWorkbenchState().backgroundThreads?.[key];
     if(purpose && current && current.sessionId!==session.id)session=await ensureBackgroundSession(ctx,purpose,current.accountId || undefined);
@@ -277,20 +276,20 @@ async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any
     catch(error){
         if(!purpose || !isReasoningHistoryFailure(error))throw error;
         const key=options?.backgroundKey || session?.workbenchThreadKey || backgroundSessionKey(purpose);
-        const fresh=await replaceIncompatibleBackgroundSession(ctx,purpose,key,session.id);
+        options?.checkActive?.();const fresh=await replaceIncompatibleBackgroundSession(ctx,purpose,key,session.id);
         options?.onSubmitted?.(fresh,true);
         try {
             return await waitStructuredReplyOnce(ctx,controller,fresh,options?.recoveryText || prompt,timeout,purpose,{...options,onSubmitted:(value:any)=>options?.onSubmitted?.(value,false)});
         }catch(recoveryError){
-            if(isReasoningHistoryFailure(recoveryError))throw new BackgroundReasoningRecoveryError();
+            if(isReasoningHistoryFailure(recoveryError))throw Object.assign(new BackgroundReasoningRecoveryError(),{backgroundModelKey:recoveryError?.backgroundModelKey});
             throw recoveryError;
         }
     }
 }
-async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: any, prompt?: any, timeout?: any, purpose?: string, options?: {hubRunId?:string;backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void}): Promise<any> {
+async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: any, prompt?: any, timeout?: any, purpose?: string, options?: {hubRunId?:string;backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void;checkActive?:()=>void}): Promise<any> {
     const assertCurrent=workbenchGenerationGuard();
     const target = session || (purpose ? await ensureBackgroundSession(ctx,purpose) : null);
-    const submitted = await submitPrompt(ctx, controller, target, prompt, false, purpose,options);
+    options?.checkActive?.();const submitted = await submitPrompt(ctx, controller, target, prompt, false, purpose,options);
     options?.onSubmitted?.(submitted.session,submitted.recovered);
     let recordedSeq=-1,historyError='';
     const recordHistory=()=>{const toSeq=Number(submitted.session.seq)||0;if(options?.hubRunId&&toSeq!==recordedSeq){try{recordHubRun(options.hubRunId,[{sessionId:submitted.session.id,fromSeq:Number(submitted.fromSeq)||0,toSeq,purpose:purpose||'analysis',accountId:loadWorkbenchState().backgroundThreads?.[options.backgroundKey||submitted.session.workbenchThreadKey]?.accountId}],[])}catch(error){historyError=String(error.message||error)}recordedSeq=toSeq}};
@@ -300,13 +299,13 @@ async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: an
     const generation = runtimeCheckpoint();
     while (true) {
         await sleepMs(ANALYSIS_POLL_MS);
-        assertCurrent(); // Ownership fence after every awaited model poll.
+        assertCurrent();options?.checkActive?.(); // Ownership fence after every awaited model poll.
         const delta = transcriptDelta(submitted.session, submitted.fromSeq);
         recordHistory();
         const failure=delta.entries.find((row:any)=>row.role==='error');
         if (failure) throw new ModelServiceError(String(failure.text||'模型轮次执行失败，请查看宿主模型或认证状态').slice(0,4000));
         if (delta.turnEnded && !delta.turnActive) {
-            const text = delta.entries.filter(function (row?: any): any { return row.role === 'assistant'; }).map(function (row?: any): any { return row.text; }).join('\n');
+            const text = finalAssistantOutput(submitted.session.snapshotEvents(submitted.fromSeq))?.text||'';
             const parsed = extractJsonFromReply(text);
             if (!parsed)
                 throw new Error('模型回复无法解析为 JSON');
@@ -322,6 +321,9 @@ async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: an
     }
     if (typeof controller.cancel === 'function') { try { await controller.cancel({sessionId:submitted.session.id}) } catch(e) {} }
     throw new Error('模型处理超时，本条保留以便重试');
+    } catch(error) {
+        if(purpose&&error&&typeof error==='object')Object.assign(error,{backgroundModelKey:submitted.backgroundModelKey});
+        throw error;
     } finally {
         recordHistory();
         if(historyError&&options?.hubRunId)try{await mutateWorkbenchState((state:any)=>{const job=state.jobs.find((row:any)=>row.id===options.hubRunId);if(job)job.historyError=historyError;return state})}catch{}
@@ -413,6 +415,8 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
     if(!settings.aiExtract?.enabled)return {status:'disabled',processed:0,failures:0,note:'请先在设置开启 AI 识别'};
     const controller=hostService(ctx,'sessionController');
     if(typeof controller?.prompt!=='function')return {status:'unavailable',processed:0,failures:0,note:'宿主没有模型会话控制服务'};
+    if(dispatchPaused('analysis',request?.analysisJobId))return {status:'paused',processed:0,failures:0,note:'用户已暂停识别，请手动继续'};
+    const assertActive=workflowGuard(request?.analysisJobId);assertActive();
     analysisBatchInFlight=true;
     const assertCurrent=workbenchGenerationGuard(),claimed=new Set<string>();
     let processed=0,failures=0,reviewed=0,interrupted=false,deferred:any=null,runStatus='ok';
@@ -420,7 +424,7 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
     const metrics={inputCount:0,modelCalls:0,promptChars:0,ruleInitializations:0,contextMessages:0,batches:0,reusedBatches:0};
     try {
         const limit=effectiveBatchSize(Number(request?.limit)||settings.aiExtract.batchSize||50,loadWorkbenchState().lastAnalysisBatch,request?.limit == null);
-        const onlyIds=new Set(ensureArray(request?.onlyIds).filter((id:unknown)=>typeof id==='string'));
+        const onlyIds=new Set<string>(ensureArray(request?.onlyIds).filter((id:unknown)=>typeof id==='string'));
         let entries:any[]=[];
         await mutateWorkbenchState((state:any)=>{
             skipHistoricalMessages(state);
@@ -433,18 +437,24 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
 
             }
             entries=selectQueueEntries(state.analysisQueue.filter((row:any)=>(!onlyIds.size||onlyIds.has(row.id)||onlyIds.has(row.sourceId)) &&
-                (row.status==='pending'||row.status==='failed'&&row.attempts<3&&(!row.nextRetryAt||Date.parse(row.nextRetryAt)<=Date.now())||row.status==='running'&&(!row.leaseUntil||Date.parse(row.leaseUntil)<Date.now())) && state.sources.some((source:any)=>source.id===row.sourceId))
-                .filter((row:any)=>isFreshPrivateHead(state,state.sources.find((s:any)=>s.id===row.sourceId))||!state.syncCursors[(row.accountId||'')+':'+row.groupId]?.resumeBefore && !state.syncCursors['__pending:'+row.accountId]?.pendingGroups?.some((group:any)=>group.groupId===row.groupId))
+                (row.status==='pending'||row.status==='failed'&&row.attempts<3&&(!row.nextRetryAt||Date.parse(row.nextRetryAt)<=Date.now())||row.status==='running'&&(!row.leaseUntil||Date.parse(row.leaseUntil)<=Date.now())) && state.sources.some((source:any)=>source.id===row.sourceId))
+                .filter((row:any)=>!analysisEntryWait(state,row,state.sources.find((source:any)=>source.id===row.sourceId)))
 ,state.sources,limit);
             for(const row of entries){claimed.add(row.id);Object.assign(row,{status:'running',leaseUntil:new Date(Date.now()+limit*100000+60000).toISOString()})}
             return state;
         });
         metrics.inputCount=entries.length;
         if(entries.length||reviewed)await begin();
-        if(!entries.length&&onlyIds.size&&loadWorkbenchState().analysisQueue.some((row:any)=>onlyIds.has(row.id)&&['pending','failed'].includes(row.status))) {runStatus='deferred';return {status:'deferred',processed:0,failures:0,...metrics,retryAt:new Date(Date.now()+60000).toISOString(),note:'指定消息仍在会话补采或重试等待中，保留作业，下一轮继续核对'};}
+        if(!entries.length){
+            const rest=analysisRemainder(loadWorkbenchState(),Date.now(),onlyIds)
+            if(rest.remaining){
+                if(rest.missing||rest.exhausted){runStatus='partial';return {status:'unavailable',processed,failures:rest.failed,...metrics,note:rest.missing?'指定消息原文已不存在，无法继续识别，请核对来源。':'指定消息已达 3 次重试上限，请核对原消息后手动重试本条。'}}
+                if(rest.wait){runStatus='deferred';return {status:'deferred',processed,failures:0,...metrics,...rest.wait}}
+            }
+        }
         let remaining=entries.slice();
         while(remaining.length && loadWorkbenchState().settings.aiExtract.enabled){
-            assertCurrent();
+            assertCurrent();assertActive();
             const current=loadWorkbenchState();
             const active=remaining.filter(entry=>current.analysisQueue.some((row:any)=>row.id===entry.id&&row.status==='running')&&current.sources.some((source:any)=>source.id===entry.sourceId&&!messageSkipReason(current,source,entry)));
             if(!active.length)break;
@@ -462,14 +472,14 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
             const call=async(input:any,targets=sources)=>{
                 metrics.modelCalls++;metrics.promptChars+=input.text.length;metrics.ruleInitializations+=input.includeRules?1:0;metrics.contextMessages+=input.contextCount;
                 const recovery=buildAnalysisPacket(loadWorkbenchState(),targets,usedSession,input.payload.batchId,true);
-                const parsed=await waitStructuredReply(ctx,controller,usedSession,input.text,Math.min(180000,ANALYSIS_TURN_TIMEOUT_MS+(targets.length-1)*5000),'analysis',{hubRunId:request?.analysisJobId,backgroundKey:session.workbenchThreadKey,recoveryText:recovery.text,onSubmitted:(value,recovered)=>{usedSession=value;if(recovered){metrics.modelCalls++;metrics.promptChars+=recovery.text.length;metrics.ruleInitializations++;metrics.contextMessages+=recovery.contextCount;if(targets===sources)packet=recovery;else replacementPacket=recovery}}});
+                const parsed=await waitStructuredReply(ctx,controller,usedSession,input.text,Math.min(180000,ANALYSIS_TURN_TIMEOUT_MS+(targets.length-1)*5000),'analysis',{hubRunId:request?.analysisJobId,checkActive:assertActive,backgroundKey:session.workbenchThreadKey,recoveryText:recovery.text,onSubmitted:(value,recovered)=>{usedSession=value;if(recovered){metrics.modelCalls++;metrics.promptChars+=recovery.text.length;metrics.ruleInitializations++;metrics.contextMessages+=recovery.contextCount;if(targets===sources)packet=recovery;else replacementPacket=recovery}}});
                 return decodeAnalysisBatch(parsed,input.payload.batchId,targets);
             };
             try {
                 let results:Map<string,any>;
                 try{results=await call(packet)}
                 catch(error){
-                    if(isModelServiceFailure(error)||isRuntimeInterrupted(error)||error?.code==='WORKBENCH_BACKGROUND_BUSY'||runtimeCheckpoint()!==generation||!/JSON|批次/.test(String(error?.message||error)))throw error;
+                    if(isWorkflowStopped(error)||isModelServiceFailure(error)||isRuntimeInterrupted(error)||error?.code==='WORKBENCH_BACKGROUND_BUSY'||runtimeCheckpoint()!==generation||!/JSON|批次/.test(String(error?.message||error)))throw error;
                     packet=buildAnalysisPacket(loadWorkbenchState(),sources,session,batchId,true);
                     packet.text='上一轮输出未通过JSON/批次协议校验，本次修复同一批次。请重新输出完整合法JSON；逐项闭合analysis对象和result对象，再闭合results数组及最外层对象。不要照抄上一轮的语法错误、Markdown或XML。只返回本批messages对应的结果。\n'+packet.text;
                     results=await call(packet); // One bounded protocol repair, on the same session.
@@ -485,14 +495,14 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
                     repair.text=batchAnalysisRules()+'\n'+JSON.stringify(repair.payload);
                     try{const corrected=await call(repair,correctionSources);for(const [id,value] of corrected)results.set(id,value)}
                     catch(error){
-                        if(isRuntimeInterrupted(error)||runtimeCheckpoint()!==generation||error?.code==='WORKBENCH_BACKGROUND_BUSY')throw error;
+                        if(isWorkflowStopped(error)||isRuntimeInterrupted(error)||runtimeCheckpoint()!==generation||error?.code==='WORKBENCH_BACKGROUND_BUSY')throw error;
                         if(isModelServiceFailure(error))deferred=await recordModelFailure('analysis',error);
                         // Preserve original rejected output for review, never accept it.
                     }
                 }
                 metrics.batches++;metrics.reusedBatches+=packet.includeRules?0:1;
                 await mutateWorkbenchState((state:any)=>{
-                    const links=new Map<string,any>();
+                    assertActive();const links=new Map<string,any>();
                     for(const entry of chunk){
                         const row=state.analysisQueue.find((row:any)=>row.id===entry.id),source=state.sources.find((source:any)=>source.id===entry.sourceId);
                         if(!row||row.status!=='running'||!source)continue;
@@ -530,6 +540,7 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
                 });
                 if(deferred)break;
             }catch(error){
+                assertActive();if(isWorkflowStopped(error))throw error;
                 if(isRuntimeInterrupted(error)||runtimeCheckpoint()!==generation){interrupted=true;break;}
                 if(isModelServiceFailure(error)){deferred=await recordModelFailure('analysis',error);break;}
                 if(error?.code==='WORKBENCH_BACKGROUND_BUSY')throw error;
@@ -548,6 +559,7 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
         runStatus=deferred?'deferred':interrupted?'interrupted':failures?'partial':'ok';
         return {...(deferred || {}),status:runStatus,processed,failures,reviewed,...metrics,note:deferred?.note || (interrupted?'运行恢复后将自动重试未完成条目，不计入失败次数':reviewed?reviewed+' 条消息需人工确认，其余消息继续处理':undefined)};
     }catch(error){
+        if(isWorkflowStopped(error)){runStatus='paused';return {status:'paused',processed,failures,reviewed,...metrics,note:error.message}}
         if(error?.code==='WORKBENCH_BACKGROUND_BUSY'){runStatus='busy';return {status:'busy',processed,failures,...metrics,note:error.message}}
         if(isModelServiceFailure(error)){runStatus='deferred';return {...await recordModelFailure('analysis',error),processed,failures,...metrics}}
         throw error;

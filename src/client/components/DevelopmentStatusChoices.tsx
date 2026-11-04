@@ -17,7 +17,7 @@ export function DevelopmentStatusChoices({value,disabled,onAction}:any){
  }
  return <section aria-label="Linky 可用状态" className="wb-hub-artifact">
   <p className="wb-tiny wb-muted">查询时状态：{value.current} · 请选择要流转到的状态</p>
-  <div className="wb-row" style={{flexWrap:'wrap',gap:8}}>{targets.map((target:any)=><Btn key={target.key} size="sm" disabled={disabled||value.pending} onClick={()=>choose(target)}>{target.name}</Btn>)}{!targets.length&&<span className="wb-muted">当前暂无可用流转</span>}<button type="button" className="wb-link" disabled={disabled} onClick={()=>{setSelected(null);void onAction('development.issue.get')}}>重新查询</button></div>
+  <div className="wb-row" style={{flexWrap:'wrap',gap:8}}>{targets.map((target:any)=><Btn key={target.key} size="sm" disabled={disabled||value.pending} onClick={()=>choose(target)}>{target.name}</Btn>)}{!targets.length&&<span className="wb-muted">当前暂无可用流转</span>}<Btn size="sm" disabled={disabled} onClick={()=>{setSelected(null);void onAction('development.issue.get')}}>重新查询</Btn></div>
   {value.pending&&<p role="status">上次修改仍待核实，请先核对结果。</p>}
   {selected&&<form aria-label={'修改状态为'+selected.name} onSubmit={submit}>
    <p>将 Linky 业务状态修改为「{selected.name}」</p>

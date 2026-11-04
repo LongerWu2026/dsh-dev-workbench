@@ -1,5 +1,5 @@
 import {WB} from '../../core/runtime.js'
-export const statusLabels:Record<string,string>={preparing:'准备中',ready:'待启动',running:'执行中',paused:'已暂停',waiting_review:'待人工审查',approved:'待回写',rejected:'已退回',delivered:'已回写',completed:'已结束',failed:'失败',interrupted:'已中断'}
+export {DEVELOPMENT_STATUS_LABELS as statusLabels} from '../../../shared/development.js'
 export const tone=(status:string)=>status==='running'?'accent':['failed','rejected'].includes(status)?'err':['delivered','completed'].includes(status)?'ok':'warn'
 export async function developmentCall(request:any){
     try{return await WB.rpc('workbench/development',{request})}
@@ -28,7 +28,17 @@ export function commandArgs(line:string):string[]{
     return result
 }
 export const developmentCSS=`
-.wb-dev { --dev-border:var(--dsw-alias-border-l1); }
+.wb-root.is-development .wb-scroll { display:flex;min-height:0;overflow:hidden; }
+.wb-development-page { display:flex;flex-direction:column;flex:1;min-height:0;height:100%;overflow:hidden;margin:0 auto;padding-bottom:var(--wb-page-gutter,24px); }
+.wb-development-page > .wb-dev { height:100%;margin:0; }
+.wb-dev { --dev-border:var(--dsw-alias-border-l1);display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden; }
+.wb-dev-header { flex:none; }
+.wb-dev-notices { flex:0 1 auto;min-height:0;max-height:28%;overflow:auto; }
+.wb-dev-native-runs { flex:0 1 auto;min-height:0;max-height:28%;overflow:auto; }
+.wb-workitems { display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden; }
+.wb-workitems-controls { flex:none;min-height:0;max-height:45%;overflow:auto; }
+.wb-workitems-controls>.wb-dev-toolbar:last-child { margin-bottom:12px; }
+@media(max-height:520px){.wb-development-page{padding-top:8px;padding-bottom:8px}.wb-dev-header{margin-bottom:8px!important}.wb-dev-header h1{font-size:20px;margin-bottom:0}.wb-workitems-controls>.wb-dev-toolbar{margin-bottom:8px}}
 .wb-dev-header { display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px;flex-wrap:wrap; }
 .wb-dev-header h1 { font-size:25px;letter-spacing:-.6px;margin:0 0 6px;font-weight:650; }
 .wb-dev-header p,.wb-dev p { margin:0;line-height:1.7; }
@@ -84,13 +94,15 @@ export const developmentCSS=`
 `;
 export const workItemsCSS=`
 .wb-dev-records>summary{cursor:pointer;padding:14px 0;font-size:13px;color:var(--dsw-alias-label-secondary)}
-.wb-workitems-layout{display:grid;grid-template-columns:clamp(240px,28%,310px) minmax(0,1fr);gap:16px;align-items:start}
-.wb-workitems-list{display:flex;flex-direction:column;gap:6px;max-height:min(520px,60vh);overflow:auto;min-width:0;padding:2px}
+.wb-workitems-layout{display:grid;grid-template-columns:clamp(240px,28%,310px) minmax(0,1fr);gap:16px;align-items:stretch;flex:1;min-height:0;grid-template-rows:minmax(0,1fr)}
+.wb-workitems-list{display:flex;flex-direction:column;gap:6px;min-height:0;overflow:auto;min-width:0;padding:2px;overscroll-behavior:contain}
+.wb-workitem-detail{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.wb-workitem-start{border-top:1px solid var(--dev-border);margin-top:20px;padding-top:16px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
 .wb-workitems-list .wb-dev-task{flex:none;padding:10px 12px;border-radius:8px}
 .wb-workitems-list .wb-dev-task .wb-dev-actions{gap:6px}
 .wb-workitems-list .wb-dev-task h3{font-size:13px;line-height:1.5;margin:6px 0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .wb-workitems-list .wb-dev-task .wb-dev-meta{font-size:11px;line-height:1.5}
 .wb-workitem-description{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:13px;max-height:380px;overflow:auto}
 .wb-space-list{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto;margin-top:12px}
-@container content (max-width:740px){.wb-workitems-layout{grid-template-columns:1fr}.wb-workitems-list{max-height:min(280px,40vh)}}
+@container content (max-width:740px){.wb-workitems-layout{grid-template-columns:1fr;grid-template-rows:minmax(0,.35fr) minmax(0,1fr);gap:12px}.wb-workitem-detail{scrollbar-gutter:stable}}
 `;

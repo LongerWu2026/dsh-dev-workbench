@@ -1,3 +1,4 @@
+import {installNativeContextFixture} from './native-context-fixture.mjs'
 /** Synthetic sessions and storage only; no model requests or user history changes. */
 import assert from 'node:assert/strict'
 import {mkdtempSync,rmSync,readFileSync} from 'node:fs'
@@ -14,7 +15,7 @@ try{
  host.saveDevelopmentTask({id:'task',issue:{id:'issue',code:'US-1'},sessionId:'session-development',reviewSessionId:'session-review',status:'paused',stage:'analysis',steps:[],createdAt:new Date().toISOString()})
  host.writeDevelopmentFile(join(host.developmentDir(),'native-runs','native.json'),{sessionId:'session-linky-native'})
  const controller={create(){return {session:session('session-office-'+(++created))}},async prompt(request){prompts.push(request)}}
- host.setShared_workbenchCtx({get:key=>({sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]},sessionController:controller})[key]})
+ const ctx={get:key=>({sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]},sessionController:controller})[key]};installNativeContextFixture(ctx);host.setShared_workbenchCtx(ctx)
  await api.saveSettings({assistantSessionId:'session-development'})
  const original=[...sessions.values()].slice(0,3).map(s=>JSON.stringify(s.snapshotEvents())),list=await api.assistantSessions()
  check('办公助手列表排除开发、独立审查及Linky原生研发会话，也不返回旧错误默认ID',()=>{assert.deepEqual(list.sessions.map(s=>s.id),['session-general']);assert.equal(list.assistantSessionId,null)})

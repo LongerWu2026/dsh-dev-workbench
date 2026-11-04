@@ -1,3 +1,4 @@
+import {installNativeContextFixture} from './native-context-fixture.mjs'
 /** Session identity fixtures only. No user data, real model, or native host mutation. */
 import assert from 'node:assert/strict'
 import {mkdtempSync,rmSync} from 'node:fs'
@@ -10,7 +11,7 @@ try{
  const h=await import(join(home,'fixture.mjs')),sessions=new Map(),cold=new Map(),prompts=[],renames=[];let created=0,failPrompt=false,failRename=false,checks=0
  function make(id){const events=[],session={id,get seq(){return events.length},header:{createdAt:Date.now()},snapshotEvents:(from=0)=>events.filter(e=>e.seq>from),append(type,data){events.push({seq:events.length+1,time:Date.now(),type,data})}};sessions.set(id,session);return session}
  const controller={async create(){await Promise.resolve();return {session:make('session-life-'+(++created))}},async rename(request){renames.push(request);if(failRename){failRename=false;throw Error('temporary naming unavailable')}sessions.get(request.sessionId)?.append('session/title',{title:request.title,source:{kind:'user'}})},async prompt(request){prompts.push(request);if(failPrompt)throw Error('model request rejected');const session=sessions.get(request.sessionId);session.append('user/message',{content:request.content});session.append('assistant/message',{message:{content:[{type:'text',text:'fixture response'}]}});session.append('turn/end',{reason:{kind:'completed'}})},async resolveAgent(id){const session=cold.get(id);if(!session)throw Error('session "'+id+'" not found');sessions.set(id,session);return {agent:{session}}}}
- const ctx={get:key=>({sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]},sessionController:controller})[key]};h.setShared_workbenchCtx(ctx)
+ const ctx={get:key=>({sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]},sessionController:controller})[key]};installNativeContextFixture(ctx);h.setShared_workbenchCtx(ctx)
  const hub=request=>h.hub(ctx,request),check=(label,fn)=>{fn();checks++;console.log('✓ '+label)}
  await hub({action:'detail',conversationId:'system:analysis'});await hub({action:'list'});check('查看固定入口不会创建或命名原生会话',()=>{assert.equal(created,0);assert.equal(renames.length,0)})
  const a=await hub({action:'send',conversationId:'system:analysis',text:'解释识别返回的内容'});check('首次自由讨论仅创建一个互动会话，并明确命名助手身份',()=>{assert.equal(a.status,'ok');assert.equal(created,1);assert.deepEqual(renames,[{sessionId:a.sessionId,title:'消息识别 · 助手'}]);assert.ok(sessions.get(a.sessionId).snapshotEvents().find(e=>e.type==='session/title')?.seq<prompts.length+2)})

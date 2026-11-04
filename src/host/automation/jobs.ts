@@ -9,15 +9,21 @@ import { newId, hostNowIso } from '../platform/runtime.js'
 import { analysisProcessedCount, analysisRemainder, advanceAnalysisJob } from './analysis-progress.js'
 import type { AnalysisProgress } from '../../shared/analysis-progress.js'
 import {completeHubRun} from '../assistant/hub-runs.js'
-interface WorkflowJob {id:string;kind:'analysis'|'summary'|OfficeWorkflowKind;status:'queued'|'running'|'completed'|'failed'|'cancelled';input:Record<string,unknown>;createdAt:string;updatedAt:string;attempts:number;result?:unknown;error?:string;nextRetryAt?:string|null;executionId?:string;progress?:AnalysisProgress}
+import {purposePaused} from './job-control.js'
+interface WorkflowJob {id:string;kind:'analysis'|'summary'|OfficeWorkflowKind;status:'queued'|'running'|'completed'|'failed'|'cancelled'|'paused';input:Record<string,unknown>;createdAt:string;updatedAt:string;attempts:number;result?:unknown;error?:string;nextRetryAt?:string|null;executionId?:string;progress?:AnalysisProgress}
 let draining=false
 export async function startWorkflowJob(ctx:unknown,kind:'analysis'|'summary',input:Record<string,unknown>={}):Promise<{jobId:string;status:string;note:string}> {
  let job:WorkflowJob|undefined
  const onlyIds=Array.isArray(input.onlyIds)?input.onlyIds.filter(id=>typeof id==='string'&&id.length>0).slice(0,50):[]
  const safeInput:Record<string,unknown>=kind==='analysis'?{limit:onlyIds.length?Math.max(1,Math.min(50,Number(input.limit)||50)):50,onlyIds,continuous:!onlyIds.length}:{limit:Math.max(1,Math.min(10,Number(input.limit)||3)),onlyIds,retryFailed:input.retryFailed===true}
  await mutateWorkbenchState((state:any)=>{
+   if(typeof input.checkActive==='function')input.checkActive()
    state.jobs=state.jobs||[]
    job=state.jobs.find((row:WorkflowJob)=>row.kind===kind&&['queued','running'].includes(row.status)&&JSON.stringify(row.input)===JSON.stringify(safeInput))
+   // Only an explicit start/continue releases a user's stop; ordinary refresh cannot.
+   if(input.preserveModelHealth!==true){
+    const paused=!job&&state.jobs.find((row:any)=>row.kind===kind&&row.status==='paused'&&row.pausedByUser&&(JSON.stringify(row.input)===JSON.stringify(safeInput)||row.input?.observed&&JSON.stringify(row.input.onlyIds||[])===JSON.stringify(onlyIds)));if(paused){paused.pausedByUser=false;paused.status='queued';paused.nextRetryAt=null;paused.updatedAt=hostNowIso();paused.input={...safeInput};if(paused.progress)paused.progress.pauseReason=null;job=paused}
+   }else if(purposePaused(kind,state)){job=state.jobs.find((row:any)=>row.kind===kind&&row.pausedByUser&&row.status==='paused');return state}
    if(kind==='analysis'&&input.retryFailed===true&&!job){
      if(!state.settings.aiExtract?.enabled)throw Error('请先开启AI识别，再重试失败消息');
      if(state.jobs.some((row:WorkflowJob)=>row.kind==='analysis'&&['queued','running'].includes(row.status)))throw Error('已有提取任务正在执行或等待重试，请等待当前任务结束');
@@ -36,7 +42,7 @@ export async function startWorkflowJob(ctx:unknown,kind:'analysis'|'summary',inp
    return state
  })
  void drainWorkflowJobs(ctx).catch(()=>{})
- return {jobId:job!.id,status:job!.status,note:safeInput.continuous?'已开始按每批 50 条连续识别，进度由工作台自动同步':'已进入后台队列，处理结果由工作台状态同步显示'}
+ return {jobId:job!.id,status:job!.status,note:job!.status==='paused'?'已暂停，请手动继续；刷新不会自动重启':safeInput.continuous?'已开始按每批 50 条连续识别，进度由工作台自动同步':'已进入后台队列，处理结果由工作台状态同步显示'}
 }
 export async function drainWorkflowJobs(ctx:unknown):Promise<void>{
  if(draining)return

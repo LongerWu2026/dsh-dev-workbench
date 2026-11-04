@@ -60,6 +60,15 @@ export function AssistantSidebar({collapsed,compact,onChange,onNew,busy,children
 }
 
 export const ASSISTANT_SIDEBAR_CSS=`
+.wb-hub,.wb-web-ai{--wb-conversation-selected-bg:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,var(--dsw-alias-bg-layer-1));--wb-conversation-selected-border:color-mix(in srgb,var(--dsw-alias-brand-primary) 28%,transparent)}
+.wb-hub .wb-hub-session-row .wb-assistant-session,.wb-hub .wb-hub-session-row .wb-assistant-session:hover{background:transparent}
+.wb-hub .wb-hub-session-row:not(:has(>.wb-assistant-session[aria-current=true])):hover,.wb-web-ai .wb-chat-session:hover:not([aria-current=true]){background:var(--wb-hover-bg,var(--dsw-alias-bg-layer-2))}
+.wb-hub .wb-hub-session-row:has(>.wb-assistant-session[aria-current=true]),.wb-web-ai .wb-chat-session[aria-current=true]{position:relative;border-radius:8px;background:var(--wb-conversation-selected-bg);box-shadow:inset 0 0 0 1px var(--wb-conversation-selected-border);color:var(--dsw-alias-label-primary)}
+.wb-hub .wb-hub-session-row:has(>.wb-assistant-session[aria-current=true])::before,.wb-web-ai .wb-chat-session[aria-current=true]::before{content:'';position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 3px 3px 0;background:var(--dsw-alias-brand-primary);pointer-events:none}
+.wb-hub .wb-hub-session-row .wb-assistant-session[aria-current=true]{color:var(--dsw-alias-label-primary)}
+.wb-hub .wb-assistant-session[aria-current=true] strong,.wb-web-ai .wb-chat-session[aria-current=true] strong{font-weight:600}
+.wb-hub .wb-assistant-session[aria-current=true] .wb-hub-type-icon{color:var(--dsw-alias-brand-primary)}
+.wb-hub .wb-hub-session-row .wb-assistant-session:focus-visible,.wb-web-ai .wb-chat-session:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
 .wb-hub-sidebar-head{display:flex;align-items:center;gap:4px;flex:none;min-width:0;min-height:34px}
 .wb-hub-sidebar-head>strong{flex:1;min-width:0;font-size:12px;font-weight:600}
 .wb-hub-sidebar-head>.wb-iconbtn,.wb-hub-sidebar-rail>.wb-iconbtn{width:32px;height:32px;flex:none}

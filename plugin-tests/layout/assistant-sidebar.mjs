@@ -22,7 +22,9 @@ try{
   margins[size.join('-')]=await page.locator('.wb-page').first().evaluate(el=>{const r=el.getBoundingClientRect(),s=getComputedStyle(el);return {left:r.left+parseFloat(s.paddingLeft),right:r.right-parseFloat(s.paddingRight)}})
  }
  await page.evaluate(()=>{
-  const WB=window.WB,now=new Date().toISOString(),conversation={id:'chat:sidebar-layout',kind:'chat',title:'保留会话、草稿和附件'},rows=[{id:'system:analysis',kind:'system',title:'消息识别'},{id:'system:radar',kind:'system',title:'AI资讯'},{id:'system:knowledge',kind:'system',title:'知识助手'},conversation]
+  const WB=window.WB,now=new Date().toISOString(),conversation={id:'chat:sidebar-layout',kind:'chat',title:'保留会话、草稿和附件',nativeBinding:{workspaceState:'unbound'}},rows=[{id:'system:analysis',kind:'system',title:'消息识别'},{id:'system:radar',kind:'system',title:'AI资讯'},{id:'system:knowledge',kind:'system',title:'知识助手'},conversation]
+  rows.push(...[{id:'development:icons',kind:'development',title:'研发会话'},{id:'task:icons',kind:'task',title:'待办会话'},{id:'reply:icons',kind:'reply',title:'回复会话'},{id:'radar:icons',kind:'radar',title:'资讯会话'},{id:'knowledge:icons',kind:'knowledge',title:'知识会话'},{id:'office:icons',kind:'office',title:'报告会话',topic:{kind:'work_report'}}].map(row=>({...row,nativeBinding:{workspaceState:'bound',workspaceTitle:'项目工作区'}})))
+  rows.push({id:'chat:short-alignment',kind:'chat',title:'新对话',latestPreview:'开始或继续处理',nativeBinding:{workspaceState:'unbound'}},{id:'development:long-alignment',kind:'development',title:'US-2026-045238 · 【项目研发】跨模块需求与进度验收',latestPreview:'待你处理',nativeBinding:{workspaceState:'bound',workspaceTitle:'很长的工作区名称-用于验证截断与对齐'}},{id:'task:pending-alignment',kind:'task',title:'待办事项',nativeBinding:{workspaceState:'pending',workspaceTitle:'待绑定的工程'}})
   window.sidebarCalls=[]
   WB.actions.assistantHub=async request=>{window.sidebarCalls.push(request);if(request.action==='list')return {status:'ok',conversations:rows};if(request.action==='delta')return {status:'ok',entries:[],turnEnded:true};if(request.action!=='detail')throw Error('布局测试禁止业务操作：'+request.action);return {status:'ok',conversation:rows.find(row=>row.id===request.conversationId),sessionId:'synthetic-original-session',nativeBinding:{workspaceState:'unbound',canSend:true},messages:[{id:'answer',role:'assistant',at:now,text:'继续使用同一个会话。折叠列表不影响消息、输入和本轮附件。'}],events:[],runs:[],items:[],threads:[],confirmations:[]}}
   WB.assistant.openHub(conversation.id)
@@ -38,10 +40,24 @@ try{
   })
   const filters=page.getByRole('group',{name:'会话类型'})
   if(await filters.isVisible()){
+   const icons=page.getByRole('navigation',{name:'助手会话列表'}).getByRole('img',{name:/^会话类型：/})
+   const misaligned=await icons.evaluateAll(nodes=>{
+    const center=r=>(r.top+r.bottom)/2,position=el=>el.getBoundingClientRect(),first=nodes[0]?.parentElement
+    if(!first)return false
+    const origin=position(first),firstTitle=position(first.parentElement.querySelector('strong')),firstPreview=position(first.parentElement.querySelector('small')),slot=position(nodes[0]),titleGap=firstTitle.top-origin.bottom,previewGap=firstPreview.top-firstTitle.bottom
+    return nodes.some(node=>{
+     const meta=node.parentElement,copy=meta.parentElement,button=copy.parentElement,style=getComputedStyle(button),workspace=meta.querySelector('.wb-hub-workspace'),glyph=position(node.querySelector('svg')),folder=position(workspace.querySelector('svg')),label=position(workspace.querySelector('span')),heading=copy.querySelector('strong'),preview=copy.querySelector('small'),a=position(node),m=position(meta),h=position(heading),p=position(preview),available=button.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)
+     return a.width<14||Math.abs(a.width-slot.width)>.5||Math.abs(m.height-origin.height)>.5||Math.abs(center(glyph)-center(folder))>.5||Math.abs(center(folder)-center(label))>.5||Math.abs(m.left-origin.left)>.5||Math.abs(h.left-m.left)>.5||Math.abs(p.left-h.left)>.5||Math.abs(h.top-m.bottom-titleGap)>.5||Math.abs(p.top-h.bottom-previewGap)>.5||Math.abs(position(copy).width-available)>1
+    })
+   })
+   if(misaligned)throw Error('会话类型图标与工作区未对齐 '+JSON.stringify({size,theme,stage}))
    const labels=await filters.getByRole('button').allTextContents();if(labels.join('|')!=='全部|普通对话|关联事项')throw Error('会话类型选项不正确 '+labels)
    const clipped=await filters.getByRole('button').evaluateAll(buttons=>buttons.some(el=>el.scrollWidth>el.clientWidth+1));if(clipped)throw Error('会话筛选文字被裁切 '+JSON.stringify({size,theme,stage}))
    await filters.getByRole('button',{name:'关联事项',exact:true}).click();if(await page.getByRole('button',{name:'会话：保留会话、草稿和附件',exact:true}).count())throw Error('关联事项中混入普通对话')
    await filters.getByRole('button',{name:'普通对话',exact:true}).click();await page.getByRole('button',{name:'会话：保留会话、草稿和附件',exact:true}).waitFor();await filters.getByRole('button',{name:'全部',exact:true}).click()
+   await page.getByRole('button',{name:'会话：研发会话',exact:true}).hover()
+   const selection=await page.evaluate(()=>{const active=document.querySelector('.wb-hub-session-row:has(>button[aria-current=true])'),hovered=document.querySelector('.wb-hub-session-row:has(>button[aria-label="会话：研发会话"])'),bar=getComputedStyle(active,'::before');return {selected:getComputedStyle(active).backgroundColor,hovered:getComputedStyle(hovered).backgroundColor,barWidth:parseFloat(bar.width),barContent:bar.content,selectedCount:document.querySelectorAll('.wb-hub-session-row>button[aria-current=true]').length}})
+   if(selection.selected===selection.hovered||selection.barWidth<2||selection.barContent==='none'||selection.selectedCount!==1)throw Error('选中会话与悬停状态未区分 '+JSON.stringify({size,theme,stage,selection}))
   }
   const expected=margins[size.join('-')]
   if(Math.abs(metrics.hub.left-expected.left)>1||Math.abs(metrics.hub.right-expected.right)>1)throw Error('助手与简报左右边界不一致 '+JSON.stringify({size,expected,metrics}))

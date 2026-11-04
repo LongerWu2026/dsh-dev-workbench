@@ -1,6 +1,7 @@
 import {transcriptDelta} from './transcript.js'
+import {assistantOutputText} from './final-output.js'
 
-interface BackgroundSnapshot {session:any;seq:number;entries:any[];turnActive:boolean;openTurn?:{turn?:number;hasOutput:boolean;emptyEntry?:any}|null}
+interface BackgroundSnapshot {session:any;seq:number;entries:any[];turnActive:boolean;openTurn?:{turn?:number;hasOutput:boolean;candidateSeq?:number;emptyEntry?:any}|null}
 interface BackgroundReader {snapshots:Map<string,BackgroundSnapshot>;pending:Map<string,Promise<any>>;failures:Map<string,{at:number;error:any}>}
 const readers=new WeakMap<object,BackgroundReader>()
 /** Keep repeated detail polls incremental, including concurrent cold restores.
@@ -17,20 +18,30 @@ export async function readBackgroundSnapshot(ctx:object,id:string,restore:()=>Pr
         const reused=prior&&prior.session===session&&prior.seq<seq?prior:null
         const native=session.snapshotEvents(reused?.seq||0)
         const delta=transcriptDelta({seq,snapshotEvents:()=>native},reused?.seq||0)
-        const entries=delta.entries.filter((row:any)=>['user','assistant','error'].includes(row.role))
+        const entries=[...(reused?.entries||[]).map(row=>({...row})),...delta.entries.filter((row:any)=>['user','assistant','error'].includes(row.role))]
+        const bySeq=new Map<number,any>(entries.map(row=>[row.seq,row]))
         let openTurn:BackgroundSnapshot['openTurn']=reused?.openTurn?{...reused.openTurn}:null
         for(const event of native){
             if(event.type==='turn/start')openTurn={turn:event.data?.turn,hasOutput:false}
             else if(event.type==='assistant/message'){
-                const text=(event.data?.message?.content||[]).filter((block:any)=>block?.type==='text'&&typeof block.text==='string').map((block:any)=>block.text).join('\n').trim()
-                if(openTurn){if(text)openTurn.hasOutput=true;else openTurn.emptyEntry={role:'assistant',text:'',at:event.time,seq:event.seq,emptyOutput:true}}
+                const text=assistantOutputText(event.data?.message)
+                if(openTurn){
+                    const entry=bySeq.get(event.seq);if(entry)entry.finalOutput=false
+                    openTurn.candidateSeq=text?event.seq:undefined
+                    if(text)delete openTurn.emptyEntry;else openTurn.emptyEntry={role:'assistant',text:'',at:event.time,seq:event.seq,emptyOutput:true}
+                }
+            }else if(event.type==='tool/call'||event.type==='tool/result'){
+                if(openTurn){openTurn.candidateSeq=undefined;delete openTurn.emptyEntry}
             }else if(event.type==='turn/error'){if(openTurn)openTurn.hasOutput=true}
             else if(event.type==='turn/end'){
-                if(openTurn&&!openTurn.hasOutput&&event.data?.reason?.kind!=='error')entries.push({...openTurn.emptyEntry||{role:'assistant',text:'',at:event.time,seq:event.seq,emptyOutput:true},terminalReason:event.data?.reason?.kind})
+                const completed=!event.data?.reason?.kind||event.data.reason.kind==='completed'
+                const candidate=openTurn?.candidateSeq&&completed?bySeq.get(openTurn.candidateSeq):null
+                if(candidate)candidate.finalOutput=true
+                else if(openTurn&&!openTurn.hasOutput&&event.data?.reason?.kind!=='error')entries.push({...openTurn.emptyEntry||{role:'assistant',text:'',at:event.time,seq:event.seq,emptyOutput:true},finalOutput:true,terminalReason:event.data?.reason?.kind})
                 openTurn=null
             }
         }
-        const snapshot={session,seq,entries:(reused?[...reused.entries,...entries]:entries).sort((a:any,b:any)=>(new Date(a.at).getTime()||0)-(new Date(b.at).getTime()||0)||a.seq-b.seq),turnActive:delta.turnActive||(!delta.turnEnded&&!!reused?.turnActive),openTurn}
+        const snapshot={session,seq,entries:entries.sort((a:any,b:any)=>(new Date(a.at).getTime()||0)-(new Date(b.at).getTime()||0)||a.seq-b.seq),turnActive:delta.turnActive||(!delta.turnEnded&&!!reused?.turnActive),openTurn}
         reader!.snapshots.set(id,snapshot);reader!.failures.delete(id)
         return snapshot
     })()
@@ -68,7 +79,7 @@ function recognized(sourceId:string,analysis:any,sourceText=''):BackgroundRecogn
 }
 /** Read-only interpretation of AI returns; it never asserts that proposed changes were committed. */
 export function backgroundRecognitionDetails(purpose:string,entry:any,submitted?:any):BackgroundRecognition|undefined {
-    if(entry?.role!=='assistant'||!['analysis','summary'].includes(purpose))return undefined
+    if(entry?.role!=='assistant'||entry.finalOutput===false||!['analysis','summary'].includes(purpose))return undefined
     const text=String(entry.text||''),parsed=parse(text),packet=backgroundSubmittedPacket(submitted)
     const failure=!text.trim()?(entry.terminalReason&&entry.terminalReason!=='completed'?'本轮已中断或停止，AI 未返回可展示结果。':'AI 本轮未返回可展示内容。'):!parsed||typeof parsed!=='object'||Array.isArray(parsed)?'AI 返回内容不是有效的 JSON 对象。':''
     if(purpose==='summary'){

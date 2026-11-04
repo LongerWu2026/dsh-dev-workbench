@@ -7,7 +7,7 @@ import {build} from 'esbuild'
 import {execFileSync} from 'node:child_process'
 
 const home=mkdtempSync(join(tmpdir(),'workbench-continuous-'));process.env.DSH_HOME=home
-await build({stdin:{contents:`export {apply} from './src/host/plugin.ts';export * from './src/host/automation/jobs.ts';export {runAutomationTick} from './src/host/automation/scheduler.ts';export {loadWorkbenchState,mutateWorkbenchState} from './src/host/storage/state-store.ts';export {normalizeState} from './src/host/domain/model.ts'`,resolveDir:resolve('.'),loader:'ts'},outfile:join(home,'host.mjs'),bundle:true,platform:'node',format:'esm',logLevel:'silent'})
+await build({stdin:{contents:`export {apply} from './src/host/plugin.ts';export * from './src/host/automation/jobs.ts';export {runAutomationTick} from './src/host/automation/scheduler.ts';export {loadWorkbenchState,mutateWorkbenchState} from './src/host/storage/state-store.ts';export {normalizeState} from './src/host/domain/model.ts';export {wakeBackfilledAnalysisJobs} from './src/host/automation/analysis-progress.ts'`,resolveDir:resolve('.'),loader:'ts'},outfile:join(home,'host.mjs'),bundle:true,platform:'node',format:'esm',logLevel:'silent'})
 const h=await import(join(home,'host.mjs')),sessions=new Map(),disposers=[],packets=[]
 let api,serial=0,onPrompt=null,checks=0
 const state=()=>h.loadWorkbenchState(),job=id=>state().jobs.find(row=>row.id===id)
@@ -112,9 +112,32 @@ try{
  check('空队列直接结束，不调用模型',()=>{assert.equal(job(empty.jobId).status,'completed');assert.equal(packets.length,0);assert.equal(job(empty.jobId).progress.remaining,0)})
 
  await seed(1);await h.mutateWorkbenchState(s=>{s.syncCursors['account:group']={resumeBefore:'history-anchor'};return s});const waiting=await api.analysisStart();await finish(waiting.jobId)
- check('会话补采尚未完成不能把0条误报为全部完成',()=>{assert.equal(job(waiting.jobId).status,'queued');assert.equal(job(waiting.jobId).progress.remaining,1);assert.match(job(waiting.jobId).progress.pauseReason,/补采/);assert.ok(job(waiting.jobId).nextRetryAt);assert.equal(packets.length,0)})
- await h.mutateWorkbenchState(s=>{s.syncCursors={};return s});await resume(waiting.jobId)
+ check('会话补采尚未完成不能把0条误报为全部完成',()=>{assert.equal(job(waiting.jobId).status,'queued');assert.equal(job(waiting.jobId).progress.remaining,1);assert.match(job(waiting.jobId).progress.pauseReason,/历史补齐/);assert.ok(job(waiting.jobId).nextRetryAt);assert.equal(packets.length,0)})
+ const blocked=state(),beforeWaking=JSON.stringify(blocked.jobs);check('补采未结束不提前唤醒、不改动原作业',()=>{assert.equal(h.wakeBackfilledAnalysisJobs(blocked),0);assert.equal(JSON.stringify(blocked.jobs),beforeWaking)})
+ await h.mutateWorkbenchState(s=>{s.syncCursors={};assert.equal(h.wakeBackfilledAnalysisJobs(s),1);return s});await h.drainWorkflowJobs(ctx)
  check('补采结束自动续跑原作业',()=>assert.equal(job(waiting.jobId).status,'completed'))
+
+ await seed(1);const backfillRetry=new Date(Date.now()+120000).toISOString();await h.mutateWorkbenchState(s=>{s.syncCursors['__pending:account']={reason:'rate_limit',retryAt:backfillRetry,pendingGroups:[{groupId:'group'}]};return s});const rateWait=await api.analysisStart();await finish(rateWait.jobId)
+ check('连续识别准确呈现云之家限流与原冷却时间，不提交模型、不消耗重试次数',()=>{const j=job(rateWait.jobId);assert.equal(j.status,'queued');assert.equal(j.result.waitReason,'conversation_backfill');assert.equal(j.result.waitDetail,'rate_limit');assert.deepEqual(j.result.waitCounts,{backfill:1,leased:0,retry:0});assert.equal(j.nextRetryAt,backfillRetry);assert.match(j.progress.pauseReason,/云之家补采限流/);assert.equal(packets.length,0);assert.equal(j.attempts,0)})
+ const resumedState=state();resumedState.syncCursors={};const waitingTemplate=resumedState.jobs[0];resumedState.jobs=[{...waitingTemplate,pausedByUser:true},{...waitingTemplate,status:'completed'},{...waitingTemplate,result:{waitReason:'retry_wait'}},{...waitingTemplate,input:{onlyIds:['unrelated-source']}}]
+ check('补采唤醒不恢复人工暂停、已完成、模型等待或不相关的单条作业',()=>assert.equal(h.wakeBackfilledAnalysisJobs(resumedState),0))
+ await seed(1);await h.mutateWorkbenchState(s=>{s.syncCursors['account:group']={resumeBefore:'older-page'};return s});const targetedWait=await api.analysisStart({onlyIds:['e-0'],limit:1});await finish(targetedWait.jobId)
+ check('指定单条补采等待是可恢复状态，不调用模型、不消耗次数',()=>{const j=job(targetedWait.jobId);assert.equal(j.status,'queued');assert.equal(j.result.waitReason,'conversation_backfill');assert.match(j.result.note,/补采完成后自动继续/);assert.equal(j.attempts,0);assert.equal(state().analysisQueue[0].attempts,0);assert.equal(packets.length,0)})
+ const waitStatus=await api.analysisStatus();check('轻量状态接口保留补采等待类型供界面区分失败',()=>assert.equal(waitStatus.jobs.find(row=>row.id===targetedWait.jobId).result.waitReason,'conversation_backfill'))
+ await h.mutateWorkbenchState(s=>{s.syncCursors={};return s});await resume(targetedWait.jobId)
+ check('指定单条补采结束后仍在原作业继续，结果仅提交一次',()=>{assert.equal(job(targetedWait.jobId).status,'completed');assert.equal(packets.length,1);assert.equal(state().jobs.length,1)})
+
+ await seed(1);await h.mutateWorkbenchState(s=>{s.syncCursors['__pending:account']={pendingGroups:[{groupId:'group'}]};return s});const sourceIdWait=await api.analysisStart({onlyIds:['s-0'],limit:1});await finish(sourceIdWait.jobId)
+ check('使用sourceId指定消息时也保留待补采作业，不误报0条完成',()=>{assert.equal(job(sourceIdWait.jobId).status,'queued');assert.equal(job(sourceIdWait.jobId).result.waitReason,'conversation_backfill');assert.equal(packets.length,0)})
+
+ await seed(1);const retryTime=new Date(Date.now()+300000).toISOString();await h.mutateWorkbenchState(s=>{Object.assign(s.analysisQueue[0],{status:'failed',attempts:1,nextRetryAt:retryTime,lastError:'测试连接超时'});return s});const retryWait=await api.analysisStart({onlyIds:['e-0'],limit:1});await finish(retryWait.jobId)
+ check('自动重试等待返回原重试时间，不按补采反复延长或提前发送',()=>{const j=job(retryWait.jobId);assert.equal(j.status,'queued');assert.equal(j.result.waitReason,'retry_wait');assert.equal(j.nextRetryAt,retryTime);assert.equal(state().analysisQueue[0].attempts,1);assert.equal(packets.length,0)})
+
+ await seed(1);await h.mutateWorkbenchState(s=>{Object.assign(s.analysisQueue[0],{status:'running',leaseUntil:new Date(Date.now()+60000).toISOString()});return s});const leaseWait=await api.analysisStart({onlyIds:['e-0'],limit:1});await finish(leaseWait.jobId)
+ check('其他识别占用的指定消息保留等待，不重复提交也不假报完成',()=>{assert.equal(job(leaseWait.jobId).status,'queued');assert.equal(job(leaseWait.jobId).result.waitReason,'lease_wait');assert.equal(packets.length,0)})
+
+ await seed(1);await h.mutateWorkbenchState(s=>{Object.assign(s.analysisQueue[0],{status:'failed',attempts:3,lastError:'测试连接故障'});return s});const exhaustedTarget=await api.analysisStart({onlyIds:['e-0'],limit:1});await finish(exhaustedTarget.jobId)
+ check('真正重试耗尽的指定消息停止等待并明确需人工重试',()=>{const j=job(exhaustedTarget.jobId);assert.equal(j.status,'failed');assert.equal(j.nextRetryAt,null);assert.match(j.result.note,/3 次重试上限/);assert.equal(packets.length,0)})
 
  await seed(75);await h.mutateWorkbenchState(s=>{s.backgroundThreads={};s.settings.analysisSessionId=null;const at=new Date().toISOString();s.jobs=[{id:'crashed-job',kind:'analysis',status:'running',input:{limit:50,onlyIds:[],continuous:true},createdAt:at,updatedAt:at,attempts:0,progress:{processed:0,remaining:75,failed:0,batches:0,pauseReason:null}}];s.analysisQueue.forEach((row,i)=>Object.assign(row,i<50?{status:'done',analysisJobId:'crashed-job'}:{status:'running',leaseUntil:new Date(Date.now()+3600000).toISOString()}));return s})
  const restartCode=`

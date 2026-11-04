@@ -149,5 +149,29 @@ try{
  check('新会话创建明确失败撤回本次预留，不误记为已经兼容恢复',()=>{const thread=state().backgroundThreads[createFailureKey];assert.equal(thread.sessionId,createFailureSession.id);assert.equal(Object.keys(thread.reasoningRecoveries).length,0)})
  controller.create=normalCreate;const afterCreateFailure=await host.replaceIncompatibleBackgroundSession(ctx,'analysis',createFailureKey,createFailureSession.id);
  check('创建服务恢复后仍允许首次兼容恢复，不被失败预留永久阻断',()=>{const thread=state().backgroundThreads[createFailureKey];assert.notEqual(afterCreateFailure.id,createFailureSession.id);assert.equal(Object.values(thread.reasoningRecoveries)[0].sessionId,afterCreateFailure.id)})
+ const draftTarget=await add('只应采用最终结果',{accountId:'account-final-result'}),taskCountBeforeDraft=state().tasks.length
+ onPrompt=(packet,request)=>{const target=sessions.get(request.sessionId);target.events.push({type:'assistant/message',seq:target.seq+1,data:{message:{content:[{type:'text',text:JSON.stringify(envelope(packet,[{noise:false,items:[{title:'中间草稿不应建档',needsAction:true,needsReply:false}]}]))}]}}});return envelope(packet,[{noise:true,items:[]}])}
+ const finalBatch=await run([draftTarget])
+ check('真实批处理提交只使用最终noise判断，不根据早先合法JSON草稿建待办',()=>{assert.equal(finalBatch.processed,1);assert.equal(state().tasks.length,taskCountBeforeDraft);assert.equal(state().analysisQueue.find(row=>row.sourceId===draftTarget.source.id).analysis.noise,true)})
+ const finalSession=session('final-output-fixture');sessions.set(finalSession.id,finalSession)
+ const appendFinal=(type,data)=>finalSession.events.push({type,seq:finalSession.seq+1,data})
+ let admitted,settled=false;const admission=new Promise(resolve=>admitted=resolve)
+ controller.prompt=async()=>{appendFinal('turn/start',{});appendFinal('assistant/message',{message:{content:[{type:'text',text:'{"value":"draft"}'}]}});admitted();return {accepted:true}}
+ const waiting=host.waitStructuredReply(ctx,controller,finalSession,'final-output-test',5000).then(value=>{settled=true;return value})
+ await admission;await new Promise(resolve=>setTimeout(resolve,400))
+ check('最终轮次结束前不会解析已经完整返回的中间JSON',()=>assert.equal(settled,false))
+ appendFinal('assistant/message',{message:{content:[{type:'reasoning',text:'{"value":"reasoning"}'},{type:'text',text:'<think>{"value":"hidden"}</think>```json\n{"value":"final"}\n```'}]}});appendFinal('turn/end',{reason:{kind:'completed'}})
+ assert.deepEqual(await waiting,{value:'final'});check('最终正文独立解析且排除reasoning块和think标签内容',()=>assert.equal(settled,true))
+ for(const ending of ['invalid-final','reasoning-final','interrupted','tool-after-draft','multiple-json']){
+  controller.prompt=async()=>{appendFinal('turn/start',{});appendFinal('assistant/message',{message:{content:[{type:'text',text:'{"value":"valid-draft"}'}]}})
+   if(ending==='invalid-final')appendFinal('assistant/message',{message:{content:[{type:'text',text:'invalid final'}]}})
+   if(ending==='reasoning-final')appendFinal('assistant/message',{message:{content:[{type:'reasoning',text:'{"value":"reasoning-only"}'}]}})
+   if(ending==='tool-after-draft'){appendFinal('tool/call',{name:'native_read'});appendFinal('tool/result',{})}
+   if(ending==='multiple-json')appendFinal('assistant/message',{message:{content:[{type:'text',text:'```json\n{"value":"example"}\n```\n```json\n{"value":"ambiguous"}\n```'}]}})
+   appendFinal('turn/end',{reason:{kind:ending==='interrupted'?'interrupted':'completed'}});return {accepted:true}}
+  await assert.rejects(host.waitStructuredReply(ctx,controller,finalSession,'final-output-test',5000),/无法解析为 JSON/)
+  check('最终结果 '+ending+' 不回退解析此前合法草稿',()=>{})
+ }
+ controller.prompt=normalPrompt
  console.log(`batch-analysis: ${checks} scenarios passed`)
 }finally{for(const dispose of disposers.reverse())dispose();rmSync(home,{recursive:true,force:true})}

@@ -1,3 +1,4 @@
+import {installNativeContextFixture} from './native-context-fixture.mjs'
 /** Actual scheduler/batch/Hub integration with isolated storage and fake model/web services. */
 import assert from 'node:assert/strict'
 import {mkdtempSync,readFileSync,writeFileSync,rmSync} from 'node:fs'
@@ -24,7 +25,7 @@ try{
  const services={sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]},sessionController:controller,web:{fetch:async({url})=>{
   fetches.push(url);return {statusCode:200,body:{content:'<article>'+('离线测试原文。'.repeat(30))+'</article>'}}
  }}}
- const ctx={get:key=>key==='rssReader'?{fetch:(...args)=>services.web?.fetch?services.web.fetch(...args):Promise.reject(Error('RSS fixture unavailable'))}:services[key]};h.setShared_workbenchCtx(ctx)
+ const ctx={get:key=>key==='rssReader'?{fetch:(...args)=>services.web?.fetch?services.web.fetch(...args):Promise.reject(Error('RSS fixture unavailable'))}:services[key]};installNativeContextFixture(ctx);h.setShared_workbenchCtx(ctx)
  const hub=conversationId=>h.hub(ctx,{action:'detail',conversationId})
  async function source(){const n=++sourceSerial,id='source-'+n,at=new Date().toISOString();await h.mutate(s=>{s.sources.push({id,provider:'test',externalId:id,title:'请核对自动化测试结果 '+n,excerpt:'请核对自动化测试结果 '+n,fetchedAt:at,locator:{accountId:'fixture-account',groupId:'fixture-group',msgId:id,sentAt:at,intake:true,direction:'inbound'}});s.analysisQueue.push({id:'entry-'+n,sourceId:id,accountId:'fixture-account',groupId:'fixture-group',status:'pending',attempts:0,at});return s});return id}
  async function news(id){await h.mutate(s=>{s.radar.push({id,title:'离线资讯 '+id,url:'https://fixture.invalid/'+id,summaryAttempts:0,availability:'active',summary:{},createdAt:new Date().toISOString()});return s})}

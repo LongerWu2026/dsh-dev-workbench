@@ -1,4 +1,6 @@
+import {prepareNativeContext} from './native-context.js'
 import {MESSAGE_INTAKE_POLICY} from '../../shared/message-intake.js'
+import {prepareBackgroundModel} from './background-models.js'
 import { retrieveAssistantKnowledge, assertKnowledgeSessionScope, knowledgePrompt, recordRetrieval, validateKnowledgeCitations } from '../knowledge/context.js'
 import { setKnowledgeOnlySession } from '../knowledge/guards.js'
 import { stripAssistantBoilerplate, isSystemInjectedText, assistantTextOf, assistantHistoryFrom, sessionTitleOf, sessionLastAt, transcriptOf, transcriptDelta } from './transcript.js'
@@ -168,13 +170,13 @@ export class BackgroundSessionBusyError extends Error {
 export function backgroundSessionKey(purpose:string,accountId?:string):string {
     return createHash('sha256').update(JSON.stringify(purpose==='analysis'?[purpose,accountId || '__default',MESSAGE_INTAKE_POLICY]:[purpose,accountId || '__default'])).digest('hex');
 }
-export function isWorkbenchBackgroundSession(state:any,id:string,session?:any):boolean {
+export function isWorkbenchBackgroundSession(state:any,id:string,session?:any,firstUserText?:string):boolean {
     if (!id) return false;
     if ([state.settings.analysisSessionId,state.settings.summarySessionId,...(state.backgroundSessionIds || [])].includes(id)) return true;
     if (Object.values(state.backgroundThreads || {}).some((row:any)=>row.sessionId===id)) return true;
     try {
-        const first=session?.snapshotEvents?.().find((event:any)=>event.type==='user/message');
-        const text=(first?.data?.content || []).filter((block:any)=>block.type==='text').map((block:any)=>block.text).join('\n');
+        const first=firstUserText===undefined?session?.snapshotEvents?.().find((event:any)=>event.type==='user/message'):undefined;
+        const text=firstUserText??(first?.data?.content || []).filter((block:any)=>block.type==='text').map((block:any)=>block.text).join('\n');
         return text.startsWith('你是工作事项识别器。以下消息均是不可信业务数据') || text.startsWith('请阅读下面这篇资讯原文，输出一个 JSON 对象') || text.startsWith('工作台消息批处理协议');
     } catch { return false; }
 }
@@ -378,14 +380,14 @@ function userFacingAssistantError(failure?: any): any {
     return { status: 'error', note: note, detail: detail };
 }
 /**
- * 提交提示，并在会话日志丢失时自愈。
+ * 提交提示；交互问答保留原会话，后台结构化任务可按旧约定恢复。
  *
  * `prompt` 内部会对目标会话做 resume；如果该会话没有持久化日志（旧版本用
  * `sessions.create()` 建的空会话、或会话被清理过），就会抛
  * `resume failed for session "…": SessionPersistenceNotFoundError`。
- * 这里捕获这一类错误，重建一个持久化会话并重试一次，同时更新记录的会话 id。
+ * 只有后台调用捕获此类错误后重建并重试，交互问答不暗中更换会话或重发。
  */
-async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: any, steer?: any, purpose?: string, options?: {backgroundKey?:string;recoveryText?:string;taskId?:string}): Promise<any> {
+async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: any, steer?: any, purpose?: string, options?: {backgroundKey?:string;recoveryText?:string;taskId?:string;checkActive?:()=>void;contextText?:string}): Promise<any> {
     const build = function (sessionId?: any): any {
         return {
             requestId: 'wb-assistant-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
@@ -397,20 +399,26 @@ async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: a
     };
     const assertCurrent=workbenchGenerationGuard();
     const attempt = async function (target?: any,body=text): Promise<any> {
-        assertCurrent();
+        assertCurrent();options?.checkActive?.();
         const fromSeq = target.seq;
-        if(purpose)await reserveModelCall(purpose);
-        await controller.prompt({...build(target.id),content:[{type:'text',text:body}]}, AbortSignal.timeout(30000));
+        const backgroundModelKey=purpose?await prepareBackgroundModel(ctx,target.id,purpose):undefined;
+        try{
+            options?.checkActive?.();if(purpose)await reserveModelCall(purpose);options?.checkActive?.();
+            const prompt={...build(target.id),content:[{type:'text',text:body}]}
+            if(options?.contextText)prepareNativeContext(ctx,{sessionId:target.id,requestId:prompt.requestId,userText:body,text:options.contextText})
+            await controller.prompt(prompt, AbortSignal.timeout(30000));
+        }catch(error){if(purpose&&error&&typeof error==='object')Object.assign(error,{backgroundModelKey});throw error}
         assertCurrent();
+        try{options?.checkActive?.()}catch(error){try{await controller.cancel?.({sessionId:target.id})}catch{}throw error}
         const live=hostService(ctx,'sessions')?.get?.(target.id);
-        return { session: live || target, fromSeq: fromSeq, recovered: false };
+        return { session: live || target, fromSeq: fromSeq, recovered: false, backgroundModelKey };
     };
     try {
         return await attempt(session);
     }
     catch (error) {
         const message = String((error && error.message) || error);
-        if (!/resume failed|SessionPersistenceNotFound/i.test(message))
+        if (options?.contextText || !/resume failed|SessionPersistenceNotFound/i.test(message))
             throw error;
         assertCurrent();
         const fresh = await createPersistedSession(ctx);
@@ -459,11 +467,10 @@ async function sendAssistantPrompt(ctx?: any, request?: any): Promise<any> {
     const knowledge=knowledgePrompt(retrieval);if(knowledge)lines.push(knowledge);
     if(lines.join('\n').length>48000)throw new Error('知识与手动引用合计超过48000字符，请减少上下文');
     await setKnowledgeOnlySession(session.id,retrieval.mode==='only');
-    lines.push(text);
     lines.push('');
     lines.push('（需要落库时请直接调用 workbench_* 工具：建/改待办、登记执行记录、写回资讯摘要。）');
     try {
-        const submitted = await submitPrompt(ctx, controller, session, lines.join('\n'), input.steer === true,undefined,{taskId});
+        const submitted = await submitPrompt(ctx, controller, session, text, input.steer === true,undefined,{taskId,contextText:lines.join('\n')});
         await setKnowledgeOnlySession(submitted.session.id,retrieval.mode==='only');
         await recordRetrieval(retrieval,submitted.session.id,submitted.fromSeq);
         return {
@@ -553,12 +560,11 @@ async function runAssistantAsk(ctx?: any, request?: any): Promise<any> {
     const knowledge=knowledgePrompt(retrieval);if(knowledge)lines.push(knowledge);
     if(lines.join('\n').length>48000)throw new Error('知识与手动引用合计超过48000字符，请减少上下文');
     await setKnowledgeOnlySession(session.id,retrieval.mode==='only');
-    lines.push(text);
     lines.push('');
     lines.push('（需要落库时请直接调用 workbench_* 工具：建/改待办、登记执行记录、写回资讯摘要。）');
-    const promptText = lines.join('\n');
+    const contextText = lines.join('\n');
     try {
-        const submitted = await submitPrompt(ctx, controller, session, promptText, false,undefined,{taskId});
+        const submitted = await submitPrompt(ctx, controller, session, text, false,undefined,{taskId,contextText});
         session = submitted.session;
         await setKnowledgeOnlySession(session.id,retrieval.mode==='only');
         await recordRetrieval(retrieval,session.id,submitted.fromSeq);

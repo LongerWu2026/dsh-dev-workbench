@@ -30,6 +30,26 @@ it('自动作业的快速完成也能捕获，历史失败不重复弹通知',as
 it('模型失败进入等待重试时停止转圈，同一失败只通知一次，恢复后继续转圈',async()=>{
  const f=setup();f.jobs=[running({status:'queued',nextRetryAt:'2026-11-01T00:00:00Z',error:'模型暂不可用'})];await startExtraction(f);await flush();expect(f.WB.store.get().analysisActivity.phase).toBe('paused');expect(screen.queryByLabelText('提取进行中')).toBeNull();await tick();await tick();expect(f.WB.store.get().toasts.filter(t=>t.kind==='err')).toHaveLength(1);f.jobs=[running()];await tick();expect(f.WB.store.get().analysisActivity.phase).toBe('running')
 });
+it('已有补采等待记录不再报提取失败，保持原作业轮询且不重发启动请求',async()=>{
+ const f=setup();f.jobs=[running({status:'queued',nextRetryAt:'2026-11-04T12:00:00Z',result:{status:'deferred',processed:0,failures:0,note:'指定消息仍在会话补采或重试等待中，保留作业，下一轮继续核对'}})];await startExtraction(f);await flush()
+ expect(f.WB.store.get().analysisActivity.phase).toBe('waiting');expect(f.WB.store.get().toasts).toHaveLength(0)
+ const reads=f.reads;await tick();await tick();expect(f.reads).toBeGreaterThan(reads);expect(f.starts).toBe(1);expect(f.WB.store.get().toasts).toHaveLength(0)
+ f.jobs=[running()];await tick();expect(f.WB.store.get().analysisActivity.phase).toBe('running')
+ f.jobs=[running({status:'completed',result:{status:'ok',processed:1,failures:0}})];await tick();await tick()
+ expect(f.WB.store.get().analysisActivity.phase).toBe('completed');expect(f.WB.store.get().toasts.filter(t=>t.kind==='ok')).toHaveLength(1);expect(f.starts).toBe(1)
+});
+it.each(['conversation_backfill','retry_wait','lease_wait'])('%s有明确等待原因时不误报成功或失败',async waitReason=>{
+ const f=setup();f.jobs=[running({status:'queued',nextRetryAt:'2026-11-04T12:00:00Z',result:{status:'deferred',waitReason,processed:0,failures:0,note:'本条消息暂时等待继续'}})];await startExtraction(f);await flush();expect(f.WB.store.get().analysisActivity.phase).toBe('waiting');await tick();expect(f.WB.store.get().toasts).toHaveLength(0)
+});
+it('已有识别批次运行时显示等待，排队的本条不误报失败或重发',async()=>{
+ const f=setup();f.jobs=[running({status:'queued',nextRetryAt:'2026-11-04T12:00:00Z',result:{status:'busy',note:'识别批次正在运行'}})];await startExtraction(f);await flush();expect(f.WB.store.get().analysisActivity.phase).toBe('waiting');await tick();expect(f.starts).toBe(1);expect(f.WB.store.get().toasts).toHaveLength(0)
+});
+it('真实模型故障的deferred仍显示失败，不能被普通等待状态吞掉',async()=>{
+ const f=setup();f.jobs=[running({status:'queued',nextRetryAt:'2026-11-04T12:00:00Z',result:{status:'deferred',note:'HTTP 401 模型认证失败'}})];await startExtraction(f);await flush();expect(f.WB.store.get().analysisActivity.phase).toBe('paused');expect(f.WB.store.get().toasts.filter(t=>t.kind==='err')).toHaveLength(1)
+});
+it('等待记录后来出现真实错误时仍发出一次失败通知',async()=>{
+ const f=setup();f.jobs=[running({status:'queued',nextRetryAt:'2026-11-04T12:00:00Z',error:'模型执行失败',result:{status:'deferred',waitReason:'conversation_backfill'}})];await startExtraction(f);await flush();expect(f.WB.store.get().analysisActivity.phase).toBe('paused');expect(f.WB.store.get().toasts.filter(t=>t.kind==='err')).toHaveLength(1)
+});
 it('离开首页后仍跟踪失败，返回首页保留失败状态但不恢复旧操作栏',async()=>{
  const f=setup();f.jobs=[running()];await startExtraction(f);await flush();await act(async()=>f.WB.go('tasks'));f.jobs=[running({status:'failed',error:'提取模型返回400'})];await tick();expect(document.querySelector('.wb-toasts').textContent).toContain('提取失败：提取模型返回400');await act(async()=>f.WB.go('dashboard'));expect(f.WB.store.get().analysisActivity.phase).toBe('failed')
 });

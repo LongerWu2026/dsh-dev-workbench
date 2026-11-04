@@ -1,3 +1,4 @@
+import {workflowGuard,isWorkflowStopped,dispatchPaused} from '../automation/job-control.js'
 import {needsNewsBatchOverview,summarizeNewsBatch} from './batch-overview.js'
 import { isIgnoredNews, isUnreadableNewsError } from '../../shared/news.js'
 import { ensureBackgroundSession, hostService } from '../assistant/sessions.js'
@@ -85,6 +86,8 @@ async function executeRadarSummary(ctx?: any, request?: any): Promise<any> {
     return observeBackgroundBatch(ctx,'summary',request,(tracked,begin)=>executeTrackedRadarSummary(ctx,tracked,begin));
 }
 async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<void>):Promise<any> {
+    if(dispatchPaused('summary',request?.hubRunId))return {status:'paused',done:0,failed:0,note:'用户已暂停摘要，请手动继续'};
+    const assertActive=workflowGuard(request?.hubRunId);assertActive();
     if(request?.retryModel===true)await resetModelHealth('summary');
     const gate=modelGate(loadWorkbenchState(),'summary');if(gate)return {...gate,done:0,failed:0};
     const controller = hostService(ctx, 'sessionController');
@@ -124,7 +127,7 @@ async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<
     let interrupted=false;
     let deferred:any=null;
     for (const item of candidates) {
-        const generation=runtimeCheckpoint();
+        assertActive();const generation=runtimeCheckpoint();
         let phase='fetch',sourceError=false;
         try {
             const fetched = await web.fetch({ url: item.url }, AbortSignal.timeout(15000));
@@ -136,7 +139,7 @@ async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<
                 sourceError=true;throw new Error('原文内容不足（可能被反爬或需要登录）');
             }
             phase='model';
-            const parsed = await waitStructuredReply(ctx, controller, resolved, summaryPrompt(item, bodyText), SUMMARY_TURN_TIMEOUT_MS, 'summary',{hubRunId:request?.hubRunId,backgroundKey:resolved.workbenchThreadKey});
+            const parsed = await waitStructuredReply(ctx, controller, resolved, summaryPrompt(item, bodyText), SUMMARY_TURN_TIMEOUT_MS, 'summary',{hubRunId:request?.hubRunId,checkActive:assertActive,backgroundKey:resolved.workbenchThreadKey});
             await resetModelHealth('summary');
             for (const key of ['change', 'usage', 'risk', 'practice']) {
                 if (parsed[key] !== undefined && typeof parsed[key] !== 'string')
@@ -145,7 +148,7 @@ async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<
                     parsed[key] = '原文未说明';
             }
             const wrote = await mutateWorkbenchState(function (current?: any): any {
-                const target = ensureArray(current.radar).find(function (row?: any): any {
+                assertActive();const target = ensureArray(current.radar).find(function (row?: any): any {
                     return row.id === item.id;
                 });
                 if (!target)
@@ -165,6 +168,8 @@ async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<
             void wrote;
         }
         catch (error) {
+            try{assertActive()}catch(stopped){if(isWorkflowStopped(stopped))return {status:'paused',done,failed,items:perItem,note:stopped.message};throw stopped}
+            if(isWorkflowStopped(error))return {status:'paused',done,failed,items:perItem,note:error.message};
             if (isRuntimeInterrupted(error) || runtimeCheckpoint()!==generation) {
                 interrupted=true;
                 await mutateWorkbenchState((current:any)=>{const target=current.radar.find((row:any)=>row.id===item.id);if(target)Object.assign(target,{summaryStatus:'pending',summaryError:'运行恢复后等待重试，不计入失败次数',summaryRetryAt:new Date(Date.now()+30000).toISOString()});return current});
@@ -186,7 +191,7 @@ async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<
             perItem.push({ id: item.id, ok: false, note: String((error && error.message) || error).slice(0, 160) });
         }
     }
-    const batchResult=deferred||interrupted?{}:await summarizeNewsBatch(ctx,controller,resolved,request);
+    assertActive();const batchResult=deferred||interrupted?{}:await summarizeNewsBatch(ctx,controller,resolved,{...request,checkActive:assertActive});
     await mutateWorkbenchState(function (current?: any): any {
         current.lastRadarSummarize = {
             at: hostNowIso(),

@@ -20,9 +20,9 @@ function member(ctx:any,sessionId?:string){return sessionId?registryRows(ctx).fi
 function view(workspace:any):HubWorkspaceBinding{return {workspaceState:'bound',workspaceId:String(workspace.id),workspaceTitle:String(workspace.title||basename(workspace.path)),cwd:String(workspace.path)}}
 
 /** Only saved business relationships can select a project. Request paths are ignored. */
-function configuredDirectory(conversation:any,state:any){
+function configuredDirectory(conversation:any,state:any,developmentTask?:any){
  const kind=String(conversation?.kind||conversation?.id?.split(':')[0]||''),entityId=conversation?.entityId||String(conversation?.id||'').slice(kind.length+1)
- if(kind==='development')return readDevelopmentTask(entityId).cwd
+ if(kind==='development')return (developmentTask||readDevelopmentTask(entityId)).cwd
  let projectId:string|undefined
  if(kind==='task')projectId=state.tasks.find((row:any)=>row.id===entityId)?.projectId
  if(kind==='reply'){
@@ -37,12 +37,12 @@ function configuredDirectory(conversation:any,state:any){
 }
 
 /** Cold membership is read-only; loaded sessions must agree with their persisted group. */
-export function readHubWorkspace(ctx:any,conversation:any,sessionId?:string,state=loadWorkbenchState(),loadedSession?:any):HubWorkspaceBinding {
+export function readHubWorkspace(ctx:any,conversation:any,sessionId?:string,state=loadWorkbenchState(),loadedSession?:any,developmentTask?:any):HubWorkspaceBinding {
  let known:HubWorkspaceBinding|undefined
  try{
   const workspace=member(ctx,sessionId),session=loadedSession||(sessionId?hostService(ctx,'sessions')?.get?.(sessionId):undefined),cwd=nativeCwd(session)
   if(workspace)known=view(workspace)
-  const configured=configuredDirectory(conversation,state)
+  const configured=configuredDirectory(conversation,state,developmentTask)
   if(workspace){
    known=view(workspace);const path=canonical(workspace.path)
    if(session&&(!cwd||canonical(cwd)!==path))return {...known,workspaceState:'unavailable',workspaceError:'原会话运行目录与登记工作区不同或无法确认，已保留原会话及归组；请核对绑定后继续'}

@@ -14,7 +14,7 @@ try{
  const check=(title,fn)=>{fn();checks++;console.log('✓ '+title)},row=async id=>(await hub({action:'list'})).conversations.find(row=>row.id===id),remove=id=>hub({action:'delete',conversationId:id,confirmed:true})
  session('temporary','临时讨论');sessions.set('unindexed',{id:'unindexed',header:{createdAt:Date.now()},snapshotEvents:()=>[]})
  check('无事项无工作区的真实普通会话才提供删除权限',()=>{})
- assert.equal((await row('chat:temporary')).canDelete,true);assert.equal((await row('chat:unindexed')).canDelete,true)
+ assert.equal((await row('chat:temporary')).canDelete,true);assert.equal(await row('chat:unindexed'),undefined);assert.equal((await remove('chat:unindexed')).status,'error');assert.equal(calls.length,0)
  const preview=await hub({action:'delete',conversationId:'chat:temporary'})
  check('删除先确认，预览不调用原生归档也不移除会话',()=>{assert.equal(preview.status,'confirmation_required');assert.equal(calls.length,0);assert.equal(archived.length,0)})
  const at=new Date().toISOString(),project=join(home,'project');mkdirSync(project)
@@ -55,7 +55,7 @@ try{
  session('failed');failure='模拟写入失败';assert.equal((await remove('chat:failed')).status,'error');assert.ok(await row('chat:failed'));failure=''
  noReceipt=true;const unconfirmed=await remove('chat:failed');noReceipt=false
  check('原生失败或回读未确认时不宣称成功、不移除记录',()=>{assert.equal(unconfirmed.status,'error');assert.match(unconfirmed.note,/尚未确认/);assert.ok(!archived.includes('failed'))})
- assert.equal((await remove('chat:unindexed')).status,'ok');assert.equal(await row('chat:unindexed'),undefined)
+ assert.equal((await remove('chat:unindexed')).status,'error');assert.equal(await row('chat:unindexed'),undefined)
  await remove('chat:temporary')
  const cold=await import(join(home,'host.mjs')+'?reload');cold.claimWorkbenchOwnership();const reloaded=await cold.hub(ctx,{action:'list'})
  check('新宿主重新加载后，原生归档的索引和未索引会话都不会重新出现',()=>{assert.equal(reloaded.status,'ok',reloaded.note);assert.ok(!reloaded.conversations.some(row=>['chat:temporary','chat:unindexed'].includes(row.id)))})

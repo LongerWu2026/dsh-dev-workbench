@@ -136,7 +136,7 @@ function DashboardPage(): any {
         actions: h('div',{className:'wb-row wb-row--wrap',style:{gap:6}},h(WorkspaceRefresh,{scope:'tasks'}),h(Btn, {size:'sm',kind:'subtle',onClick:()=>WB.go('tasks'),children:'任务中心'})),
         flush: true,
     }, !inlineTaskFilters&&taskFilters?h('div',{className:'wb-brief-task-filters-body'},taskFilters):null,shownTasks.length > 0
-        ? h('div', { className: 'wb-list', style: { padding: '0 16px' } }, shownTasks.map((task:any)=>h('article',{key:task.id,style:{borderBottom:'1px solid '+T.border1}},h(DashTaskRow,{task,data}))))
+        ? h('div', { className: 'wb-list wb-brief-task-list', style: { padding: '0 16px' } }, shownTasks.map((task:any)=>h('article',{key:task.id},h(DashTaskRow,{task,data}))))
         : tasks.length===0?h(CompactEmptyState, {empty:true,onCreate:()=>WB.openTaskForm(null),onBrowse:()=>WB.go('tasks')}):h('div',{className:'wb-stack',style:{padding:16,gap:8}},h('strong',null,taskScope==='all'?'没有未完成待办':'当前没有今日关注事项'),h('span',{className:'wb-tiny wb-muted'},'今日关注包含今日新增、逾期、今日到期和高优先级事项。'),taskScope!=='all'?h(Btn,{size:'sm',onClick:()=>{setTaskScope('all');setAllTasksShown(false)},children:'显示全部未完成'}):null), taskSelection.length > 8
         ? h('div', {
             style: {

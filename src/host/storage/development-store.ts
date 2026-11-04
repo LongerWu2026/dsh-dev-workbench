@@ -54,9 +54,9 @@ export function listDevelopmentTasks():DevelopmentTask[]{
 }
 
 /** Both local flows and Linky CLI runs own sessions that office assistance must not adopt. */
-export function developmentSessionIds():Set<string>{
+export function developmentSessionIds(tasks:DevelopmentTask[]=listDevelopmentTasks()):Set<string>{
     const ids=new Set<string>()
-    for(const task of listDevelopmentTasks())for(const id of developmentTaskSessionIds(task))ids.add(id)
+    for(const task of tasks)for(const id of developmentTaskSessionIds(task))ids.add(id)
     const dir=join(developmentDir(),'native-runs')
     if(existsSync(dir))for(const name of readdirSync(dir).filter(name=>/^[\w-]+\.json$/.test(name))){
         let run:any;try{run=JSON.parse(readFileSync(join(dir,name),'utf8'))}catch{continue}

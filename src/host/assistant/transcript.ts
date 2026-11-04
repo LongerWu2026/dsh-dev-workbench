@@ -1,11 +1,14 @@
+import {isWorkbenchContextEvent} from '../../shared/assistant-context.js'
 import { asString } from '../platform/runtime.js'
 import {nativeAssistantAttachments} from '../../shared/assistant-attachments.js'
+import {assistantOutputText} from './final-output.js'
 function stripAssistantBoilerplate(text?: any): any {
     const lines = String(text || '').split('\n');
     const kept: any = [];
     let inContext = false;
     let inKnowledge = false;
     for (const line of lines) {
+        if(line.indexOf('【本轮知识设置】')===0||line.indexOf('（普通对话：')===0)continue;
         if(line.indexOf('【本轮知识检索')===0){inKnowledge=true;continue}
         if(inKnowledge){if(line.trim()==='【知识片段结束】')inKnowledge=false;continue}
         if (line.indexOf('【工作台上下文') === 0) {
@@ -24,6 +27,15 @@ function stripAssistantBoilerplate(text?: any): any {
     }
     const cleaned = kept.join('\n').replace(/^\n+|\n+$/g, '').trim();
     return cleaned;
+}
+/** Native snapshots identify clean user payloads; legacy combined prompts still
+ * use the old cleanup only when no separately logged snapshot is present. */
+function nativeContextRequests(events:any[]):Set<string>{return new Set(events.filter(isWorkbenchContextEvent).map(event=>event.data.source.requestId))}
+function displayedUser(event:any,requests:Set<string>){
+ const raw=(Array.isArray(event.data?.content)?event.data.content:[]).filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n')
+ const clean=event.data?.source?.kind==='user'&&requests.has(event.data.source.rpcId)
+ const text=clean?raw:stripAssistantBoilerplate(raw)
+ return {text,visible:!!text&&(clean||!isSystemInjectedText(text))}
 }
 function isSystemInjectedText(text?: any): any {
     const source = String(text || '');
@@ -47,40 +59,21 @@ function isSystemInjectedText(text?: any): any {
 }
 /** 从 assistant/message 事件里抽出纯文本（content 是 ContentBlock[]）。 */
 function assistantTextOf(message?: any): any {
-    if (!message || !Array.isArray(message.content))
-        return '';
-    return message.content
-        .map(function (block?: any): any {
-        if (!block || typeof block !== 'object')
-            return '';
-        if (block.type === 'text' && typeof block.text === 'string')
-            return block.text;
-        if (block.type === 'reasoning')
-            return '';
-        return '';
-    })
-        .filter(Boolean)
-        .join('\n')
-        .trim();
+    return assistantOutputText(message);
 }
 /** 本会话里最近 N 轮问答，供侧栏恢复历史。 */
 function assistantHistoryFrom(session?: any, limit?: any): any {
     if (!session || typeof session.snapshotEvents !== 'function')
         return [];
     const events = session.snapshotEvents();
+    const contextRequests=nativeContextRequests(events);
     const out: any = [];
     for (const event of events) {
+        if (isWorkbenchContextEvent(event)) continue;
         if (event.type === 'user/message') {
             const content = Array.isArray(event.data.content) ? event.data.content : [];
-            const text = content
-                .map(function (block?: any): any {
-                return block && block.type === 'text' ? block.text : '';
-            })
-                .filter(Boolean)
-                .join('\n')
-                .trim();
-            const attachments=nativeAssistantAttachments(content),historyText=stripAssistantBoilerplate(text);
-            if ((historyText&&!isSystemInjectedText(historyText))||attachments.length)
+            const displayed=displayedUser(event,contextRequests),historyText=displayed.text,attachments=nativeAssistantAttachments(content);
+            if (displayed.visible||attachments.length)
                 out.push({ role: 'user', text: historyText, at: event.time,...(attachments.length?{attachments}:{}) });
         }
         else if (event.type === 'assistant/message') {
@@ -95,21 +88,14 @@ function assistantHistoryFrom(session?: any, limit?: any): any {
 function sessionTitleOf(session?: any): any {
     try {
         const events = session.snapshotEvents();
+        const contextRequests=nativeContextRequests(events);
         for (const event of events) {
-            if (event.type !== 'user/message')
+            if (isWorkbenchContextEvent(event) || event.type !== 'user/message')
                 continue;
             const content = Array.isArray(event.data.content) ? event.data.content : [];
-            const text = content
-                .map(function (block?: any): any {
-                return block && block.type === 'text' ? block.text : '';
-            })
-                .filter(Boolean)
-                .join('\n');
-            // 先剥样板再压缩空白：一旦把换行压掉，整条 prompt 会变成「以样板开头的一行」被整行吃掉
-            const titleText = stripAssistantBoilerplate(text)
-                .replace(/\s+/g, ' ')
-                .trim();
-            if (titleText && !isSystemInjectedText(titleText))
+            const displayed=displayedUser(event,contextRequests);
+            const titleText=displayed.text.replace(/\s+/g,' ').trim();
+            if (titleText && displayed.visible)
                 return titleText.slice(0, 40);
             const attachments=nativeAssistantAttachments(content);if(attachments.length)return attachments[0].name.slice(0,40);
         }
@@ -134,20 +120,15 @@ function transcriptOf(session?: any, limit?: any): any {
     if (!session || typeof session.snapshotEvents !== 'function')
         return [];
     const events = session.snapshotEvents();
+    const contextRequests=nativeContextRequests(events);
     const entries: any = [];
     let pendingCalls: any = [];
     for (const event of events) {
+        if (isWorkbenchContextEvent(event)) continue;
         if (event.type === 'user/message') {
             const content = Array.isArray(event.data.content) ? event.data.content : [];
-            const text = content
-                .map(function (block?: any): any {
-                return block && block.type === 'text' ? block.text : '';
-            })
-                .filter(Boolean)
-                .join('\n')
-                .trim();
-            const attachments=nativeAssistantAttachments(content),transcriptText=stripAssistantBoilerplate(text);
-            if ((transcriptText&&!isSystemInjectedText(transcriptText))||attachments.length)
+            const displayed=displayedUser(event,contextRequests),transcriptText=displayed.text,attachments=nativeAssistantAttachments(content);
+            if (displayed.visible||attachments.length)
                 entries.push({ role: 'user', text: transcriptText, at: event.time,...(attachments.length?{attachments}:{}) });
         }
         else if (event.type === 'tool/call') {
@@ -181,6 +162,7 @@ function modelErrorText(value:any,depth=0):string {
 function transcriptDelta(session?: any, fromSeq?: any): any {
     const start = Number(fromSeq);
     const events = session.snapshotEvents(Number.isFinite(start) && start >= 0 ? start : 0);
+    const contextRequests=nativeContextRequests(session.snapshotEvents());
     const entries: any = [];
     let turnActive = false;
     let turnEnded = false;
@@ -196,17 +178,11 @@ function transcriptDelta(session?: any, fromSeq?: any): any {
             if (reason && reason.kind === 'error') entries.push({role:'error',text:modelErrorText(reason.error) || '模型轮次失败',at:event.time,seq:event.seq});
             continue;
         }
+        if (isWorkbenchContextEvent(event)) continue;
         if (event.type === 'user/message') {
             const content = Array.isArray(event.data.content) ? event.data.content : [];
-            const text = content
-                .map(function (block?: any): any {
-                return block && block.type === 'text' ? block.text : '';
-            })
-                .filter(Boolean)
-                .join('\n')
-                .trim();
-            const attachments=nativeAssistantAttachments(content),entryText=stripAssistantBoilerplate(text);
-            if ((entryText&&!isSystemInjectedText(entryText))||attachments.length)
+            const displayed=displayedUser(event,contextRequests),entryText=displayed.text,attachments=nativeAssistantAttachments(content);
+            if (displayed.visible||attachments.length)
                 entries.push({ role: 'user', text: entryText, at: event.time, seq: event.seq,...(attachments.length?{attachments}:{}) });
         }
         else if (event.type === 'assistant/message') {

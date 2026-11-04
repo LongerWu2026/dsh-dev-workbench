@@ -32,6 +32,14 @@ try{
  const invoke=(operation,extra={})=>tool.execute({operation,...extra},execution),verify=(name,fn)=>{fn();checks++;console.log('✓ '+name)}
  let result=await invoke('development.issue.get')
  verify('按绑定 profile/工作空间读取真实工作项、可用流转和本地执行状态',()=>{assert.equal(result.issue.title,'原需求');assert.equal(result.execution.status,'paused');assert.equal(result.execution.stage,'test');assert.equal(result.targets.length,3);assert.equal(writes.length,0)})
+ await h.mutateWorkbenchState(s=>{s.projects.push({id:'project-fixture',name:'已绑定研发工程',knowledgeSpaceId:'personal'});s.retrievalTraces=[...(s.retrievalTraces||[]),{id:'legacy-empty',sessionId:'main-session',scope:{projectId:null,accountId:null},status:'empty',hits:[],query:'旧讨论',mode:'auto'}];return s})
+ for(const text of ['当前任务状态','任务状态','查看当前任务状态','查询这条需求的状态','当前工作项业务状态','查看当前需求可用状态']){
+  result=await h.assistantHub(ctx,{action:'send',conversationId:'development:dev-fixture',sessionId:'main-session',text})
+  verify('状态查询直接读取绑定工作项，不受知识检索和模型服务限制：'+text,()=>{assert.equal(result.status,'ok',result.note);assert.equal(result.turn.source,'rule');assert.equal(result.turn.commands[0].operation,'development.issue.get');assert.equal(result.execution.status,'paused');assert.match(result.note,/业务状态：待处理/);assert.match(result.note,/研发执行：已暂停 · 测试验证/);assert.match(result.note,/暂停原因：测试失败/);assert.equal(writes.length,0)})
+ }
+ for(const text of ['如果任务状态完成后怎么做','当前任务状态为什么失败','请将任务状态改成开发中可以吗']){
+  verify('状态讨论不误当查询或修改：'+text,()=>assert.equal(h.recognizeAssistantCommand({conversationId:'development:dev-fixture',text}),null))
+ }
  for(const text of ['状态标记为完成','标记完成','把当前需求标记为已完成','请帮我把当前需求的业务状态设置为完成','状态改为已完成']){
   const action=h.recognizeAssistantCommand({conversationId:'development:dev-fixture',text})
   assert.equal(action?.operation,'development.issue.get');assert.match(action.requestedStatus,/完成/)

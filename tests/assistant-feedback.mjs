@@ -1,3 +1,4 @@
+import {installNativeContextFixture,modelText} from './native-context-fixture.mjs'
 /** Real assistantHub/operation/tool wiring with durable native request IDs in an isolated profile. */
 import assert from 'node:assert/strict'
 import {mkdtempSync,rmSync,readFileSync} from 'node:fs'
@@ -20,7 +21,7 @@ try{
   session.append('turn/end',{turn,reason:plan.error?{kind:'error',error:{message:plan.error}}:{kind:'completed'}});return{accepted:true}
  }}
  const services={sessionController:controller,sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]}}
- const ctx={get:key=>services[key],provide(){},inject(deps,fn){if(deps.includes('tools'))fn({tools:{guard(fn){guard=fn;return()=>{}},register(def){definitions.set(def.name,def);return()=>{}}}})},effect(fn){const dispose=fn();if(typeof dispose==='function')disposers.push(dispose)},logger:{info(){}}};h.apply(ctx,{})
+ const ctx={get:key=>services[key],provide(){},inject(deps,fn){if(deps.includes('tools'))fn({tools:{guard(fn){guard=fn;return()=>{}},register(def){definitions.set(def.name,def);return()=>{}}}})},effect(fn){const dispose=fn();if(typeof dispose==='function')disposers.push(dispose)},logger:{info(){}}};installNativeContextFixture(ctx);h.apply(ctx,{})
  const hub=request=>h.assistantHub(ctx,request),state=()=>h.loadWorkbenchState(),detail=(conversationId,rest={})=>hub({action:'detail',conversationId,...rest}),send=(conversationId,text,requestId,rest={})=>hub({action:'send',conversationId,text,requestId,knowledgeMode:'off',...rest})
  const diskTurns=()=>JSON.parse(readFileSync(join(home,'storages/dev-workbench/assistant-turns.json'),'utf8')).turns
  await h.taskService.createTask({title:'反馈待办甲'});await h.taskService.createTask({title:'反馈待办乙'});const [a,b]=state().tasks,ca='task:'+a.id,cb='task:'+b.id
@@ -83,5 +84,18 @@ try{
  const beforeScopedPrompts=prompts.length,scopeFirst=await send('system:knowledge','为项目甲梳理知识主题','feedback-scoped-ai-replay',{knowledgeScope:scopeA}),scopeRepeated=await send('system:knowledge','为项目甲梳理知识主题','feedback-scoped-ai-replay',{knowledgeScope:scopeA})
  check('非默认项目知识范围的相同requestId也只调用一次模型',()=>{assert.equal(scopeFirst.status,'ok');assert.equal(scopeRepeated.turnId,scopeFirst.turnId);assert.equal(prompts.length,beforeScopedPrompts+1)})
  const persisted=diskTurns();check('规则、正常AI、空回复、失败和未命中都可从磁盘恢复',()=>{for(const id of [rule.turnId,empty.turnId,rejected.turnId,failed.turnId,knowledgeEmpty.turnId,toolRun.turnId,analysis.turnId,radar.turnId,preview.turnId,reinterpreted.turnId])assert.ok(persisted.some(t=>t.id===id));assert.equal(new Set(persisted.map(t=>t.requestId)).size,persisted.length)})
+ const plainNative=makeSession(),plainId='chat:'+plainNative.id,plainJobs=state().jobs.length,plainTasks=state().tasks.length,plainPrompts=prompts.length
+ const plainAdopted=await hub({action:'adopt',sessionId:plainNative.id,confirmed:true});assert.equal(plainAdopted.status,'ok',plainAdopted.note)
+ plans.push({text:'这是普通讨论，不修改工作台配置。'});const plainAsked=await send(plainId,'开启忙碌自动回复','feedback-plain-business-word')
+ check('普通对话包含业务措辞仍直接发送原模型，不经规则识别或澄清兜底',()=>{assert.equal(plainAsked.status,'ok');assert.equal(plainAsked.turn.source,'ai');assert.equal(plainAsked.turn.recognition,undefined);assert.ok(!plainAsked.turn.clarificationOnly);assert.equal(plainAsked.turn.commands.length,0);assert.equal(prompts.length,plainPrompts+1);assert.equal(plainAsked.sessionId,plainNative.id);assert.equal(state().jobs.length,plainJobs)})
+ check('普通对话提示词不再注入执行业务工具的通用指令',()=>{const prompt=modelText(prompts.at(-1));assert.match(prompt,/普通对话：直接回答/);assert.ok(!prompt.includes('优先使用 workbench_assistant_action'));assert.ok(!prompt.includes('识别出的指令和结果会显示'))})
+ plans.push({tool:'workbench_create_task',args:{title:'模型误调用不应新建',conversationId:'system:analysis'},text:'应在对应专用会话操作。'});const plainBlocked=await send(plainId,'讨论建一个任务的设计','feedback-plain-tool-blocked')
+ check('普通对话模型误调用业务工具仍被阻止，只有折叠工具记录无业务指令',()=>{assert.equal(state().tasks.length,plainTasks);assert.equal(plainBlocked.turn.commands[0].kind,'tool');assert.equal(plainBlocked.turn.commands[0].status,'failed');assert.match(plainBlocked.turn.commands[0].resultText,/普通对话/);assert.equal(plainBlocked.turn.status,'failed')})
+ plans.push({tool:'workbench_list_tasks',text:'已根据实际只读结果回答。'});const plainRead=await send(plainId,'我有多少条待办？','feedback-plain-read')
+ check('普通对话原生只读工具正常工作且不显示识别指令',()=>{assert.equal(plainRead.turn.status,'completed');assert.equal(plainRead.turn.commands[0].kind,'tool');assert.equal(plainRead.turn.commands[0].status,'completed');assert.equal(plainRead.turn.recognition,undefined);assert.equal(state().tasks.length,plainTasks)})
+ plans.push({text:'{"noise":false,"items":[{"title":"普通聊天JSON不应入库","needsAction":true,"needsReply":false}]}'});const plainJson=await send(plainId,'展示一个JSON例子','feedback-plain-json-example')
+ check('普通对话最终返回JSON也只作为回答，不解析成待办或识别建议',()=>{assert.equal(plainJson.turn.commands.length,0);assert.match(plainJson.turn.reply,/普通聊天JSON不应入库/);assert.equal(state().tasks.length,plainTasks);assert.equal(state().jobs.length,plainJobs)})
+ plans.push({hold:true});const plainPending=await send(plainId,'解释一下当前目录','feedback-plain-pending')
+ check('普通对话处理中使用回答提示，不宣称正在识别指令',()=>{assert.equal(plainPending.turn.reply,'正在处理你的问题…');assert.equal(plainPending.turn.recognition,undefined)})
  console.log('assistant-feedback: '+checks+' checks passed')
 }finally{for(const dispose of disposers.reverse())dispose();rmSync(home,{recursive:true,force:true})}

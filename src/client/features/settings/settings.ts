@@ -2,7 +2,9 @@ import { BackgroundHistoryPanel } from '../operations/BackgroundHistoryPanel.js'
 import {YunzhijiaConnection} from './YunzhijiaConnection.js'
 import { OperationsPanel } from '../operations/OperationsPanel.js'
 import { ArchiveBrowser } from '../operations/ArchiveBrowser.js'
-import { MigrationImportPanel } from '../../components/MigrationImportPanel.js'
+import {DataManagement} from './DataManagement.js'
+import {BackgroundModels} from './BackgroundModels.js'
+import {SETTINGS_CSS} from './styles.js'
 import { Badge, Btn, Chip, Divider, Empty, Field, Icon, IconBtn, Input, Modal, PageHead, Panel, Select, Spinner, T, Toggle, WB, h, useStore } from '../../core/runtime.js'
 import * as React from 'react'
 /* ============================================================================
@@ -32,7 +34,6 @@ function SettingsPage(): any {
     const [projectPath, setProjectPath] = React.useState<any>('');
     const [picking, setPicking] = React.useState<any>(false);
     const [projectEdit, setProjectEdit] = React.useState<any>(null);
-    const [backups, setBackups] = React.useState<any>([]);
     const [migrationJson, setMigrationJson] = React.useState<any>('');
     const [migrationMode, setMigrationMode] = React.useState<any>('replace');
     const [automation, setAutomation] = React.useState<any>(null);
@@ -61,11 +62,6 @@ function SettingsPage(): any {
     }
     React.useEffect(function (): any {
         runDiagnostics();
-        WB.actions.backups()
-            .then(function (result?: any): any {
-            setBackups(result.backups || []);
-        })
-            .catch(function (): any { });
         WB.actions.automationStatus()
             .then(function (status?: any): any {
             setAutomation(status);
@@ -166,7 +162,7 @@ function SettingsPage(): any {
             WB.toast('导出失败：' + String((e && e.message) || e), 'err');
         }
     }
-    return h('div', null, h(PageHead, {
+    return h('div', {className:'wb-settings-page'}, h('style',null,SETTINGS_CSS), h(PageHead, {
         icon: 'plug',
         title: WB.t('settings.title', '连接与设置'),
         sub: '连接器状态、关注主题与数据落盘位置；改动的都是 Host 侧持久化配置。',
@@ -179,7 +175,7 @@ function SettingsPage(): any {
             },
             children: '重新读取',
         }),
-    }), h(BackgroundHistoryPanel), h(OperationsPanel,{revision:data?.revision}), h(ArchiveBrowser), h('div', { className: 'wb-grid wb-settings-grid', style: { gridTemplateColumns: 'minmax(0, 1.35fr) minmax(0, 1fr)' } }, h('div', { className: 'wb-stack', style: { gap: 14 } }, h(Panel, {
+    }), h('div', {className:'wb-settings-grid'}, h(Panel, {
         title: '连接器',
         sub: '一个 Provider 一种能力；未接入的能力保持“未配置”而不是假装可用',
         icon: 'plug',
@@ -249,7 +245,7 @@ function SettingsPage(): any {
                 ? h('div', { style: { marginTop: 6 } }, h('div', { className: 'wb-label', style: { marginBottom: 4 } }, '已注册的 Agent 工具'), h('div', { className: 'wb-row wb-row--wrap' }, diag.toolNames.map(function (name?: any): any {
                     return h(Chip, { key: name, icon: 'command', children: name });
                 })))
-                : null))), h('div', { className: 'wb-stack', style: { gap: 14 } }, h(Panel, {
+                : null)), h(Panel, {
         title: '项目',
         sub: '仓库目录决定「研发协作」探测哪些 Git 仓库',
         icon: 'folder',
@@ -383,6 +379,7 @@ function SettingsPage(): any {
         children: '添加',
     }))), h(Panel, {
         title: '自动化',
+        className:'wb-settings-wide',
         sub: '按配置采集消息、联网发现资讯；开启 AI 后进行识别和摘要',
         icon: 'zap',
         badge: automation ? h(Badge, { tone: automation.enabled ? 'ok' : 'idle' }, automation.enabled ? '已开启' : '已关闭') : null,
@@ -410,7 +407,7 @@ function SettingsPage(): any {
             },
             children: automationRunning ? '正在执行…' : '立即执行',
         }),
-    }, h('div', null, h(SettingsRow, {
+    }, h('div', {className:'wb-settings-controls'}, h(SettingsRow, {
         title: '开启后台自动化',
         hint: automation && automation.lastAutomation
             ? '上次运行 ' + WB.fmt.relative(automation.lastAutomation.at) + '（' + automation.lastAutomation.status + '）：' + (automation.lastAutomation.note || '')
@@ -533,7 +530,7 @@ function SettingsPage(): any {
             setMentionDraft('');
         },
         children: '添加',
-    }))), h(Panel, { title: '偏好', sub: '仅影响本工作台的展示', icon: 'settings' }, h('div', null, h(SettingsRow, {
+    }))), h(BackgroundModels), h(Panel, { title: '偏好', sub: '仅影响本工作台的展示', icon: 'settings' }, h('div', null, h(SettingsRow, {
         title: '显示已完成任务',
         hint: '关闭时任务中心默认只看未完成',
         control: h(Toggle, {
@@ -569,66 +566,7 @@ function SettingsPage(): any {
                 patchSettings({ defaultProjectId: event.target.value || null });
             },
         }),
-    }))), h(Panel, { title: '数据管理', sub: '状态由 Host 持有；前端不作为权威数据源', icon: 'save' }, h('div', { className: 'wb-stack', style: { gap: 9 } }, h('div', { className: 'wb-row wb-row--wrap' }, h(Btn, { icon: 'download', size: 'sm', onClick: exportJson, children: '导出 JSON' }), h(Btn, {
-        icon: 'save',
-        size: 'sm',
-        onClick: function (): any {
-            WB.actions.backup().then(function (result?: any): any {
-                setBackups(result.backups || []);
-                WB.toast('已创建备份', 'ok');
-            }).catch(function (error:any): any { WB.toast(String(error.message || error),'err') });
-        },
-        children: '立即备份',
-    }), h(Btn, {
-        icon: 'share',
-        size: 'sm',
-        onClick: function (): any {
-            WB.actions
-                .exportMigration()
-                .then(function (pack?: any): any {
-                WB.util.copy(JSON.stringify(pack, null, 2)).then(function (): any {
-                    WB.toast('迁移包已复制（含校验），粘贴到目标端即可导入', 'ok');
-                });
-            })
-                .catch(function (): any { });
-        },
-        children: '导出迁移包',
-    }), h(Btn, {
-        icon: 'sparkles',
-        size: 'sm',
-        onClick: function (): any {
-            WB.actions.seedDemo().catch(function (): any { });
-        },
-        children: '载入示例数据',
-    })), h('p', { className: 'wb-hint', style: { margin: '2px 0 0' } }, '“载入示例数据”会写入若干标注为示例的待办与资讯，用来快速看清布局；随时可重置清空。'), h(MigrationImportPanel, null), backups.length > 0
-        ? h('div', { className: 'wb-stack', style: { gap: 4 } }, h('div', { className: 'wb-label' }, '可用备份（每天首次写入自动留一份，保留 5 份）'), backups.slice(0, 5).map(function (item?: any): any {
-            return h('div', { key: item.id, className: 'wb-row', style: { gap: 8 } }, h('span', { className: 'wb-mono wb-tiny wb-ellipsis', style: { flex: '1 1 auto' } }, item.id), h('span', { className: 'wb-tiny wb-muted' }, WB.fmt.bytes(item.bytes)), h(Btn, {
-                size: 'sm',
-                kind: 'subtle',
-                icon: 'refresh',
-                onClick: function (): any {
-                    if (!window.confirm('用这份备份覆盖当前数据？当前文件会先自动备份。'))
-                        return;
-                    WB.actions
-                        .restoreBackup(item.id)
-                        .then(function (): any {
-                        WB.toast('已从备份恢复', 'ok');
-                        WB.actions.reload().catch(function (): any { });
-                    })
-                        .catch(function (): any { });
-                },
-                children: '恢复',
-            }));
-        }))
-        : null, h(Divider, null), h('div', { className: 'wb-row' }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title' }, '重置数据'), h('div', { className: 'wb-item-sub' }, '清空任务、执行记录、知识与雷达，保留设置')), h(Btn, {
-        kind: 'danger',
-        size: 'sm',
-        icon: 'trash',
-        onClick: function (): any {
-            setConfirmReset(true);
-        },
-        children: '重置',
-    })))), h(Panel, { title: '关于', sub: '智能工作台 0.2.1（dsh-dev-workbench）', icon: 'info' }, h('div', { className: 'wb-stack wb-tiny wb-muted', style: { gap: 5 } }, h('span', null, 'Cordis Host + Client 双半插件：Host 持有状态并通过 workbench/* Remote 暴露，Client 通过 main 与 sidebar.panellist 插槽渲染页面。'), h('span', null, '工具箱中的计算全部在浏览器内完成；企业消息摘录保存在宿主本地，凭据由 CLI / 宿主管理。'), h('span', null, '数据文件位于 ', h('code', { className: 'wb-mono' }, diag ? diag.dataPath : '~/.dsh/storages/dev-workbench/state.json')))))), h(Modal, {
+    }))), h(DataManagement,{onExportJson:exportJson,onReset:()=>setConfirmReset(true)}), h(Panel, { title: '关于', sub: '智能工作台 0.2.1（dsh-dev-workbench）', icon: 'info' }, h('div', { className: 'wb-stack wb-tiny wb-muted', style: { gap: 5 } }, h('span', null, 'Cordis Host + Client 双半插件：Host 持有状态并通过 workbench/* Remote 暴露，Client 通过 main 与 sidebar.panellist 插槽渲染页面。'), h('span', null, '工具箱中的计算全部在浏览器内完成；企业消息摘录保存在宿主本地，凭据由 CLI / 宿主管理。'), h('span', null, '数据文件位于 ', h('code', { className: 'wb-mono' }, diag ? diag.dataPath : '~/.dsh/storages/dev-workbench/state.json')))), h('div',{className:'wb-settings-operations'},h(OperationsPanel,{revision:data?.revision}),h(ArchiveBrowser),h('div',{className:'wb-settings-history'},h(BackgroundHistoryPanel)))), h(Modal, {
         open: !!projectEdit,
         title: '编辑项目',
         sub: projectEdit ? projectEdit.name : '',

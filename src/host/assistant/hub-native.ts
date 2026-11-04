@@ -1,10 +1,31 @@
 import {hubSessionOwner,hubSessionNativeTitle,rememberHubNativeTitle,hubIndex} from './hub-store.js'
+import {sessionTitleOf} from './transcript.js'
 
 const names:Record<string,string>={'system:office':'办公历史 · 助手','system:analysis':'消息识别 · 助手','system:radar':'AI 资讯 · 助手','system:knowledge':'知识库 · 助手'}
 const pending=new Map<string,Promise<any>>()
+interface NativeMetadata {nativeTitle?:string;title:string;lastAt?:any;firstText:string;turnActive:boolean}
+const metadata=new WeakMap<object,{seq:number;headerTitle:any;title:any;value:NativeMetadata}>()
+/** Directory readers share metadata at an immutable native event cut. They do
+ * not project assistant bodies, tool output or attachment transcripts. */
+export function readHubNativeMetadata(session:any):NativeMetadata{
+ if(!session)return {title:'历史工作会话',firstText:'',turnActive:false}
+ const seq=Number(session.seq),prior=metadata.get(session)
+ if(Number.isFinite(seq)&&prior?.seq===seq&&prior.headerTitle===session.header?.title&&prior.title===session.title)return prior.value
+ const events=typeof session.snapshotEvents==='function'?session.snapshotEvents():[]
+ let title=session.header?.title||session.title,firstText='',foundUser=false,turnActive=false
+ for(const event of events){
+  if(event.type==='session/title'&&typeof event.data?.title==='string')title=event.data.title
+  if(event.type==='turn/start')turnActive=true
+  else if(event.type==='turn/end')turnActive=false
+  if(!foundUser&&event.type==='user/message'){foundUser=true;firstText=(event.data?.content||[]).filter((part:any)=>part.type==='text').map((part:any)=>part.text).join('\n').slice(0,120)}
+ }
+ const nativeTitle=typeof title==='string'&&title.trim()&&!title.startsWith('【工作台上下文')?title.trim():undefined
+ const value={nativeTitle,title:nativeTitle||sessionTitleOf({id:session.id,snapshotEvents:()=>events}),lastAt:events.at(-1)?.time||session.header?.createdAt||null,firstText,turnActive}
+ if(Number.isFinite(seq))metadata.set(session,{seq,headerTitle:session.header?.title,title:session.title,value})
+ return value
+}
 export function readHubNativeTitle(session:any):string|undefined{
-    const events=typeof session?.snapshotEvents==='function'?session.snapshotEvents():[],title=events.filter((event:any)=>event.type==='session/title'&&typeof event.data?.title==='string').at(-1)?.data.title||session?.header?.title||session?.title
-    return typeof title==='string'&&title.trim()&&!title.startsWith('【工作台上下文')?title.trim():undefined
+    return readHubNativeMetadata(session).nativeTitle
 }
 
 /** Give the interactive session its own stable identity before the first prompt.

@@ -1,11 +1,12 @@
 import * as React from 'react'
 import {WB,Spinner,Btn} from '../core/runtime.js'
 import {AnalysisJobProgress} from './WorkflowJobs.js'
+import {analysisJobWaiting} from '../../shared/analysis-wait.js'
 
 function activityOf(job:any):any {
  const reason=job.error||job.progress?.pauseReason||job.result?.note||'';
  const partial=job.status==='completed'&&(job.result?.status==='partial'||job.result?.failures>0);
- const phase=job.status==='failed'||partial?'failed':job.status==='queued'&&(job.progress?.pauseReason||job.error||job.nextRetryAt)?'paused':job.status;
+ const phase=job.status==='failed'||partial?'failed':analysisJobWaiting(job)?'waiting':job.status==='queued'&&(job.progress?.pauseReason||job.error||job.nextRetryAt)?'paused':job.status;
  return {jobId:job.id,phase,message:reason,progress:job.progress,nextRetryAt:job.nextRetryAt};
 }
 
@@ -23,7 +24,7 @@ export function AnalysisMonitor() {
  const state=WB.useStore();
  const jobs=analysisJobs(state);
  const activeJob=jobs.slice().reverse().find((j:any)=>['queued','running'].includes(j.status));
- const watching=['starting','queued','running','paused'].includes(state.analysisActivity?.phase);
+ const watching=['starting','queued','running','paused','waiting'].includes(state.analysisActivity?.phase);
  const enabled=!!activeJob||watching,jobId=watching?state.analysisActivity?.jobId||activeJob?.id:activeJob?.id;
  const notified=React.useRef(new Set<string>());
  React.useEffect(()=>{
@@ -72,8 +73,8 @@ export function AnalysisActivity() {
  const latest=jobs.at(-1);
  const activity=current&&state.analysisActivity?.phase!=='starting'&&current.id!==state.analysisActivity?.jobId?activityOf(current):state.analysisActivity||(latest?activityOf(latest):null);
  const phase=activity?.phase;
- const busy=['starting','queued','running'].includes(phase);
- const labels:Record<string,string>={starting:'正在启动提取',queued:'提取已排队',running:'正在提取',paused:'提取已暂停',failed:'提取失败',completed:'提取完成',cancelled:'提取已取消'};
+ const busy=['starting','queued','running','waiting'].includes(phase);
+ const labels:Record<string,string>={starting:'正在启动提取',queued:'提取已排队',running:'正在提取',waiting:'等待继续提取',paused:'提取已暂停',failed:'提取失败',completed:'提取完成',cancelled:'提取已取消'};
  return <div className="wb-compact-status" aria-label="首页提取状态" style={{border:'1px solid var(--dsw-alias-border-l1)'}}>
   <div className="wb-row wb-row--wrap" style={{gap:8}}>
    {busy&&<span aria-label="提取进行中"><Spinner size={14}/></span>}
@@ -81,7 +82,7 @@ export function AnalysisActivity() {
    <div className="wb-spacer"/><Btn size="sm" onClick={()=>WB.assistant.openHub('system','analysis')}>识别会话</Btn><Btn size="sm" disabled={busy} onClick={()=>WB.actions.analyzeRun(undefined,undefined,phase==='failed').catch(()=>{})}>{busy?'提取中…':phase==='failed'?'重试提取':'提取消息'}</Btn>
   </div>
   {activity?.progress&&<AnalysisJobProgress job={{id:activity.jobId||'',kind:'analysis',status:phase,progress:activity.progress,nextRetryAt:activity.nextRetryAt}}/>}
-  {activity?.message&&['failed','paused'].includes(phase)&&activity.message!==activity.progress?.pauseReason&&<p role="alert" className="wb-tiny" style={{overflowWrap:'anywhere',marginBottom:0}}>{activity.message}{activity.nextRetryAt?'；自动重试时间：'+WB.fmt.datetime(activity.nextRetryAt):''}</p>}
+  {activity?.message&&['failed','paused','waiting'].includes(phase)&&activity.message!==activity.progress?.pauseReason&&<p role={phase==='waiting'?'status':'alert'} className="wb-tiny" style={{overflowWrap:'anywhere',marginBottom:0}}>{activity.message}{activity.nextRetryAt?'；自动继续时间：'+WB.fmt.datetime(activity.nextRetryAt):''}</p>}
   {state.analysisStatusError&&busy&&<p className="wb-tiny wb-muted">{state.analysisStatusError}</p>}
  </div>
 }

@@ -12,6 +12,7 @@ import { PLUGIN_NAME } from '../platform/runtime.js'
  * `ctx.provide('workbench', …)`, so the gateway can bind the two halves.
  * ========================================================================== */
 const WORKBENCH_REMOTE_SIGNATURES: any = [
+    {method:'backgroundModels',params:['request']},
     {method:'refreshStart',params:['request']},
     {method:'refreshStatus',params:[]},
     {method:'assistantHub',params:['request']},

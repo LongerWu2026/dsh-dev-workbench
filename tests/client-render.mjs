@@ -763,7 +763,7 @@ const pageSpecs = [
   ['待回复', 'replies', ['仅跟踪需要本人答复的消息']],
   ['资讯', 'radar', ['概览', '获取资讯', '资讯对话']],
   ['搜索结果', 'search', ['工作内容', '互联网', '消息']],
-  ['研发任务', 'agents', ['研发设置', 'Linky']],
+  ['研发任务', 'agents', ['研发设置', '刷新任务']],
   ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
   ['研发协作', 'collab', ['添加仓库目录', '端口占用', 'PR 与 CI', '进程 CPU / 内存']],
   ['知识空间', 'knowledge', ['知识空间']],
@@ -1177,6 +1177,12 @@ if (!rpcCalls.some((call) => call.endpoint === 'workbench/fetchRadar')) {
 }
 if (!rpcCalls.some((call) => call.endpoint === 'workbench/fetchMentions')) {
   problems.push('没有真实驱动 workbench/fetchMentions（再拉一次）')
+}
+
+// Unmount the stub tree as React does: adaptive read polls use timeouts, so
+// disabling setInterval alone no longer releases every mounted effect.
+for (const dispose of cleanups.splice(0).reverse()) {
+  try { dispose() } catch { /* a minimal DOM may lack an optional cleanup API */ }
 }
 
 /* ------------------------------------------------------------- report */

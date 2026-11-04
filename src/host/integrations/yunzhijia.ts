@@ -1,3 +1,4 @@
+import {wakeBackfilledAnalysisJobs} from '../automation/analysis-progress.js'
 import {runBusyReplies} from './busy-reply.js'
 import {seedUnreadPrivateReplies} from '../domain/reply-routing.js'
 import {skipHistoricalMessages} from '../domain/message-policy.js'
@@ -421,9 +422,11 @@ async function fetchYunzhijiaMentionsInto(ctx?: any, state?: any): Promise<any> 
     const incremental = incrementalResult && incrementalResult.error ? null : incrementalResult;
     const incrementalError = incrementalResult && incrementalResult.error ? incrementalResult.error : null;
     if (incremental?.cursors) state.syncCursors=incremental.cursors;
-    const replyReport=await reconcileYunzhijiaReplies(ctx,state,probe,runYzj,incremental?.replyObservations || []);
-    state.__calendarPlan=await fetchCalendarPlan(ctx,state,probe,runYzj);
-    const metadataReport=incremental?.rateLimited || replyReport.rateLimited ? {repaired:0,failed:0} : await repairLinkedMessageMetadata(ctx,state,probe,runYzj);
+    let imLimited=incremental?.rateLimited===true;
+    const syncRead=async(context:any,args:string[])=>{if(imLimited&&args[0]==='im')return {status:'rate_limited',note:'云之家消息补采限流中，冷却后继续，原记录保留'};const result=await runYzj(context,args);if(result.status==='rate_limited'&&args[0]==='im')imLimited=true;return result};
+    const replyReport=await reconcileYunzhijiaReplies(ctx,state,probe,syncRead,incremental?.replyObservations || []);
+    state.__calendarPlan=await fetchCalendarPlan(ctx,state,probe,syncRead);
+    const metadataReport=imLimited || replyReport.rateLimited ? {repaired:0,failed:0} : await repairLinkedMessageMetadata(ctx,state,probe,runYzj);
     const accountId = probe.accountId || probe.openId;
     const nameCursorKey = '__senderNames:' + accountId;
     const unavailable = new Map<string,string>(ensureArray(state.syncCursors[nameCursorKey]?.unavailableSenders).filter((row:any) => Date.parse(row.retryAt) > Date.now()).map((row:any) => [row.id,row.retryAt]));
@@ -488,7 +491,7 @@ async function fetchYunzhijiaMentionsInto(ctx?: any, state?: any): Promise<any> 
     });
     if(state.messageInbox)for(const source of state.sources){if(source.provider!=='yunzhijia'||source.locator?.accountId!==accountId||!source.selection)continue;const conv=state.messageInbox.conversations.find((c:any)=>c.groupId===source.locator.groupId);if(conv)source.selection={...source.selection,unreadCount:conv.unreadCount,observedAt:conv.at};}
     const missingIds = [...new Set(mentions.map((row:any) => row.fromOpenId).filter((id:string) => id && !senderNames.has(id) && !pendingIds.includes(id) && !unavailable.has(id)))].slice(0, 100);
-    if (!incremental?.rateLimited && nameReport.status !== 'rate_limited' && missingIds.length) {
+    if (nameReport.status !== 'rate_limited' && missingIds.length) {
         const extra:any = {};
         for (const [id, name] of await resolveSenderNames(ctx, missingIds, extra)) senderNames.set(id, name);
         nameReport.resolved = (nameReport.resolved || 0) + extra.resolved;
@@ -937,6 +940,7 @@ function syncYunzhijiaMessages(ctx?: any): any {
             if(current.messageInbox?.accountId)seedUnreadPrivateReplies(current,current.messageInbox.accountId);
             current.syncCursors = Object.assign({}, current.syncCursors, fetched.syncCursors);
             current.lastMentionsFetch = fetched.lastMentionsFetch;
+            wakeBackfilledAnalysisJobs(current);
             auditEntry(current, 'messages.sync', '采集来源 ' + fresh.length + ' 条');
             return current;
         });

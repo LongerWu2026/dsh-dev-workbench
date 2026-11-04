@@ -1,4 +1,6 @@
 export const MAX_ASSISTANT_CONTEXTS = 8;
+export const WORKBENCH_CONTEXT_SOURCE = 'dev-workbench-context';
+export function isWorkbenchContextEvent(event:any):boolean{return event?.type==='user/message'&&event.data?.source?.kind===WORKBENCH_CONTEXT_SOURCE}
 export const MAX_ASSISTANT_CONTEXT_CHARS = 48000;
 export interface AssistantReference {
     kind: string;

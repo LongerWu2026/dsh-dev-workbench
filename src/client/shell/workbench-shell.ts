@@ -632,12 +632,12 @@ function WorkbenchApp(): any {
     const failed = state.status === 'error' && !state.data;
     const WebAIPage = WB.pages['web-ai'];
     React.useEffect(()=>{if(page==='web-ai')setWebAIVisited(true)},[page]);
-    return h('div', {className:'wb-root'+(page==='web-ai'?' is-web-ai':'')},
+    return h('div', {className:'wb-root'+(page==='web-ai'?' is-web-ai':'')+(page==='agents'?' is-development':'')},
       h('style',null,WB_CSS+WB_LAYOUT_CSS),
       h('header',{className:'wb-head'},h(Toolbar,{data:state.data,page,assistantOpen:state.assistantOpen}),h(TopNavigation,{page,data:state.data})),
       h('div',{className:'wb-workarea'+(page==='assistant'?' wb-assistant-page':'')+(state.assistantOpen||state.taskForm&&state.taskForm.presentation!=='modal'&&!state.contextHidden?' is-context-open':'')},
         h('div',{className:'wb-main'},h('div',{className:'wb-scroll'},
-          page!=='web-ai'&&page!=='assistant'?h('div',{key:'business-page',className:'wb-page'},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
+          page!=='web-ai'&&page!=='assistant'?h('div',{key:'business-page',className:'wb-page'+(page==='agents'?' wb-development-page':'')},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
           (webAIVisited||page==='web-ai')&&WebAIPage?h('div',{key:'web-ai-surface',className:'wb-page wb-chat-page',hidden:page!=='web-ai'},h(WebAIPage)):null)),
         h(AssistantHubEntry,{Legacy:AssistantDrawer}),h(TaskFormHost,{embedded:true})),
       WB.Palette?h(WB.Palette,{open:state.searchOpen,initialQuery:state.searchInitialQuery,onClose:()=>WB.closeSearch()}):null,h(SearchResultPreview),h(AnalysisMonitor),h(WorkspaceRefreshMonitor),h(Toaster));

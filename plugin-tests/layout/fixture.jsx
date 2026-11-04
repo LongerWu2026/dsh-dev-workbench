@@ -16,7 +16,7 @@ window.mountWorkbench=()=>{
    else if(action==='detect')value=window.fixtureDevelopmentConnection||{status:'ready',user:{name:'合成开发者'},workspaces:[{id:'synthetic-workspace',name:'合成 ERP 项目组'}]}
    else if(action==='configure'){dev.config={...dev.config,...args.request.config};value=dev.config}
    else if(action==='workItems')value={items:window.fixtureWorkItems||[{id:'fixture-issue',code:'BUG-2026-046131',title:'合成 ERP 缺陷工作项',type:'bug',workspaceId:'synthetic-workspace',status:'处理中'}],hasMore:false,statuses:[],cursors:{bug:null,requirement:null}}
-   else if(action==='issue')value={id:'fixture-issue',code:'BUG-2026-046131',title:'合成 ERP 缺陷工作项',description:'合成验收需求'}
+   else if(action==='issue'){const code=args.request?.code,row=(window.fixtureWorkItems||[]).find(r=>r.id===code||r.code===code)||dev.tasks.map(t=>t.issue).find(r=>r.id===code||r.code===code);value={id:'fixture-issue',code:'BUG-2026-046131',title:'合成 ERP 缺陷工作项',description:'合成验收需求',...row}}
    else if(action==='agents')value={items:[{id:'erp',name:'ERP 开发工程师'}]}
    else if(action==='projectSetup')value={commands:[['pnpm','test'],['pnpm','check']],source:'detected'}
    else value=dev

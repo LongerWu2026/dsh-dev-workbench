@@ -7,18 +7,22 @@ import {describeAssistantTool} from './command-display.js'
 import {stripAssistantBoilerplate,isSystemInjectedText} from './transcript.js'
 import {hubSessionKnowledgeScope} from './hub-store.js'
 import {nativeAssistantAttachments,type AssistantAttachment} from '../../shared/assistant-attachments.js'
+import {assistantOutputText,finalAssistantOutput} from './final-output.js'
+import {isPlainAssistantChat} from './conversation-policy.js'
+import type {KnowledgeMode} from '../../shared/knowledge.js'
 
 export type HubTurnStatus='recognizing'|'executing'|'completed'|'needs_confirmation'|'failed'|'interrupted'
-export interface HubCommand {id:string;label:string;operation:string;parameters?:any;status:string;resultText?:string;jobIds?:string[];blocked?:boolean;failurePhase?:'execution'}
+export interface HubCommand {id:string;label:string;operation:string;kind?:'business'|'tool';parameters?:any;status:string;resultText?:string;jobIds?:string[];blocked?:boolean;failurePhase?:'execution'}
 export interface HubTurn {
  id:string;conversationId:string;text:string;at:string;source:'rule'|'ai'|'system';mode:'execute'|'reinterpret';status:HubTurnStatus
- sessionId?:string;requestId?:string;fromSeq?:number;toSeq?:number;reply?:string;commands:HubCommand[];refs?:any[]
+ sessionId?:string;requestId?:string;fromSeq?:number;toSeq?:number;reply?:string;replySource?:'assistant'|'tools';commands:HubCommand[];refs?:any[];knowledgeMode?:KnowledgeMode;knowledgeRetrievalId?:string
  knowledgeScope?:{projectId?:string|null;accountId?:string|null;spaceId?:string|null};reinterpretsTurnId?:string;jobIds?:string[];operationSignature?:string
  /** Native user boundary, never inferred from prompt text or model-provided IDs. */
  userSeq?:number;nativeTurn?:number;legacy?:boolean;trigger?:'manual'|'operation'|'system'
  attachments?:AssistantAttachment[];attachmentSignature?:string;attachmentOnly?:boolean;attachmentAccepted?:boolean;attachmentRetryable?:boolean
  recognition?:{outcome:'matched'|'unmatched'|'ambiguous'|'error'|'attachment';reason?:string};clarificationOnly?:boolean
  blocked?:boolean;failurePhase?:'recognition'|'execution'|'model'
+ stopRequestedAt?:string
 }
 export interface HubTurnQuery {sessionId?:string;knowledgeScope?:HubTurn['knowledgeScope']}
 export interface HubReconcileOptions extends HubTurnQuery {running?:boolean;settled?:boolean}
@@ -44,7 +48,7 @@ export function hubTurns(conversationId:string,query:HubTurnQuery={}):HubTurn[]{
 export function hubTurnSnapshot(){return read().turns}
 export function hubTurnsFromSnapshot(turns:HubTurn[],conversationId:string,query:HubTurnQuery={}){return turns.filter(row=>matches(row,conversationId,query))}
 export function getHubTurn(id:string):HubTurn|undefined{return read().turns.find(row=>row.id===id)}
-const identity=(row:Partial<HubTurn>)=>JSON.stringify({conversationId:row.conversationId,text:row.text,mode:row.mode||'execute',refs:row.refs||[],knowledgeScope:scopeKey(row.knowledgeScope),reinterpretsTurnId:row.reinterpretsTurnId||null,operationSignature:row.operationSignature||null,attachmentSignature:row.attachmentSignature||null})
+const identity=(row:Partial<HubTurn>)=>JSON.stringify({conversationId:row.conversationId,text:row.text,mode:row.mode||'execute',refs:row.refs||[],knowledgeScope:scopeKey(row.knowledgeScope),knowledgeMode:row.knowledgeMode||'auto',reinterpretsTurnId:row.reinterpretsTurnId||null,operationSignature:row.operationSignature||null,attachmentSignature:row.attachmentSignature||null})
 /** Persist before controller.prompt. A retried request cannot silently change its payload. */
 export function beginHubTurn(input:Omit<HubTurn,'id'|'at'|'status'|'commands'> & Partial<Pick<HubTurn,'id'|'at'|'status'|'commands'>>):HubTurn {
  if(!input.conversationId||!input.text?.trim())throw Error('助手轮次需要会话与消息内容')
@@ -153,34 +157,36 @@ function project(row:HubTurn,session:any,events:any[],options:HubReconcileOption
   if(event.type==='tool/call'){
    const data=event.data||{},callId=String(data.callId||'');if(!callId||byCall.has(callId))continue
    let args:any={};try{args=JSON.parse(data.arguments)}catch{}
-   const name=String(data.name||'tool'),display=describeAssistantTool(name,args)
-   const command:HubCommand={id:callId,label:display?.label||name,operation:toolOperation(name,args),parameters:display?.parameters||{},status:'executing'}
+   const name=String(data.name||'tool'),display=isPlainAssistantChat(row.conversationId)?null:describeAssistantTool(name,args)
+   const command:HubCommand={id:callId,label:display?.label||name,operation:toolOperation(name,args),kind:display?'business':'tool',parameters:display?.parameters||{},status:'executing'}
    commands.push(command);byCall.set(callId,command)
   }else if(event.type==='tool/result'){
    const command=byCall.get(String(event.data?.message?.toolCallId||''));if(!command)continue
    const result=resultOf(event,command);command.status=result.status;command.resultText=result.text;if(result.jobIds.length)command.jobIds=result.jobIds;if(result.blocked)command.blocked=true;if(result.failurePhase)command.failurePhase=result.failurePhase
   }else if(event.type==='assistant/message'){
-   const text=textBlocks(event.data?.message);if(text)texts.push(text)
+   const text=assistantOutputText(event.data?.message);if(text)texts.push(text)
   }else if(event.type==='turn/error'){const text=errorText(event.data);if(text)errors.push(text)}
  }
  const reason=range.end?.data?.reason,ended=!!range.end||range.superseded||options.running===false||options.settled===true
  if(reason?.kind==='error')errors.push(errorText(reason.error)||'模型轮次失败')
+ const final=ended?finalAssistantOutput(range.events):null
  let status:HubTurnStatus=commands.length?'executing':'recognizing'
  if(ended){
   for(const command of commands)if(command.status==='executing'){command.status='interrupted';command.resultText='未收到该指令的执行结果，尚未确认完成。'}
   status=errors.length||commands.some(command=>command.status==='failed')?'failed':commands.some(command=>command.status==='needs_confirmation')?'needs_confirmation':
    range.superseded||!range.end||['aborted','interrupted','forked','blocked','max-tokens'].includes(reason?.kind)||commands.some(command=>command.status==='interrupted')?'interrupted':
-   texts.length||commands.length?'completed':'failed'
+   final?.text||commands.length?'completed':'failed'
  }
- let reply=texts.join('\n\n')
+ if(row.stopRequestedAt&&ended&&reason?.kind!=='completed'&&status!=='needs_confirmation'&&!errors.length&&!commands.some(command=>command.status==='failed'))status='interrupted'
+ let reply=ended?final?.text||(row.stopRequestedAt&&status==='interrupted'?texts.at(-1)||'':''):texts.at(-1)||''
  if(errors.length)reply=[reply,'执行失败：'+errors.join('\n')].filter(Boolean).join('\n\n')
  if(ended&&!reply){
-  reply=commands.length?commands.map(command=>command.label+'：'+(command.resultText||'未返回执行结果')).join('\n'):'本轮未返回可展示结果，尚未确认执行完成'
+  reply=commands.length?commands.every(command=>command.kind==='tool')?isPlainAssistantChat(row.conversationId)?'本轮未返回文字答复，请在原会话查看执行状态。':'本轮未返回文字答复，可展开工具执行记录核对执行状态。':commands.map(command=>command.label+'：'+(command.resultText||'未返回执行结果')).join('\n'):'本轮未返回可展示结果，尚未确认执行完成'
   if(status==='interrupted'&&!commands.length)reply+='；本轮已中断。'
  }
  const failedCommands=commands.filter(command=>command.status==='failed'),blocked=!errors.length&&failedCommands.length>0&&failedCommands.every(command=>command.blocked)
  const attachments=nativeAssistantAttachments(range.user?.data?.content,row.attachments)
- return {...row,...(attachments.length?{attachments}:{}),...(attachments.length||row.attachments?.length?{attachmentAccepted:true}:{}),commands,status,...(status==='failed'?{blocked,failurePhase:errors.length||!commands.length?'model' as const:'execution' as const}:{}),...(reply?{reply:excerpt(reply)}:{}),userSeq:Number(range.user.seq),nativeTurn:range.start?.data?.turn,toSeq:Number(range.events.at(-1)?.seq)||row.fromSeq||0,jobIds:[...new Set(commands.flatMap(command=>command.jobIds||[]))]}
+ return {...row,...(attachments.length?{attachments}:{}),...(attachments.length||row.attachments?.length?{attachmentAccepted:true}:{}),commands,status,replySource:(ended?!!final?.text:texts.length>0)?'assistant':commands.length?'tools':undefined,...(status==='failed'?{blocked,failurePhase:errors.length||!commands.length?'model' as const:'execution' as const}:{}),...(reply?{reply:excerpt(reply)}:{}),userSeq:Number(range.user.seq),nativeTurn:range.start?.data?.turn,toSeq:Number(range.events.at(-1)?.seq)||row.fromSeq||0,jobIds:[...new Set(commands.flatMap(command=>command.jobIds||[]))]}
 }
 /** Projection only: never submits, retries, or executes any operation. */
 export function reconcileHubTurns(conversationId:string,session:any,options:HubReconcileOptions={}):HubTurn[]{

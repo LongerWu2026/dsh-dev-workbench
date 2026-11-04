@@ -2,7 +2,7 @@ import * as React from 'react'
 import {Badge,Btn,Modal,Spinner,WB} from '../../core/runtime.js'
 import {messageSentTime} from '../../../shared/message-display.js'
 
-/** Snapshot unread first; explicit upward gestures fetch ten older messages without moving the reading anchor. */
+/** Open at the newest unread message; upward gestures fetch history without moving the reading anchor. */
 export function ConversationReader({conversation,accountId,onClose}:{conversation:any;accountId:string;onClose:()=>void}){
  const [messages,setMessages]=React.useState<any[]>([]),[result,setResult]=React.useState<any>(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[bottomSpace,setBottomSpace]=React.useState(0)
  const [readStatus,setReadStatus]=React.useState(''),[readError,setReadError]=React.useState(''),ackView=React.useRef('')
@@ -57,10 +57,10 @@ export function ConversationReader({conversation,accountId,onClose}:{conversatio
    const saved=anchor.current,node=Array.from(root.current?.querySelectorAll<HTMLElement>('[data-message-id]')||[]).find(node=>node.dataset.messageId===saved.id)
    if(node){const desired=body.scrollTop+node.getBoundingClientRect().top-body.getBoundingClientRect().top-saved.offset,missing=desired-(body.scrollHeight-body.clientHeight);if(missing>1){setBottomSpace(value=>value+Math.ceil(missing));return}body.scrollTop=desired}
    anchor.current=null
-  }else if(!busy&&cursor.current?.unreadComplete&&!positioned.current){setBottomSpace(Math.max(0,body.clientHeight-(root.current?.getBoundingClientRect().height||0)));body.scrollTop=0;positioned.current=true}
+  }else if(!busy&&cursor.current?.unreadComplete&&!positioned.current){body.scrollTop=body.scrollHeight;positioned.current=true}
  },[messages,busy,bottomSpace])
  const firstUnreadIndex=messages.findIndex(row=>row.unread),contextCount=messages.filter(row=>!row.unread).length
- return <Modal open title={conversation.name||'会话消息'} sub="未读消息 · 顶部向上滚动，每次查看更早 10 条" width={760} onClose={onClose} footer={<>
+ return <Modal open title={conversation.name||'会话消息'} sub="默认显示最新消息 · 向上滚动查看历史" width={760} onClose={onClose} footer={<>
   <span className="wb-tiny wb-muted" style={{flex:1}}>{result?`未读 ${result.unreadLoaded}/${result.unreadTotal} 条 · 已查看历史 ${result.contextLoaded} 条`:'正在读取未读消息…'}</span>
   {!busy&&error&&<Btn size="sm" onClick={()=>load(phase.current)}>重试读取</Btn>}
   {readStatus==='saved'&&<span className="wb-tiny wb-muted" title="仅记录工作台已读；云之家客户端未读红点暂不同步。待回复仍保留。">工作台已读</span>}

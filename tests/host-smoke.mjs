@@ -1,3 +1,4 @@
+import {installNativeContextFixture} from './native-context-fixture.mjs'
 /**
  * host-smoke.mjs — exercises the Host half outside DSH.
  *
@@ -58,7 +59,7 @@ const ctx = {
   logger: { info() {} },
 }
 
-apply(ctx, {})
+installNativeContextFixture(ctx);apply(ctx, {})
 
 // 提前写入本地搜索用的夹具文件：文件索引有 60s 缓存，必须早于首次搜索
 {
@@ -230,7 +231,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 121 个 Remote 描述符', invocations.length === 121, '实际 ' + invocations.length)
+check('注册了 122 个 Remote 描述符', invocations.length === 122, '实际 ' + invocations.length)
 check('回复发送只有显式页面入口，不暴露后台发送工具', invocations.some(entry => entry.method === 'sendReply') && !tools.some(tool => /send_reply|send_message/.test(tool.name)))
 check('本地语义检索及空间管理接口已接线',invocations.some(entry=>entry.method==='knowledgeEngine')&&invocations.some(entry=>entry.method==='knowledgeSpace'))
 check('统一刷新启动及进度读取接口已接线',invocations.some(entry=>entry.method==='refreshStart')&&invocations.some(entry=>entry.method==='refreshStatus'))
@@ -1050,7 +1051,7 @@ const relIds = {
     check('重建后记住新会话 id', String(outcome.sessionId) === legacy.session.id, String(outcome.sessionId))
   }
 
-  // --- 场景 4：prompt 报 resume 失败 → 重建并重试一次 ---
+  // --- 场景 4：交互问答恢复失败保留原会话，不自动新建或重发 ---
   {
     const broken = makeFakeWorld()
     fakeSessions = broken.sessions
@@ -1059,12 +1060,13 @@ const relIds = {
     broken.registry.set(staleSession.id, staleSession)
     broken.promptFails.set(staleSession.id, true)
     await api.saveSettings({ assistantSessionId: staleSession.id })
-    const healed = await api.assistantAsk({ text: 'resume 自愈' })
-    check('resume 失败后自愈并成功', healed.status === 'ok' && healed.reply.indexOf('助手回复') >= 0, JSON.stringify(healed))
-    check('自愈时重建了新会话', broken.createCalls === 1, String(broken.createCalls))
-    check('自愈后会话 id 已更新', String(healed.sessionId) === broken.session.id, String(healed.sessionId))
-    const sentHealed = await api.assistantSend({ text: '自愈后发送' })
-    check('自愈后继续可用', sentHealed.status === 'ok', JSON.stringify(sentHealed))
+    const failed = await api.assistantAsk({ text: '恢复原会话' })
+    check('交互问答恢复失败明确返回错误', failed.status === 'error', JSON.stringify(failed))
+    check('恢复失败不新建替代会话', broken.createCalls === 0, String(broken.createCalls))
+    check('恢复失败保留原会话绑定', (await api.snapshot()).settings.assistantSessionId === staleSession.id)
+    broken.promptFails.delete(staleSession.id)
+    const continued = await api.assistantSend({ text: '原会话恢复后继续' })
+    check('恢复后继续发送仍使用原会话', continued.status === 'ok' && continued.sessionId === staleSession.id && broken.createCalls === 0, JSON.stringify(continued))
   }
 
   // --- 场景 5：create 只返回 sessionId 时也能工作（返回形状容错） ---

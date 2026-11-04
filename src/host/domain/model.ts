@@ -1,4 +1,5 @@
 import {normalizeBusyReply} from '../../shared/busy-reply.js'
+import {normalizeBackgroundModels} from '../../shared/background-models.js'
 import {normalizeConversationReadMarks} from '../../shared/conversation-read.js'
 import {normalizeMessageSelection,normalizeMessageInbox} from '../../shared/message-intake.js'
 import {normalizeLaunchCommands} from '../../shared/developer-tools.js'
@@ -292,6 +293,7 @@ function normalizeSettings(raw?: any): any {
         assistantSessionId: asString(input.assistantSessionId, 120) || null,
         analysisSessionId: asString(input.analysisSessionId, 120) || null,
         summarySessionId: asString(input.summarySessionId, 120) || null,
+        backgroundModels:normalizeBackgroundModels(input.backgroundModels),
         newsDays: Math.max(1, Math.min(90, Number(input.newsDays) || 7)),
         /** TODO 15：AI 结构化识别配置（默认全关；自动运行另由 automation/19 控制） */
         aiExtract: normalizeAiExtract(input.aiExtract),

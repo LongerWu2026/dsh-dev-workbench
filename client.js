@@ -501,6 +501,12 @@ function Modal(props) {
 // src/client/core/styles.ts
 var WB_CSS = `
 .wb-root {
+  /* Keep contrast consistent inside the plugin, including very faint host themes. */
+  --wb-border-soft: color-mix(in srgb, var(--dsw-alias-label-primary, #20242b) 12%, var(--dsw-alias-bg-base, #fff));
+  --wb-border: color-mix(in srgb, var(--dsw-alias-label-primary, #20242b) 18%, var(--dsw-alias-bg-base, #fff));
+  --wb-border-strong: color-mix(in srgb, var(--dsw-alias-label-primary, #20242b) 28%, var(--dsw-alias-bg-base, #fff));
+  --dsw-alias-border-l1: var(--wb-border);
+  --dsw-alias-border-l2: var(--wb-border-strong);
   --wb-selected-bg: color-mix(in srgb, var(--dsw-alias-label-primary) 6%, var(--dsw-alias-bg-base));
   --wb-hover-bg: color-mix(in srgb, var(--dsw-alias-label-primary) 3%, var(--dsw-alias-bg-base));
   --wb-dialog-bg: var(--dsw-alias-bg-base);
@@ -588,7 +594,7 @@ var WB_CSS = `
   align-items: center;
   gap: 8px;
   padding: 9px 18px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--wb-border-soft);
   background: var(--dsw-alias-bg-base);
 }
 .wb-toolbar-search {
@@ -644,13 +650,14 @@ var WB_CSS = `
 .wb-grid { display: grid; gap: 16px; }
 .wb-row { display: flex; align-items: center; gap: 8px; }
 .wb-row--wrap { flex-wrap: wrap; }
-.wb-brief-action-panel > .wb-card-head { min-height: 56px; box-sizing: border-box; padding: 14px 16px; align-items: center; flex-wrap: nowrap; border-bottom: 1px solid var(--dsw-alias-border-l1); }
+.wb-brief-action-panel > .wb-card-head { min-height: 56px; box-sizing: border-box; padding: 14px 16px; align-items: center; flex-wrap: nowrap; border-bottom: 1px solid var(--wb-border-soft); }
 .wb-root .wb-brief-action-panel > .wb-card-head { padding: 14px 16px; }
 .wb-brief-action-panel > .wb-card-head .wb-card-title { font-size: 14px; }
 .wb-brief-action-panel > .wb-card-head .wb-card-icon { margin-top: 0; }
 .wb-brief-task-panel > .wb-card-head .wb-card-titles { flex: 0 0 auto; }
 .wb-brief-task-filters { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .wb-brief-task-filters-body { padding: 10px 16px; }
+.wb-brief-task-list > article + article { border-top: 1px solid var(--wb-border-soft); }
 .wb-brief-task-title { min-width: 0; }
 .wb-brief-task-title > button { width: 100%; }
 .wb-brief-task-title > button:hover, .wb-brief-task-title > button:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
@@ -695,10 +702,36 @@ button.wb-brief-reply-content { display: block; width: 100%; padding: 0; margin-
 .wb-card-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: none; }
 .wb-card-body { padding: 0 16px 15px; min-width: 0; }
 .wb-card-body--flush { padding: 0; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.wb-inbox-summary { margin-bottom: 14px; }
+.wb-focused-inbox { gap: 10px; }
+.wb-inbox-metrics { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.wb-inbox-snapshot { line-height: 1.6; overflow-wrap: anywhere; }
+.wb-focused-inbox > section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.wb-focused-inbox > section > p { margin: 0; }
+.wb-inbox-conversations { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 6px 10px; min-width: 0; }
+.wb-inbox-conversation { display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: min(340px,100%); }
+.wb-inbox-conversation > .wb-badge { flex: none; }
+.wb-inbox-conversation > .wb-inbox-conversation-open { flex: 0 1 auto; min-width: 0; max-width: 100%; height: auto; min-height: 30px; padding: 5px 8px; text-align: left; justify-content: flex-start; white-space: normal; overflow-wrap: anywhere; }
+.wb-inbox-conversation-name { min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.wb-inbox-summary > summary.wb-card-head { min-height: 56px; box-sizing: border-box; padding: 14px 16px; align-items: center; flex-wrap: nowrap; list-style: none; cursor: pointer; }
+.wb-inbox-summary > summary::-webkit-details-marker { display: none; }
+.wb-inbox-summary > summary::marker { content: ''; }
+.wb-inbox-summary > summary:hover { background: var(--dsw-alias-bg-layer-2); }
+.wb-inbox-summary > summary:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: -3px; border-radius: 14px; }
+.wb-inbox-summary > summary .wb-card-icon { margin-top: 0; flex: none; }
+.wb-inbox-summary > summary .wb-card-titles { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+.wb-inbox-summary > summary .wb-card-title { font-size: 14px; }
+.wb-inbox-summary-toggle { display: inline-flex; align-items: center; gap: 6px; flex: none; white-space: nowrap; }
+.wb-inbox-summary .wb-inbox-hide { display: none; }
+.wb-inbox-summary[open] > summary { border-bottom: 1px solid var(--wb-border-soft); }
+.wb-inbox-summary[open] > .wb-card-body { padding-top: 14px; }
+.wb-inbox-summary[open] .wb-inbox-show { display: none; }
+.wb-inbox-summary[open] .wb-inbox-hide { display: inline; }
+.wb-inbox-summary[open] .wb-inbox-summary-toggle > svg { transform: rotate(180deg); }
 .wb-root .wb-panel--separated > .wb-card-head {
   padding: 14px 16px;
   background: transparent;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--wb-border-soft);
 }
 .wb-panel--separated > .wb-card-head .wb-card-title { font-size: 14px; }
 .wb-panel--separated > .wb-card-head .wb-card-sub { margin-top: 4px; }
@@ -721,16 +754,16 @@ button.wb-brief-reply-content { display: block; width: 100%; padding: 0; margin-
   border: 1px solid color-mix(in srgb, var(--dsw-alias-label-primary, #20242b) 14%, var(--dsw-alias-bg-base, #fff));
   border-radius: 12px; background: var(--dsw-alias-bg-base);
 }
-.wb-inbox-card-head { padding: 14px 18px 12px; background: color-mix(in srgb, var(--dsw-alias-label-primary, #20242b) 5%, var(--dsw-alias-bg-base, #fff)); border-bottom: 1px solid var(--dsw-alias-border-l1); }
+.wb-inbox-card-head { padding: 14px 18px 12px; background: color-mix(in srgb, var(--dsw-alias-label-primary, #20242b) 5%, var(--dsw-alias-bg-base, #fff)); border-bottom: 1px solid var(--wb-border-soft); }
 .wb-inbox-card-head strong { min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
 .wb-inbox-meta { display: flex; flex-wrap: wrap; gap: 4px 18px; margin-top: 7px; font-size: 11.5px; color: var(--dsw-alias-label-secondary); }
 .wb-inbox-meta > span { min-width: 0; overflow-wrap: anywhere; }
 .wb-inbox-message { margin: 0; padding: 16px 18px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
-.wb-inbox-footer { padding: 12px 18px; border-top: 1px solid var(--dsw-alias-border-l1); }
+.wb-inbox-footer { padding: 12px 18px; border-top: 1px solid var(--wb-border-soft); }
 .wb-reply-draft-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; }
 .wb-inbox-stage-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .wb-inbox-stage-actions > span { margin-right: 2px; }
-.wb-reply-editor { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--dsw-alias-border-l1); }
+.wb-reply-editor { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--wb-border-soft); }
 .wb-reply-editor > p { margin: 0; }
 .wb-reply-editor > textarea { min-height: 100px; resize: vertical; }
 .wb-inbox-evidence { margin-top: 12px; font-size: 12px; color: var(--dsw-alias-label-secondary); }
@@ -739,7 +772,7 @@ button.wb-brief-reply-content { display: block; width: 100%; padding: 0; margin-
 .wb-inbox-evidence > p { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 12px; border-radius: 8px; background: color-mix(in srgb, var(--dsw-alias-label-primary, #20242b) 4%, var(--dsw-alias-bg-base, #fff)); }
 .wb-inbox-card .wb-btn { max-width: 100%; height: auto; min-height: 26px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .wb-inbox-card .wb-btn > span { min-width: 0; }
-.wb-divider { height: 1px; background: var(--dsw-alias-border-l1); margin: 0; border: 0; }
+.wb-divider { height: 1px; background: var(--wb-border-soft); margin: 0; border: 0; }
 
 .wb-btn {
   display: inline-flex;
@@ -856,7 +889,7 @@ button.wb-brief-reply-content { display: block; width: 100%; padding: 0; margin-
   .wb-task-table .wb-table, .wb-task-table tbody { display:block; width:100%; }
   .wb-task-table colgroup { display:none; }
   .wb-task-table thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
-  .wb-task-table .wb-task-row { display:grid; grid-template-columns:minmax(80px,1fr) minmax(134px,1fr) minmax(60px,.6fr) minmax(112px,1fr); grid-template-areas:"task task task actions" "priority status complete project" "message message due due"; gap:8px 12px; padding:14px 16px; border-bottom:1px solid var(--dsw-alias-border-l1); }
+  .wb-task-table .wb-task-row { display:grid; grid-template-columns:minmax(80px,1fr) minmax(134px,1fr) minmax(60px,.6fr) minmax(112px,1fr); grid-template-areas:"task task task actions" "priority status complete project" "message message due due"; gap:8px 12px; padding:14px 16px; border-bottom:1px solid var(--wb-border-soft); }
   .wb-task-table .wb-task-row > td { display:flex; align-items:center; flex-wrap:wrap; gap:5px 8px; padding:0; min-width:0; width:auto!important; border:0; white-space:normal!important; text-align:left!important; overflow-wrap:anywhere; }
   .wb-task-table .wb-task-row > td[data-label]::before { content:attr(data-label); flex:none; font-size:10px; color:var(--dsw-alias-label-secondary); }
   .wb-task-table .wb-task-row > td:first-child { display:block; grid-area:task; }
@@ -876,7 +909,7 @@ button.wb-brief-reply-content { display: block; width: 100%; padding: 0; margin-
   .wb-task-table .wb-task-row > td:last-child { align-self:center; }
   .wb-task-filter-toolbar .wb-task-filter-search { flex-basis:100%; }
 }
-.wb-task-advanced { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr)); gap:16px 24px; padding:16px 0 4px; border-top:1px solid var(--dsw-alias-border-l1); }
+.wb-task-advanced { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr)); gap:16px 24px; padding:16px 0 4px; border-top:1px solid var(--wb-border-soft); }
 .wb-task-advanced[hidden] { display:none; }
 .wb-task-filter-group { display:flex; flex-direction:column; gap:8px; min-width:0; }
 .wb-task-applied { display:flex; flex-wrap:wrap; gap:6px; align-items:center; }
@@ -1054,7 +1087,7 @@ button.wb-stat:hover { border-color: var(--dsw-alias-border-l2); }
 .wb-item {
   display: flex; align-items: flex-start; gap: 10px;
   padding: 10px 4px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--wb-border-soft);
   min-width: 0;
 }
 .wb-item:last-child { border-bottom: 0; }
@@ -1086,10 +1119,10 @@ button.wb-stat:hover { border-color: var(--dsw-alias-border-l2); }
   text-align: left; font-weight: 600; font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase;
   color: var(--dsw-alias-label-secondary);
   padding: 7px 10px;
-  border-bottom: 1px solid var(--dsw-alias-border-l1);
+  border-bottom: 1px solid var(--wb-border-soft);
   white-space: nowrap;
 }
-.wb-table td { padding: 9px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1); vertical-align: middle; }
+.wb-table td { padding: 9px 10px; border-bottom: 1px solid var(--wb-border-soft); vertical-align: middle; }
 .wb-table tr:last-child td { border-bottom: 0; }
 .wb-table tbody tr:hover { background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 45%, transparent); }
 
@@ -1155,7 +1188,7 @@ button.wb-stat:hover { border-color: var(--dsw-alias-border-l2); }
 .wb-modal-head h2 { margin: 0; font-size: 18px; line-height: 1.4; color: var(--dsw-alias-label-primary); font-weight: 600; overflow-wrap: anywhere; }
 .wb-modal-head strong { display: block; font-size: 12px; font-weight: 400; color: var(--dsw-alias-label-secondary); margin-top: 4px; overflow-wrap: anywhere; }
 .wb-modal-body { min-height: 0; padding: 4px 20px 20px; overflow: auto; overscroll-behavior: contain; }
-.wb-modal-foot { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--dsw-alias-border-l1); background: var(--wb-dialog-bg); }
+.wb-modal-foot { display: flex; flex-shrink: 0; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 20px; border-top: 1px solid var(--wb-border-soft); background: var(--wb-dialog-bg); }
 .wb-modal-foot > .wb-row { width: 100%; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 @keyframes wb-fade { from { opacity: 0 } to { opacity: 1 } }
 @keyframes wb-pop { from { opacity: 0; transform: translateY(-6px) scale(.99) } to { opacity: 1; transform: none } }
@@ -1458,13 +1491,13 @@ WB.WORKBENCH_TOOL_NAMES = [
   "workbench_summarize_radar"
 ];
 var assistant = {
-  openHub(kind = "system", id = "analysis") {
+  openHub(kind = "system", id = "analysis", sessionId) {
     if (kind.includes(":")) {
       const separator = kind.indexOf(":");
       id = kind.slice(separator + 1);
       kind = kind.slice(0, separator);
     }
-    wbStore.set((state) => ({ page: "assistant", assistantOpen: true, contextHidden: true, assistantConversationId: kind + ":" + id, assistantHubThreadId: null, assistantTaskId: kind === "task" ? id : null, assistantSessionTarget: null, assistantRefs: [], assistantOpenSeq: (state.assistantOpenSeq || 0) + 1 }));
+    wbStore.set((state) => ({ page: "assistant", assistantOpen: true, contextHidden: true, assistantConversationId: kind + ":" + id, assistantHubThreadId: sessionId || null, assistantTaskId: kind === "task" ? id : null, assistantSessionTarget: null, assistantRefs: [], assistantOpenSeq: (state.assistantOpenSeq || 0) + 1 }));
   },
   open() {
     wbStore.set({ assistantOpen: true });
@@ -1559,6 +1592,12 @@ function settle(promise, okText) {
   });
 }
 var wbActions = {
+  backgroundModelCatalog() {
+    return wbRpc("workbench/backgroundModels", { request: { action: "catalog" } });
+  },
+  backgroundModelConfigure(purpose, model) {
+    return settle(wbRpc("workbench/backgroundModels", { request: { action: "configure", purpose, model } }), "模型设置已保存，下一轮生效");
+  },
   knowledgeEngine(request) {
     return wbRpc("workbench/knowledgeEngine", { request });
   },
@@ -1778,8 +1817,8 @@ var wbActions = {
     return wbSyncInFlight;
   },
   /** 侧栏助手：向原生会话提交一次问答，返回 {status, reply, toolCalls, note}。 */
-  assistantHub(request) {
-    return wbRpc("workbench/assistantHub", { request });
+  assistantHub(request, signal) {
+    return wbRpc("workbench/assistantHub", { request }, signal);
   },
   assistantAsk(text2, refs, sessionId) {
     return wbRpc("workbench/assistantAsk", {
@@ -2163,10 +2202,22 @@ function WorkspaceRefresh({ scope = "all", iconOnly = false }) {
 
 // src/client/components/AnalysisActivity.tsx
 var React6 = __toESM(require("react"), 1);
+
+// src/shared/analysis-wait.ts
+var ANALYSIS_WAIT_REASONS = ["conversation_backfill", "retry_wait", "lease_wait"];
+function analysisJobWaiting(job) {
+  if (job?.status !== "queued" || job.error || job.progress?.failed > 0) return false;
+  if (job.result?.status === "busy") return true;
+  if (job.result?.status === "deferred" && ANALYSIS_WAIT_REASONS.includes(job.result.waitReason)) return true;
+  const note = job.progress?.pauseReason || job.result?.note || "";
+  return job.result?.status === "deferred" && /^指定消息仍在会话补采或重试等待中/.test(note) || /^消息正在补采、被其他识别占用或内容已变化/.test(note);
+}
+
+// src/client/components/AnalysisActivity.tsx
 function activityOf(job) {
   const reason = job.error || job.progress?.pauseReason || job.result?.note || "";
   const partial = job.status === "completed" && (job.result?.status === "partial" || job.result?.failures > 0);
-  const phase = job.status === "failed" || partial ? "failed" : job.status === "queued" && (job.progress?.pauseReason || job.error || job.nextRetryAt) ? "paused" : job.status;
+  const phase = job.status === "failed" || partial ? "failed" : analysisJobWaiting(job) ? "waiting" : job.status === "queued" && (job.progress?.pauseReason || job.error || job.nextRetryAt) ? "paused" : job.status;
   return { jobId: job.id, phase, message: reason, progress: job.progress, nextRetryAt: job.nextRetryAt };
 }
 function analysisJobs(state) {
@@ -2181,7 +2232,7 @@ function AnalysisMonitor() {
   const state = WB.useStore();
   const jobs = analysisJobs(state);
   const activeJob = jobs.slice().reverse().find((j) => ["queued", "running"].includes(j.status));
-  const watching = ["starting", "queued", "running", "paused"].includes(state.analysisActivity?.phase);
+  const watching = ["starting", "queued", "running", "paused", "waiting"].includes(state.analysisActivity?.phase);
   const enabled = !!activeJob || watching, jobId = watching ? state.analysisActivity?.jobId || activeJob?.id : activeJob?.id;
   const notified = React6.useRef(/* @__PURE__ */ new Set());
   React6.useEffect(() => {
@@ -2193,16 +2244,16 @@ function AnalysisMonitor() {
       try {
         const before = WB.store.get().analysisActivity;
         if (document.visibilityState !== "hidden" && before?.phase !== "starting") {
-          const status = await WB.actions.analysisStatus();
+          const status2 = await WB.actions.analysisStatus();
           if (!alive || WB.store.get().analysisActivity?.requestId !== before?.requestId) return;
-          const jobs2 = status.jobs || WB.store.get().data?.jobs || [];
+          const jobs2 = status2.jobs || WB.store.get().data?.jobs || [];
           const targetId = jobId;
           const job = targetId ? jobs2.find((j) => j.id === targetId) : jobs2.slice().reverse().find((j) => j.kind === "analysis" && ["queued", "running"].includes(j.status));
-          WB.store.set({ analysisLive: status, analysisStatusError: null });
+          WB.store.set({ analysisLive: status2, analysisStatusError: null });
           if (job) {
             const next = { ...activityOf(job), requestId: before?.requestId };
             WB.store.set({ analysisActivity: next });
-            const failure = next.phase === "failed" || next.phase === "paused" && (job.error || job.progress?.failed > 0 || status.modelHealth || ["deferred", "disabled", "unavailable"].includes(job.result?.status));
+            const failure = next.phase === "failed" || next.phase === "paused" && (job.error || job.progress?.failed > 0 || status2.modelHealth || ["deferred", "disabled", "unavailable"].includes(job.result?.status));
             const key2 = (before?.requestId || "automatic") + ":" + job.id + ":" + (failure ? "failure" : next.phase);
             if ((failure || next.phase === "completed") && !notified.current.has(key2)) {
               notified.current.add(key2);
@@ -2246,6 +2297,7 @@ function KnowledgeSources({ result, audit, provided = false, compact = false }) 
     setSelected(null);
   }, [result?.id]);
   if (!result || result.status === "off") return null;
+  if (result.status === "deferred") return audit?.invalid?.length || audit?.stale?.length || audit?.missing ? /* @__PURE__ */ React7.createElement("p", { role: "alert", className: "wb-tiny wb-muted" }, "本轮尚未检索知识，回答中的知识引用无法核验，请先查询对应资料。") : null;
   if (compact && result.status === "empty" && !result.hits?.length && !audit?.invalid?.length && !audit?.stale?.length && !audit?.missing) return /* @__PURE__ */ React7.createElement("p", { role: "status", className: "wb-tiny wb-muted wb-assistant-knowledge-note", title: result.note || "当前知识范围未命中" }, "本轮未命中知识库资料");
   async function read(hit) {
     const id = result.id;
@@ -2257,7 +2309,7 @@ function KnowledgeSources({ result, audit, provided = false, compact = false }) 
       if (currentResult.current === id) setError(e.message || "原文读取失败，可能已更新或失效");
     }
   }
-  return /* @__PURE__ */ React7.createElement("section", { "aria-label": "知识检索依据", style: { margin: "8px 0", padding: 8, border: "1px solid " + WB.T.border1, borderRadius: 8, fontSize: 12, minWidth: 0 } }, result.status === "ok" && result.note && /* @__PURE__ */ React7.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, result.note), /* @__PURE__ */ React7.createElement("details", null, /* @__PURE__ */ React7.createElement("summary", { style: { cursor: "pointer", overflowWrap: "anywhere" } }, "知识依据 · ", result.hits?.length || 0, " 个片段 · ", result.status === "ok" ? provided ? "已提供给模型" : "检索命中" : result.note || "未命中"), /* @__PURE__ */ React7.createElement("p", { className: "wb-muted", style: { overflowWrap: "anywhere" } }, "查询：", result.query, " · ", result.strategy, " · ", result.elapsedMs, "ms"), (result.hits || []).map((h2) => /* @__PURE__ */ React7.createElement("div", { key: h2.id, style: { marginTop: 6, overflowWrap: "anywhere" } }, /* @__PURE__ */ React7.createElement(Btn, { size: "sm", onClick: () => read(h2) }, h2.title, " · 行", h2.lineStart, "–", h2.lineEnd), /* @__PURE__ */ React7.createElement("div", { className: "wb-tiny wb-muted" }, h2.id))), !!audit?.stale?.length && /* @__PURE__ */ React7.createElement("p", { role: "alert" }, "回答期间知识已更新或失效，请重新检索后核对。"), !!audit?.invalid?.length && /* @__PURE__ */ React7.createElement("p", { role: "alert" }, "回答包含无效知识引用，请勿将其作为原文依据。"), audit?.missing && /* @__PURE__ */ React7.createElement("p", { role: "status" }, "已提供知识，但模型未标注知识引用，请核对回答与原文。")), error2 && /* @__PURE__ */ React7.createElement("p", { role: "alert" }, error2), /* @__PURE__ */ React7.createElement(Modal, { open: !!selected, title: selected?.title || "知识原文", onClose: () => setSelected(null) }, selected && /* @__PURE__ */ React7.createElement(React7.Fragment, null, /* @__PURE__ */ React7.createElement("p", { className: "wb-muted wb-tiny" }, "知识版本 ", selected.version, " · 行", selected.lineStart, "–", selected.lineEnd), /* @__PURE__ */ React7.createElement("pre", { style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit" } }, selected.text), selected.url && /* @__PURE__ */ React7.createElement("a", { href: selected.url, target: "_blank", rel: "noreferrer" }, "打开来源"))));
+  return /* @__PURE__ */ React7.createElement("section", { "aria-label": "知识检索依据", style: { margin: compact ? 0 : "8px 0", padding: compact ? "6px 8px" : 8, border: "1px solid " + WB.T.border1, borderRadius: 8, fontSize: 12, minWidth: 0 } }, result.status === "ok" && result.note && /* @__PURE__ */ React7.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, result.note), /* @__PURE__ */ React7.createElement("details", null, /* @__PURE__ */ React7.createElement("summary", { style: { cursor: "pointer", overflowWrap: "anywhere" } }, "知识依据 · ", result.hits?.length || 0, " 个片段 · ", result.status === "ok" ? provided ? "已提供给模型" : "检索命中" : result.note || "未命中"), /* @__PURE__ */ React7.createElement("p", { className: "wb-muted", style: { overflowWrap: "anywhere" } }, "查询：", result.query, " · ", result.strategy, " · ", result.elapsedMs, "ms"), (result.hits || []).map((h2) => /* @__PURE__ */ React7.createElement("div", { key: h2.id, style: { marginTop: 6, overflowWrap: "anywhere" } }, /* @__PURE__ */ React7.createElement(Btn, { size: "sm", onClick: () => read(h2) }, h2.title, " · 行", h2.lineStart, "–", h2.lineEnd), /* @__PURE__ */ React7.createElement("div", { className: "wb-tiny wb-muted" }, h2.id))), !!audit?.stale?.length && /* @__PURE__ */ React7.createElement("p", { role: "alert" }, "回答期间知识已更新或失效，请重新检索后核对。"), !!audit?.invalid?.length && /* @__PURE__ */ React7.createElement("p", { role: "alert" }, "回答包含无效知识引用，请勿将其作为原文依据。"), audit?.missing && /* @__PURE__ */ React7.createElement("p", { role: "status" }, "已提供知识，但模型未标注知识引用，请核对回答与原文。")), error2 && /* @__PURE__ */ React7.createElement("p", { role: "alert" }, error2), /* @__PURE__ */ React7.createElement(Modal, { open: !!selected, title: selected?.title || "知识原文", onClose: () => setSelected(null) }, selected && /* @__PURE__ */ React7.createElement(React7.Fragment, null, /* @__PURE__ */ React7.createElement("p", { className: "wb-muted wb-tiny" }, "知识版本 ", selected.version, " · 行", selected.lineStart, "–", selected.lineEnd), /* @__PURE__ */ React7.createElement("pre", { style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", fontFamily: "inherit" } }, selected.text), selected.url && /* @__PURE__ */ React7.createElement("a", { href: selected.url, target: "_blank", rel: "noreferrer" }, "打开来源"))));
 }
 
 // src/client/components/AssistantSessionsNav.tsx
@@ -2268,22 +2320,100 @@ function AssistantSessionsNav({ sessions, activeId, onSelect, onNew, disabled = 
   return /* @__PURE__ */ React8.createElement("nav", { className: "wb-assistant-sessions", "aria-label": "助手会话列表" }, /* @__PURE__ */ React8.createElement("div", { className: "wb-assistant-sessions-heading" }, /* @__PURE__ */ React8.createElement("strong", null, "最近会话"), /* @__PURE__ */ React8.createElement("span", { className: "wb-muted" }, sessions.length)), onNew && /* @__PURE__ */ React8.createElement(Btn, { icon: "plus", disabled, onClick: onNew }, "新建对话"), /* @__PURE__ */ React8.createElement(Input, { "aria-label": "搜索助手会话", placeholder: "搜索待办或会话", value: query, onChange: (e) => setQuery(e.target.value) }), /* @__PURE__ */ React8.createElement("div", { className: "wb-assistant-session-items" }, rows.map((row) => /* @__PURE__ */ React8.createElement("button", { type: "button", key: row.id, "data-session-id": row.id, className: "wb-assistant-session", "aria-label": "会话：" + row.title, "aria-current": row.id === activeId ? "true" : void 0, onClick: () => onSelect(row), title: row.title }, /* @__PURE__ */ React8.createElement(Icon, { name: "messages", size: 14 }), /* @__PURE__ */ React8.createElement("span", null, /* @__PURE__ */ React8.createElement("strong", null, row.title), /* @__PURE__ */ React8.createElement("small", null, row.taskTitle || "通用办公", row.createdAt ? " · " + new Date(row.createdAt).toLocaleDateString("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric" }) : ""))))), !rows.length && /* @__PURE__ */ React8.createElement("p", { className: "wb-tiny wb-muted" }, query ? "没有匹配的会话" : "点击“新建对话”开始，也可以从待办进入独立会话"));
 }
 
+// src/client/components/AssistantConversationConnect.tsx
+var React9 = __toESM(require("react"), 1);
+
+// src/client/core/assistant-hub-read.ts
+async function readAssistantHub(request, signal) {
+  if (!["list", "detail", "history", "delta", "availableSessions"].includes(request.action)) throw new Error("仅支持读取助手记录");
+  if (signal?.aborted) throw new Error("已停止读取");
+  const controller = new AbortController();
+  let timer, abort = () => {
+  };
+  const stopped = new Promise((_, reject) => {
+    abort = () => {
+      controller.abort();
+      reject(new Error("已停止读取"));
+    };
+    if (signal?.aborted) abort();
+    else signal?.addEventListener("abort", abort, { once: true });
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(Object.assign(new Error(request.action === "list" ? "会话列表读取较慢，正在自动重试；已显示的会话仍可打开。" : "当前会话读取较慢，请稍后重试或切换其他会话。"), { code: "assistant_read_timeout" }));
+    }, 1e4);
+  });
+  try {
+    return await Promise.race([stopped, WB.actions.assistantHub(request, controller.signal)]);
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
+// src/client/components/AssistantConversationConnect.tsx
+function AssistantConversationConnect({ onClose, onConnected }) {
+  const [rows, setRows] = React9.useState([]), [query, setQuery] = React9.useState(""), [selected, setSelected] = React9.useState(""), [loading, setLoading] = React9.useState(true), [busy, setBusy] = React9.useState(false), [error2, setError] = React9.useState(""), [retry, setRetry] = React9.useState(0);
+  const current = React9.useRef(true), pending = React9.useRef(false);
+  React9.useEffect(() => {
+    current.current = true;
+    return () => {
+      current.current = false;
+    };
+  }, []);
+  React9.useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    setError("");
+    setSelected("");
+    readAssistantHub({ action: "availableSessions" }, controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      if (result?.status !== "ok") throw Error(result?.note || "无法读取可接入会话");
+      setRows(result.sessions || []);
+    }).catch((failure) => {
+      if (!controller.signal.aborted) setError(failure.message || "无法读取可接入会话");
+    }).finally(() => {
+      if (!controller.signal.aborted) setLoading(false);
+    });
+    return () => controller.abort();
+  }, [retry]);
+  const visible = rows.filter((row) => [row.title, row.workspaceTitle, row.cwd].filter(Boolean).join(" ").toLowerCase().includes(query.trim().toLowerCase())), selectedRow = visible.find((row) => row.sessionId === selected);
+  async function connect() {
+    if (pending.current || !selectedRow) return;
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const result = await WB.actions.assistantHub({ action: "adopt", sessionId: selectedRow.sessionId, confirmed: true });
+      if (!current.current) return;
+      if (result?.status !== "ok" || result.conversationId !== "chat:" + selectedRow.sessionId) throw Error(result?.note || "接入未确认，请刷新后重试");
+      onConnected({ id: result.conversationId, kind: "chat", title: result.title || selectedRow.title });
+    } catch (failure) {
+      if (current.current) setError(failure.message || "接入失败，原会话仍保留");
+    } finally {
+      pending.current = false;
+      if (current.current) setBusy(false);
+    }
+  }
+  return /* @__PURE__ */ React9.createElement(Modal, { open: true, title: "接入已有会话", sub: "选择一条 Harness 会话，在 AI 助手中继续处理。", width: 560, onClose: busy ? () => {
+  } : onClose, footer: /* @__PURE__ */ React9.createElement(React9.Fragment, null, /* @__PURE__ */ React9.createElement(Btn, { size: "sm", disabled: busy || loading, onClick: () => setRetry((value) => value + 1) }, "刷新列表"), /* @__PURE__ */ React9.createElement("span", { style: { flex: 1 } }), /* @__PURE__ */ React9.createElement(Btn, { disabled: busy, onClick: onClose }, "取消"), /* @__PURE__ */ React9.createElement(Btn, { kind: "primary", disabled: busy || loading || !selectedRow, onClick: () => void connect() }, busy ? "正在接入…" : "接入并打开")) }, /* @__PURE__ */ React9.createElement("div", { className: "wb-hub-connect" }, /* @__PURE__ */ React9.createElement(Input, { "aria-label": "搜索可接入会话", placeholder: "搜索会话或工作区", value: query, onChange: (event) => setQuery(event.target.value) }), /* @__PURE__ */ React9.createElement("p", { className: "wb-tiny wb-muted" }, "仅列出当前 Harness 已加载、尚未关联事项的会话。接入会保留原历史和工作区。"), loading ? /* @__PURE__ */ React9.createElement("p", { role: "status", className: "wb-row wb-muted" }, /* @__PURE__ */ React9.createElement(Spinner, { size: 14 }), "正在读取会话…") : /* @__PURE__ */ React9.createElement("div", { className: "wb-hub-connect-list", role: "group", "aria-label": "可接入的原生会话" }, visible.map((row) => /* @__PURE__ */ React9.createElement("button", { type: "button", key: row.sessionId, "aria-pressed": row.sessionId === selected, className: "wb-hub-connect-item", disabled: busy, onClick: () => setSelected(row.sessionId) }, /* @__PURE__ */ React9.createElement("strong", null, row.title), /* @__PURE__ */ React9.createElement("small", null, row.workspaceTitle || "未归入工作区", row.cwd ? " · " + row.cwd : ""))), !visible.length && /* @__PURE__ */ React9.createElement("p", { className: "wb-muted" }, query ? "没有匹配的会话" : "暂无可接入会话。可先在 Harness 打开需要的会话，再刷新列表。")), error2 && /* @__PURE__ */ React9.createElement("p", { role: "alert", className: "wb-hub-error" }, error2)), /* @__PURE__ */ React9.createElement("style", null, `.wb-hub-connect{min-width:0}.wb-hub-connect>.wb-input{width:100%;box-sizing:border-box}.wb-hub-connect-list{display:flex;flex-direction:column;gap:6px;max-height:320px;overflow:auto}.wb-hub-connect-item{appearance:none;text-align:left;display:flex;flex-direction:column;gap:5px;min-width:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}.wb-hub-connect-item[aria-pressed=true]{border-color:var(--dsw-alias-brand-primary,var(--dsw-alias-border-l2));background:var(--dsw-alias-bg-layer-2)}.wb-hub-connect-item:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}.wb-hub-connect-item strong,.wb-hub-connect-item small{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.wb-hub-connect-item small{font-size:11px;color:var(--dsw-alias-label-secondary)}`));
+}
+
 // src/client/components/AssistantHub.tsx
-var React19 = __toESM(require("react"), 1);
+var React21 = __toESM(require("react"), 1);
 
 // src/client/components/AssistantAttachments.tsx
-var React10 = __toESM(require("react"), 1);
+var React11 = __toESM(require("react"), 1);
 
 // src/client/components/AssistantContextPicker.tsx
-var React9 = __toESM(require("react"), 1);
+var React10 = __toESM(require("react"), 1);
 var groups = [["task", "待办", "tasks", "tasks"], ["reply", "待回复", "replies", "messages"], ["source", "消息", "sources", "messages"], ["radar", "资讯", "radar", "radar"], ["knowledge", "知识", "knowledge", "book"]];
 var statuses2 = { ready: "待处理", draft: "草稿", running: "进行中", doing: "进行中", completed: "已完成", done: "已完成", cancelled: "已取消", failed: "未完成", waiting_approval: "待确认", pending: "待处理", confirmed: "已确认", candidate: "待审核", archived: "已归档", rejected: "待修改" };
 var completedReplies = /* @__PURE__ */ new Set(["已回复", "不需回复", "无需回复", "已关闭"]);
 var refKey = (ref) => ref.kind + ":" + ref.id;
 function assistantContextCandidates(data) {
   return groups.flatMap(([kind, label, key2, icon]) => (Array.isArray(data?.[key2]) ? data[key2] : []).filter((row) => typeof row?.id === "string").map((row) => {
-    const raw = String(kind === "knowledge" ? row.reviewState || row.status || "" : row.status || row.stage || ""), status = statuses2[raw] || (/^[a-z_]+$/i.test(raw) ? "" : raw);
-    return { kind, id: row.id, title: String(row.title || row.snippet || row.excerpt || row.contact || label), body: row.excerpt || row.snippet || row.description || row.content || row.body || JSON.stringify(row.summary || {}), meta: [label, status === label ? "" : status].filter(Boolean).join(" · "), url: row.url, label, status, at: String(row.updatedAt || row.sourceAt || row.fetchedAt || row.createdAt || ""), completed: kind === "task" ? ["completed", "done", "cancelled", "archived"].includes(raw) : kind === "reply" && completedReplies.has(raw), icon };
+    const raw = String(kind === "knowledge" ? row.reviewState || row.status || "" : row.status || row.stage || ""), status2 = statuses2[raw] || (/^[a-z_]+$/i.test(raw) ? "" : raw);
+    return { kind, id: row.id, title: String(row.title || row.snippet || row.excerpt || row.contact || label), body: row.excerpt || row.snippet || row.description || row.content || row.body || JSON.stringify(row.summary || {}), meta: [label, status2 === label ? "" : status2].filter(Boolean).join(" · "), url: row.url, label, status: status2, at: String(row.updatedAt || row.sourceAt || row.fetchedAt || row.createdAt || ""), completed: kind === "task" ? ["completed", "done", "cancelled", "archived"].includes(raw) : kind === "reply" && completedReplies.has(raw), icon };
   })).sort((a, b) => (Date.parse(b.at) || 0) - (Date.parse(a.at) || 0));
 }
 function contextTime(at) {
@@ -2292,8 +2422,8 @@ function contextTime(at) {
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("zh-CN", { month: "numeric", day: "numeric", timeZone: "Asia/Shanghai" });
 }
 function AssistantContextPicker({ data, refs, compact = false, open: controlledOpen, onOpenChange, hideTrigger = false, disabled = false, onApply }) {
-  const state = useStore(), [localOpen, setLocalOpen] = React9.useState(false), [query, setQuery] = React9.useState(""), [kind, setKind] = React9.useState("all"), [includeDone, setIncludeDone] = React9.useState(false), [draft, setDraft] = React9.useState([]), [limit, setLimit] = React9.useState(40);
-  const open = controlledOpen ?? localOpen, trigger = React9.useRef(null), panel = React9.useRef(null), wasOpen = React9.useRef(false), scope = String(state.assistantConversationId || state.assistantTaskId || "") + ":" + String(state.assistantHubThreadId || "") + ":" + JSON.stringify(state.assistantHubKnowledgeScope || {}), previousScope = React9.useRef(scope);
+  const state = useStore(), [localOpen, setLocalOpen] = React10.useState(false), [query, setQuery] = React10.useState(""), [kind, setKind] = React10.useState("all"), [includeDone, setIncludeDone] = React10.useState(false), [draft, setDraft] = React10.useState([]), [limit, setLimit] = React10.useState(40);
+  const open = controlledOpen ?? localOpen, trigger = React10.useRef(null), panel = React10.useRef(null), wasOpen = React10.useRef(false), scope = String(state.assistantConversationId || state.assistantTaskId || "") + ":" + String(state.assistantHubThreadId || "") + ":" + JSON.stringify(state.assistantHubKnowledgeScope || {}), previousScope = React10.useRef(scope);
   const changeOpen = (value) => {
     setLocalOpen(value);
     onOpenChange?.(value);
@@ -2302,7 +2432,7 @@ function AssistantContextPicker({ data, refs, compact = false, open: controlledO
     changeOpen(false);
     trigger.current?.focus();
   };
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (open && !wasOpen.current) {
       setDraft(refs.slice(0, MAX_ASSISTANT_CONTEXTS));
       setQuery("");
@@ -2312,11 +2442,11 @@ function AssistantContextPicker({ data, refs, compact = false, open: controlledO
     }
     wasOpen.current = open;
   }, [open]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (previousScope.current !== scope && open) close();
     previousScope.current = scope;
   }, [scope]);
-  React9.useEffect(() => {
+  React10.useEffect(() => {
     if (!open) return;
     const dialog = panel.current?.closest(".wb-modal"), previous = document.activeElement;
     if (!dialog) return;
@@ -2345,16 +2475,16 @@ function AssistantContextPicker({ data, refs, compact = false, open: controlledO
     else WB.store.set({ assistantRefs: next });
     close();
   };
-  return /* @__PURE__ */ React9.createElement(React9.Fragment, null, /* @__PURE__ */ React9.createElement("style", null, CONTEXT_CSS), !hideTrigger && (compact ? /* @__PURE__ */ React9.createElement("button", { ref: trigger, type: "button", disabled, className: "wb-iconbtn", "aria-label": "添加上下文", "aria-haspopup": "dialog", title: "引用事项 · 已选 " + refs.length + "/" + MAX_ASSISTANT_CONTEXTS, onClick: () => changeOpen(true) }, /* @__PURE__ */ React9.createElement(Icon, { name: "plus", size: 16 })) : /* @__PURE__ */ React9.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React9.createElement(Btn, { size: "sm", icon: "plus", disabled, onClick: () => changeOpen(true) }, "添加上下文"), /* @__PURE__ */ React9.createElement("span", { className: "wb-tiny wb-muted" }, "已选 ", refs.length, "/", MAX_ASSISTANT_CONTEXTS), refs.length > 0 && /* @__PURE__ */ React9.createElement(Btn, { size: "sm", disabled, onClick: () => onApply ? onApply([]) : WB.assistant.clear() }, "清空上下文"))), /* @__PURE__ */ React9.createElement(Modal, { open, title: "引用事项", onClose: close, footer: /* @__PURE__ */ React9.createElement(React9.Fragment, null, /* @__PURE__ */ React9.createElement("span", { className: "wb-tiny wb-muted", style: { marginRight: "auto" } }, "已选 ", draft.length, " / ", MAX_ASSISTANT_CONTEXTS), draft.length > 0 && /* @__PURE__ */ React9.createElement(Btn, { size: "sm", onClick: () => setDraft([]) }, "清空选择"), /* @__PURE__ */ React9.createElement(Btn, { onClick: close }, "取消"), /* @__PURE__ */ React9.createElement(Btn, { kind: "primary", disabled, onClick: apply3 }, "添加 ", draft.length, " 项")) }, /* @__PURE__ */ React9.createElement("div", { ref: panel, className: "wb-context-picker", role: "region", "aria-label": "选择上下文" }, /* @__PURE__ */ React9.createElement("div", { className: "wb-context-search" }, /* @__PURE__ */ React9.createElement(Icon, { name: "search", size: 15 }), /* @__PURE__ */ React9.createElement(Input, { "aria-label": "搜索上下文", placeholder: "搜索标题或内容", value: query, onChange: (e) => {
+  return /* @__PURE__ */ React10.createElement(React10.Fragment, null, /* @__PURE__ */ React10.createElement("style", null, CONTEXT_CSS), !hideTrigger && (compact ? /* @__PURE__ */ React10.createElement("button", { ref: trigger, type: "button", disabled, className: "wb-iconbtn", "aria-label": "添加上下文", "aria-haspopup": "dialog", title: "引用事项 · 已选 " + refs.length + "/" + MAX_ASSISTANT_CONTEXTS, onClick: () => changeOpen(true) }, /* @__PURE__ */ React10.createElement(Icon, { name: "plus", size: 16 })) : /* @__PURE__ */ React10.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React10.createElement(Btn, { size: "sm", icon: "plus", disabled, onClick: () => changeOpen(true) }, "添加上下文"), /* @__PURE__ */ React10.createElement("span", { className: "wb-tiny wb-muted" }, "已选 ", refs.length, "/", MAX_ASSISTANT_CONTEXTS), refs.length > 0 && /* @__PURE__ */ React10.createElement(Btn, { size: "sm", disabled, onClick: () => onApply ? onApply([]) : WB.assistant.clear() }, "清空上下文"))), /* @__PURE__ */ React10.createElement(Modal, { open, title: "引用事项", onClose: close, footer: /* @__PURE__ */ React10.createElement(React10.Fragment, null, /* @__PURE__ */ React10.createElement("span", { className: "wb-tiny wb-muted", style: { marginRight: "auto" } }, "已选 ", draft.length, " / ", MAX_ASSISTANT_CONTEXTS), draft.length > 0 && /* @__PURE__ */ React10.createElement(Btn, { size: "sm", onClick: () => setDraft([]) }, "清空选择"), /* @__PURE__ */ React10.createElement(Btn, { onClick: close }, "取消"), /* @__PURE__ */ React10.createElement(Btn, { kind: "primary", disabled, onClick: apply3 }, "添加 ", draft.length, " 项")) }, /* @__PURE__ */ React10.createElement("div", { ref: panel, className: "wb-context-picker", role: "region", "aria-label": "选择上下文" }, /* @__PURE__ */ React10.createElement("div", { className: "wb-context-search" }, /* @__PURE__ */ React10.createElement(Icon, { name: "search", size: 15 }), /* @__PURE__ */ React10.createElement(Input, { "aria-label": "搜索上下文", placeholder: "搜索标题或内容", value: query, onChange: (e) => {
     setQuery(e.target.value);
     setLimit(40);
-  } })), /* @__PURE__ */ React9.createElement("div", { className: "wb-context-filters", role: "group", "aria-label": "引用事项类型" }, [["all", "全部"], ...groups.map(([key2, label]) => [key2, label])].map(([key2, label]) => /* @__PURE__ */ React9.createElement("button", { type: "button", key: key2, "aria-pressed": kind === key2, onClick: () => {
+  } })), /* @__PURE__ */ React10.createElement("div", { className: "wb-context-filters", role: "group", "aria-label": "引用事项类型" }, [["all", "全部"], ...groups.map(([key2, label]) => [key2, label])].map(([key2, label]) => /* @__PURE__ */ React10.createElement("button", { type: "button", key: key2, "aria-pressed": kind === key2, onClick: () => {
     setKind(key2);
     setLimit(40);
-  } }, label))), /* @__PURE__ */ React9.createElement("div", { className: "wb-context-list-head" }, /* @__PURE__ */ React9.createElement("span", null, "最近更新"), /* @__PURE__ */ React9.createElement("label", null, /* @__PURE__ */ React9.createElement("input", { type: "checkbox", checked: includeDone, onChange: (e) => {
+  } }, label))), /* @__PURE__ */ React10.createElement("div", { className: "wb-context-list-head" }, /* @__PURE__ */ React10.createElement("span", null, "最近更新"), /* @__PURE__ */ React10.createElement("label", null, /* @__PURE__ */ React10.createElement("input", { type: "checkbox", checked: includeDone, onChange: (e) => {
     setIncludeDone(e.target.checked);
     setLimit(40);
-  } }), "包含已完成")), /* @__PURE__ */ React9.createElement("div", { className: "wb-context-choices" }, matches.slice(0, limit).map((ref) => /* @__PURE__ */ React9.createElement("label", { className: "wb-context-choice" + (selected(ref) ? " is-selected" : ""), key: refKey(ref) }, /* @__PURE__ */ React9.createElement(Icon, { name: ref.icon, size: 16 }), /* @__PURE__ */ React9.createElement("span", null, /* @__PURE__ */ React9.createElement("strong", null, ref.title), /* @__PURE__ */ React9.createElement("small", null, ref.meta, contextTime(ref.at) ? " · " + contextTime(ref.at) : "")), /* @__PURE__ */ React9.createElement("input", { type: "checkbox", "aria-label": "引用" + ref.label + "：" + ref.title, checked: selected(ref), disabled: !selected(ref) && draft.length >= MAX_ASSISTANT_CONTEXTS, onChange: () => toggle(ref) }))), !matches.length && /* @__PURE__ */ React9.createElement("div", { className: "wb-context-empty" }, /* @__PURE__ */ React9.createElement("p", null, "没有匹配的事项"), !includeDone && hiddenDone && /* @__PURE__ */ React9.createElement("button", { type: "button", className: "wb-link", onClick: () => setIncludeDone(true) }, "同时搜索已完成事项")), matches.length > limit && /* @__PURE__ */ React9.createElement(Btn, { size: "sm", onClick: () => setLimit((value) => value + 40) }, "显示更多（还有 ", matches.length - limit, " 项）")), draft.length >= MAX_ASSISTANT_CONTEXTS && /* @__PURE__ */ React9.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, "最多引用 ", MAX_ASSISTANT_CONTEXTS, " 项，可先取消一项再继续选择。"), /* @__PURE__ */ React9.createElement("p", { className: "wb-context-note" }, "添加后可在输入区移除，已发送的历史不受影响。"))));
+  } }), "包含已完成")), /* @__PURE__ */ React10.createElement("div", { className: "wb-context-choices" }, matches.slice(0, limit).map((ref) => /* @__PURE__ */ React10.createElement("label", { className: "wb-context-choice" + (selected(ref) ? " is-selected" : ""), key: refKey(ref) }, /* @__PURE__ */ React10.createElement(Icon, { name: ref.icon, size: 16 }), /* @__PURE__ */ React10.createElement("span", null, /* @__PURE__ */ React10.createElement("strong", null, ref.title), /* @__PURE__ */ React10.createElement("small", null, ref.meta, contextTime(ref.at) ? " · " + contextTime(ref.at) : "")), /* @__PURE__ */ React10.createElement("input", { type: "checkbox", "aria-label": "引用" + ref.label + "：" + ref.title, checked: selected(ref), disabled: !selected(ref) && draft.length >= MAX_ASSISTANT_CONTEXTS, onChange: () => toggle(ref) }))), !matches.length && /* @__PURE__ */ React10.createElement("div", { className: "wb-context-empty" }, /* @__PURE__ */ React10.createElement("p", null, "没有匹配的事项"), !includeDone && hiddenDone && /* @__PURE__ */ React10.createElement("button", { type: "button", className: "wb-link", onClick: () => setIncludeDone(true) }, "同时搜索已完成事项")), matches.length > limit && /* @__PURE__ */ React10.createElement(Btn, { size: "sm", onClick: () => setLimit((value) => value + 40) }, "显示更多（还有 ", matches.length - limit, " 项）")), draft.length >= MAX_ASSISTANT_CONTEXTS && /* @__PURE__ */ React10.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, "最多引用 ", MAX_ASSISTANT_CONTEXTS, " 项，可先取消一项再继续选择。"), /* @__PURE__ */ React10.createElement("p", { className: "wb-context-note" }, "添加后可在输入区移除，已发送的历史不受影响。"))));
 }
 var CONTEXT_CSS = `.wb-context-picker{display:flex;flex-direction:column;gap:12px;min-width:0;padding-top:2px}.wb-context-search{display:flex;align-items:center;gap:8px;padding:1px 10px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:9px;color:var(--dsw-alias-label-secondary)}.wb-context-search .wb-input{background:transparent;border:0;box-shadow:none;min-width:0;padding-left:0;padding-right:0}.wb-context-search:focus-within{border-color:color-mix(in srgb,var(--dsw-alias-label-secondary) 48%,var(--dsw-alias-border-l1));box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-label-secondary) 10%,transparent)}.wb-context-search .wb-input:focus{border:0;box-shadow:none}.wb-context-filters{display:flex;gap:4px;flex-wrap:wrap}.wb-context-filters button{border:0;background:transparent;color:var(--dsw-alias-label-secondary);padding:5px 9px;border-radius:6px;font:inherit;font-size:12px;cursor:pointer}.wb-context-filters button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}.wb-context-filters button:focus-visible{outline:2px solid var(--dsw-alias-label-secondary);outline-offset:2px}.wb-context-list-head{display:flex;gap:10px;align-items:center;justify-content:space-between;font-size:11px;color:var(--dsw-alias-label-secondary)}.wb-context-list-head label{display:flex;gap:6px;align-items:center}.wb-context-list-head input{margin:0}.wb-context-choices{max-height:min(340px,42vh);overflow:auto;display:flex;flex-direction:column;gap:4px;min-width:0}.wb-context-choice{display:flex;align-items:center;gap:10px;padding:11px 10px;min-width:0;border:1px solid transparent;border-radius:9px;cursor:pointer}.wb-context-choice:hover{background:var(--dsw-alias-bg-layer-1)}.wb-context-choice.is-selected{background:var(--dsw-alias-bg-layer-1);border-color:var(--dsw-alias-border-l1)}.wb-context-choice>span{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1;overflow-wrap:anywhere}.wb-context-choice strong{font-size:13px;line-height:1.5;font-weight:500}.wb-context-choice small{font-size:11px;color:var(--dsw-alias-label-secondary);line-height:1.5}.wb-context-choice>input{flex:none;margin:0}.wb-context-empty{padding:28px 8px;text-align:center;color:var(--dsw-alias-label-secondary);font-size:12px}.wb-context-note{margin:0;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.6}@media(max-width:480px){.wb-context-picker{gap:9px}.wb-context-filters button{padding:5px 7px}.wb-context-choice{padding:9px 5px}.wb-context-choices{max-height:36vh}.wb-context-choice strong{font-size:12px}}`;
 
@@ -2499,12 +2629,12 @@ async function prepareDraft(key2, { sessionId, imageLimits, signal, ids }) {
   }
 }
 function useAssistantAttachments(scopeKey) {
-  const subscribe = React10.useCallback((fn) => {
+  const subscribe = React11.useCallback((fn) => {
     listeners.add(fn);
     return () => {
       listeners.delete(fn);
     };
-  }, []), get = React10.useCallback(() => snapshot(scopeKey), [scopeKey]), items = React10.useSyncExternalStore(subscribe, get, get);
+  }, []), get = React11.useCallback(() => snapshot(scopeKey), [scopeKey]), items = React11.useSyncExternalStore(subscribe, get, get);
   return {
     items,
     add: (files, clipboard = false) => {
@@ -2529,18 +2659,18 @@ function useAssistantAttachments(scopeKey) {
   };
 }
 function AttachmentPreview({ item }) {
-  const [url, setUrl] = React10.useState("");
-  React10.useEffect(() => {
+  const [url, setUrl] = React11.useState("");
+  React11.useEffect(() => {
     if (item.type !== "image" || typeof URL.createObjectURL !== "function") return;
     const value = URL.createObjectURL(item.file);
     setUrl(value);
     return () => URL.revokeObjectURL(value);
   }, [item.file, item.type]);
-  return url ? /* @__PURE__ */ React10.createElement("img", { src: url, alt: item.name, className: "wb-attachment-thumbnail" }) : /* @__PURE__ */ React10.createElement("span", { className: "wb-attachment-symbol" }, /* @__PURE__ */ React10.createElement(Icon, { name: item.type === "image" ? "eye" : "book", size: 17 }));
+  return url ? /* @__PURE__ */ React11.createElement("img", { src: url, alt: item.name, className: "wb-attachment-thumbnail" }) : /* @__PURE__ */ React11.createElement("span", { className: "wb-attachment-symbol" }, /* @__PURE__ */ React11.createElement(Icon, { name: item.type === "image" ? "eye" : "book", size: 17 }));
 }
 function AssistantAttachmentCards({ items, disabled = false, onRemove, onRetry }) {
   if (!items.length) return null;
-  return /* @__PURE__ */ React10.createElement(React10.Fragment, null, /* @__PURE__ */ React10.createElement("style", null, ATTACHMENT_CSS), /* @__PURE__ */ React10.createElement("div", { className: "wb-assistant-attachments", role: "region", "aria-label": "本轮附件" }, items.map((item) => /* @__PURE__ */ React10.createElement("div", { key: item.id, className: "wb-assistant-attachment" + (item.status === "failed" ? " is-failed" : ""), "aria-label": "附件：" + item.name, title: item.note }, /* @__PURE__ */ React10.createElement(AttachmentPreview, { item }), /* @__PURE__ */ React10.createElement("div", { className: "wb-attachment-info" }, /* @__PURE__ */ React10.createElement("span", { className: "wb-attachment-name", title: item.name }, item.name), /* @__PURE__ */ React10.createElement("small", { role: "status" }, assistantAttachmentSize(item.size), " · ", item.status === "uploading" ? "正在上传 " + Math.round((item.progress || 0) * 100) + "%" : item.status === "reading" ? "正在读取" : item.status === "failed" ? "准备失败" : item.status === "prepared" ? "已准备" : "待发送"), item.note && /* @__PURE__ */ React10.createElement("span", { className: "wb-attachment-note" }, item.note)), ["reading", "uploading"].includes(item.status) ? /* @__PURE__ */ React10.createElement(Spinner, { size: 13 }) : /* @__PURE__ */ React10.createElement("div", { className: "wb-attachment-actions" }, item.status === "failed" && /* @__PURE__ */ React10.createElement("button", { type: "button", className: "wb-link", disabled, onClick: () => onRetry(item.id) }, "重试"), /* @__PURE__ */ React10.createElement("button", { type: "button", className: "wb-iconbtn", "aria-label": "移除附件：" + item.name, disabled, onClick: () => onRemove(item.id) }, /* @__PURE__ */ React10.createElement(Icon, { name: "close", size: 13 })))))));
+  return /* @__PURE__ */ React11.createElement(React11.Fragment, null, /* @__PURE__ */ React11.createElement("style", null, ATTACHMENT_CSS), /* @__PURE__ */ React11.createElement("div", { className: "wb-assistant-attachments", role: "region", "aria-label": "本轮附件" }, items.map((item) => /* @__PURE__ */ React11.createElement("div", { key: item.id, className: "wb-assistant-attachment" + (item.status === "failed" ? " is-failed" : ""), "aria-label": "附件：" + item.name, title: item.note }, /* @__PURE__ */ React11.createElement(AttachmentPreview, { item }), /* @__PURE__ */ React11.createElement("div", { className: "wb-attachment-info" }, /* @__PURE__ */ React11.createElement("span", { className: "wb-attachment-name", title: item.name }, item.name), /* @__PURE__ */ React11.createElement("small", { role: "status" }, assistantAttachmentSize(item.size), " · ", item.status === "uploading" ? "正在上传 " + Math.round((item.progress || 0) * 100) + "%" : item.status === "reading" ? "正在读取" : item.status === "failed" ? "准备失败" : item.status === "prepared" ? "已准备" : "待发送"), item.note && /* @__PURE__ */ React11.createElement("span", { className: "wb-attachment-note" }, item.note)), ["reading", "uploading"].includes(item.status) ? /* @__PURE__ */ React11.createElement(Spinner, { size: 13 }) : /* @__PURE__ */ React11.createElement("div", { className: "wb-attachment-actions" }, item.status === "failed" && /* @__PURE__ */ React11.createElement("button", { type: "button", className: "wb-link", disabled, onClick: () => onRetry(item.id) }, "重试"), /* @__PURE__ */ React11.createElement("button", { type: "button", className: "wb-iconbtn", "aria-label": "移除附件：" + item.name, disabled, onClick: () => onRemove(item.id) }, /* @__PURE__ */ React11.createElement(Icon, { name: "close", size: 13 })))))));
 }
 function attachmentDragHandlers(add, disabled = false) {
   return {
@@ -2562,8 +2692,8 @@ function attachmentDragHandlers(add, disabled = false) {
   };
 }
 function AssistantAddMaterials({ data, refs, disabled = false, onAddFiles }) {
-  const [menu, setMenu] = React10.useState(false), [picker, setPicker] = React10.useState(false), [error2, setError] = React10.useState(""), anchor = React10.useRef(null), trigger = React10.useRef(null), chooser = React10.useRef(null), chooserTarget = React10.useRef(null);
-  React10.useEffect(() => {
+  const [menu, setMenu] = React11.useState(false), [picker, setPicker] = React11.useState(false), [error2, setError] = React11.useState(""), anchor = React11.useRef(null), trigger = React11.useRef(null), chooser = React11.useRef(null), chooserTarget = React11.useRef(null);
+  React11.useEffect(() => {
     if (!menu) return;
     const close = (event) => {
       if (!anchor.current?.contains(event.target)) setMenu(false);
@@ -2580,10 +2710,10 @@ function AssistantAddMaterials({ data, refs, disabled = false, onAddFiles }) {
       document.removeEventListener("keydown", escape2);
     };
   }, [menu]);
-  React10.useEffect(() => {
+  React11.useEffect(() => {
     if (menu) anchor.current?.querySelector('[role="menuitem"]')?.focus();
   }, [menu]);
-  React10.useEffect(() => {
+  React11.useEffect(() => {
     if (disabled) setMenu(false);
   }, [disabled]);
   const moveMenu = (event) => {
@@ -2595,10 +2725,10 @@ function AssistantAddMaterials({ data, refs, disabled = false, onAddFiles }) {
     const at = items.indexOf(document.activeElement), next = event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : (at + (event.key === "ArrowDown" ? 1 : -1) + items.length) % items.length;
     items[next].focus();
   };
-  return /* @__PURE__ */ React10.createElement(React10.Fragment, null, /* @__PURE__ */ React10.createElement("style", null, ATTACHMENT_CSS), /* @__PURE__ */ React10.createElement("div", { className: "wb-assistant-add-materials", ref: anchor }, /* @__PURE__ */ React10.createElement("button", { ref: trigger, type: "button", className: "wb-iconbtn", disabled, "aria-label": "添加资料", title: "上传附件或引用事项", "aria-haspopup": "menu", "aria-expanded": menu, onClick: () => {
+  return /* @__PURE__ */ React11.createElement(React11.Fragment, null, /* @__PURE__ */ React11.createElement("style", null, ATTACHMENT_CSS), /* @__PURE__ */ React11.createElement("div", { className: "wb-assistant-add-materials", ref: anchor }, /* @__PURE__ */ React11.createElement("button", { ref: trigger, type: "button", className: "wb-iconbtn", disabled, "aria-label": "添加资料", title: "上传附件或引用事项", "aria-haspopup": "menu", "aria-expanded": menu, onClick: () => {
     setMenu(!menu);
     setError("");
-  } }, /* @__PURE__ */ React10.createElement(Icon, { name: "plus", size: 16 })), /* @__PURE__ */ React10.createElement("input", { ref: chooser, type: "file", multiple: true, "aria-label": "选择助手附件", style: { display: "none" }, disabled, onChange: (event) => {
+  } }, /* @__PURE__ */ React11.createElement(Icon, { name: "plus", size: 16 })), /* @__PURE__ */ React11.createElement("input", { ref: chooser, type: "file", multiple: true, "aria-label": "选择助手附件", style: { display: "none" }, disabled, onChange: (event) => {
     try {
       (chooserTarget.current || onAddFiles)(Array.from(event.target.files || []));
       setError("");
@@ -2608,14 +2738,14 @@ function AssistantAddMaterials({ data, refs, disabled = false, onAddFiles }) {
       chooserTarget.current = null;
       event.target.value = "";
     }
-  } }), menu && /* @__PURE__ */ React10.createElement("div", { className: "wb-assistant-add-menu", role: "menu", "aria-label": "添加资料方式", onKeyDown: moveMenu }, /* @__PURE__ */ React10.createElement("button", { type: "button", role: "menuitem", onClick: () => {
+  } }), menu && /* @__PURE__ */ React11.createElement("div", { className: "wb-assistant-add-menu", role: "menu", "aria-label": "添加资料方式", onKeyDown: moveMenu }, /* @__PURE__ */ React11.createElement("button", { type: "button", role: "menuitem", onClick: () => {
     chooserTarget.current = onAddFiles;
     setMenu(false);
     chooser.current?.click();
-  } }, /* @__PURE__ */ React10.createElement(Icon, { name: "upload", size: 17 }), /* @__PURE__ */ React10.createElement("span", null, "上传附件", /* @__PURE__ */ React10.createElement("small", null, "图片、文档或其他文件"))), /* @__PURE__ */ React10.createElement("button", { type: "button", role: "menuitem", onClick: () => {
+  } }, /* @__PURE__ */ React11.createElement(Icon, { name: "upload", size: 17 }), /* @__PURE__ */ React11.createElement("span", null, "上传附件", /* @__PURE__ */ React11.createElement("small", null, "图片、文档或其他文件"))), /* @__PURE__ */ React11.createElement("button", { type: "button", role: "menuitem", onClick: () => {
     setMenu(false);
     setPicker(true);
-  } }, /* @__PURE__ */ React10.createElement(Icon, { name: "link", size: 17 }), /* @__PURE__ */ React10.createElement("span", null, "引用事项", /* @__PURE__ */ React10.createElement("small", null, "待办、待回复、消息、资讯与知识")))), error2 && /* @__PURE__ */ React10.createElement("span", { role: "alert", className: "wb-attachment-picker-error" }, error2)), /* @__PURE__ */ React10.createElement(AssistantContextPicker, { data, refs, open: picker, onOpenChange: (value) => {
+  } }, /* @__PURE__ */ React11.createElement(Icon, { name: "link", size: 17 }), /* @__PURE__ */ React11.createElement("span", null, "引用事项", /* @__PURE__ */ React11.createElement("small", null, "待办、待回复、消息、资讯与知识")))), error2 && /* @__PURE__ */ React11.createElement("span", { role: "alert", className: "wb-attachment-picker-error" }, error2)), /* @__PURE__ */ React11.createElement(AssistantContextPicker, { data, refs, open: picker, onOpenChange: (value) => {
     setPicker(value);
     if (!value) trigger.current?.focus();
   }, hideTrigger: true, disabled }));
@@ -2623,7 +2753,7 @@ function AssistantAddMaterials({ data, refs, disabled = false, onAddFiles }) {
 var ATTACHMENT_CSS = `.wb-assistant-attachments{display:flex;flex-wrap:wrap;gap:7px;min-width:0;margin-bottom:8px;max-height:180px;overflow:auto}.wb-assistant-attachment{display:flex;align-items:center;gap:8px;max-width:100%;min-width:0;padding:7px 8px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);border-radius:9px}.wb-assistant-attachment.is-failed{border-color:color-mix(in srgb,var(--dsw-alias-status-warning,var(--dsw-alias-label-secondary)) 50%,var(--dsw-alias-border-l1))}.wb-attachment-thumbnail{width:34px;height:34px;object-fit:cover;flex:none;border-radius:5px}.wb-attachment-symbol{width:28px;display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-secondary);flex:none}.wb-attachment-info{min-width:0;display:flex;flex-direction:column;gap:3px;max-width:280px;overflow-wrap:anywhere}.wb-attachment-name{font-size:12px;line-height:1.5}.wb-attachment-info small,.wb-attachment-note{font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary)}.wb-attachment-actions{display:flex;align-items:center;gap:5px;flex:none}.wb-attachment-actions .wb-link{font-size:11px}.wb-assistant-add-materials{position:relative;flex:none}.wb-assistant-add-menu{position:absolute;left:0;bottom:calc(100% + 8px);width:264px;max-width:min(264px,calc(100vw - 64px));padding:5px;background:var(--dsw-alias-bg-base);border:1px solid var(--dsw-alias-border-l1);border-radius:11px;box-shadow:0 8px 28px #0002;z-index:10}.wb-assistant-add-menu>button{display:flex;align-items:center;gap:11px;width:100%;padding:10px;border:0;border-radius:7px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}.wb-assistant-add-menu>button:hover,.wb-assistant-add-menu>button:focus-visible{background:var(--dsw-alias-bg-layer-1)}.wb-assistant-add-menu>button>span{font-size:12px}.wb-assistant-add-menu small{display:block;margin-top:4px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}.wb-attachment-picker-error{position:absolute;left:0;bottom:calc(100% + 8px);width:264px;max-width:calc(100vw - 64px);padding:9px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-base);font-size:12px;line-height:1.6;color:var(--dsw-alias-status-error,var(--dsw-alias-label-primary));z-index:10}@media(max-width:480px){.wb-assistant-attachment{width:100%}.wb-attachment-info{max-width:none;flex:1}.wb-assistant-attachments{max-height:140px}}@media(max-height:420px){.wb-assistant-attachments{flex-wrap:nowrap;max-height:28px;min-height:28px;gap:5px;margin-bottom:0;overflow-x:auto;overflow-y:hidden}.wb-assistant-attachment{position:relative;flex:0 0 205px;width:205px;height:28px;box-sizing:border-box;padding:2px 5px;gap:5px}.wb-attachment-thumbnail{width:20px;height:20px}.wb-attachment-symbol{width:20px}.wb-attachment-info{flex:1;max-width:none;gap:0;overflow:hidden}.wb-attachment-name{font-size:10px;line-height:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb-attachment-info small{font-size:9px;line-height:10px;white-space:nowrap}.wb-attachment-actions{gap:3px}.wb-attachment-actions .wb-link{font-size:10px}.wb-attachment-actions .wb-iconbtn{width:20px;height:20px;min-width:20px}.wb-attachment-note{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}.wb-assistant-add-menu{bottom:calc(100% + 4px)}.wb-assistant-add-menu>button{padding:7px 10px}.wb-assistant-add-menu small{margin-top:2px}}`;
 
 // src/client/components/AssistantMessageIdentity.tsx
-var React11 = __toESM(require("react"), 1);
+var React12 = __toESM(require("react"), 1);
 
 // src/client/core/assistant-native.ts
 function safeAssistantAvatar(value) {
@@ -2678,7 +2808,7 @@ function installAssistantNative(WB2, ctx) {
             return identity;
           }
         }
-        const result = await account.getProfile({ version: "0.4.2", locale: "zh-CN", timezoneOffsetSeconds: -(/* @__PURE__ */ new Date()).getTimezoneOffset() * 60 });
+        const result = await account.getProfile({ version: "0.4.3", locale: "zh-CN", timezoneOffsetSeconds: -(/* @__PURE__ */ new Date()).getTimezoneOffset() * 60 });
         if (disposed || current !== revision) return identity;
         const profile = result?.ok === true && result.value?.status === "ready" ? result.value.value : null;
         const name2 = typeof profile?.name === "string" ? profile.name.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 40) : "";
@@ -2710,7 +2840,7 @@ function installAssistantNative(WB2, ctx) {
 }
 
 // src/client/components/AssistantMessageIdentity.tsx
-var AssistantIdentityContext = React11.createContext({ assistantName: "AI 助手", user: {}, conversationId: "" });
+var AssistantIdentityContext = React12.createContext({ assistantName: "AI 助手", user: {}, conversationId: "" });
 function assistantFunctionName(conversationId, operation) {
   const kind = operation?.split(".")[0] || conversationId.split(":")[0];
   if (conversationId === "system:analysis" || kind === "analysis") return "消息识别";
@@ -2725,12 +2855,12 @@ function assistantFunctionName(conversationId, operation) {
   return "系统";
 }
 function MessageRow({ author = "assistant", at, detail, operation, label, children, className = "" }) {
-  const context = React11.useContext(AssistantIdentityContext), [failedAvatar, setFailedAvatar] = React11.useState(null), me = author === "user", name2 = label || (me ? context.user.name || "我" : author === "assistant" ? context.assistantName : author === "rule" ? "规则助手" : author === "history" ? "历史记录" : author === "function" ? assistantFunctionName(context.conversationId, operation) : "系统"), photo = me ? safeAssistantAvatar(context.user.avatarUrl) : void 0, icon = author === "assistant" ? "agent" : author === "rule" ? "command" : author === "history" ? "clock" : "layers", time = at ? new Date(at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
-  return /* @__PURE__ */ React11.createElement("div", { className: "wb-hub-chat-row is-" + author + (me ? " is-outgoing" : " is-incoming") + (className ? " " + className : ""), "data-chat-author": author, "aria-label": "消息身份：" + name2 }, /* @__PURE__ */ React11.createElement("span", { className: "wb-hub-avatar is-" + author, "aria-label": name2 + "的头像" }, photo && failedAvatar !== photo ? /* @__PURE__ */ React11.createElement("img", { src: photo, alt: "", referrerPolicy: "no-referrer", onError: () => setFailedAvatar(photo) }) : me ? /* @__PURE__ */ React11.createElement("span", null, Array.from(name2.trim())[0] || "我") : /* @__PURE__ */ React11.createElement(Icon, { name: icon, size: 17 })), /* @__PURE__ */ React11.createElement("div", { className: "wb-hub-chat-content" }, /* @__PURE__ */ React11.createElement("div", { className: "wb-hub-author" }, /* @__PURE__ */ React11.createElement("span", { className: "wb-hub-author-name" }, name2), detail && /* @__PURE__ */ React11.createElement("span", { className: "wb-hub-author-detail" }, detail), time && /* @__PURE__ */ React11.createElement("time", null, time)), children));
+  const context = React12.useContext(AssistantIdentityContext), [failedAvatar, setFailedAvatar] = React12.useState(null), me = author === "user", name2 = label || (me ? context.user.name || "我" : author === "assistant" ? context.assistantName : author === "rule" ? "规则助手" : author === "history" ? "历史记录" : author === "function" ? assistantFunctionName(context.conversationId, operation) : "系统"), photo = me ? safeAssistantAvatar(context.user.avatarUrl) : void 0, icon = author === "assistant" ? "agent" : author === "rule" ? "command" : author === "history" ? "clock" : "layers", time = at ? new Date(at).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  return /* @__PURE__ */ React12.createElement("div", { className: "wb-hub-chat-row is-" + author + (me ? " is-outgoing" : " is-incoming") + (className ? " " + className : ""), "data-chat-author": author, "aria-label": "消息身份：" + name2 }, /* @__PURE__ */ React12.createElement("span", { className: "wb-hub-avatar is-" + author, "aria-label": name2 + "的头像" }, photo && failedAvatar !== photo ? /* @__PURE__ */ React12.createElement("img", { src: photo, alt: "", referrerPolicy: "no-referrer", onError: () => setFailedAvatar(photo) }) : me ? /* @__PURE__ */ React12.createElement("span", null, Array.from(name2.trim())[0] || "我") : /* @__PURE__ */ React12.createElement(Icon, { name: icon, size: 17 })), /* @__PURE__ */ React12.createElement("div", { className: "wb-hub-chat-content" }, /* @__PURE__ */ React12.createElement("div", { className: "wb-hub-author" }, /* @__PURE__ */ React12.createElement("span", { className: "wb-hub-author-name" }, name2), detail && /* @__PURE__ */ React12.createElement("span", { className: "wb-hub-author-detail" }, detail), time && /* @__PURE__ */ React12.createElement("time", null, time)), children));
 }
 function AssistantIdentitySettings({ open, onClose, name: name2 }) {
-  const [draft, setDraft] = React11.useState(name2), [saving, setSaving] = React11.useState(false), [error2, setError] = React11.useState("");
-  React11.useEffect(() => {
+  const [draft, setDraft] = React12.useState(name2), [saving, setSaving] = React12.useState(false), [error2, setError] = React12.useState("");
+  React12.useEffect(() => {
     if (open) {
       setDraft(name2);
       setError("");
@@ -2750,9 +2880,9 @@ function AssistantIdentitySettings({ open, onClose, name: name2 }) {
       setSaving(false);
     }
   }
-  return /* @__PURE__ */ React11.createElement(Modal, { open, title: "助手设置", onClose: () => {
+  return /* @__PURE__ */ React12.createElement(Modal, { open, title: "助手设置", onClose: () => {
     if (!saving) onClose();
-  }, footer: /* @__PURE__ */ React11.createElement(React11.Fragment, null, /* @__PURE__ */ React11.createElement(Btn, { disabled: saving, onClick: onClose }, "取消"), /* @__PURE__ */ React11.createElement(Btn, { kind: "primary", disabled: saving || !valid, onClick: save2 }, saving ? "保存中…" : "保存")) }, /* @__PURE__ */ React11.createElement("div", { className: "wb-hub-identity-settings" }, /* @__PURE__ */ React11.createElement("label", { htmlFor: "wb-assistant-display-name" }, "助手名称"), /* @__PURE__ */ React11.createElement(Input, { id: "wb-assistant-display-name", "aria-label": "助手名称", value: draft, placeholder: "例如：小鲸助手", disabled: saving, onChange: (event) => setDraft(event.target.value) }), /* @__PURE__ */ React11.createElement("p", { className: "wb-tiny wb-muted" }, "用于 AI 回复的显示名称。规则和系统消息保留各自身份。"), !valid && draft && /* @__PURE__ */ React11.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, "名称需要 1–40 个字符。"), error2 && /* @__PURE__ */ React11.createElement("p", { role: "alert", className: "wb-hub-error" }, error2), /* @__PURE__ */ React11.createElement("div", { className: "wb-hub-identity-preview" }, /* @__PURE__ */ React11.createElement("span", { className: "wb-hub-avatar is-assistant" }, /* @__PURE__ */ React11.createElement(Icon, { name: "agent", size: 17 })), /* @__PURE__ */ React11.createElement("span", null, value || "AI 助手"))));
+  }, footer: /* @__PURE__ */ React12.createElement(React12.Fragment, null, /* @__PURE__ */ React12.createElement(Btn, { disabled: saving, onClick: onClose }, "取消"), /* @__PURE__ */ React12.createElement(Btn, { kind: "primary", disabled: saving || !valid, onClick: save2 }, saving ? "保存中…" : "保存")) }, /* @__PURE__ */ React12.createElement("div", { className: "wb-hub-identity-settings" }, /* @__PURE__ */ React12.createElement("label", { htmlFor: "wb-assistant-display-name" }, "助手名称"), /* @__PURE__ */ React12.createElement(Input, { id: "wb-assistant-display-name", "aria-label": "助手名称", value: draft, placeholder: "例如：小鲸助手", disabled: saving, onChange: (event) => setDraft(event.target.value) }), /* @__PURE__ */ React12.createElement("p", { className: "wb-tiny wb-muted" }, "用于 AI 回复的显示名称。规则和系统消息保留各自身份。"), !valid && draft && /* @__PURE__ */ React12.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, "名称需要 1–40 个字符。"), error2 && /* @__PURE__ */ React12.createElement("p", { role: "alert", className: "wb-hub-error" }, error2), /* @__PURE__ */ React12.createElement("div", { className: "wb-hub-identity-preview" }, /* @__PURE__ */ React12.createElement("span", { className: "wb-hub-avatar is-assistant" }, /* @__PURE__ */ React12.createElement(Icon, { name: "agent", size: 17 })), /* @__PURE__ */ React12.createElement("span", null, value || "AI 助手"))));
 }
 var MESSAGE_IDENTITY_CSS = `
 .wb-hub-chat-row{display:flex;align-items:flex-start;gap:10px;width:100%;max-width:780px;margin:0 auto;min-width:0;flex:none}.wb-hub-chat-row.is-outgoing{flex-direction:row-reverse;padding-left:34px}.wb-hub-chat-row.is-incoming{padding-right:10px}.wb-hub-avatar{display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;flex:none;margin-top:0;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);overflow:hidden;border:1px solid var(--dsw-alias-border-l1);font-size:12px;font-weight:500}.wb-hub-avatar.is-user{border-radius:50%;color:var(--dsw-alias-label-primary)}.wb-hub-avatar.is-assistant{color:var(--dsw-alias-label-primary)}.wb-hub-avatar img{width:100%;height:100%;object-fit:cover}.wb-hub-chat-content{min-width:0;max-width:calc(100% - 40px);flex:1}.wb-hub-chat-row.is-outgoing>.wb-hub-chat-content{flex:0 1 auto;min-width:100px;max-width:min(88%,680px)}.wb-hub-author{display:flex;align-items:center;min-height:30px;gap:7px;flex-wrap:wrap;min-width:0;font-size:11px;color:var(--dsw-alias-label-secondary);margin:0 0 6px;line-height:1.6}.wb-hub-author-name{font-weight:500;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary)}.wb-hub-author-detail{font-size:10px}.wb-hub-author time{font-size:10px}.wb-hub-chat-row.is-outgoing .wb-hub-author{justify-content:flex-end}.wb-hub-chat-row .wb-assistant-message,.wb-hub-chat-row .wb-hub-event,.wb-hub-chat-row .wb-hub-notice{max-width:100%;width:100%;margin:0}.wb-hub-chat-row .wb-assistant-message.is-user{background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l1);border-radius:12px 3px 12px 12px;padding:11px 14px}.wb-hub-chat-row.is-incoming .wb-assistant-message{border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-base);border-radius:3px 12px 12px 12px;padding:12px 14px}.wb-hub-chat-row .wb-hub-turn-response{border-radius:3px 12px 12px 12px}.wb-hub-chat-row .wb-hub-system-message{border-radius:3px 12px 12px 12px;background:var(--dsw-alias-bg-layer-1)}.wb-hub-chat-row .wb-hub-confirm{max-width:100%}.wb-hub-identity-settings{display:flex;flex-direction:column;gap:10px;padding-top:8px}.wb-hub-identity-settings p{margin:0}.wb-hub-identity-preview{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-layer-1)}.wb-hub-identity-preview .wb-hub-avatar{margin:0}
@@ -2760,7 +2890,7 @@ var MESSAGE_IDENTITY_CSS = `
 `;
 
 // src/client/components/KnowledgeScopeFields.tsx
-var React12 = __toESM(require("react"), 1);
+var React13 = __toESM(require("react"), 1);
 
 // src/shared/knowledge.ts
 var PERSONAL_KNOWLEDGE_SPACE = "personal";
@@ -2788,20 +2918,20 @@ function KnowledgeScopeFields({ data, scope, onChange, automatic = false, prefix
     const { accountId, ...rest } = scope;
     onChange({ ...rest, ...patch2 });
   }
-  return /* @__PURE__ */ React12.createElement(React12.Fragment, null, /* @__PURE__ */ React12.createElement(Field, { label: "知识空间" }, /* @__PURE__ */ React12.createElement(Select, { "aria-label": prefix + "空间", value: automatic && scope.spaceId === void 0 ? "__auto" : space, onChange: (event) => change({ spaceId: event.target.value === "__auto" ? void 0 : event.target.value, projectId: automatic ? void 0 : null }), options: [...automatic ? [{ value: "__auto", label: "自动跟随当前事项" }] : [], ...spaces] })), /* @__PURE__ */ React12.createElement(Field, { label: "项目范围" }, /* @__PURE__ */ React12.createElement(Select, { "aria-label": prefix + "项目", value: automatic && scope.projectId === void 0 ? "__auto" : scope.projectId || "", onChange: (event) => {
+  return /* @__PURE__ */ React13.createElement(React13.Fragment, null, /* @__PURE__ */ React13.createElement(Field, { label: "知识空间" }, /* @__PURE__ */ React13.createElement(Select, { "aria-label": prefix + "空间", value: automatic && scope.spaceId === void 0 ? "__auto" : space, onChange: (event) => change({ spaceId: event.target.value === "__auto" ? void 0 : event.target.value, projectId: automatic ? void 0 : null }), options: [...automatic ? [{ value: "__auto", label: "自动跟随当前事项" }] : [], ...spaces] })), /* @__PURE__ */ React13.createElement(Field, { label: "项目范围" }, /* @__PURE__ */ React13.createElement(Select, { "aria-label": prefix + "项目", value: automatic && scope.projectId === void 0 ? "__auto" : scope.projectId || "", onChange: (event) => {
     const value = event.target.value, project = (data?.projects || []).find((row) => row.id === value);
     change({ projectId: value === "__auto" ? void 0 : value || null, ...project ? { spaceId: project.knowledgeSpaceId || PERSONAL_KNOWLEDGE_SPACE } : {} });
   }, options: [...automatic ? [{ value: "__auto", label: "自动跟随当前事项" }] : [], { value: "", label: "空间通用资料" }, ...projects.map((project) => ({ value: project.id, label: project.name }))] })));
 }
 
 // src/client/components/AssistantKnowledgeSettings.tsx
-var React13 = __toESM(require("react"), 1);
-function AssistantKnowledgeSettings({ open, onClose, data, mode, onMode, scope, onScope }) {
-  return /* @__PURE__ */ React13.createElement(Modal, { open, title: "知识设置", sub: "应用于后续发送的消息", width: 440, onClose, footer: /* @__PURE__ */ React13.createElement(Btn, { kind: "primary", onClick: onClose }, "完成") }, /* @__PURE__ */ React13.createElement("div", { className: "wb-stack", style: { gap: 14, paddingTop: 8 } }, /* @__PURE__ */ React13.createElement(Field, { label: "知识模式" }, /* @__PURE__ */ React13.createElement(Select, { "aria-label": "知识模式", value: mode, onChange: (event) => onMode(event.target.value), options: [{ value: "auto", label: "自动检索" }, { value: "only", label: "仅知识库" }, { value: "off", label: "关闭" }] })), /* @__PURE__ */ React13.createElement(KnowledgeScopeFields, { data, scope, onChange: onScope, automatic: true, prefix: "聊天知识" }), /* @__PURE__ */ React13.createElement("p", { className: "wb-tiny wb-muted" }, "自动跟随当前事项的项目。切换隔离范围后使用独立会话，原会话与草稿保留。")));
+var React14 = __toESM(require("react"), 1);
+function AssistantKnowledgeSettings({ open, onClose, data, mode, onMode, scope, onScope, onDemand = false }) {
+  return /* @__PURE__ */ React14.createElement(Modal, { open, title: "知识设置", sub: "应用于后续发送的消息", width: 440, onClose, footer: /* @__PURE__ */ React14.createElement(Btn, { kind: "primary", onClick: onClose }, "完成") }, /* @__PURE__ */ React14.createElement("div", { className: "wb-stack", style: { gap: 14, paddingTop: 8 } }, /* @__PURE__ */ React14.createElement(Field, { label: "知识模式" }, /* @__PURE__ */ React14.createElement(Select, { "aria-label": "知识模式", value: mode, onChange: (event) => onMode(event.target.value), options: [{ value: "auto", label: onDemand ? "自动（按需检索）" : "自动检索" }, { value: "only", label: "仅知识库" }, { value: "off", label: "关闭" }] })), onDemand && /* @__PURE__ */ React14.createElement("p", { className: "wb-tiny wb-muted" }, "普通聊天由模型按需查询知识，不在每轮发送前搜索。仅知识库模式必须先命中资料才回答。"), /* @__PURE__ */ React14.createElement(KnowledgeScopeFields, { data, scope, onChange: onScope, automatic: true, prefix: "聊天知识" }), /* @__PURE__ */ React14.createElement("p", { className: "wb-tiny wb-muted" }, "自动跟随当前事项的项目。切换隔离范围后使用独立会话，原会话与草稿保留。")));
 }
 
 // src/client/components/AssistantOfficeHub.tsx
-var React14 = __toESM(require("react"), 1);
+var React15 = __toESM(require("react"), 1);
 
 // src/shared/busy-reply.ts
 var BUSY_REPLY_TEXT = "我现在正在紧急处理客户问题，稍后答复。紧急问题可以电话联系。";
@@ -2821,35 +2951,35 @@ function OfficeArtifacts({ artifacts = [], disabled, onAction, onOpen, renderTex
       WB.toast("复制失败，请重试", "err");
     }
   };
-  return /* @__PURE__ */ React14.createElement("div", { className: "wb-hub-office-artifacts" }, artifacts.map((artifact) => /* @__PURE__ */ React14.createElement("section", { className: "wb-hub-office-artifact", "aria-label": "办公成果：" + artifact.title, key: artifact.jobId + ":" + artifact.stepId }, /* @__PURE__ */ React14.createElement("strong", null, artifact.title), String(artifact.text || "").length > 600 ? /* @__PURE__ */ React14.createElement(React14.Fragment, null, /* @__PURE__ */ React14.createElement("p", { className: "wb-hub-artifact-preview" }, officePreview(String(artifact.text))), /* @__PURE__ */ React14.createElement("details", { className: "wb-hub-office-full" }, /* @__PURE__ */ React14.createElement("summary", null, "展开完整内容"), /* @__PURE__ */ React14.createElement("div", { className: "wb-hub-office-document" }, renderText(artifact.text)))) : /* @__PURE__ */ React14.createElement("div", { className: "wb-hub-office-document" }, renderText(artifact.text)), /* @__PURE__ */ React14.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React14.createElement(Btn, { size: "sm", onClick: () => copy(artifact.text) }, "复制内容"), /* @__PURE__ */ React14.createElement(Btn, { size: "sm", disabled: disabled || !!artifact.knowledgeId, onClick: () => onAction("office.saveKnowledge", { jobId: artifact.jobId, stepId: artifact.stepId }) }, artifact.knowledgeId ? "已存为候选知识" : "存为候选知识"), artifact.kind === "reply_batch" && /* @__PURE__ */ React14.createElement(Btn, { size: "sm", disabled: disabled || !!artifact.adoptedAt, onClick: () => onAction("office.adoptReply", { jobId: artifact.jobId, stepId: artifact.stepId }) }, artifact.adoptedAt ? "已保存草稿" : "采纳为回复草稿")), artifact.kind === "reply_batch" && /* @__PURE__ */ React14.createElement("p", { className: "wb-tiny wb-muted" }, artifact.adoptedAt ? "草稿已保存，可在对应待回复中核对后发送。" : "采纳只保存草稿，核对后再发送。"), !!artifact.evidenceIds?.length && /* @__PURE__ */ React14.createElement("details", { className: "wb-hub-artifact" }, /* @__PURE__ */ React14.createElement("summary", null, "参考依据 · ", artifact.evidenceIds.length, " 项"), artifact.evidenceIds.map((id) => /* @__PURE__ */ React14.createElement("p", { className: "wb-tiny wb-hub-text", key: id }, id))))));
+  return /* @__PURE__ */ React15.createElement("div", { className: "wb-hub-office-artifacts" }, artifacts.map((artifact) => /* @__PURE__ */ React15.createElement("section", { className: "wb-hub-office-artifact", "aria-label": "办公成果：" + artifact.title, key: artifact.jobId + ":" + artifact.stepId }, /* @__PURE__ */ React15.createElement("strong", null, artifact.title), String(artifact.text || "").length > 600 ? /* @__PURE__ */ React15.createElement(React15.Fragment, null, /* @__PURE__ */ React15.createElement("p", { className: "wb-hub-artifact-preview" }, officePreview(String(artifact.text))), /* @__PURE__ */ React15.createElement("details", { className: "wb-hub-office-full" }, /* @__PURE__ */ React15.createElement("summary", null, "展开完整内容"), /* @__PURE__ */ React15.createElement("div", { className: "wb-hub-office-document" }, renderText(artifact.text)))) : /* @__PURE__ */ React15.createElement("div", { className: "wb-hub-office-document" }, renderText(artifact.text)), /* @__PURE__ */ React15.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React15.createElement(Btn, { size: "sm", onClick: () => copy(artifact.text) }, "复制内容"), /* @__PURE__ */ React15.createElement(Btn, { size: "sm", disabled: disabled || !!artifact.knowledgeId, onClick: () => onAction("office.saveKnowledge", { jobId: artifact.jobId, stepId: artifact.stepId }) }, artifact.knowledgeId ? "已存为候选知识" : "存为候选知识"), artifact.kind === "reply_batch" && /* @__PURE__ */ React15.createElement(Btn, { size: "sm", disabled: disabled || !!artifact.adoptedAt, onClick: () => onAction("office.adoptReply", { jobId: artifact.jobId, stepId: artifact.stepId }) }, artifact.adoptedAt ? "已保存草稿" : "采纳为回复草稿")), artifact.kind === "reply_batch" && /* @__PURE__ */ React15.createElement("p", { className: "wb-tiny wb-muted" }, artifact.adoptedAt ? "草稿已保存，可在对应待回复中核对后发送。" : "采纳只保存草稿，核对后再发送。"), !!artifact.evidenceIds?.length && /* @__PURE__ */ React15.createElement("details", { className: "wb-hub-artifact" }, /* @__PURE__ */ React15.createElement("summary", null, "参考依据 · ", artifact.evidenceIds.length, " 项"), artifact.evidenceIds.map((id) => /* @__PURE__ */ React15.createElement("p", { className: "wb-tiny wb-hub-text", key: id }, id))))));
 }
 function OfficeTools({ view, onClose, onTool, onLaunch, onTask, onConfigure, data, busyReply, disabled, error: error2 }) {
-  const [queries, setQueries] = React14.useState({}), [selected, setSelected] = React14.useState([]), query = queries[view] || "";
+  const [queries, setQueries] = React15.useState({}), [selected, setSelected] = React15.useState([]), query = queries[view] || "";
   const replies = (data?.replies || []).filter((row) => !row.archivedAt && OPEN_REPLY_STAGES.includes(row.stage)), tasks = (data?.tasks || []).filter((row) => !row.archivedAt && !["completed", "cancelled"].includes(row.status));
   const visible = (view === "task" ? tasks : replies).filter((row) => [row.title, row.contact, row.groupName, row.snippet, row.id].join(" ").toLowerCase().includes(query.toLowerCase()));
-  React14.useEffect(() => {
+  React15.useEffect(() => {
     const ids = new Set(replies.map((row) => row.id));
     setSelected((previous) => previous.filter((id) => ids.has(id)));
   }, [data?.replies]);
   if (!view) return null;
   const title = { common: "助手工具", batch: "选择待回复", task: "选择待办", busy: "自动回复设置" }[view] || "日常工作", config2 = busyReply?.config;
-  const batchFooter = view === "batch" ? /* @__PURE__ */ React14.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React14.createElement("span", { className: "wb-tiny wb-muted" }, "已选 ", selected.length, "/20 条"), /* @__PURE__ */ React14.createElement("span", { className: "wb-spacer" }), /* @__PURE__ */ React14.createElement(Btn, { onClick: onClose }, "取消"), /* @__PURE__ */ React14.createElement(Btn, { kind: "primary", disabled: disabled || !selected.length, onClick: () => onLaunch("batch", selected) }, "打开回复主题")) : void 0;
-  return /* @__PURE__ */ React14.createElement(Modal, { open: true, title, onClose, footer: batchFooter }, view === "common" ? /* @__PURE__ */ React14.createElement("div", { className: "wb-hub-common-grid" }, /* @__PURE__ */ React14.createElement("button", { onClick: () => onLaunch("report", "day"), disabled }, /* @__PURE__ */ React14.createElement("strong", null, "日报"), /* @__PURE__ */ React14.createElement("span", null, "整理今天的工作进展")), /* @__PURE__ */ React14.createElement("button", { onClick: () => onLaunch("report", "week"), disabled }, /* @__PURE__ */ React14.createElement("strong", null, "周报"), /* @__PURE__ */ React14.createElement("span", null, "汇总近七日的完成与计划")), /* @__PURE__ */ React14.createElement("button", { onClick: () => onTool("batch") }, /* @__PURE__ */ React14.createElement("strong", null, "批量回复草稿"), /* @__PURE__ */ React14.createElement("span", null, "选择消息，统一准备回复内容")), /* @__PURE__ */ React14.createElement("button", { onClick: () => onTool("task") }, /* @__PURE__ */ React14.createElement("strong", null, "待办处理方案"), /* @__PURE__ */ React14.createElement("span", null, "进入对应事项整理步骤与验收清单")), /* @__PURE__ */ React14.createElement("button", { onClick: () => onTool("busy"), disabled }, /* @__PURE__ */ React14.createElement("strong", null, "自动回复设置"), /* @__PURE__ */ React14.createElement("span", null, "私聊忙碌告知，保留人工答复"))) : view === "busy" ? /* @__PURE__ */ React14.createElement("section", { className: "wb-hub-busy-settings", "aria-label": "忙碌告知设置" }, /* @__PURE__ */ React14.createElement("div", { className: "wb-hub-card-title" }, /* @__PURE__ */ React14.createElement("strong", null, "私聊忙碌告知"), config2 && /* @__PURE__ */ React14.createElement("button", { type: "button", role: "switch", "aria-label": "忙碌自动回复", "aria-checked": !!config2?.enabled, disabled: disabled || !config2, className: "wb-btn wb-btn--sm wb-btn--" + (config2?.enabled ? "primary" : "ghost"), onClick: () => onConfigure(!config2.enabled) }, config2.enabled ? "已开启" : "已关闭")), /* @__PURE__ */ React14.createElement("p", null, "仅对新收到的私聊发送固定忙碌告知，群聊不回复；本次忙碌每个会话仅告知一次。"), /* @__PURE__ */ React14.createElement("blockquote", null, config2?.text || BUSY_REPLY_TEXT), /* @__PURE__ */ React14.createElement("p", { className: "wb-tiny wb-muted" }, "这不是 AI 自由回复。自动告知后仍需人工答复，关闭后停止新的告知。"), !config2 && !error2 && /* @__PURE__ */ React14.createElement("p", { role: "status" }, "正在读取当前设置…"), busyReply?.pending > 0 && /* @__PURE__ */ React14.createElement("p", null, "当前有 ", busyReply.pending, " 条消息待人工答复。"), busyReply?.uncertain > 0 && /* @__PURE__ */ React14.createElement("p", null, busyReply.uncertain, " 个会话正在处理或结果待核实，不会重复告知。"), (error2 || busyReply?.error) && /* @__PURE__ */ React14.createElement("p", { role: "alert", className: "wb-hub-error" }, error2 || busyReply.error)) : /* @__PURE__ */ React14.createElement("div", { className: "wb-hub-office-picker" }, /* @__PURE__ */ React14.createElement("p", { className: "wb-tiny wb-muted" }, view === "batch" ? "最多选择20条，先打开处理主题，再明确生成草稿。" : "进入对应待办会话后，可生成方案或继续补充处理。"), /* @__PURE__ */ React14.createElement(Input, { "aria-label": view === "task" ? "搜索待办" : "搜索待回复", placeholder: "搜索标题、联系人或内容", value: query, onChange: (event) => setQueries((previous) => ({ ...previous, [view]: event.target.value })) }), /* @__PURE__ */ React14.createElement("div", { className: "wb-hub-office-choices" }, visible.map((row) => view === "task" ? /* @__PURE__ */ React14.createElement("button", { type: "button", className: "wb-hub-item", key: row.id, onClick: () => onTask(row) }, /* @__PURE__ */ React14.createElement("span", null, /* @__PURE__ */ React14.createElement("strong", null, row.title), /* @__PURE__ */ React14.createElement("small", null, row.description || "生成处理步骤与验收清单"))) : /* @__PURE__ */ React14.createElement("label", { key: row.id }, /* @__PURE__ */ React14.createElement("input", { type: "checkbox", "aria-label": "选择待回复：" + (row.contact || row.groupName || row.id), checked: selected.includes(row.id), disabled: disabled || !selected.includes(row.id) && selected.length >= 20, onChange: (event) => setSelected((previous) => event.target.checked ? [...previous, row.id] : previous.filter((id) => id !== row.id)) }), /* @__PURE__ */ React14.createElement("span", null, /* @__PURE__ */ React14.createElement("strong", null, row.contact || row.groupName || "待回复", /* @__PURE__ */ React14.createElement("small", null, row.stage)), /* @__PURE__ */ React14.createElement("span", null, row.snippet || row.id)))), !visible.length && /* @__PURE__ */ React14.createElement("p", { className: "wb-tiny wb-muted" }, query ? "没有匹配的事项。" : view === "task" ? "暂无未完成待办。" : "暂无需要准备草稿的待回复。"))));
+  const batchFooter = view === "batch" ? /* @__PURE__ */ React15.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React15.createElement("span", { className: "wb-tiny wb-muted" }, "已选 ", selected.length, "/20 条"), /* @__PURE__ */ React15.createElement("span", { className: "wb-spacer" }), /* @__PURE__ */ React15.createElement(Btn, { onClick: onClose }, "取消"), /* @__PURE__ */ React15.createElement(Btn, { kind: "primary", disabled: disabled || !selected.length, onClick: () => onLaunch("batch", selected) }, "打开回复主题")) : void 0;
+  return /* @__PURE__ */ React15.createElement(Modal, { open: true, title, onClose, footer: batchFooter }, view === "common" ? /* @__PURE__ */ React15.createElement("div", { className: "wb-hub-common-grid" }, /* @__PURE__ */ React15.createElement("button", { onClick: () => onLaunch("report", "day"), disabled }, /* @__PURE__ */ React15.createElement("strong", null, "日报"), /* @__PURE__ */ React15.createElement("span", null, "整理今天的工作进展")), /* @__PURE__ */ React15.createElement("button", { onClick: () => onLaunch("report", "week"), disabled }, /* @__PURE__ */ React15.createElement("strong", null, "周报"), /* @__PURE__ */ React15.createElement("span", null, "汇总近七日的完成与计划")), /* @__PURE__ */ React15.createElement("button", { onClick: () => onTool("batch") }, /* @__PURE__ */ React15.createElement("strong", null, "批量回复草稿"), /* @__PURE__ */ React15.createElement("span", null, "选择消息，统一准备回复内容")), /* @__PURE__ */ React15.createElement("button", { onClick: () => onTool("task") }, /* @__PURE__ */ React15.createElement("strong", null, "待办处理方案"), /* @__PURE__ */ React15.createElement("span", null, "进入对应事项整理步骤与验收清单")), /* @__PURE__ */ React15.createElement("button", { onClick: () => onTool("busy"), disabled }, /* @__PURE__ */ React15.createElement("strong", null, "自动回复设置"), /* @__PURE__ */ React15.createElement("span", null, "私聊忙碌告知，保留人工答复"))) : view === "busy" ? /* @__PURE__ */ React15.createElement("section", { className: "wb-hub-busy-settings", "aria-label": "忙碌告知设置" }, /* @__PURE__ */ React15.createElement("div", { className: "wb-hub-card-title" }, /* @__PURE__ */ React15.createElement("strong", null, "私聊忙碌告知"), config2 && /* @__PURE__ */ React15.createElement("button", { type: "button", role: "switch", "aria-label": "忙碌自动回复", "aria-checked": !!config2?.enabled, disabled: disabled || !config2, className: "wb-btn wb-btn--sm wb-btn--" + (config2?.enabled ? "primary" : "ghost"), onClick: () => onConfigure(!config2.enabled) }, config2.enabled ? "已开启" : "已关闭")), /* @__PURE__ */ React15.createElement("p", null, "仅对新收到的私聊发送固定忙碌告知，群聊不回复；本次忙碌每个会话仅告知一次。"), /* @__PURE__ */ React15.createElement("blockquote", null, config2?.text || BUSY_REPLY_TEXT), /* @__PURE__ */ React15.createElement("p", { className: "wb-tiny wb-muted" }, "这不是 AI 自由回复。自动告知后仍需人工答复，关闭后停止新的告知。"), !config2 && !error2 && /* @__PURE__ */ React15.createElement("p", { role: "status" }, "正在读取当前设置…"), busyReply?.pending > 0 && /* @__PURE__ */ React15.createElement("p", null, "当前有 ", busyReply.pending, " 条消息待人工答复。"), busyReply?.uncertain > 0 && /* @__PURE__ */ React15.createElement("p", null, busyReply.uncertain, " 个会话正在处理或结果待核实，不会重复告知。"), (error2 || busyReply?.error) && /* @__PURE__ */ React15.createElement("p", { role: "alert", className: "wb-hub-error" }, error2 || busyReply.error)) : /* @__PURE__ */ React15.createElement("div", { className: "wb-hub-office-picker" }, /* @__PURE__ */ React15.createElement("p", { className: "wb-tiny wb-muted" }, view === "batch" ? "最多选择20条，先打开处理主题，再明确生成草稿。" : "进入对应待办会话后，可生成方案或继续补充处理。"), /* @__PURE__ */ React15.createElement(Input, { "aria-label": view === "task" ? "搜索待办" : "搜索待回复", placeholder: "搜索标题、联系人或内容", value: query, onChange: (event) => setQueries((previous) => ({ ...previous, [view]: event.target.value })) }), /* @__PURE__ */ React15.createElement("div", { className: "wb-hub-office-choices" }, visible.map((row) => view === "task" ? /* @__PURE__ */ React15.createElement("button", { type: "button", className: "wb-hub-item", key: row.id, onClick: () => onTask(row) }, /* @__PURE__ */ React15.createElement("span", null, /* @__PURE__ */ React15.createElement("strong", null, row.title), /* @__PURE__ */ React15.createElement("small", null, row.description || "生成处理步骤与验收清单"))) : /* @__PURE__ */ React15.createElement("label", { key: row.id }, /* @__PURE__ */ React15.createElement("input", { type: "checkbox", "aria-label": "选择待回复：" + (row.contact || row.groupName || row.id), checked: selected.includes(row.id), disabled: disabled || !selected.includes(row.id) && selected.length >= 20, onChange: (event) => setSelected((previous) => event.target.checked ? [...previous, row.id] : previous.filter((id) => id !== row.id)) }), /* @__PURE__ */ React15.createElement("span", null, /* @__PURE__ */ React15.createElement("strong", null, row.contact || row.groupName || "待回复", /* @__PURE__ */ React15.createElement("small", null, row.stage)), /* @__PURE__ */ React15.createElement("span", null, row.snippet || row.id)))), !visible.length && /* @__PURE__ */ React15.createElement("p", { className: "wb-tiny wb-muted" }, query ? "没有匹配的事项。" : view === "task" ? "暂无未完成待办。" : "暂无需要准备草稿的待回复。"))));
 }
 
 // src/client/components/AssistantSidebar.tsx
-var React15 = __toESM(require("react"), 1);
+var React16 = __toESM(require("react"), 1);
 var narrow = () => typeof window !== "undefined" && window.innerWidth <= 640;
 function useAssistantSidebar(externalRoot) {
-  const ownRoot = React15.useRef(null), rootRef = externalRoot || ownRoot;
-  const [compact, setCompact] = React15.useState(narrow), [collapsed, updateCollapsed] = React15.useState(narrow);
-  const compactRef = React15.useRef(compact), desktopCollapsed = React15.useRef(false), restoreFocus = React15.useRef(false);
+  const ownRoot = React16.useRef(null), rootRef = externalRoot || ownRoot;
+  const [compact, setCompact] = React16.useState(narrow), [collapsed, updateCollapsed] = React16.useState(narrow);
+  const compactRef = React16.useRef(compact), desktopCollapsed = React16.useRef(false), restoreFocus = React16.useRef(false);
   function setCollapsed(value) {
     if (!compactRef.current) desktopCollapsed.current = value;
     restoreFocus.current = true;
     updateCollapsed(value);
   }
-  React15.useLayoutEffect(() => {
+  React16.useLayoutEffect(() => {
     const root = rootRef.current;
     if (!root) return;
     const measure = () => {
@@ -2868,7 +2998,7 @@ function useAssistantSidebar(externalRoot) {
       window.removeEventListener("resize", measure);
     };
   }, []);
-  React15.useLayoutEffect(() => {
+  React16.useLayoutEffect(() => {
     if (!restoreFocus.current) return;
     restoreFocus.current = false;
     const selector = compact && !collapsed ? ".wb-hub-sidebar-head button:not(:disabled)" : "[data-sidebar-trigger]";
@@ -2878,10 +3008,10 @@ function useAssistantSidebar(externalRoot) {
 }
 function AssistantSidebarToggle({ collapsed, onClick, trigger = false, controls = "wb-hub-conversations" }) {
   const label = collapsed ? "展开会话列表" : "收起会话列表";
-  return /* @__PURE__ */ React15.createElement("button", { type: "button", className: "wb-iconbtn wb-hub-sidebar-toggle", "data-sidebar-trigger": trigger ? "true" : void 0, "aria-label": label, title: label, "aria-expanded": !collapsed, "aria-controls": controls, onClick }, /* @__PURE__ */ React15.createElement("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.6", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" }, /* @__PURE__ */ React15.createElement("rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }), /* @__PURE__ */ React15.createElement("path", { d: "M9 4v16" }), /* @__PURE__ */ React15.createElement("path", { d: collapsed ? "m13 9 3 3-3 3" : "m16 9-3 3 3 3" })));
+  return /* @__PURE__ */ React16.createElement("button", { type: "button", className: "wb-iconbtn wb-hub-sidebar-toggle", "data-sidebar-trigger": trigger ? "true" : void 0, "aria-label": label, title: label, "aria-expanded": !collapsed, "aria-controls": controls, onClick }, /* @__PURE__ */ React16.createElement("svg", { width: "18", height: "18", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.6", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" }, /* @__PURE__ */ React16.createElement("rect", { x: "3", y: "4", width: "18", height: "16", rx: "2" }), /* @__PURE__ */ React16.createElement("path", { d: "M9 4v16" }), /* @__PURE__ */ React16.createElement("path", { d: collapsed ? "m13 9 3 3-3 3" : "m16 9-3 3 3 3" })));
 }
 function AssistantSidebar({ collapsed, compact, onChange, onNew, busy, children, label = "助手会话列表", listId = "wb-hub-conversations", newLabel = "新建对话", className = "" }) {
-  if (collapsed) return compact ? null : /* @__PURE__ */ React15.createElement("nav", { className: "wb-hub-sidebar-rail", "aria-label": "会话列表快捷栏" }, /* @__PURE__ */ React15.createElement(AssistantSidebarToggle, { collapsed: true, onClick: () => onChange(false), trigger: true, controls: listId }), /* @__PURE__ */ React15.createElement(IconBtn, { name: "plus", label: newLabel, disabled: busy, onClick: onNew }));
+  if (collapsed) return compact ? null : /* @__PURE__ */ React16.createElement("nav", { className: "wb-hub-sidebar-rail", "aria-label": "会话列表快捷栏" }, /* @__PURE__ */ React16.createElement(AssistantSidebarToggle, { collapsed: true, onClick: () => onChange(false), trigger: true, controls: listId }), /* @__PURE__ */ React16.createElement(IconBtn, { name: "plus", label: newLabel, disabled: busy, onClick: onNew }));
   function keyboard(event) {
     if (!compact) return;
     if (event.key === "Escape") {
@@ -2901,9 +3031,18 @@ function AssistantSidebar({ collapsed, compact, onChange, onNew, busy, children,
       first?.focus();
     }
   }
-  return /* @__PURE__ */ React15.createElement(React15.Fragment, null, compact && /* @__PURE__ */ React15.createElement("button", { className: "wb-hub-sidebar-backdrop", type: "button", tabIndex: -1, "aria-label": "关闭会话列表", onClick: () => onChange(true) }), /* @__PURE__ */ React15.createElement("nav", { id: listId, className: "wb-assistant-sessions" + (className ? " " + className : ""), "aria-label": label, onKeyDown: keyboard }, /* @__PURE__ */ React15.createElement("div", { className: "wb-hub-sidebar-head" }, /* @__PURE__ */ React15.createElement("strong", null, "会话"), /* @__PURE__ */ React15.createElement(IconBtn, { name: "plus", label: newLabel, disabled: busy, onClick: onNew }), /* @__PURE__ */ React15.createElement(AssistantSidebarToggle, { collapsed: false, onClick: () => onChange(true), trigger: !compact, controls: listId })), children));
+  return /* @__PURE__ */ React16.createElement(React16.Fragment, null, compact && /* @__PURE__ */ React16.createElement("button", { className: "wb-hub-sidebar-backdrop", type: "button", tabIndex: -1, "aria-label": "关闭会话列表", onClick: () => onChange(true) }), /* @__PURE__ */ React16.createElement("nav", { id: listId, className: "wb-assistant-sessions" + (className ? " " + className : ""), "aria-label": label, onKeyDown: keyboard }, /* @__PURE__ */ React16.createElement("div", { className: "wb-hub-sidebar-head" }, /* @__PURE__ */ React16.createElement("strong", null, "会话"), /* @__PURE__ */ React16.createElement(IconBtn, { name: "plus", label: newLabel, disabled: busy, onClick: onNew }), /* @__PURE__ */ React16.createElement(AssistantSidebarToggle, { collapsed: false, onClick: () => onChange(true), trigger: !compact, controls: listId })), children));
 }
 var ASSISTANT_SIDEBAR_CSS = `
+.wb-hub,.wb-web-ai{--wb-conversation-selected-bg:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,var(--dsw-alias-bg-layer-1));--wb-conversation-selected-border:color-mix(in srgb,var(--dsw-alias-brand-primary) 28%,transparent)}
+.wb-hub .wb-hub-session-row .wb-assistant-session,.wb-hub .wb-hub-session-row .wb-assistant-session:hover{background:transparent}
+.wb-hub .wb-hub-session-row:not(:has(>.wb-assistant-session[aria-current=true])):hover,.wb-web-ai .wb-chat-session:hover:not([aria-current=true]){background:var(--wb-hover-bg,var(--dsw-alias-bg-layer-2))}
+.wb-hub .wb-hub-session-row:has(>.wb-assistant-session[aria-current=true]),.wb-web-ai .wb-chat-session[aria-current=true]{position:relative;border-radius:8px;background:var(--wb-conversation-selected-bg);box-shadow:inset 0 0 0 1px var(--wb-conversation-selected-border);color:var(--dsw-alias-label-primary)}
+.wb-hub .wb-hub-session-row:has(>.wb-assistant-session[aria-current=true])::before,.wb-web-ai .wb-chat-session[aria-current=true]::before{content:'';position:absolute;left:0;top:12px;bottom:12px;width:3px;border-radius:0 3px 3px 0;background:var(--dsw-alias-brand-primary);pointer-events:none}
+.wb-hub .wb-hub-session-row .wb-assistant-session[aria-current=true]{color:var(--dsw-alias-label-primary)}
+.wb-hub .wb-assistant-session[aria-current=true] strong,.wb-web-ai .wb-chat-session[aria-current=true] strong{font-weight:600}
+.wb-hub .wb-assistant-session[aria-current=true] .wb-hub-type-icon{color:var(--dsw-alias-brand-primary)}
+.wb-hub .wb-hub-session-row .wb-assistant-session:focus-visible,.wb-web-ai .wb-chat-session:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
 .wb-hub-sidebar-head{display:flex;align-items:center;gap:4px;flex:none;min-width:0;min-height:34px}
 .wb-hub-sidebar-head>strong{flex:1;min-width:0;font-size:12px;font-weight:600}
 .wb-hub-sidebar-head>.wb-iconbtn,.wb-hub-sidebar-rail>.wb-iconbtn{width:32px;height:32px;flex:none}
@@ -2926,9 +3065,9 @@ var ASSISTANT_SIDEBAR_CSS = `
 `;
 
 // src/client/components/DevelopmentStatusChoices.tsx
-var React16 = __toESM(require("react"), 1);
+var React17 = __toESM(require("react"), 1);
 function DevelopmentStatusChoices({ value, disabled, onAction }) {
-  const [selected, setSelected] = React16.useState(null), [fields, setFields] = React16.useState({}), [comment, setComment] = React16.useState("");
+  const [selected, setSelected] = React17.useState(null), [fields, setFields] = React17.useState({}), [comment, setComment] = React17.useState("");
   const targets = Array.isArray(value?.targets) ? value.targets : [];
   if (!value || !onAction) return null;
   function choose(target) {
@@ -2945,25 +3084,25 @@ function DevelopmentStatusChoices({ value, disabled, onAction }) {
     if (disabled || missing || unsupported || !selected) return;
     void onAction("development.issue.update", { patch: { status: selected.key }, ...Object.keys(fields).length ? { fields } : {}, ...comment.trim() ? { comment } : {} });
   }
-  return /* @__PURE__ */ React16.createElement("section", { "aria-label": "Linky 可用状态", className: "wb-hub-artifact" }, /* @__PURE__ */ React16.createElement("p", { className: "wb-tiny wb-muted" }, "查询时状态：", value.current, " · 请选择要流转到的状态"), /* @__PURE__ */ React16.createElement("div", { className: "wb-row", style: { flexWrap: "wrap", gap: 8 } }, targets.map((target) => /* @__PURE__ */ React16.createElement(Btn, { key: target.key, size: "sm", disabled: disabled || value.pending, onClick: () => choose(target) }, target.name)), !targets.length && /* @__PURE__ */ React16.createElement("span", { className: "wb-muted" }, "当前暂无可用流转"), /* @__PURE__ */ React16.createElement("button", { type: "button", className: "wb-link", disabled, onClick: () => {
+  return /* @__PURE__ */ React17.createElement("section", { "aria-label": "Linky 可用状态", className: "wb-hub-artifact" }, /* @__PURE__ */ React17.createElement("p", { className: "wb-tiny wb-muted" }, "查询时状态：", value.current, " · 请选择要流转到的状态"), /* @__PURE__ */ React17.createElement("div", { className: "wb-row", style: { flexWrap: "wrap", gap: 8 } }, targets.map((target) => /* @__PURE__ */ React17.createElement(Btn, { key: target.key, size: "sm", disabled: disabled || value.pending, onClick: () => choose(target) }, target.name)), !targets.length && /* @__PURE__ */ React17.createElement("span", { className: "wb-muted" }, "当前暂无可用流转"), /* @__PURE__ */ React17.createElement(Btn, { size: "sm", disabled, onClick: () => {
     setSelected(null);
     void onAction("development.issue.get");
-  } }, "重新查询")), value.pending && /* @__PURE__ */ React16.createElement("p", { role: "status" }, "上次修改仍待核实，请先核对结果。"), selected && /* @__PURE__ */ React16.createElement("form", { "aria-label": "修改状态为" + selected.name, onSubmit: submit }, /* @__PURE__ */ React16.createElement("p", null, "将 Linky 业务状态修改为「", selected.name, "」"), formFields.filter((field) => field.supported !== false).map((field) => {
+  } }, "重新查询")), value.pending && /* @__PURE__ */ React17.createElement("p", { role: "status" }, "上次修改仍待核实，请先核对结果。"), selected && /* @__PURE__ */ React17.createElement("form", { "aria-label": "修改状态为" + selected.name, onSubmit: submit }, /* @__PURE__ */ React17.createElement("p", null, "将 Linky 业务状态修改为「", selected.name, "」"), formFields.filter((field) => field.supported !== false).map((field) => {
     const options = (field.options || []).map((option) => typeof option === "object" ? { value: option.value ?? option.key ?? option.id, label: option.label ?? option.name ?? option.title ?? option.value ?? option.key ?? option.id } : { value: option, label: option }).filter((option) => ["string", "number", "boolean"].includes(typeof option.value));
     const props = { value: fields[field.column_key] ?? field.default ?? "", disabled, onChange: (event) => setFields((previous) => ({ ...previous, [field.column_key]: event.target.value })) };
-    return /* @__PURE__ */ React16.createElement("label", { className: "wb-field", key: field.column_key }, /* @__PURE__ */ React16.createElement("span", null, field.name || field.column_key, field.required ? "（必填）" : ""), options.length ? /* @__PURE__ */ React16.createElement("select", { className: "wb-input", ...props }, /* @__PURE__ */ React16.createElement("option", { value: "" }, "请选择"), options.map((option) => /* @__PURE__ */ React16.createElement("option", { key: String(option.value), value: String(option.value) }, String(option.label)))) : /* @__PURE__ */ React16.createElement(Input, { ...props }));
-  }), (selected.form?.comment_mode === "required" || selected.form?.comment_mode === "optional") && /* @__PURE__ */ React16.createElement("label", { className: "wb-field" }, /* @__PURE__ */ React16.createElement("span", null, "流转说明", selected.form.comment_mode === "required" ? "（必填）" : "（选填）"), /* @__PURE__ */ React16.createElement(Textarea, { value: comment, disabled, onChange: (event) => setComment(event.target.value), rows: 2 })), unsupported && /* @__PURE__ */ React16.createElement("p", { role: "status" }, "此流转包含暂不支持填写的必填字段，请到 Linky 中完成。"), /* @__PURE__ */ React16.createElement("div", { className: "wb-row", style: { gap: 8 } }, /* @__PURE__ */ React16.createElement("button", { className: "wb-btn wb-btn--primary", disabled: disabled || value.pending || missing || unsupported, type: "submit" }, "修改为", selected.name), /* @__PURE__ */ React16.createElement(Btn, { disabled, onClick: () => setSelected(null) }, "取消"))));
+    return /* @__PURE__ */ React17.createElement("label", { className: "wb-field", key: field.column_key }, /* @__PURE__ */ React17.createElement("span", null, field.name || field.column_key, field.required ? "（必填）" : ""), options.length ? /* @__PURE__ */ React17.createElement("select", { className: "wb-input", ...props }, /* @__PURE__ */ React17.createElement("option", { value: "" }, "请选择"), options.map((option) => /* @__PURE__ */ React17.createElement("option", { key: String(option.value), value: String(option.value) }, String(option.label)))) : /* @__PURE__ */ React17.createElement(Input, { ...props }));
+  }), (selected.form?.comment_mode === "required" || selected.form?.comment_mode === "optional") && /* @__PURE__ */ React17.createElement("label", { className: "wb-field" }, /* @__PURE__ */ React17.createElement("span", null, "流转说明", selected.form.comment_mode === "required" ? "（必填）" : "（选填）"), /* @__PURE__ */ React17.createElement(Textarea, { value: comment, disabled, onChange: (event) => setComment(event.target.value), rows: 2 })), unsupported && /* @__PURE__ */ React17.createElement("p", { role: "status" }, "此流转包含暂不支持填写的必填字段，请到 Linky 中完成。"), /* @__PURE__ */ React17.createElement("div", { className: "wb-row", style: { gap: 8 } }, /* @__PURE__ */ React17.createElement("button", { className: "wb-btn wb-btn--primary", disabled: disabled || value.pending || missing || unsupported, type: "submit" }, "修改为", selected.name), /* @__PURE__ */ React17.createElement(Btn, { disabled, onClick: () => setSelected(null) }, "取消"))));
 }
 
 // src/client/components/AssistantConversationDelete.tsx
-var React17 = __toESM(require("react"), 1);
+var React18 = __toESM(require("react"), 1);
 function AssistantConversationDeleteButton({ row, disabled, onClick }) {
   if (row.canDelete !== true || row.kind !== "chat" || !row.id?.startsWith("chat:") || row.nativeBinding?.workspaceState !== "unbound") return null;
-  return /* @__PURE__ */ React17.createElement("button", { type: "button", className: "wb-iconbtn wb-hub-delete", "aria-label": "删除临时会话：" + row.title, title: "删除临时会话", disabled, onClick: () => onClick(row) }, /* @__PURE__ */ React17.createElement(Icon, { name: "trash", size: 14 }));
+  return /* @__PURE__ */ React18.createElement("button", { type: "button", className: "wb-iconbtn wb-hub-delete", "aria-label": "删除临时会话：" + row.title, title: "删除临时会话", disabled, onClick: () => onClick(row) }, /* @__PURE__ */ React18.createElement(Icon, { name: "trash", size: 14 }));
 }
 function AssistantConversationDeleteDialog({ target, request, onClose, onDeleted }) {
-  const [busy, setBusy] = React17.useState(false), [error2, setError] = React17.useState(""), mounted = React17.useRef(true), inFlight = React17.useRef(false);
-  React17.useEffect(() => {
+  const [busy, setBusy] = React18.useState(false), [error2, setError] = React18.useState(""), mounted = React18.useRef(true), inFlight = React18.useRef(false);
+  React18.useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -2988,7 +3127,7 @@ function AssistantConversationDeleteDialog({ target, request, onClose, onDeleted
       if (mounted.current) setBusy(false);
     }
   }
-  return /* @__PURE__ */ React17.createElement(Modal, { open: true, title: "删除临时会话", width: 420, onClose: close, footer: /* @__PURE__ */ React17.createElement(React17.Fragment, null, /* @__PURE__ */ React17.createElement(Btn, { disabled: busy, onClick: close }, "取消"), /* @__PURE__ */ React17.createElement(Btn, { kind: "danger", disabled: busy, onClick: confirm }, busy ? "正在删除…" : "确认删除")) }, /* @__PURE__ */ React17.createElement("strong", null, target.title), /* @__PURE__ */ React17.createElement("p", null, "删除后会从 AI 助手和 Harness 会话列表移除，聊天记录保留在 Harness 已归档会话中，可恢复。"), /* @__PURE__ */ React17.createElement("p", { className: "wb-tiny wb-muted" }, "系统会话、关联事项及绑定工作区的会话不能删除。正在执行的会话请先处理完。"), error2 && /* @__PURE__ */ React17.createElement("p", { role: "alert" }, error2));
+  return /* @__PURE__ */ React18.createElement(Modal, { open: true, title: "删除临时会话", width: 420, onClose: close, footer: /* @__PURE__ */ React18.createElement(React18.Fragment, null, /* @__PURE__ */ React18.createElement(Btn, { disabled: busy, onClick: close }, "取消"), /* @__PURE__ */ React18.createElement(Btn, { kind: "danger", disabled: busy, onClick: confirm }, busy ? "正在删除…" : "确认删除")) }, /* @__PURE__ */ React18.createElement("strong", null, target.title), /* @__PURE__ */ React18.createElement("p", null, "删除后会从 AI 助手和 Harness 会话列表移除，聊天记录保留在 Harness 已归档会话中，可恢复。"), /* @__PURE__ */ React18.createElement("p", { className: "wb-tiny wb-muted" }, "系统会话、关联事项及绑定工作区的会话不能删除。正在执行的会话请先处理完。"), error2 && /* @__PURE__ */ React18.createElement("p", { role: "alert" }, error2));
 }
 
 // ../../../node_modules/.pnpm/yaml@2.9.1/node_modules/yaml/browser/dist/nodes/identity.js
@@ -9537,13 +9676,13 @@ function toolCsvPane(props) {
 }
 
 // src/client/features/toolbox/tools/markdown.ts
-var React18 = __toESM(require("react"), 1);
+var React19 = __toESM(require("react"), 1);
 function mdInline(text2, keyPrefix) {
   const nodes = [];
   let rest = String(text2);
   let key2 = 0;
   const push = function(node) {
-    nodes.push(h(React18.Fragment, { key: keyPrefix + "-" + key2++ }, node));
+    nodes.push(h(React19.Fragment, { key: keyPrefix + "-" + key2++ }, node));
   };
   while (rest.length > 0) {
     let match = /^\*\*([^*]+)\*\*/.exec(rest);
@@ -9881,6 +10020,24 @@ function toolSqlExplainPane(props) {
   })))), h("p", { className: "wb-tiny wb-muted", style: { margin: 0, lineHeight: 1.7 } }, "这是**关键字规则**解读，不是数据库优化器：插件不连接任何数据库、不执行 SQL。真正调优请结合表结构、数据分布与实际耗时。"));
 }
 
+// src/client/components/AssistantToolActivity.tsx
+var React20 = __toESM(require("react"), 1);
+function isBusinessAssistantCommand(command, source) {
+  if (command.kind === "tool") return false;
+  if (command.kind === "business") return true;
+  const operation = String(command.operation || "");
+  return source === "rule" || operation.startsWith("workbench_") || /^(?:task|reply|analysis|radar|knowledge|development|busyReply|office|messages)\./.test(operation) || ["search", "confirm", "cancel"].includes(operation);
+}
+var status = (command) => command.blocked ? "暂不能执行" : { completed: "已完成", executing: "执行中", failed: "失败", interrupted: "已中断", needs_confirmation: "需确认" }[command.status] || "状态待确认";
+function AssistantToolActivity({ commands }) {
+  if (!commands.length) return null;
+  const failures = commands.filter((command) => ["failed", "interrupted"].includes(command.status)).length, active = commands.some((command) => command.status === "executing");
+  return /* @__PURE__ */ React20.createElement("details", { className: "wb-hub-tools", "aria-label": "工具执行记录" }, /* @__PURE__ */ React20.createElement("summary", null, "工具执行记录 · ", commands.length, " 项", active ? " · 执行中" : failures ? " · " + failures + " 项未完成" : ""), /* @__PURE__ */ React20.createElement("ol", null, commands.map((command, index) => /* @__PURE__ */ React20.createElement("li", { key: command.id || index }, /* @__PURE__ */ React20.createElement("div", { className: "wb-hub-command-title" }, /* @__PURE__ */ React20.createElement("strong", null, command.label && command.label !== command.operation ? command.label : "工具调用"), /* @__PURE__ */ React20.createElement("span", null, status(command))), command.operation && /* @__PURE__ */ React20.createElement("code", null, command.operation), command.resultText && /* @__PURE__ */ React20.createElement("pre", { className: "wb-hub-tool-output" }, command.resultText)))));
+}
+var ASSISTANT_TOOL_ACTIVITY_CSS = `
+.wb-hub-tools{min-width:0;font-size:12px;color:var(--dsw-alias-label-secondary)}.wb-hub-tools>summary{cursor:pointer;width:fit-content;max-width:100%;line-height:1.7;padding:3px 0}.wb-hub-tools>ol{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}.wb-hub-tools li{min-width:0;padding:10px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-1)}.wb-hub-tools code{display:block;margin-top:5px;overflow-wrap:anywhere;font-size:11px}.wb-hub-tool-output{max-width:100%;max-height:280px;overflow:auto;margin:8px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font:11px/1.7 ui-monospace,monospace;color:var(--dsw-alias-label-primary)}
+`;
+
 // src/client/components/AssistantHub.tsx
 var labels2 = { system: "系统", task: "待办", reply: "待回复", development: "研发", radar: "资讯", knowledge: "知识", chat: "对话", office: "工作", source: "消息", search: "检索结果" };
 var SYSTEM_CAPABILITIES = [{ id: "system:analysis", title: "消息识别" }, { id: "system:radar", title: "AI资讯" }, { id: "system:knowledge", title: "知识助手" }];
@@ -9898,9 +10055,14 @@ function sourceLabel(conversation) {
   if (kind === "system") return { "system:analysis": "消息识别", "system:radar": "资讯", "system:knowledge": "知识", "system:office": "办公历史" }[conversation.id] || "系统";
   return labels2[kind] || "普通对话";
 }
+function ConversationTypeIcon({ conversation }) {
+  const kind = conversationKind(conversation), label = sourceLabel(conversation), topic = conversation.officeTopic || conversation.topic;
+  const icon = kind === "office" ? topic?.kind === "reply_batch" ? "reply" : "book" : kind === "system" ? { "system:analysis": "layers", "system:radar": "radar", "system:knowledge": "book", "system:office": "clock" }[conversation.id] || "layers" : { development: "agent", task: "tasks", reply: "reply", radar: "radar", knowledge: "book", chat: "messages" }[kind] || "messages";
+  return /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-type-icon", role: "img", "aria-label": "会话类型：" + label, title: label }, /* @__PURE__ */ React21.createElement(Icon, { name: icon, size: 14 }));
+}
 function workspaceInfo(binding) {
   const state = binding?.workspaceState, title = binding?.workspaceTitle || String(binding?.cwd || "").split(/[\\/]/).filter(Boolean).at(-1) || "工作区", path = binding?.cwd || binding?.workspaceId || "";
-  if (state === "bound") return { state, label: title, title: "已绑定工作区：" + title + (path ? "\n" + path : "") };
+  if (state === "bound") return { state, label: title, title: "已绑定 Harness 工作区：" + title + (path ? "\n" + path : "") };
   if (state === "pending") return { state, label: "待绑定 · " + title, title: "项目目录待绑定工作区" + (path ? "\n" + path : "") };
   if (state === "unbound") return { state, label: "无工作区", title: "此会话未绑定 Harness 工作区" };
   if (state === "unavailable" || state === "error") return { state, label: "工作区不可用", title: binding?.workspaceError || binding?.reason || "暂时无法核实工作区" };
@@ -9908,7 +10070,7 @@ function workspaceInfo(binding) {
 }
 function WorkspaceBadge({ binding, compact = false }) {
   const value = workspaceInfo(binding);
-  return /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-workspace is-" + value.state + (compact ? " is-compact" : ""), title: value.title, "aria-label": "工作区：" + value.label }, /* @__PURE__ */ React19.createElement(Icon, { name: "folder", size: 11 }), /* @__PURE__ */ React19.createElement("span", null, value.label));
+  return /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-workspace is-" + value.state + (compact ? " is-compact" : ""), title: value.title, "aria-label": "工作区：" + value.label }, /* @__PURE__ */ React21.createElement(Icon, { name: "folder", size: compact ? 12 : 11 }), /* @__PURE__ */ React21.createElement("span", null, value.label));
 }
 function nativeTitle(thread, sessionId) {
   const role = thread?.role, roleLabel = { primary: "主会话", main: "主会话", review: "审查", history: "历史", "development-main": "研发主会话", "development-review": "审查记录", "development-history": "历史执行", "assistant-history": "历史讨论" }[role] || "", title = thread?.title || "会话 " + sessionId.slice(0, 8);
@@ -9933,59 +10095,30 @@ function cancelQueuedOffice(reason, target) {
 }
 var pageFor = { task: "tasks", reply: "replies", development: "agents", radar: "radar", knowledge: "knowledge" };
 function AssistantHubEntry({ Legacy }) {
-  const state = useStore(), [mode, setMode] = React19.useState("checking"), [initial, setInitial] = React19.useState([]), [error2, setError] = React19.useState(""), [retry, setRetry] = React19.useState(0);
-  React19.useEffect(() => {
-    if (!state.assistantOpen) return;
-    let alive = true;
-    call({ action: "list", knowledgeScope: state.assistantHubKnowledgeScope || {}, ...state.assistantHubKnowledgeScope || {} }).then((result) => {
-      if (!alive) return;
-      if (result?.status && result.status !== "ok") {
-        setError(result.note || "无法读取助手会话");
-        setMode("error");
-        return;
-      }
-      if (Array.isArray(result?.conversations)) {
-        setInitial(result.conversations);
-        setMode("hub");
-      } else setMode("legacy");
-    }).catch((failure) => {
-      if (!alive) return;
-      if (/404|not found|unknown method|no such|unavailable method/i.test(String(failure?.message))) setMode("legacy");
-      else {
-        setError(failure?.message || "无法读取助手会话");
-        setMode("error");
-      }
-    });
-    return () => {
-      alive = false;
-    };
-  }, [state.assistantOpen, retry]);
+  const state = useStore(), [legacy, setLegacy] = React21.useState(false);
+  const unsupported = React21.useCallback(() => setLegacy(true), []);
   if (!state.assistantOpen) return null;
-  if (mode === "legacy") return /* @__PURE__ */ React19.createElement(Legacy, null);
-  if (mode === "hub") return /* @__PURE__ */ React19.createElement(AssistantHub, { initial });
-  return /* @__PURE__ */ React19.createElement("aside", { className: "wb-assistant wb-hub", "aria-label": "AI 助手" }, /* @__PURE__ */ React19.createElement("div", { className: "wb-assistant-head" }, /* @__PURE__ */ React19.createElement("strong", null, "AI 助手")), /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-loading" }, mode === "checking" ? /* @__PURE__ */ React19.createElement(React19.Fragment, null, /* @__PURE__ */ React19.createElement(Spinner, { size: 16 }), /* @__PURE__ */ React19.createElement("span", null, "正在读取最近会话…")) : /* @__PURE__ */ React19.createElement(React19.Fragment, null, /* @__PURE__ */ React19.createElement("p", { role: "alert" }, error2), /* @__PURE__ */ React19.createElement(Btn, { onClick: () => {
-    setMode("checking");
-    setRetry((n) => n + 1);
-  } }, "重新连接"))), /* @__PURE__ */ React19.createElement("style", null, HUB_CSS));
+  if (legacy) return /* @__PURE__ */ React21.createElement(Legacy, null);
+  return /* @__PURE__ */ React21.createElement(AssistantHub, { initial: SYSTEM_CAPABILITIES.map((row) => ({ ...row, kind: "system", fixed: true })), onUnsupported: unsupported });
 }
 function Markdown({ text: text2 }) {
-  return /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-markdown" }, mdParse(String(text2 || "")).map((block2, index) => {
-    if (block2.type === "heading") return /* @__PURE__ */ React19.createElement("strong", { key: index }, mdInline(block2.text, "h" + index));
-    if (block2.type === "code") return /* @__PURE__ */ React19.createElement("pre", { className: "wb-code", key: index }, block2.text);
-    if (block2.type === "list") return React19.createElement(block2.ordered ? "ol" : "ul", { key: index }, block2.items.map((item, i) => /* @__PURE__ */ React19.createElement("li", { key: i }, mdInline(item, index + "-" + i))));
-    if (block2.type === "hr") return /* @__PURE__ */ React19.createElement("hr", { key: index });
-    if (block2.type === "quote") return /* @__PURE__ */ React19.createElement("blockquote", { key: index }, mdInline(block2.text, "q" + index));
-    return /* @__PURE__ */ React19.createElement("div", { key: index }, mdInline(block2.text || "", "p" + index));
+  return /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-markdown" }, mdParse(String(text2 || "")).map((block2, index) => {
+    if (block2.type === "heading") return /* @__PURE__ */ React21.createElement("strong", { key: index }, mdInline(block2.text, "h" + index));
+    if (block2.type === "code") return /* @__PURE__ */ React21.createElement("pre", { className: "wb-code", key: index }, block2.text);
+    if (block2.type === "list") return React21.createElement(block2.ordered ? "ol" : "ul", { key: index }, block2.items.map((item, i) => /* @__PURE__ */ React21.createElement("li", { key: i }, mdInline(item, index + "-" + i))));
+    if (block2.type === "hr") return /* @__PURE__ */ React21.createElement("hr", { key: index });
+    if (block2.type === "quote") return /* @__PURE__ */ React21.createElement("blockquote", { key: index }, mdInline(block2.text, "q" + index));
+    return /* @__PURE__ */ React21.createElement("div", { key: index }, mdInline(block2.text || "", "p" + index));
   }));
 }
 function MessageAttachments({ attachments, pending = false }) {
   const rows = Array.isArray(attachments) ? attachments : [];
   if (!rows.length) return null;
-  return /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-message-attachments", "aria-label": "消息附件" }, rows.map((file, index) => /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-message-file", key: file.id || file.attachmentId || index }, /* @__PURE__ */ React19.createElement(Icon, { name: file.type === "image" ? "eye" : "book", size: 16 }), /* @__PURE__ */ React19.createElement("span", null, /* @__PURE__ */ React19.createElement("strong", null, file.name || (file.type === "image" ? "图片附件" : "文件附件")), /* @__PURE__ */ React19.createElement("small", null, file.size ? `${file.size >= 1048576 ? (file.size / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(file.size / 1024)) + " KB"} · ` : "", pending ? "本条消息附件" : "已随消息保留")))));
+  return /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-message-attachments", "aria-label": "消息附件" }, rows.map((file, index) => /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-message-file", key: file.id || file.attachmentId || index }, /* @__PURE__ */ React21.createElement(Icon, { name: file.type === "image" ? "eye" : "book", size: 16 }), /* @__PURE__ */ React21.createElement("span", null, /* @__PURE__ */ React21.createElement("strong", null, file.name || (file.type === "image" ? "图片附件" : "文件附件")), /* @__PURE__ */ React21.createElement("small", null, file.size ? `${file.size >= 1048576 ? (file.size / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(file.size / 1024)) + " KB"} · ` : "", pending ? "本条消息附件" : "已随消息保留")))));
 }
 function BusinessValue({ value }) {
-  if (value == null) return /* @__PURE__ */ React19.createElement("span", { className: "wb-muted" }, "无");
-  if (typeof value !== "object") return /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, String(value));
+  if (value == null) return /* @__PURE__ */ React21.createElement("span", { className: "wb-muted" }, "无");
+  if (typeof value !== "object") return /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, String(value));
   const names = { title: "标题", body: "内容", text: "正文", url: "来源", kind: "类型", stage: "阶段", status: "状态", sender: "收件人", contact: "联系人", conversation: "会话", groupName: "会话", note: "说明", code: "编号", reviewNote: "审查意见", description: "内容", snippet: "摘要", dueAt: "截止时间", priority: "优先级", assignee: "负责人", enabled: "开关状态", startedAt: "开始时间" };
   const keys = Object.keys(names).filter((key2) => value[key2] !== void 0);
   const display = (key2, field) => {
@@ -9997,26 +10130,28 @@ function BusinessValue({ value }) {
     if (key2 === "assignee" && typeof field === "object") return field.name || field.displayName || JSON.stringify(field);
     return typeof field === "object" ? JSON.stringify(field) : String(field);
   };
-  return keys.length ? /* @__PURE__ */ React19.createElement("dl", { className: "wb-hub-values" }, keys.map((key2) => /* @__PURE__ */ React19.createElement(React19.Fragment, { key: key2 }, /* @__PURE__ */ React19.createElement("dt", null, names[key2]), /* @__PURE__ */ React19.createElement("dd", null, display(key2, value[key2]))))) : /* @__PURE__ */ React19.createElement("pre", { className: "wb-code" }, JSON.stringify(value, null, 2));
+  return keys.length ? /* @__PURE__ */ React21.createElement("dl", { className: "wb-hub-values" }, keys.map((key2) => /* @__PURE__ */ React21.createElement(React21.Fragment, { key: key2 }, /* @__PURE__ */ React21.createElement("dt", null, names[key2]), /* @__PURE__ */ React21.createElement("dd", null, display(key2, value[key2]))))) : /* @__PURE__ */ React21.createElement("pre", { className: "wb-code" }, JSON.stringify(value, null, 2));
 }
 function Confirmation({ value, disabled, onAction }) {
   if (!value || value.state && value.state !== "pending") return null;
-  return /* @__PURE__ */ React19.createElement("section", { className: "wb-hub-confirm", "aria-label": "待确认操作" }, /* @__PURE__ */ React19.createElement("strong", null, value.title || "确认此操作"), value.before !== void 0 && /* @__PURE__ */ React19.createElement("div", null, /* @__PURE__ */ React19.createElement("span", { className: "wb-tiny wb-muted" }, "当前内容 / 操作对象"), /* @__PURE__ */ React19.createElement(BusinessValue, { value: value.before })), value.after !== void 0 && /* @__PURE__ */ React19.createElement("div", null, /* @__PURE__ */ React19.createElement("span", { className: "wb-tiny wb-muted" }, "确认后"), /* @__PURE__ */ React19.createElement(BusinessValue, { value: value.after })), /* @__PURE__ */ React19.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React19.createElement(Btn, { disabled, kind: "primary", onClick: () => onAction("confirm", { confirmationId: value.id }) }, "确认执行"), /* @__PURE__ */ React19.createElement(Btn, { disabled, onClick: () => onAction("cancel", { confirmationId: value.id }) }, "取消操作")));
+  return /* @__PURE__ */ React21.createElement("section", { className: "wb-hub-confirm", "aria-label": "待确认操作" }, /* @__PURE__ */ React21.createElement("strong", null, value.title || "确认此操作"), value.before !== void 0 && /* @__PURE__ */ React21.createElement("div", null, /* @__PURE__ */ React21.createElement("span", { className: "wb-tiny wb-muted" }, "当前内容 / 操作对象"), /* @__PURE__ */ React21.createElement(BusinessValue, { value: value.before })), value.after !== void 0 && /* @__PURE__ */ React21.createElement("div", null, /* @__PURE__ */ React21.createElement("span", { className: "wb-tiny wb-muted" }, "确认后"), /* @__PURE__ */ React21.createElement(BusinessValue, { value: value.after })), /* @__PURE__ */ React21.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React21.createElement(Btn, { disabled, kind: "primary", onClick: () => onAction("confirm", { confirmationId: value.id }) }, "确认执行"), /* @__PURE__ */ React21.createElement(Btn, { disabled, onClick: () => onAction("cancel", { confirmationId: value.id }) }, "取消操作")));
 }
-function RunCard({ run, onHistory, onOpen, onAction, disabled }) {
+function RunCard({ run, onOpen, onAction, disabled, embedded = false }) {
   const progress = run.progress, result = run.result || {}, title = run.title || { analysis: "消息识别", summary: "资讯摘要", reply_batch: "批量回复草稿", work_report: "工作报告", task_assist: "待办处理方案" }[run.kind] || "处理结果", office = OFFICE_KINDS.includes(run.kind), steps = run.steps || [];
-  if (office) return /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-office-progress", "aria-label": "生成进度：" + title }, /* @__PURE__ */ React19.createElement("span", null, statusOf(run.status), steps.length ? " · 已完成 " + steps.filter((step) => step.status === "completed").length + "/" + steps.length + " 项" : ""), run.error && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-warning" }, run.error), steps.filter((step) => step.error).map((step) => /* @__PURE__ */ React19.createElement("p", { role: "status", className: "wb-hub-warning", key: step.id }, step.label || "处理步骤", "：", step.error)), run.note && /* @__PURE__ */ React19.createElement("p", null, run.note), onAction && /* @__PURE__ */ React19.createElement("div", { className: "wb-row wb-row--wrap" }, ["queued", "running"].includes(run.status) && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled, onClick: () => onAction("office.cancel", { id: run.id }) }, "停止后续处理"), ["failed", "cancelled"].includes(run.status) && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled, onClick: () => onAction("office.retry", { id: run.id }) }, "继续未完成内容")));
-  return /* @__PURE__ */ React19.createElement("article", { className: "wb-hub-message wb-hub-run", "aria-label": "执行结果：" + title }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-card-title" }, /* @__PURE__ */ React19.createElement("strong", null, title), /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-status" }, statusOf(run.status))), progress && /* @__PURE__ */ React19.createElement(React19.Fragment, null, /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, "累计处理 ", progress.processed || 0, " 条 · 剩余 ", progress.remaining || 0, " 条 · 失败 ", progress.failed || 0, " 条"), /* @__PURE__ */ React19.createElement("progress", { "aria-label": "执行进度", max: Math.max(1, (progress.processed || 0) + (progress.remaining || 0)), value: progress.processed || 0 })), (progress?.pauseReason || run.error) && /* @__PURE__ */ React19.createElement("p", { role: "status", className: "wb-hub-text wb-hub-warning" }, progress?.pauseReason || run.error), run.nextRetryAt && /* @__PURE__ */ React19.createElement("p", { className: "wb-tiny wb-muted" }, "下次重试：", timeOf(run.nextRetryAt)), (result.note || result.summary) && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, result.note || result.summary), !progress && typeof result.processed === "number" && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, "已处理 ", result.processed, " 条", typeof result.failures === "number" ? " · 失败 " + result.failures + " 条" : ""), (run.items || []).map((item) => /* @__PURE__ */ React19.createElement("button", { className: "wb-hub-item", key: item.id, onClick: () => onOpen(item) }, item.title || item.id)), /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: () => onHistory(run.id) }, "查看本轮记录"));
+  if (office) return /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-office-progress", "aria-label": "生成进度：" + title }, /* @__PURE__ */ React21.createElement("span", null, statusOf(run.status), steps.length ? " · 已完成 " + steps.filter((step) => step.status === "completed").length + "/" + steps.length + " 项" : ""), run.error && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-warning" }, run.error), steps.filter((step) => step.error).map((step) => /* @__PURE__ */ React21.createElement("p", { role: "status", className: "wb-hub-warning", key: step.id }, step.label || "处理步骤", "：", step.error)), run.note && /* @__PURE__ */ React21.createElement("p", null, run.note), onAction && /* @__PURE__ */ React21.createElement("div", { className: "wb-row wb-row--wrap" }, ["queued", "running"].includes(run.status) && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled, onClick: () => onAction("office.cancel", { id: run.id }) }, "停止后续处理"), ["failed", "cancelled", "paused"].includes(run.status) && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled, onClick: () => onAction("office.retry", { id: run.id }) }, "继续未完成内容")));
+  const noun = run.kind === "analysis" ? "识别" : run.kind === "summary" ? "摘要" : "处理", heading2 = { queued: "等待" + noun, running: "正在" + noun, paused: noun + "已暂停", completed: noun + "完成", failed: noun + "失败", cancelled: noun + "已停止" }[run.status] || statusOf(run.status);
+  const items = run.items || [], waitHeading = run.status === "queued" ? { conversation_backfill: result.waitDetail === "rate_limit" ? "等待云之家限流恢复" : "等待历史消息补齐", lease_wait: "等待其他识别结束", retry_wait: "等待重试时间" }[result.waitReason] : void 0, reason = progress?.pauseReason || run.error;
+  return /* @__PURE__ */ React21.createElement("article", { className: (embedded ? "" : "wb-assistant-message ") + "wb-hub-run" + (embedded ? " is-embedded" : ""), "aria-label": "执行结果：" + title }, /* @__PURE__ */ React21.createElement("strong", { className: "wb-hub-run-heading" }, waitHeading || heading2), progress && /* @__PURE__ */ React21.createElement(React21.Fragment, null, /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, "累计处理 ", progress.processed || 0, " 条 · 剩余 ", progress.remaining || 0, " 条 · 失败 ", progress.failed || 0, " 条"), /* @__PURE__ */ React21.createElement("progress", { "aria-label": "执行进度", max: Math.max(1, (progress.processed || 0) + (progress.remaining || 0)), value: progress.processed || 0 })), (progress?.pauseReason || run.error) && /* @__PURE__ */ React21.createElement("p", { role: "status", className: "wb-hub-text wb-hub-warning" }, progress?.pauseReason || run.error), run.nextRetryAt && /* @__PURE__ */ React21.createElement("p", { className: "wb-tiny wb-muted" }, result.waitReason === "conversation_backfill" ? "下次补采检查：" : "下次重试：", timeOf(run.nextRetryAt)), (result.note || result.summary) && (result.note || result.summary) !== reason && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, result.note || result.summary), !progress && typeof result.processed === "number" && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, "已处理 ", result.processed, " 条", run.kind === "analysis" ? "消息" : run.kind === "summary" ? "资讯" : "", typeof result.failures === "number" ? " · 失败 " + result.failures + " 条" : "", typeof result.reviewed === "number" && result.reviewed > 0 ? " · 待确认 " + result.reviewed + " 条" : ""), !!items.length && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-run-items" }, /* @__PURE__ */ React21.createElement("span", { className: "wb-tiny wb-muted" }, "关联事项"), items.map((item) => /* @__PURE__ */ React21.createElement("button", { type: "button", className: "wb-hub-item", key: item.kind + ":" + item.id, onClick: () => onOpen(item) }, item.title || item.id))));
 }
 function runArtifacts(run) {
   return (run.steps || []).filter((step) => step.artifact?.text).map((step) => ({ jobId: run.id, stepId: step.id, title: step.label || run.title, text: step.artifact.text, evidenceIds: step.artifact.evidenceIds, at: step.artifact.at, kind: run.kind, adoptedAt: step.adoptedAt, knowledgeId: step.knowledgeId }));
 }
 function ExtractionResults({ value, query, kind, busy, selected, onFilter, onEdit, onOpen, onReview, sectionRef }) {
   const items = (value?.items || []).slice(0, 6), total = Number(value?.total) || 0, offset = Number(value?.offset) || 0, counts = value?.counts || {}, pending = Number(counts.pendingReview) || 0;
-  return /* @__PURE__ */ React19.createElement("section", { ref: sectionRef, className: "wb-hub-extraction", "aria-label": "提取结果", tabIndex: -1 }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-card-title" }, /* @__PURE__ */ React19.createElement("div", null, /* @__PURE__ */ React19.createElement("h2", null, "提取结果"), /* @__PURE__ */ React19.createElement("p", { className: "wb-tiny wb-muted" }, value ? `当前筛选 ${total} 项 · 待办 ${counts.tasks || 0} · 待回复 ${counts.replies || 0}` : "正在读取实际提取结果…")), pending > 0 && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: onReview }, "待确认 ", pending, " 项")), /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-extraction-controls" }, /* @__PURE__ */ React19.createElement("div", { className: "wb-row", role: "group", "aria-label": "提取结果类型" }, [["all", "全部"], ["task", "待办"], ["reply", "待回复"]].map(([key2, label]) => /* @__PURE__ */ React19.createElement("button", { type: "button", className: "wb-hub-filter " + (kind === key2 ? "is-active" : ""), "aria-pressed": kind === key2, key: key2, onClick: () => onFilter({ kind: key2, offset: 0 }) }, label))), /* @__PURE__ */ React19.createElement(Input, { "aria-label": "搜索提取结果", placeholder: "搜索标题、内容或来源", value: query, onChange: (e) => onFilter({ query: e.target.value, offset: 0 }) })), pending > 0 && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-review-note" }, "另有 ", pending, " 项识别结果待确认，确认建档后会显示在这里。", /* @__PURE__ */ React19.createElement("button", { type: "button", className: "wb-link", onClick: onReview }, "前往确认")), busy ? /* @__PURE__ */ React19.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, "正在更新提取结果…") : null, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-extraction-list", "aria-busy": busy }, items.map((item) => {
+  return /* @__PURE__ */ React21.createElement("section", { ref: sectionRef, className: "wb-hub-extraction", "aria-label": "提取结果", tabIndex: -1 }, /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-card-title" }, /* @__PURE__ */ React21.createElement("div", null, /* @__PURE__ */ React21.createElement("h2", null, "提取结果"), /* @__PURE__ */ React21.createElement("p", { className: "wb-tiny wb-muted" }, value ? `当前筛选 ${total} 项 · 待办 ${counts.tasks || 0} · 待回复 ${counts.replies || 0}` : "正在读取实际提取结果…")), pending > 0 && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: onReview }, "待确认 ", pending, " 项")), /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-extraction-controls" }, /* @__PURE__ */ React21.createElement("div", { className: "wb-row", role: "group", "aria-label": "提取结果类型" }, [["all", "全部"], ["task", "待办"], ["reply", "待回复"]].map(([key2, label]) => /* @__PURE__ */ React21.createElement("button", { type: "button", className: "wb-hub-filter " + (kind === key2 ? "is-active" : ""), "aria-pressed": kind === key2, key: key2, onClick: () => onFilter({ kind: key2, offset: 0 }) }, label))), /* @__PURE__ */ React21.createElement(Input, { "aria-label": "搜索提取结果", placeholder: "搜索标题、内容或来源", value: query, onChange: (e) => onFilter({ query: e.target.value, offset: 0 }) })), pending > 0 && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-review-note" }, "另有 ", pending, " 项识别结果待确认，确认建档后会显示在这里。", /* @__PURE__ */ React21.createElement("button", { type: "button", className: "wb-link", onClick: onReview }, "前往确认")), busy ? /* @__PURE__ */ React21.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, "正在更新提取结果…") : null, /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-extraction-list", "aria-busy": busy }, items.map((item) => {
     const active = selected.some((ref) => ref.kind === item.kind && ref.id === item.id), body = String(item.body || ""), source = String(item.sourceText || "");
-    return /* @__PURE__ */ React19.createElement("article", { key: item.kind + ":" + item.id, className: "wb-hub-extraction-item" + (active ? " is-selected" : ""), "aria-label": (labels2[item.kind] || "事项") + "：" + item.title }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-extraction-meta" }, /* @__PURE__ */ React19.createElement("span", null, labels2[item.kind] || "事项"), statusOf(item.status) !== labels2[item.kind] && /* @__PURE__ */ React19.createElement("span", null, item.kind === "task" && item.status === "ready" ? "待处理" : item.kind === "task" && item.status === "running" ? "进行中" : statusOf(item.status)), item.dueAt && /* @__PURE__ */ React19.createElement("span", null, "截止 ", timeOf(item.dueAt))), /* @__PURE__ */ React19.createElement("strong", { className: "wb-hub-extraction-title" }, item.title), body && body.trim() !== String(item.title || "").trim() && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-extraction-body" }, body.length > 96 ? body.slice(0, 96) + "…" : body), (source || body.length > 96) && /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-extraction-source" }, /* @__PURE__ */ React19.createElement("summary", null, source ? "来源：" + source.replace(/\s+/g, " ").slice(0, 45) + (source.length > 45 ? "…" : "") : "查看完整内容"), body.length > 96 && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, body), source && /* @__PURE__ */ React19.createElement(React19.Fragment, null, /* @__PURE__ */ React19.createElement("small", null, item.sourceAt ? "原消息 " + timeOf(item.sourceAt) : "原始消息"), /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, source))), /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-extraction-actions" }, /* @__PURE__ */ React19.createElement(Btn, { size: "sm", kind: active ? "primary" : "default", disabled: busy, onClick: () => onEdit(item) }, active ? "已选中，继续输入修改" : "在对话中修改"), /* @__PURE__ */ React19.createElement("button", { type: "button", className: "wb-link", onClick: () => onOpen(item) }, "打开事项会话")));
-  }), !items.length && value && !busy && /* @__PURE__ */ React19.createElement("p", { className: "wb-tiny wb-muted" }, query || kind !== "all" ? "没有符合筛选条件的提取结果。" : pending ? "识别结果等待确认建档。" : "尚未提取出待办或待回复，可以获取最新消息并识别。")), value && /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-extraction-pagination" }, /* @__PURE__ */ React19.createElement("span", { className: "wb-tiny wb-muted" }, total ? `${offset + 1}–${Math.min(offset + items.length, total)} / ${total} 项` : "0 项"), /* @__PURE__ */ React19.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled: busy || offset === 0, onClick: () => onFilter({ offset: Math.max(0, offset - 6) }) }, "上一页"), /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled: busy || !value.hasMore && offset + items.length >= total, onClick: () => onFilter({ offset: offset + 6 }) }, "下一页"))));
+    return /* @__PURE__ */ React21.createElement("article", { key: item.kind + ":" + item.id, className: "wb-hub-extraction-item" + (active ? " is-selected" : ""), "aria-label": (labels2[item.kind] || "事项") + "：" + item.title }, /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-extraction-meta" }, /* @__PURE__ */ React21.createElement("span", null, labels2[item.kind] || "事项"), statusOf(item.status) !== labels2[item.kind] && /* @__PURE__ */ React21.createElement("span", null, item.kind === "task" && item.status === "ready" ? "待处理" : item.kind === "task" && item.status === "running" ? "进行中" : statusOf(item.status)), item.dueAt && /* @__PURE__ */ React21.createElement("span", null, "截止 ", timeOf(item.dueAt))), /* @__PURE__ */ React21.createElement("strong", { className: "wb-hub-extraction-title" }, item.title), body && body.trim() !== String(item.title || "").trim() && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-extraction-body" }, body.length > 96 ? body.slice(0, 96) + "…" : body), (source || body.length > 96) && /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-extraction-source" }, /* @__PURE__ */ React21.createElement("summary", null, source ? "来源：" + source.replace(/\s+/g, " ").slice(0, 45) + (source.length > 45 ? "…" : "") : "查看完整内容"), body.length > 96 && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, body), source && /* @__PURE__ */ React21.createElement(React21.Fragment, null, /* @__PURE__ */ React21.createElement("small", null, item.sourceAt ? "原消息 " + timeOf(item.sourceAt) : "原始消息"), /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, source))), /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-extraction-actions" }, /* @__PURE__ */ React21.createElement(Btn, { size: "sm", kind: active ? "primary" : "default", disabled: busy, onClick: () => onEdit(item) }, active ? "已选中，继续输入修改" : "在对话中修改"), /* @__PURE__ */ React21.createElement("button", { type: "button", className: "wb-link", onClick: () => onOpen(item) }, "打开事项会话")));
+  }), !items.length && value && !busy && /* @__PURE__ */ React21.createElement("p", { className: "wb-tiny wb-muted" }, query || kind !== "all" ? "没有符合筛选条件的提取结果。" : pending ? "识别结果等待确认建档。" : "尚未提取出待办或待回复，可以获取最新消息并识别。")), value && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-extraction-pagination" }, /* @__PURE__ */ React21.createElement("span", { className: "wb-tiny wb-muted" }, total ? `${offset + 1}–${Math.min(offset + items.length, total)} / ${total} 项` : "0 项"), /* @__PURE__ */ React21.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: busy || offset === 0, onClick: () => onFilter({ offset: Math.max(0, offset - 6) }) }, "上一页"), /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: busy || !value.hasMore && offset + items.length >= total, onClick: () => onFilter({ offset: offset + 6 }) }, "下一页"))));
 }
 function backgroundKey(message) {
   return String(message.sessionId || "") + ":" + String(message.seq ?? message.id ?? "");
@@ -10029,11 +10164,12 @@ function mergeBackground(previous, incoming) {
 function BackgroundRecognition({ value }) {
   if (!value) return null;
   const items = value.items || [], invalid = items.filter((item) => item.status === "invalid").length, summary = value.purpose === "summary";
-  return /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-recognition" }, /* @__PURE__ */ React19.createElement("summary", null, summary ? "摘要反馈 · " + items.length + "段" : "逐条识别结果 · " + items.length + " 条", invalid ? " · " + invalid + (summary ? " 段" : " 条") + "未有效返回" : ""), !summary && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-turn-mode" }, "以下是 AI 识别建议，实际登记状态以提取结果为准。"), value.note && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, value.note), /* @__PURE__ */ React19.createElement("ol", null, items.map((item, index) => /* @__PURE__ */ React19.createElement("li", { key: item.sourceId || index }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-command-title" }, /* @__PURE__ */ React19.createElement("strong", null, summary ? item.label || item.sourceId || "段落 " + (index + 1) : "消息 " + (item.sourceId || index + 1)), /* @__PURE__ */ React19.createElement("span", null, item.status === "invalid" ? "未有效返回" : summary ? "已返回内容" : "已识别建议")), item.summary && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, item.summary), !summary && ((item.instructions || []).length > 0 ? /* @__PURE__ */ React19.createElement(React19.Fragment, null, /* @__PURE__ */ React19.createElement("small", null, "AI 识别指令建议"), /* @__PURE__ */ React19.createElement("ul", null, item.instructions.map((instruction, i) => /* @__PURE__ */ React19.createElement("li", { key: i }, instruction)))) : item.status !== "invalid" && /* @__PURE__ */ React19.createElement("p", { className: "wb-tiny wb-muted" }, "本条未返回需要执行的指令建议。")), item.reason && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text wb-hub-warning" }, item.reason)))));
+  return /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-recognition" }, /* @__PURE__ */ React21.createElement("summary", null, summary ? "摘要反馈 · " + items.length + "段" : "逐条识别结果 · " + items.length + " 条", invalid ? " · " + invalid + (summary ? " 段" : " 条") + "未有效返回" : ""), !summary && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-turn-mode" }, "以下是 AI 识别建议，实际登记状态以提取结果为准。"), value.note && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, value.note), /* @__PURE__ */ React21.createElement("ol", null, items.map((item, index) => /* @__PURE__ */ React21.createElement("li", { key: item.sourceId || index }, /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-command-title" }, /* @__PURE__ */ React21.createElement("strong", null, summary ? item.label || item.sourceId || "段落 " + (index + 1) : "消息 " + (item.sourceId || index + 1)), /* @__PURE__ */ React21.createElement("span", null, item.status === "invalid" ? "未有效返回" : summary ? "已返回内容" : "已识别建议")), item.summary && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, item.summary), !summary && ((item.instructions || []).length > 0 ? /* @__PURE__ */ React21.createElement(React21.Fragment, null, /* @__PURE__ */ React21.createElement("small", null, "AI 识别指令建议"), /* @__PURE__ */ React21.createElement("ul", null, item.instructions.map((instruction, i) => /* @__PURE__ */ React21.createElement("li", { key: i }, instruction)))) : item.status !== "invalid" && /* @__PURE__ */ React21.createElement("p", { className: "wb-tiny wb-muted" }, "本条未返回需要执行的指令建议。")), item.reason && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text wb-hub-warning" }, item.reason)))));
 }
 function BackgroundMessage({ message }) {
+  if (message.role === "assistant" && message.finalOutput === false) return null;
   const label = message.role === "user" ? "系统提交" : message.role === "error" ? "系统失败" : "系统结果", summary = String(message.displayText || "").trim(), raw = String(message.text || ""), hasOriginal = !!(summary && summary !== raw && raw), excerptLabel = "原始内容（节选，完整内容见后台历史）";
-  return /* @__PURE__ */ React19.createElement(MessageRow, { author: message.role === "assistant" ? "assistant" : "function", at: message.at, detail: label, operation: message.recognition?.purpose === "summary" ? "radar.summary" : void 0 }, /* @__PURE__ */ React19.createElement("article", { className: "wb-assistant-message wb-hub-message wb-hub-system-message" + (message.role === "error" ? " is-error" : ""), "aria-label": label, "data-origin": "background", "data-session-id": message.sessionId, "data-message-seq": message.seq }, /* @__PURE__ */ React19.createElement("small", { className: "wb-hub-visually-hidden" }, label), /* @__PURE__ */ React19.createElement(Markdown, { text: summary || raw }), /* @__PURE__ */ React19.createElement(MessageAttachments, { attachments: message.attachments }), /* @__PURE__ */ React19.createElement(BackgroundRecognition, { value: message.recognition }), hasOriginal && /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-system-raw" }, /* @__PURE__ */ React19.createElement("summary", null, message.rawTruncated ? excerptLabel : "查看原始内容"), /* @__PURE__ */ React19.createElement(Markdown, { text: raw })), message.rawTruncated && !hasOriginal && /* @__PURE__ */ React19.createElement("p", { className: "wb-tiny wb-muted" }, excerptLabel)));
+  return /* @__PURE__ */ React21.createElement(MessageRow, { author: message.role === "assistant" ? "assistant" : "function", at: message.at, detail: label, operation: message.recognition?.purpose === "summary" ? "radar.summary" : void 0 }, /* @__PURE__ */ React21.createElement("article", { className: "wb-assistant-message wb-hub-message wb-hub-system-message" + (message.role === "error" ? " is-error" : ""), "aria-label": label, "data-origin": "background", "data-session-id": message.sessionId, "data-message-seq": message.seq }, /* @__PURE__ */ React21.createElement("small", { className: "wb-hub-visually-hidden" }, label), /* @__PURE__ */ React21.createElement(Markdown, { text: summary || raw }), /* @__PURE__ */ React21.createElement(MessageAttachments, { attachments: message.attachments }), /* @__PURE__ */ React21.createElement(BackgroundRecognition, { value: message.recognition }), hasOriginal && /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-system-raw" }, /* @__PURE__ */ React21.createElement("summary", null, message.rawTruncated ? excerptLabel : "查看原始内容"), /* @__PURE__ */ React21.createElement(Markdown, { text: raw })), message.rawTruncated && !hasOriginal && /* @__PURE__ */ React21.createElement("p", { className: "wb-tiny wb-muted" }, excerptLabel)));
 }
 var turnStatuses = { recognizing: "正在识别", recognized: "已识别", executing: "执行中", completed: "已完成", needs_confirmation: "需确认", failed: "失败", interrupted: "已中断" };
 function relatedConversation(value) {
@@ -10041,23 +10177,30 @@ function relatedConversation(value) {
 }
 function TurnResult({ event, onOpen, onAction, disabled }) {
   const related = relatedConversation(event.result?.relatedConversationId || event.relatedConversationId);
-  return /* @__PURE__ */ React19.createElement(React19.Fragment, null, event.text && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, event.text), /* @__PURE__ */ React19.createElement(DevelopmentStatusChoices, { value: event.result?.statusChoices, disabled, onAction }), related && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: () => onOpen({ conversationId: related }) }, "打开原会话"), event.operation === "analysis.updateResult" && (event.before || event.after) && /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-artifact" }, /* @__PURE__ */ React19.createElement("summary", null, "查看修改前后"), /* @__PURE__ */ React19.createElement("strong", null, "修改前"), /* @__PURE__ */ React19.createElement(BusinessValue, { value: event.before }), /* @__PURE__ */ React19.createElement("strong", null, "修改后"), /* @__PURE__ */ React19.createElement(BusinessValue, { value: event.after })), event.result?.draft && /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-artifact", open: true }, /* @__PURE__ */ React19.createElement("summary", null, "回复草稿"), /* @__PURE__ */ React19.createElement(Markdown, { text: event.result.draft.text || event.result.draft })), event.result?.text && !event.result?.draft && event.result.text !== event.text && /* @__PURE__ */ React19.createElement(Markdown, { text: event.result.text }), " ", Array.isArray(event.result?.items) && /* @__PURE__ */ React19.createElement("details", null, /* @__PURE__ */ React19.createElement("summary", null, "查询结果 · ", event.result.items.length, " 项"), event.result.items.map((item) => /* @__PURE__ */ React19.createElement("button", { type: "button", className: "wb-hub-item", key: item.id, onClick: () => onOpen({ ...item, conversationId: item.conversationId || "knowledge:" + item.id }) }, item.title || item.id))));
+  return /* @__PURE__ */ React21.createElement(React21.Fragment, null, event.text && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, event.text), /* @__PURE__ */ React21.createElement(DevelopmentStatusChoices, { value: event.result?.statusChoices, disabled, onAction }), related && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: () => onOpen({ conversationId: related }) }, "打开原会话"), event.operation === "analysis.updateResult" && (event.before || event.after) && /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-artifact" }, /* @__PURE__ */ React21.createElement("summary", null, "查看修改前后"), /* @__PURE__ */ React21.createElement("strong", null, "修改前"), /* @__PURE__ */ React21.createElement(BusinessValue, { value: event.before }), /* @__PURE__ */ React21.createElement("strong", null, "修改后"), /* @__PURE__ */ React21.createElement(BusinessValue, { value: event.after })), event.result?.draft && /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-artifact", open: true }, /* @__PURE__ */ React21.createElement("summary", null, "回复草稿"), /* @__PURE__ */ React21.createElement(Markdown, { text: event.result.draft.text || event.result.draft })), event.result?.text && !event.result?.draft && event.result.text !== event.text && /* @__PURE__ */ React21.createElement(Markdown, { text: event.result.text }), " ", Array.isArray(event.result?.items) && /* @__PURE__ */ React21.createElement("details", null, /* @__PURE__ */ React21.createElement("summary", null, "查询结果 · ", event.result.items.length, " 项"), event.result.items.map((item) => /* @__PURE__ */ React21.createElement("button", { type: "button", className: "wb-hub-item", key: item.id, onClick: () => onOpen({ ...item, conversationId: item.conversationId || "knowledge:" + item.id }) }, item.title || item.id))));
 }
 function HistoricalReply({ text: text2 }) {
-  return text2.length > 600 ? /* @__PURE__ */ React19.createElement(React19.Fragment, null, /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-artifact-preview" }, officePreview(text2)), /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-history-reply" }, /* @__PURE__ */ React19.createElement("summary", null, "展开历史原文"), /* @__PURE__ */ React19.createElement(Markdown, { text: text2 }))) : /* @__PURE__ */ React19.createElement(Markdown, { text: text2 });
+  return text2.length > 600 ? /* @__PURE__ */ React21.createElement(React21.Fragment, null, /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-artifact-preview" }, officePreview(text2)), /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-history-reply" }, /* @__PURE__ */ React21.createElement("summary", null, "展开历史原文"), /* @__PURE__ */ React21.createElement(Markdown, { text: text2 }))) : /* @__PURE__ */ React21.createElement(Markdown, { text: text2 });
 }
-function AssistantTurn({ turn, events, confirmations, disabled, onReinterpret, onRetry, onAction, onOpen, onHistory, reinterpretSupported, retrieval, citationAudit }) {
-  const working = ["recognizing", "executing"].includes(turn.status), failed = ["failed", "interrupted"].includes(turn.status), explain = turn.mode === "reinterpret", historyOrigin = turn.source === "system" || turn.origin === "office-history", commands = turn.commands || [], fallback = turn.source === "ai" && ["unmatched", "ambiguous", "error"].includes(turn.recognition?.outcome), source = historyOrigin ? "历史结果" : turn.source === "rule" ? "规则" : turn.source === "ai" ? "AI" : null;
+function AssistantTurn({ turn, conversationKind: conversationKind2, events, confirmations, disabled, onReinterpret, onRetry, onAction, onOpen, reinterpretSupported, retrieval, citationAudit }) {
+  const working = ["recognizing", "executing"].includes(turn.status), failed = ["failed", "interrupted"].includes(turn.status), explain = turn.mode === "reinterpret", historyOrigin = turn.source === "system" || turn.origin === "office-history", allCommands = turn.commands || [], commands = allCommands.filter((command) => isBusinessAssistantCommand(command, turn.source)), tools = allCommands.filter((command) => !isBusinessAssistantCommand(command, turn.source)), ordinary = conversationKind2 === "chat" && !historyOrigin && !explain && !commands.length, source = historyOrigin ? "历史结果" : turn.source === "rule" ? "规则" : turn.source === "ai" ? "AI" : null;
+  const fallback = !ordinary && turn.source === "ai" && ["unmatched", "ambiguous", "error"].includes(turn.recognition?.outcome);
   const operationOrigin = turn.trigger === "operation" || !!turn.operationSignature || explain, inputAuthor = historyOrigin ? "history" : turn.trigger === "system" ? "function" : operationOrigin ? "function" : "user", responseAuthor = historyOrigin ? "history" : turn.source === "rule" ? "rule" : turn.source === "ai" ? "assistant" : "system";
-  const status = historyOrigin && turn.recordedStatus ? statusOf(turn.recordedStatus) : turn.blocked ? "暂不能执行" : turn.status === "failed" ? "未完成" : turn.status === "completed" ? commands[0]?.operation === "development.issue.get" ? "已查询" : turn.clarificationOnly && !commands.length ? "待你补充" : explain ? "已重新识别" : turn.source === "ai" && !commands.length ? "已回复" : "已完成" : turn.status === "recognizing" ? turn.source === "ai" ? "AI 理解中" : "正在识别指令" : turnStatuses[turn.status] || turn.status || "等待处理";
-  return /* @__PURE__ */ React19.createElement("section", { className: "wb-hub-turn", "aria-label": "提交与处理结果", "data-turn-id": turn.id, "data-request-id": turn.requestId }, (turn.text || (turn.attachments || []).length > 0) && /* @__PURE__ */ React19.createElement(MessageRow, { author: inputAuthor, at: turn.at, operation: commands[0]?.operation, detail: historyOrigin ? "历史办公记录" : explain ? "重新理解" : operationOrigin ? "操作触发" : void 0 }, /* @__PURE__ */ React19.createElement("article", { className: "wb-assistant-message wb-hub-message" + (inputAuthor === "user" ? " is-user" : "") }, /* @__PURE__ */ React19.createElement(Markdown, { text: turn.attachmentOnly ? "" : turn.text }), /* @__PURE__ */ React19.createElement(MessageAttachments, { attachments: turn.attachments, pending: String(turn.id).startsWith("pending:") }))), /* @__PURE__ */ React19.createElement(MessageRow, { author: responseAuthor, at: turn.replyAt, detail: historyOrigin ? "处理结果" : void 0 }, /* @__PURE__ */ React19.createElement("article", { className: "wb-hub-turn-response", "aria-label": "处理回复" }, explain && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-turn-mode" }, "仅重新理解，原操作不会重复执行。"), turn.reply ? historyOrigin ? /* @__PURE__ */ React19.createElement(HistoricalReply, { text: String(turn.reply) }) : /* @__PURE__ */ React19.createElement(Markdown, { text: turn.reply }) : /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text wb-muted" }, turn.status === "recognizing" ? "已收到，正在识别要处理的内容。" : turn.status === "executing" ? "已识别，正在处理；实际结果会自动更新。" : turn.status === "needs_confirmation" ? "请先核对下方操作，确认后才会执行。" : failed ? "本轮未确认完成，请查看原因或刷新处理状态。" : "正在同步本轮处理结果。"), turn.executionNote && turn.executionNote !== turn.reply && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text", role: "status" }, turn.executionNote), commands.length > 0 && /* @__PURE__ */ React19.createElement("ol", { className: "wb-hub-commands", "aria-label": "识别的命令" }, commands.map((command, index) => /* @__PURE__ */ React19.createElement("li", { key: command.id || index }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-command-title" }, /* @__PURE__ */ React19.createElement("strong", null, command.label && command.label !== command.operation ? command.label : "已识别的操作"), commands.length > 1 && /* @__PURE__ */ React19.createElement("span", null, command.blocked ? "暂不能执行" : command.status === "failed" ? "未完成" : turnStatuses[command.status] || command.status || "已识别")), command.resultText && command.resultText !== turn.reply && command.resultText !== turn.executionNote && /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, command.resultText), /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-command-details" }, /* @__PURE__ */ React19.createElement("summary", null, "指令详情"), command.operation && /* @__PURE__ */ React19.createElement("code", null, command.operation), command.parameters && Object.keys(command.parameters).length > 0 && /* @__PURE__ */ React19.createElement("pre", { className: "wb-code" }, JSON.stringify(command.parameters, null, 2)))))), (turn.jobs || []).map((run) => /* @__PURE__ */ React19.createElement(RunCard, { key: run.id, run, onHistory, onOpen, onAction, disabled })), /* @__PURE__ */ React19.createElement(OfficeArtifacts, { artifacts: turn.artifacts || [], disabled, onAction, onOpen, renderText: (text2) => /* @__PURE__ */ React19.createElement(Markdown, { text: text2 }) }), events.map((event) => /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-turn-event", key: event.id }, /* @__PURE__ */ React19.createElement(TurnResult, { event: event.text === turn.reply ? { ...event, text: void 0 } : event, onOpen, onAction, disabled }))), confirmations.map((confirmation) => /* @__PURE__ */ React19.createElement(Confirmation, { key: confirmation.id, value: confirmation, disabled, onAction })), turn.clientError && /* @__PURE__ */ React19.createElement("p", { role: "alert", className: "wb-hub-error" }, turn.clientError), /* @__PURE__ */ React19.createElement(KnowledgeSources, { result: retrieval, audit: citationAudit, provided: true, compact: true }), /* @__PURE__ */ React19.createElement("footer", { className: "wb-hub-turn-footer" }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-turn-tags", "aria-label": "消息标记" }, source && /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-turn-tag", "aria-label": "识别来源：" + source, title: historyOrigin ? "历史处理记录" : turn.source === "rule" ? "通过规则识别" : fallback ? "规则未能确定指令，已自动转 AI 理解" : "由 AI 理解并回复" }, source), commands.length > 0 && /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-turn-tag" }, "指令"), explain && /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-turn-tag" }, "识别建议"), fallback && (working || ["ambiguous", "error"].includes(turn.recognition?.outcome)) && /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-fallback-note", title: turn.recognition?.reason || "规则未能确定指令，已自动转 AI 理解" }, "已转 AI"), /* @__PURE__ */ React19.createElement("span", { role: "status", className: "wb-hub-turn-status" + (failed || turn.blocked ? " is-incomplete" : "") }, working && /* @__PURE__ */ React19.createElement(Spinner, { size: 10 }), " ", status)), /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-turn-actions" }, turn.source === "rule" && !explain && !String(turn.id).startsWith("pending:") && /* @__PURE__ */ React19.createElement("button", { type: "button", className: "wb-link", disabled: disabled || reinterpretSupported === false, title: reinterpretSupported === false ? "当前宿主暂不支持仅重新识别" : "让 AI 重新理解原话，不会重复执行原操作", onClick: () => onReinterpret(turn) }, "改用 AI 识别"), turn.retryRequest && /* @__PURE__ */ React19.createElement("button", { type: "button", className: "wb-link", disabled, onClick: () => onRetry(turn) }, "检查并重试提交"))))));
+  const reply = turn.streamingText || (conversationKind2 === "chat" && turn.replySource === "tools" && turn.reply === "本轮未返回文字答复，可展开工具执行记录核对执行状态。" ? "本轮未返回文字答复，请在原会话查看执行状态。" : turn.reply);
+  const quietAnswer = turn.status === "completed" && turn.source === "ai" && !commands.length && !historyOrigin && !explain && !turn.clarificationOnly && turn.replySource !== "tools" && !turn.blocked && !turn.jobs?.length && !turn.artifacts?.length;
+  const status2 = turn.replyStreaming ? "正在回复" : historyOrigin && turn.recordedStatus ? statusOf(turn.recordedStatus) : turn.blocked ? "暂不能执行" : turn.status === "failed" ? "未完成" : turn.status === "completed" ? commands[0]?.operation === "development.issue.get" ? "已查询" : turn.clarificationOnly && !commands.length ? "待你补充" : explain ? "已重新识别" : ordinary && turn.replySource === "tools" ? "已结束" : turn.source === "ai" && !commands.length ? "已回复" : "已完成" : ordinary && working ? "正在回复" : turn.status === "recognizing" ? turn.source === "ai" ? "AI 理解中" : "正在识别指令" : turnStatuses[turn.status] || turn.status || "等待处理";
+  return /* @__PURE__ */ React21.createElement("section", { className: "wb-hub-turn", "aria-label": "提交与处理结果", "data-turn-id": turn.id, "data-request-id": turn.requestId }, (turn.text || (turn.attachments || []).length > 0) && /* @__PURE__ */ React21.createElement(MessageRow, { author: inputAuthor, at: turn.at, operation: commands[0]?.operation, detail: historyOrigin ? "历史办公记录" : explain ? "重新理解" : operationOrigin ? "操作触发" : void 0 }, /* @__PURE__ */ React21.createElement("article", { className: "wb-assistant-message wb-hub-message" + (inputAuthor === "user" ? " is-user" : "") }, /* @__PURE__ */ React21.createElement(Markdown, { text: turn.attachmentOnly ? "" : turn.text }), /* @__PURE__ */ React21.createElement(MessageAttachments, { attachments: turn.attachments, pending: String(turn.id).startsWith("pending:") }))), /* @__PURE__ */ React21.createElement(MessageRow, { author: responseAuthor, at: turn.replyAt, detail: historyOrigin ? "处理结果" : void 0 }, /* @__PURE__ */ React21.createElement("article", { className: "wb-hub-turn-response", "aria-label": "处理回复", "aria-busy": turn.replyStreaming || void 0 }, explain && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-turn-mode" }, "仅重新理解，原操作不会重复执行。"), reply ? historyOrigin ? /* @__PURE__ */ React21.createElement(HistoricalReply, { text: String(reply) }) : /* @__PURE__ */ React21.createElement(Markdown, { text: reply }) : /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text wb-muted" }, ordinary && working ? "正在处理你的问题…" : turn.status === "recognizing" ? "已收到，正在识别要处理的内容。" : turn.status === "executing" ? "已识别，正在处理；实际结果会自动更新。" : turn.status === "needs_confirmation" ? "请先核对下方操作，确认后才会执行。" : failed ? "本轮未确认完成，请查看原因或刷新处理状态。" : "正在同步本轮处理结果。"), turn.streamingText && !working && turn.reply && turn.reply !== turn.streamingText && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text", role: "status" }, turn.reply), turn.executionNote && turn.executionNote !== turn.reply && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text", role: "status" }, turn.executionNote), commands.length > 0 && /* @__PURE__ */ React21.createElement("ol", { className: "wb-hub-commands", "aria-label": "识别的命令" }, commands.map((command, index) => /* @__PURE__ */ React21.createElement("li", { key: command.id || index }, /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-command-title" }, /* @__PURE__ */ React21.createElement("strong", null, command.label && command.label !== command.operation ? command.label : "已识别的操作"), commands.length > 1 && /* @__PURE__ */ React21.createElement("span", null, command.blocked ? "暂不能执行" : command.status === "failed" ? "未完成" : turnStatuses[command.status] || command.status || "已识别")), command.resultText && command.resultText !== turn.reply && command.resultText !== turn.executionNote && /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, command.resultText), /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-command-details" }, /* @__PURE__ */ React21.createElement("summary", null, "指令详情"), command.operation && /* @__PURE__ */ React21.createElement("code", null, command.operation), command.parameters && Object.keys(command.parameters).length > 0 && /* @__PURE__ */ React21.createElement("pre", { className: "wb-code" }, JSON.stringify(command.parameters, null, 2)))))), conversationKind2 !== "chat" && /* @__PURE__ */ React21.createElement(AssistantToolActivity, { commands: tools }), (turn.jobs || []).map((run) => /* @__PURE__ */ React21.createElement(RunCard, { key: run.id, run, embedded: true, onOpen, onAction, disabled })), !!turn.artifacts?.length && /* @__PURE__ */ React21.createElement(OfficeArtifacts, { artifacts: turn.artifacts, disabled, onAction, onOpen, renderText: (text2) => /* @__PURE__ */ React21.createElement(Markdown, { text: text2 }) }), events.map((event) => /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-turn-event", key: event.id }, /* @__PURE__ */ React21.createElement(TurnResult, { event: event.text === turn.reply ? { ...event, text: void 0 } : event, onOpen, onAction, disabled }))), confirmations.map((confirmation) => /* @__PURE__ */ React21.createElement(Confirmation, { key: confirmation.id, value: confirmation, disabled, onAction })), turn.clientError && /* @__PURE__ */ React21.createElement("p", { role: "alert", className: "wb-hub-error" }, turn.clientError), /* @__PURE__ */ React21.createElement(KnowledgeSources, { result: retrieval, audit: citationAudit, provided: true, compact: true }), /* @__PURE__ */ React21.createElement("footer", { className: "wb-hub-turn-footer" }, /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-turn-tags", "aria-label": "消息标记" }, source && /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-turn-tag", "aria-label": (ordinary ? "回复来源：" : "识别来源：") + source, title: ordinary ? "AI 回答" : historyOrigin ? "历史处理记录" : turn.source === "rule" ? "通过规则识别" : fallback ? "规则未能确定指令，已自动转 AI 理解" : "由 AI 理解并回复" }, source), commands.length > 0 && /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-turn-tag" }, "指令"), explain && /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-turn-tag" }, "识别建议"), fallback && (working || ["ambiguous", "error"].includes(turn.recognition?.outcome)) && /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-fallback-note", title: turn.recognition?.reason || "规则未能确定指令，已自动转 AI 理解" }, "已转 AI"), !quietAnswer && /* @__PURE__ */ React21.createElement("span", { role: "status", className: "wb-hub-turn-status" + (failed || turn.blocked ? " is-incomplete" : "") }, working && /* @__PURE__ */ React21.createElement(Spinner, { size: 10 }), " ", status2)), /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-turn-actions" }, turn.source === "rule" && !explain && !String(turn.id).startsWith("pending:") && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: disabled || reinterpretSupported === false, title: reinterpretSupported === false ? "当前宿主暂不支持仅重新识别" : "让 AI 重新理解原话，不会重复执行原操作", onClick: () => onReinterpret(turn) }, "改用 AI 识别"), turn.retryRequest && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled, onClick: () => onRetry(turn) }, "检查并重试提交"))))));
 }
-function AssistantHub({ initial = [] }) {
-  const state = useStore(), id = state.assistantConversationId || (state.assistantTaskId ? "task:" + state.assistantTaskId : "system:analysis"), scopeKey = id + ":" + (state.assistantOpenSeq || 0) + ":" + (state.assistantHubThreadId || "") + ":" + JSON.stringify(state.assistantHubKnowledgeScope || {}), [rows, setRows] = React19.useState(initial), [detail, setDetail] = React19.useState(null), [loading, setLoading] = React19.useState(true), [error2, setError] = React19.useState(""), [query, setQuery] = React19.useState(""), [filter, setFilter] = React19.useState("all"), [draft, setDraft] = React19.useState(""), [busy, setBusy] = React19.useState(false), [streaming, setStreaming] = React19.useState(false), [result, setResult] = React19.useState(null), [threadId, setThreadId] = React19.useState(null), [history, setHistory] = React19.useState(null), [historyBusy, setHistoryBusy] = React19.useState(false), [identityOpen, setIdentityOpen] = React19.useState(false), [knowledgeOpen, setKnowledgeOpen] = React19.useState(false), [knowledgeMode, setKnowledgeMode] = React19.useState("auto"), [knowledgeScope, setKnowledgeScope] = React19.useState(state.assistantHubKnowledgeScope || {}), [retrievals, setRetrievals] = React19.useState({}), [citationAudits, setCitationAudits] = React19.useState({}), [past, setPast] = React19.useState([]), [pastTurns, setPastTurns] = React19.useState([]), [pastCursor, setPastCursor] = React19.useState(null), [morePast, setMorePast] = React19.useState(null), [pastLoading, setPastLoading] = React19.useState(false), [backgroundMessages, setBackgroundMessages] = React19.useState([]), [backgroundCursor, setBackgroundCursor] = React19.useState(null), [backgroundHasMore, setBackgroundHasMore] = React19.useState(false), [backgroundLoading, setBackgroundLoading] = React19.useState(false), [backgroundPageErrors, setBackgroundPageErrors] = React19.useState([]), [extraction, setExtraction] = React19.useState(null), [extractionBusy, setExtractionBusy] = React19.useState(false), [clientTurns, setClientTurns] = React19.useState([]), [officeTool, setOfficeTool] = React19.useState(null), [officeError, setOfficeError] = React19.useState(""), [pinBusy, setPinBusy] = React19.useState(""), [expandedDays, setExpandedDays] = React19.useState(() => state.assistantHistoryExpanded || {});
+function AssistantHub({ initial = [], onUnsupported }) {
+  const [connectOpen, setConnectOpen] = React21.useState(false);
+  const state = useStore(), id = state.assistantConversationId || (state.assistantTaskId ? "task:" + state.assistantTaskId : "system:analysis"), scopeKey = id + ":" + (state.assistantOpenSeq || 0) + ":" + (state.assistantHubThreadId || "") + ":" + JSON.stringify(state.assistantHubKnowledgeScope || {}), [rows, setRows] = React21.useState(initial), [detail, setDetail] = React21.useState(null), [loading, setLoading] = React21.useState(true), [error2, setError] = React21.useState(""), [query, setQuery] = React21.useState(""), [filter, setFilter] = React21.useState("all"), [draft, setDraft] = React21.useState(""), [busy, setBusy] = React21.useState(false), [streaming, setStreaming] = React21.useState(false), [result, setResult] = React21.useState(null), [threadId, setThreadId] = React21.useState(null), [history, setHistory] = React21.useState(null), [historyBusy, setHistoryBusy] = React21.useState(false), [identityOpen, setIdentityOpen] = React21.useState(false), [knowledgeOpen, setKnowledgeOpen] = React21.useState(false), [knowledgeMode, setKnowledgeMode] = React21.useState("auto"), [knowledgeScope, setKnowledgeScope] = React21.useState(state.assistantHubKnowledgeScope || {}), [retrievals, setRetrievals] = React21.useState({}), [citationAudits, setCitationAudits] = React21.useState({}), [past, setPast] = React21.useState([]), [pastTurns, setPastTurns] = React21.useState([]), [pastCursor, setPastCursor] = React21.useState(null), [morePast, setMorePast] = React21.useState(null), [pastLoading, setPastLoading] = React21.useState(false), [backgroundMessages, setBackgroundMessages] = React21.useState([]), [backgroundCursor, setBackgroundCursor] = React21.useState(null), [backgroundHasMore, setBackgroundHasMore] = React21.useState(false), [backgroundLoading, setBackgroundLoading] = React21.useState(false), [backgroundPageErrors, setBackgroundPageErrors] = React21.useState([]), [extraction, setExtraction] = React21.useState(null), [extractionBusy, setExtractionBusy] = React21.useState(false), [clientTurns, setClientTurns] = React21.useState([]), [officeTool, setOfficeTool] = React21.useState(null), [officeError, setOfficeError] = React21.useState(""), [pinBusy, setPinBusy] = React21.useState(""), [expandedDays, setExpandedDays] = React21.useState(() => state.assistantHistoryExpanded || {});
   const { rootRef: sidebarRoot, collapsed, compact, setCollapsed: collapseSidebar } = useAssistantSidebar();
-  const [deleteTarget, setDeleteTarget] = React19.useState(null), listMutation = React19.useRef(0);
-  const consumedSearchDraft = React19.useRef(null);
-  React19.useEffect(() => {
+  const [deleteTarget, setDeleteTarget] = React21.useState(null), listMutation = React21.useRef(0);
+  const [listLoading, setListLoading] = React21.useState(true), [listError, setListError] = React21.useState(""), [listRetry, setListRetry] = React21.useState(0), [listSlow, setListSlow] = React21.useState(false), listReady = React21.useRef("");
+  const [readError, setReadError] = React21.useState("");
+  const [stopping, setStopping] = React21.useState(false), [stopNote, setStopNote] = React21.useState(""), stopPending = React21.useRef(null), submission = React21.useRef(null);
+  const consumedSearchDraft = React21.useRef(null);
+  React21.useEffect(() => {
     const request = state.assistantDraftRequest;
     if (loading || !request || request.conversationId !== id || consumedSearchDraft.current === request.id) return;
     consumedSearchDraft.current = request.id;
@@ -10068,7 +10211,7 @@ function AssistantHub({ initial = [] }) {
     });
     WB.store.set({ assistantDraftRequest: null });
   }, [loading, id, state.assistantDraftRequest]);
-  const pinVersion = React19.useRef(0), generation = React19.useRef(0), currentScope = React19.useRef(scopeKey), drafts2 = React19.useRef({}), busyRef = React19.useRef(false), pollRef = React19.useRef(null), messagesRef = React19.useRef([]), body = React19.useRef(null), pinned = React19.useRef(true), searchRef = React19.useRef(""), searchVersion = React19.useRef(0), historyVersion = React19.useRef(0), backgroundAnchor = React19.useRef(null), backgroundPaging = React19.useRef(false), backgroundLoadingRef = React19.useRef(false), backgroundScroll = React19.useRef(null), pastLoadingRef = React19.useRef(false), extractionSection = React19.useRef(null), extractionVersion = React19.useRef(0), extractionKeyRef = React19.useRef(""), extractionOptionsRef = React19.useRef(null), serverTurnsRef = React19.useRef([]), consumedOffice = React19.useRef(/* @__PURE__ */ new Set());
+  const pinVersion = React21.useRef(0), generation = React21.useRef(0), currentScope = React21.useRef(scopeKey), drafts2 = React21.useRef({}), busyRef = React21.useRef(false), pollRef = React21.useRef(null), messagesRef = React21.useRef([]), body = React21.useRef(null), pinned = React21.useRef(true), searchRef = React21.useRef(""), searchVersion = React21.useRef(0), historyVersion = React21.useRef(0), backgroundAnchor = React21.useRef(null), backgroundPaging = React21.useRef(false), backgroundLoadingRef = React21.useRef(false), backgroundScroll = React21.useRef(null), pastLoadingRef = React21.useRef(false), extractionSection = React21.useRef(null), extractionVersion = React21.useRef(0), extractionKeyRef = React21.useRef(""), extractionOptionsRef = React21.useRef(null), serverTurnsRef = React21.useRef([]), consumedOffice = React21.useRef(/* @__PURE__ */ new Set());
   searchRef.current = query;
   if (currentScope.current !== scopeKey) {
     currentScope.current = scopeKey;
@@ -10078,9 +10221,10 @@ function AssistantHub({ initial = [] }) {
   const conversation = detail?.conversation || rows.find((row) => row.id === id) || { id, title: "AI 助手", kind: id.split(":")[0] }, kind = conversation.kind || id.split(":")[0], system = isFixed(id), entity2 = detail?.entity;
   const nativeBinding = detail?.nativeBinding || conversation.nativeBinding, nativeSessionId = threadId || nativeBinding?.sessionId || detail?.sessionId || null, nativeThreads = detail?.threads || [], nativeBlocked = nativeBinding?.canSend === false;
   const scopedCall = (request) => call({ ...request, knowledgeScope, ...knowledgeScope });
-  async function listConversations(request = {}) {
-    const version = listMutation.current, result2 = await scopedCall({ action: "list", ...request });
-    return version === listMutation.current ? result2 : { ...result2, conversations: void 0 };
+  const scopedRead = (request, signal) => readAssistantHub({ ...request, knowledgeScope, ...knowledgeScope }, signal);
+  async function listConversations(request = {}, signal) {
+    const version = listMutation.current, result2 = await scopedRead({ action: "list", ...request }, signal);
+    return version === listMutation.current ? result2 : { ...result2, conversations: void 0, listSuperseded: true };
   }
   function conversationDeleted(target) {
     listMutation.current++;
@@ -10099,7 +10243,7 @@ function AssistantHub({ initial = [] }) {
   const draftThreadKey = (sessionId) => sessionId && sessionId !== primaryDraftSessions.get(draftBaseKey) ? sessionId : "";
   const clientTurnKey = draftBaseKey + ":" + draftThreadKey(state.assistantHubThreadId);
   const attachments = useAssistantAttachments(clientTurnKey), assistantName = state.data?.settings?.assistantName || "AI 助手", userIdentity = WB.getAssistantIdentity?.() || { name: "我" };
-  React19.useEffect(() => {
+  React21.useEffect(() => {
     void WB.loadAssistantIdentity?.();
   }, []);
   function saveClientTurns(update) {
@@ -10150,25 +10294,30 @@ function AssistantHub({ initial = [] }) {
     }
     if (page) setBackgroundPageErrors(value.errors || []);
   }
-  async function refresh(g = generation.current, targetThread = threadId, full = true) {
+  async function refresh(g = generation.current, targetThread = threadId, signal) {
     const eKey = extractionKeyRef.current, eVersion = extractionVersion.current;
-    const response = await scopedCall({ action: "detail", conversationId: id, ...targetThread ? { sessionId: targetThread } : {}, ...extractionRequest(), limit: 60 });
+    const response = await scopedRead({ action: "detail", conversationId: id, ...targetThread ? { sessionId: targetThread } : {}, ...extractionRequest(), limit: 60 }, signal);
     if (g !== generation.current) return;
     if (response?.status !== "ok") throw Error(response?.note || "无法读取会话");
     receiveBackground(response.background);
     receiveExtraction(response.extraction, eKey, eVersion);
     acknowledgeTurns(response.turns);
-    setDetail((previous) => busyRef.current ? { ...response, messages: previous?.messages || [] } : response);
-    if (!busyRef.current) messagesRef.current = response.messages || [];
+    setDetail((previous) => {
+      const keep = !!response.historyError && previous?.conversation?.id === response.conversation.id && previous?.sessionId === response.sessionId;
+      return keep ? { ...response, messages: previous.messages || [], hasMore: previous.hasMore, before: previous.before, turns: [...new Map([...previous.turns || [], ...response.turns || []].map((turn) => [turn.id, turn])).values()] } : busyRef.current ? { ...response, messages: previous?.messages || [] } : response;
+    });
+    if (!busyRef.current && !response.historyError) messagesRef.current = response.messages || [];
+    if (stopPending.current?.g === g && stopPending.current.acked && response.stop && !response.stop.available) finishStop(g);
     setLoading(false);
+    setReadError("");
     receiveRetrievals(response.retrievals || [response.retrieval]);
-    if (full && !searchRef.current) {
-      const list2 = await listConversations();
-      if (g === generation.current && !searchRef.current && Array.isArray(list2?.conversations)) setRows(list2.conversations);
-    }
+    return !!response.turnActive;
   }
-  React19.useEffect(() => {
+  React21.useEffect(() => {
     const g = ++generation.current;
+    stopPending.current = null;
+    setStopping(false);
+    setStopNote("");
     pinVersion.current++;
     setPinBusy("");
     busyRef.current = false;
@@ -10206,51 +10355,89 @@ function AssistantHub({ initial = [] }) {
     setDraft(drafts2.current[clientTurnKey] || "");
     messagesRef.current = [];
     pinned.current = true;
-    let active = true, running = false, count = 0;
+    let active = true, running = false;
+    const controller = new AbortController();
+    setReadError("");
+    let timer;
     const tick = async () => {
       if (!active || running) return;
       running = true;
+      let replying = false;
       try {
-        await refresh(g, state.assistantHubThreadId || null, count++ % 4 === 0);
+        const awaitingAttachmentReceipt = (WB.store.get().assistantHubClientTurns?.[clientTurnKey] || []).some((turn) => String(turn.id).startsWith("pending:") && turn.attachments?.length && !turn.attachmentAccepted && turn.userSeq == null);
+        if (!busyRef.current || awaitingAttachmentReceipt || stopPending.current) replying = await refresh(g, state.assistantHubThreadId || null, controller.signal) || false;
       } catch (e) {
         if (active && g === generation.current) {
-          setError(e.message || "读取会话失败");
+          setReadError(e.message || "读取会话失败");
           cancelQueuedOffice("目标会话读取失败", id);
           setLoading(false);
         }
       } finally {
         running = false;
+        if (active) timer = setTimeout(tick, replying ? 250 : 2500);
       }
     };
     void tick();
-    const timer = setInterval(tick, 2500);
     return () => {
       active = false;
-      clearInterval(timer);
+      controller.abort();
+      clearTimeout(timer);
       clearTimeout(pollRef.current);
       generation.current++;
     };
   }, [scopeKey]);
-  React19.useEffect(() => {
-    const version = ++searchVersion.current;
-    const timer = setTimeout(() => {
-      listConversations({ query }).then((r) => {
-        if (version === searchVersion.current && Array.isArray(r?.conversations)) setRows(r.conversations);
-      }).catch((e) => {
-        if (version === searchVersion.current) setError(e.message);
-      });
-    }, 250);
-    return () => {
-      clearTimeout(timer);
-      searchVersion.current++;
+  const directoryScopeKey = JSON.stringify(knowledgeScope);
+  React21.useEffect(() => {
+    const version = ++searchVersion.current, controller = new AbortController(), key2 = query + "|" + directoryScopeKey;
+    let running = false, retries = 0, timer;
+    const tick = async () => {
+      if (running || controller.signal.aborted) return;
+      running = true;
+      setListLoading(true);
+      try {
+        const r = await listConversations({ query }, controller.signal);
+        if (version !== searchVersion.current) return;
+        if (r?.status && r.status !== "ok") throw Error(r.note || "无法读取会话列表");
+        if (Array.isArray(r?.conversations)) {
+          setRows(r.conversations);
+          setListError("");
+          setListSlow(false);
+          listReady.current = key2;
+          retries = 0;
+        } else if (!r?.listSuperseded) onUnsupported?.();
+      } catch (e) {
+        if (version !== searchVersion.current || controller.signal.aborted) return;
+        if (/404|unknown method|no such method|unavailable method/i.test(String(e?.message))) onUnsupported?.();
+        else if (e.code === "assistant_read_timeout" && listReady.current === key2) {
+          setListError("");
+          setListSlow(true);
+        } else {
+          setListSlow(false);
+          setListError(e.message || "无法读取会话列表");
+        }
+        retries++;
+      } finally {
+        running = false;
+        if (version === searchVersion.current && !controller.signal.aborted) {
+          setListLoading(false);
+          timer = setTimeout(tick, retries ? Math.min(1e4, 2e3 * 2 ** Math.min(retries - 1, 3)) : 1e4);
+        }
+      }
     };
-  }, [query, scopeKey]);
-  React19.useEffect(() => {
+    if (query) timer = setTimeout(tick, 250);
+    else void tick();
+    return () => {
+      searchVersion.current++;
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [query, directoryScopeKey, listRetry]);
+  React21.useEffect(() => {
     if (id !== "system:analysis") return;
     const g = generation.current, key2 = extractionKey, version = extractionVersion.current;
     setExtractionBusy(true);
     const timer = setTimeout(() => {
-      scopedCall({ action: "detail", conversationId: id, ...extractionRequest(), limit: 60 }).then((response) => {
+      scopedRead({ action: "detail", conversationId: id, ...extractionRequest(), limit: 60 }).then((response) => {
         if (g !== generation.current || key2 !== extractionKeyRef.current || version !== extractionVersion.current) return;
         if (response?.status !== "ok") throw Error(response?.note || "无法读取提取结果");
         receiveExtraction(response.extraction, key2, version);
@@ -10269,14 +10456,14 @@ function AssistantHub({ initial = [] }) {
     const top = node.getBoundingClientRect().top, visible = Array.from(node.children).find((child) => child.matches(".wb-hub-chat-row,.wb-hub-turn,.wb-hub-history-day") && child.getBoundingClientRect().bottom > top);
     backgroundScroll.current = { top: node.scrollTop, height: node.scrollHeight, node: visible, offset: visible ? visible.getBoundingClientRect().top - top : 0 };
   }
-  React19.useLayoutEffect(() => {
+  React21.useLayoutEffect(() => {
     const anchor = backgroundScroll.current, node = body.current;
     if (anchor && node) {
       node.scrollTop = anchor.node?.isConnected ? node.scrollTop + anchor.node.getBoundingClientRect().top - node.getBoundingClientRect().top - anchor.offset : anchor.top + node.scrollHeight - anchor.height;
       backgroundScroll.current = null;
     }
   }, [past, pastTurns, backgroundMessages, morePast, backgroundHasMore]);
-  React19.useLayoutEffect(() => {
+  React21.useLayoutEffect(() => {
     if (!loading && pinned.current && body.current) body.current.scrollTop = body.current.scrollHeight;
   }, [loading, scopeKey, detail?.messages, detail?.events, detail?.turns, clientTurns, backgroundMessages, extraction, streaming, result, nativeBlocked, nativeBinding?.reason]);
   function choose(row) {
@@ -10293,8 +10480,51 @@ function AssistantHub({ initial = [] }) {
     drafts2.current[clientTurnKey] = value;
     setDraft(value);
   }
+  function finishStop(g) {
+    if (g !== generation.current) return;
+    stopPending.current = null;
+    setStopping(false);
+    busyRef.current = false;
+    setBusy(false);
+    setStreaming(false);
+    clearTimeout(pollRef.current);
+    setStopNote("已停止，历史与已完成进度保留");
+  }
+  async function stopCurrent() {
+    if (stopPending.current) return;
+    const g = generation.current, active = busyRef.current && submission.current?.g === g && ["send", "reinterpret"].includes(submission.current.action) ? submission.current : null;
+    stopPending.current = { g, acked: false };
+    setStopping(true);
+    setError("");
+    setStopNote("正在停止…");
+    if (active && !active.dispatched) {
+      active.cancelled = true;
+      active.abort.abort();
+      if (!drafts2.current[clientTurnKey]) setText(active.text || "");
+      saveClientTurns((previous) => previous.map((turn) => turn.requestId === active.requestId ? { ...turn, status: "interrupted", reply: "已停止，本条尚未发送", retryRequest: void 0 } : turn));
+      finishStop(g);
+      return;
+    }
+    try {
+      const r = await scopedCall({ action: "stop", conversationId: id, ...active?.sessionId || nativeSessionId ? { sessionId: active?.sessionId || nativeSessionId } : {}, ...active?.requestId ? { requestId: active.requestId } : {}, token: detail?.stop?.token });
+      if (g !== generation.current) return;
+      if (r?.status !== "ok") throw Error(r?.note || "停止失败，请在原会话核对运行状态");
+      if (active) active.cancelled = true;
+      stopPending.current = { g, acked: true };
+      setStopNote(r.note || "已请求停止，正在核对原生状态");
+      if (!r.stopping) finishStop(g);
+      await refresh(g, threadId);
+    } catch (failure) {
+      if (g === generation.current) {
+        stopPending.current = null;
+        setStopping(false);
+        setError(failure.message || "停止失败，历史已保留");
+      }
+    }
+  }
   async function newChat(same = false) {
     if (busyRef.current) return;
+    submission.current = null;
     const g = generation.current;
     setBusy(true);
     busyRef.current = true;
@@ -10303,6 +10533,7 @@ function AssistantHub({ initial = [] }) {
       const r = await scopedCall({ action: "reset", ...same ? { conversationId: id } : {} });
       if (g !== generation.current) return;
       if (r?.status !== "ok") throw Error(r?.note || "无法新建对话");
+      setListRetry((n) => n + 1);
       if (!same) {
         setFilter("chat");
         setQuery("");
@@ -10330,10 +10561,13 @@ function AssistantHub({ initial = [] }) {
     const attachmentMetadata = hasAttachments ? attachmentIds.map((key2) => attachments.items.find((row) => row.id === key2)).filter(Boolean).map((row) => ({ id: row.id, type: row.type, name: row.name, size: row.size, mediaType: row.mediaType })) : [];
     if (tracked && !request.requestId) request = { ...request, requestId: requestId() };
     let local = tracked ? { id: "pending:" + request.requestId, requestId: request.requestId, text: text2 || "", at: (/* @__PURE__ */ new Date()).toISOString(), mode: request.action === "reinterpret" ? "reinterpret" : "execute", trigger: request.action === "send" ? "manual" : "operation", ...hasAttachments ? { attachments: attachmentMetadata, source: "ai" } : {}, commands: [], ...request.action === "reinterpret" ? { source: "ai", reinterpretsTurnId: request.turnId } : {}, ...retrying, status: "recognizing", clientError: void 0, retryRequest: void 0 } : null;
+    const activeSubmit = { g, action: request.action, requestId: request.requestId, sessionId: request.sessionId || nativeSessionId, dispatched: false, cancelled: false, abort: new AbortController(), text: text2 || "" };
+    submission.current = activeSubmit;
     busyRef.current = true;
     setBusy(true);
     setError("");
     setResult(null);
+    setStopNote("");
     pinned.current = true;
     if (local) {
       saveClientTurns((previous) => [...previous.filter((row) => row.requestId !== local.requestId), local]);
@@ -10381,6 +10615,7 @@ function AssistantHub({ initial = [] }) {
       WB.store.set({ assistantHubClientTurns: { ...all, [clientTurnKey]: (all[clientTurnKey] || []).map((turn) => turn.requestId === request.requestId ? { ...turn, status: "interrupted", reply: note, clientError: failure || note, retryRequest: request } : turn) } });
     };
     const scopeChanged = () => {
+      if (activeSubmit.cancelled && !promptDispatched) return true;
       if (g === generation.current) return false;
       retainDetached();
       return true;
@@ -10391,12 +10626,15 @@ function AssistantHub({ initial = [] }) {
         const prepared = await scopedCall({ action: "prepareAttachments", conversationId: id, ...payload.sessionId ? { sessionId: payload.sessionId } : {} });
         if (scopeChanged()) return;
         if (prepared?.status !== "ok" || !prepared.sessionId) throw Error(prepared?.note || "附件会话准备失败，本条消息未发送。");
-        const preparedAttachments = await attachments.prepare({ sessionId: prepared.sessionId, imageLimits: prepared.imageLimits, ids: attachmentIds });
+        activeSubmit.sessionId = prepared.sessionId;
+        const preparedAttachments = await attachments.prepare({ sessionId: prepared.sessionId, imageLimits: prepared.imageLimits, ids: attachmentIds, signal: activeSubmit.abort.signal });
         if (scopeChanged()) return;
         request = { ...request, sessionId: prepared.sessionId };
         payload = { ...payload, sessionId: prepared.sessionId, attachments: preparedAttachments };
       }
+      if (activeSubmit.cancelled) return;
       promptDispatched = true;
+      activeSubmit.dispatched = true;
       const r = await scopedCall(payload);
       if (hasAttachments && (r?.status === "ok" && r?.accepted !== false || r?.accepted === true)) {
         attachmentsAccepted = true;
@@ -10411,9 +10649,17 @@ function AssistantHub({ initial = [] }) {
         return;
       }
       if (hasAttachments && r?.accepted === false && !drafts2.current[clientTurnKey]) setText(text2 || "");
+      if (activeSubmit.cancelled && submission.current !== activeSubmit) return;
       setResult(r);
       if (r?.retrieval) receiveRetrievals([{ ...r.retrieval, sessionId: r.sessionId || r.turn?.sessionId, fromSeq: r.fromSeq ?? r.turn?.fromSeq, turnId: r.turnId || r.turn?.id }]);
       if (r?.turn) remember({ ...r.turn, clientError: void 0, retryRequest: hasAttachments && !attachmentsAccepted ? request : void 0 });
+      if (activeSubmit.cancelled || r?.status === "stopped") {
+        busyRef.current = false;
+        setBusy(false);
+        setStreaming(false);
+        await refresh(g, threadId);
+        return;
+      }
       if (r?.status !== "ok" && r?.status !== "confirmation_required") {
         if (r?.turn) {
           restoreAttachmentDraft(r?.note || r?.reply || "本条消息未发送，请重试。");
@@ -10436,13 +10682,14 @@ function AssistantHub({ initial = [] }) {
         let cursor = Number(r.fromSeq) || 0;
         const started = Date.now();
         const tick = async () => {
-          if (g !== generation.current) return;
+          if (g !== generation.current || activeSubmit.cancelled && !stopPending.current) return;
           try {
-            const delta = await scopedCall({ action: "delta", conversationId: id, sessionId: r.sessionId, fromSeq: cursor, retrievalId: r.retrieval?.id });
+            const delta = await scopedRead({ action: "delta", conversationId: id, sessionId: r.sessionId, fromSeq: cursor, retrievalId: r.retrieval?.id });
             if (g !== generation.current) return;
             if (delta?.status !== "ok") throw Error(delta?.note || "读取回答失败");
             cursor = Number(delta.nextSeq) || cursor;
             if (delta.citationAudit && r.retrieval?.id) setCitationAudits((previous) => ({ ...previous, [r.retrieval.id]: delta.citationAudit }));
+            if (Array.isArray(delta.retrievals)) receiveRetrievals(delta.retrievals);
             if (Array.isArray(delta.turns)) {
               acknowledgeTurns(delta.turns);
               setDetail((p) => ({ ...p, turns: delta.turns }));
@@ -10467,7 +10714,7 @@ function AssistantHub({ initial = [] }) {
               return;
             }
             if (Date.now() - started > 18e4) throw Error("本轮仍在处理中，稍后会自动同步结果；请勿重复提交。");
-            pollRef.current = setTimeout(tick, 500);
+            pollRef.current = setTimeout(tick, 250);
           } catch (e) {
             if (g === generation.current) fail(e);
           }
@@ -10482,6 +10729,14 @@ function AssistantHub({ initial = [] }) {
       void WB.actions.reload().catch(() => {
       });
     } catch (e) {
+      if (activeSubmit.cancelled) {
+        if (g === generation.current && !activeSubmit.dispatched) {
+          busyRef.current = false;
+          setBusy(false);
+          setStreaming(false);
+        }
+        return;
+      }
       if (g === generation.current) fail(e);
       else retainDetached(e?.message);
     }
@@ -10515,6 +10770,7 @@ function AssistantHub({ initial = [] }) {
   }
   async function prepareOfficeTopic(kind2, input) {
     if (busyRef.current || loading) return;
+    submission.current = null;
     const g = generation.current;
     busyRef.current = true;
     setBusy(true);
@@ -10528,6 +10784,7 @@ function AssistantHub({ initial = [] }) {
       setOfficeTool(null);
       busyRef.current = false;
       setBusy(false);
+      setListRetry((n) => n + 1);
       choose({ id: result2.conversationId, title: result2.title, kind: result2.conversationId.split(":")[0] });
       if (result2.conversationId === id) await refresh(g, threadId);
     } catch (failure) {
@@ -10569,37 +10826,44 @@ function AssistantHub({ initial = [] }) {
     setOfficeTool(view);
     if (view === "busy") queueOffice("busyReply.status", {}, id, "查看忙碌告知设置", true);
   }
-  React19.useEffect(() => {
+  React21.useEffect(() => {
     const pending2 = WB.store.get().assistantOfficeLaunch;
     if (pending2 && pending2.target !== id) cancelQueuedOffice("已离开目标会话");
   }, [id]);
-  React19.useEffect(() => () => {
+  React21.useEffect(() => () => {
     cancelQueuedOffice("已关闭或离开助手");
   }, []);
-  React19.useEffect(() => {
+  React21.useEffect(() => {
     const pending2 = state.assistantOfficeLaunch;
     if (!pending2 || pending2.target !== id || loading || busy || busyRef.current || detail?.conversation?.id !== id || consumedOffice.current.has(pending2.requestId)) return;
     consumedOffice.current.add(pending2.requestId);
     WB.store.set({ assistantOfficeLaunch: null });
     void submit({ action: "operate", operation: pending2.operation, ...pending2.extra, requestId: pending2.requestId }, pending2.text);
   }, [state.assistantOfficeLaunch, id, loading, busy, detail?.conversation?.id]);
+  function closeHistory() {
+    historyVersion.current++;
+    setHistoryBusy(false);
+    setHistory(null);
+  }
   async function readHistory(runId, before, sessionId) {
     const g = generation.current, version = ++historyVersion.current;
     setHistoryBusy(true);
     setError("");
+    setHistory((previous) => previous ? { ...previous, error: null } : null);
     try {
-      const r = await scopedCall({ action: "history", conversationId: id, runId, sessionId, limit: 60, before });
+      const r = await scopedRead({ action: "history", conversationId: id, runId, sessionId, limit: 60, before });
       if (g !== generation.current || version !== historyVersion.current) return;
       if (r?.status !== "ok") throw Error(r?.note || "无法读取原记录");
       setHistory((previous) => ({ ...r, runId, sessionId: r.sessionId || sessionId, messages: before && previous?.runId === runId && previous?.sessionId === (r.sessionId || sessionId) ? [...r.messages || [], ...previous.messages || []] : r.messages || [] }));
     } catch (e) {
-      if (g === generation.current && version === historyVersion.current) setError(e.message);
+      if (g === generation.current && version === historyVersion.current) setHistory((previous) => ({ ...previous, error: e.message, failedRequest: { runId, before, sessionId } }));
     } finally {
       if (g === generation.current && version === historyVersion.current) setHistoryBusy(false);
     }
   }
   async function switchThread(sessionId) {
     if (busyRef.current) return;
+    submission.current = null;
     const g = generation.current;
     busyRef.current = true;
     setBusy(true);
@@ -10626,7 +10890,7 @@ function AssistantHub({ initial = [] }) {
     setPastLoading(true);
     setError("");
     try {
-      const r = await scopedCall({ action: "detail", conversationId: id, ...threadId ? { sessionId: threadId } : {}, before: pastCursor || detail?.before, limit: 60 });
+      const r = await scopedRead({ action: "detail", conversationId: id, ...threadId ? { sessionId: threadId } : {}, before: pastCursor || detail?.before, limit: 60 });
       if (g !== generation.current) return;
       if (r.status !== "ok") throw Error(r.note);
       captureHistoryPosition();
@@ -10652,7 +10916,7 @@ function AssistantHub({ initial = [] }) {
     setBackgroundLoading(true);
     setError("");
     try {
-      const response = await scopedCall({ action: "detail", conversationId: id, ...threadId ? { sessionId: threadId } : {}, backgroundBefore: cursor, limit: 60 });
+      const response = await scopedRead({ action: "detail", conversationId: id, ...threadId ? { sessionId: threadId } : {}, backgroundBefore: cursor, limit: 60 });
       if (g !== generation.current) return;
       if (response?.status !== "ok") throw Error(response?.note || "无法读取更早的系统记录");
       captureHistoryPosition();
@@ -10722,8 +10986,8 @@ function AssistantHub({ initial = [] }) {
   const allTimeline = [...timeline, ...runs.map((item) => ({ type: "run", item, key: "run:" + item.id }))].sort((a, b) => (new Date(a.item.at ?? a.item.createdAt).getTime() || 0) - (new Date(b.item.at ?? b.item.createdAt).getTime() || 0));
   const dates = allTimeline.map((row) => dateKey(row.item.at ?? row.item.createdAt)).filter((day) => day !== "未标注日期").sort(), latestDay = dates.at(-1) || "未标注日期", historical = /* @__PURE__ */ new Map(), currentTimeline = [];
   for (const row of allTimeline) {
-    const day = dateKey(row.item.at ?? row.item.createdAt), item = row.item, attention2 = ["recognizing", "executing", "queued", "running", "pending", "failed", "error", "paused", "needs_confirmation", "interrupted", "waiting_review", "waiting_approval"].includes(item.recordedStatus || item.status) || item.role === "error" || confirmations.some((confirmation) => confirmation.turnId === item.id);
-    if (day === latestDay || attention2) currentTimeline.push(row);
+    const day = dateKey(row.item.at ?? row.item.createdAt), item = row.item, attention = ["recognizing", "executing", "queued", "running", "pending", "failed", "error", "paused", "needs_confirmation", "interrupted", "waiting_review", "waiting_approval"].includes(item.recordedStatus || item.status) || item.role === "error" || confirmations.some((confirmation) => confirmation.turnId === item.id);
+    if (day === latestDay || attention) currentTimeline.push(row);
     else historical.set(day, [...historical.get(day) || [], row]);
   }
   function toggleDay(day, open) {
@@ -10744,41 +11008,49 @@ function AssistantHub({ initial = [] }) {
   }
   function turnRetrieval(turn) {
     if (turn.source !== "ai" || turn.origin === "office-history") return null;
-    return Object.values(retrievals).find((trace) => trace.turnId === turn.id || trace.sessionId && trace.sessionId === turn.sessionId && typeof trace.fromSeq === "number" && trace.fromSeq === turn.fromSeq);
+    const traces = Object.values(retrievals);
+    return traces.find((trace) => trace.turnId === turn.id) || traces.find((trace) => !trace.turnId && trace.sessionId && trace.sessionId === turn.sessionId && typeof trace.fromSeq === "number" && trace.fromSeq === turn.fromSeq);
   }
   function renderTimeline({ type, item: message, key: key2 }) {
-    if (type === "run") return /* @__PURE__ */ React19.createElement(MessageRow, { key: key2, author: "function", at: message.at || message.createdAt, operation: message.kind, detail: "自动任务" }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-event" }, /* @__PURE__ */ React19.createElement(RunCard, { run: message, onHistory: (runId) => readHistory(runId), onOpen: openItem, onAction: operate, disabled: busy }), OFFICE_KINDS.includes(message.kind) && /* @__PURE__ */ React19.createElement(OfficeArtifacts, { artifacts: runArtifacts(message), disabled: busy, onAction: operate, onOpen: openItem, renderText: (text2) => /* @__PURE__ */ React19.createElement(Markdown, { text: text2 }) })));
+    if (type === "run") return /* @__PURE__ */ React21.createElement(MessageRow, { key: key2, author: "function", at: message.at || message.createdAt, operation: message.kind, detail: ["queued", "running", "paused"].includes(message.status) ? OFFICE_KINDS.includes(message.kind) ? "生成进度" : "处理进度" : "处理结果" }, /* @__PURE__ */ React21.createElement(RunCard, { run: message, onOpen: openItem, onAction: operate, disabled: busy }), OFFICE_KINDS.includes(message.kind) && /* @__PURE__ */ React21.createElement(OfficeArtifacts, { artifacts: runArtifacts(message), disabled: busy, onAction: operate, onOpen: openItem, renderText: (text2) => /* @__PURE__ */ React21.createElement(Markdown, { text: text2 }) }));
     if (type === "turn") {
       const retrieval = turnRetrieval(message);
-      return /* @__PURE__ */ React19.createElement(AssistantTurn, { retrieval, citationAudit: citationAudits[retrieval?.id], key: key2, turn: message, events: events.filter((event) => event.turnId === message.id), confirmations: confirmations.filter((confirmation) => confirmation.turnId === message.id), disabled: busy || nativeBlocked, onReinterpret: reinterpret, onRetry: retryTurn, onAction: operate, onOpen: openItem, onHistory: (runId) => readHistory(runId), reinterpretSupported: detail?.reinterpretSupported });
+      return /* @__PURE__ */ React21.createElement(AssistantTurn, { conversationKind: kind, retrieval, citationAudit: citationAudits[retrieval?.id], key: key2, turn: message, events: events.filter((event) => event.turnId === message.id), confirmations: confirmations.filter((confirmation) => confirmation.turnId === message.id), disabled: busy || nativeBlocked, onReinterpret: reinterpret, onRetry: retryTurn, onAction: operate, onOpen: openItem, reinterpretSupported: detail?.reinterpretSupported });
     }
-    if (type === "background") return /* @__PURE__ */ React19.createElement(BackgroundMessage, { key: key2, message });
-    if (type === "event") return /* @__PURE__ */ React19.createElement(MessageRow, { key: key2, author: "function", at: message.at, operation: message.operation, detail: "状态更新" }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-event" }, /* @__PURE__ */ React19.createElement(TurnResult, { event: message, onOpen: openItem, onAction: operate, disabled: busy || nativeBlocked })));
+    if (type === "background") return /* @__PURE__ */ React21.createElement(BackgroundMessage, { key: key2, message });
+    if (type === "event") return /* @__PURE__ */ React21.createElement(MessageRow, { key: key2, author: "function", at: message.at, operation: message.operation, detail: "状态更新" }, /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-event" }, /* @__PURE__ */ React21.createElement(TurnResult, { event: message, onOpen: openItem, onAction: operate, disabled: busy || nativeBlocked })));
     const manual = message.role === "user" && message.trigger !== "operation" && message.trigger !== "system" && message.origin !== "background", author = manual ? "user" : message.role === "assistant" ? "assistant" : message.role === "user" ? "function" : "system";
-    return /* @__PURE__ */ React19.createElement(MessageRow, { key: key2, author, at: message.at, detail: message.role === "error" ? "处理异常" : message.role === "system" ? "系统记录" : !manual && message.role === "user" ? "操作触发" : void 0 }, /* @__PURE__ */ React19.createElement("article", { className: "wb-assistant-message wb-hub-message " + (manual ? "is-user" : message.role === "error" ? "is-error" : "") }, /* @__PURE__ */ React19.createElement(Markdown, { text: message.text }), /* @__PURE__ */ React19.createElement(MessageAttachments, { attachments: message.attachments })));
+    return /* @__PURE__ */ React21.createElement(MessageRow, { key: key2, author, at: message.at, detail: message.role === "error" ? "处理异常" : message.role === "system" ? "系统记录" : !manual && message.role === "user" ? "操作触发" : void 0 }, /* @__PURE__ */ React21.createElement("article", { className: "wb-assistant-message wb-hub-message " + (manual ? "is-user" : message.role === "error" ? "is-error" : "") }, /* @__PURE__ */ React21.createElement(Markdown, { text: message.text }), /* @__PURE__ */ React21.createElement(MessageAttachments, { attachments: message.attachments })));
   }
   const sourcePage = pageFor[kind] || system && id !== "system:office";
-  return /* @__PURE__ */ React19.createElement(AssistantIdentityContext.Provider, { value: { assistantName, user: userIdentity, conversationId: id } }, /* @__PURE__ */ React19.createElement("aside", { ref: sidebarRoot, className: "wb-assistant wb-hub" + (compact ? " is-compact" : ""), "aria-label": "AI 助手" }, /* @__PURE__ */ React19.createElement("style", null, HUB_CSS + MESSAGE_IDENTITY_CSS + ASSISTANT_SIDEBAR_CSS), /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-toolbar", role: "group", "aria-label": "助手工具栏" }, /* @__PURE__ */ React19.createElement("nav", { className: "wb-hub-capabilities", "aria-label": "系统能力" }, SYSTEM_CAPABILITIES.map((capability) => {
+  const localRunning = busy && submission.current?.g === generation.current && ["send", "reinterpret"].includes(submission.current.action) && !submission.current.cancelled;
+  const showStop = !loading && detail?.conversation?.id === id && (stopping || detail?.stop?.running === true || localRunning);
+  return /* @__PURE__ */ React21.createElement(AssistantIdentityContext.Provider, { value: { assistantName, user: userIdentity, conversationId: id } }, /* @__PURE__ */ React21.createElement("aside", { ref: sidebarRoot, className: "wb-assistant wb-hub" + (compact ? " is-compact" : ""), "aria-label": "AI 助手" }, /* @__PURE__ */ React21.createElement("style", null, HUB_CSS + MESSAGE_IDENTITY_CSS + ASSISTANT_SIDEBAR_CSS + ASSISTANT_TOOL_ACTIVITY_CSS), /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-toolbar", role: "group", "aria-label": "助手工具栏" }, /* @__PURE__ */ React21.createElement("nav", { className: "wb-hub-capabilities", "aria-label": "系统能力" }, SYSTEM_CAPABILITIES.map((capability) => {
     const row = rows.find((item) => item.id === capability.id), notice = ["running", "queued"].includes(row?.activityStatus) ? "处理中" : row?.needsAttention ? "需处理" : "";
-    return /* @__PURE__ */ React19.createElement("button", { type: "button", key: capability.id, "aria-label": "系统能力：" + capability.title, "aria-current": id === capability.id ? "true" : void 0, onClick: () => choose({ ...capability, kind: "system" }) }, /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-capability-icon" }, /* @__PURE__ */ React19.createElement(Icon, { name: "layers", size: 13 })), /* @__PURE__ */ React19.createElement("span", null, capability.title), notice && /* @__PURE__ */ React19.createElement("small", null, notice));
-  })), /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-toolbar-actions", role: "group", "aria-label": "助手工具与设置" }, /* @__PURE__ */ React19.createElement(Btn, { size: "sm", "aria-label": "＋工具", onClick: () => officeToolOpen("common") }, /* @__PURE__ */ React19.createElement(Icon, { name: "plus", size: 13 }), /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-tool-label" }, "工具")), /* @__PURE__ */ React19.createElement(IconBtn, { name: "refresh", label: "刷新进度", disabled: loading, onClick: () => refresh().catch((failure) => setError(failure.message)) }), /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-more" }, /* @__PURE__ */ React19.createElement("summary", { "aria-label": "更多助手操作" }, "···"), /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-more-menu" }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-mobile-actions" }, officeTopic ? /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled: busy || loading || !detail, onClick: startOfficeTopic }, officeTopic.kind === "work_report" ? officeTopic.input?.period === "week" ? "生成周报" : "生成日报" : "生成回复草稿") : /* @__PURE__ */ React19.createElement(QuickActions, { id, kind, entity: entity2, disabled: busy || loading, operate, setDraft: setText, showExtraction })), sourcePage && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: goPage }, "查看", kind === "task" ? "待办" : kind === "reply" ? "待回复" : kind === "development" ? "研发任务" : kind === "radar" ? "资讯" : kind === "knowledge" ? "知识" : "功能页面"), ["system:analysis", "system:radar"].includes(id) && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: () => readHistory() }, "后台历史"), /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: () => setIdentityOpen(true) }, "助手设置"), /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: () => setKnowledgeOpen(true) }, "知识设置"), nativeSessionId && nativeThreads.length > 1 && /* @__PURE__ */ React19.createElement("label", { className: "wb-hub-history-settings" }, /* @__PURE__ */ React19.createElement("span", null, "历史会话"), /* @__PURE__ */ React19.createElement("select", { className: "wb-input wb-hub-threads", "aria-label": "事项历史会话", value: nativeSessionId, disabled: busy || loading, onChange: (event) => switchThread(event.target.value) }, !nativeThreads.some((thread) => thread.id === nativeSessionId) && /* @__PURE__ */ React19.createElement("option", { value: nativeSessionId }, nativeTitle(null, nativeSessionId)), nativeThreads.map((thread) => /* @__PURE__ */ React19.createElement("option", { key: thread.id, value: thread.id }, nativeTitle(thread, thread.id))))), !system && !["development", "system", "office"].includes(kind) && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled: busy || loading, onClick: () => newChat(true) }, "为当前事项新建会话"), !officeTopic && /* @__PURE__ */ React19.createElement(QuickActions, { id, kind, entity: entity2, disabled: busy || loading, operate, setDraft: setText, showExtraction, overflow: true }))))), /* @__PURE__ */ React19.createElement("div", { className: "wb-assistant-chat-layout" }, /* @__PURE__ */ React19.createElement(AssistantSidebar, { collapsed, compact, onChange: collapseSidebar, busy, onNew: () => {
+    return /* @__PURE__ */ React21.createElement("button", { type: "button", key: capability.id, "aria-label": "系统能力：" + capability.title, "aria-current": id === capability.id ? "true" : void 0, onClick: () => choose({ ...capability, kind: "system" }) }, /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-capability-icon" }, /* @__PURE__ */ React21.createElement(Icon, { name: "layers", size: 13 })), /* @__PURE__ */ React21.createElement("span", null, capability.title), notice && /* @__PURE__ */ React21.createElement("small", null, notice));
+  })), /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-toolbar-actions", role: "group", "aria-label": "助手工具与设置" }, /* @__PURE__ */ React21.createElement(Btn, { size: "sm", "aria-label": "＋工具", onClick: () => officeToolOpen("common") }, /* @__PURE__ */ React21.createElement(Icon, { name: "plus", size: 13 }), /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-tool-label" }, "工具")), /* @__PURE__ */ React21.createElement(IconBtn, { name: "refresh", label: "刷新进度", disabled: loading, onClick: () => refresh().catch((failure) => setError(failure.message)) }), /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-more" }, /* @__PURE__ */ React21.createElement("summary", { "aria-label": "更多助手操作" }, "···"), /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-more-menu" }, /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-mobile-actions" }, officeTopic ? /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: busy || loading || !detail, onClick: startOfficeTopic }, officeTopic.kind === "work_report" ? officeTopic.input?.period === "week" ? "生成周报" : "生成日报" : "生成回复草稿") : /* @__PURE__ */ React21.createElement(QuickActions, { id, kind, entity: entity2, disabled: busy || loading, operate, setDraft: setText, showExtraction })), sourcePage && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: goPage }, "查看", kind === "task" ? "待办" : kind === "reply" ? "待回复" : kind === "development" ? "研发任务" : kind === "radar" ? "资讯" : kind === "knowledge" ? "知识" : "功能页面"), ["system:analysis", "system:radar"].includes(id) && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: () => readHistory() }, "后台历史"), /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: () => setConnectOpen(true) }, "接入已有会话"), /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: () => setIdentityOpen(true) }, "助手设置"), /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: () => setKnowledgeOpen(true) }, "知识设置"), nativeSessionId && nativeThreads.length > 1 && /* @__PURE__ */ React21.createElement("label", { className: "wb-hub-history-settings" }, /* @__PURE__ */ React21.createElement("span", null, "历史会话"), /* @__PURE__ */ React21.createElement("select", { className: "wb-input wb-hub-threads", "aria-label": "事项历史会话", value: nativeSessionId, disabled: busy || loading, onChange: (event) => switchThread(event.target.value) }, !nativeThreads.some((thread) => thread.id === nativeSessionId) && /* @__PURE__ */ React21.createElement("option", { value: nativeSessionId }, nativeTitle(null, nativeSessionId)), nativeThreads.map((thread) => /* @__PURE__ */ React21.createElement("option", { key: thread.id, value: thread.id }, nativeTitle(thread, thread.id))))), !system && !["development", "system", "office"].includes(kind) && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: busy || loading, onClick: () => newChat(true) }, "为当前事项新建会话"), !officeTopic && /* @__PURE__ */ React21.createElement(QuickActions, { id, kind, entity: entity2, disabled: busy || loading, operate, setDraft: setText, showExtraction, overflow: true }))))), /* @__PURE__ */ React21.createElement("div", { className: "wb-assistant-chat-layout" }, /* @__PURE__ */ React21.createElement(AssistantSidebar, { collapsed, compact, onChange: collapseSidebar, busy, onNew: () => {
     void newChat();
     if (compact) collapseSidebar(true);
-  } }, /* @__PURE__ */ React19.createElement(Input, { "aria-label": "搜索会话或事项", placeholder: "搜索会话或事项", value: query, onChange: (e) => setQuery(e.target.value) }), /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-conversation-filters", role: "group", "aria-label": "会话类型" }, CONVERSATION_FILTERS.map(([key2, label]) => /* @__PURE__ */ React19.createElement("button", { type: "button", key: key2, className: "wb-hub-filter " + (filter === key2 ? "is-active" : ""), "aria-pressed": filter === key2, onClick: () => setFilter(key2) }, label))), /* @__PURE__ */ React19.createElement("div", { className: "wb-assistant-session-items" }, [["置顶", pinnedRows], ["最近更新", recentRows]].map(([title, group]) => (group.length > 0 || title === "最近更新") && /* @__PURE__ */ React19.createElement("section", { key: title, "aria-label": title + "会话" }, /* @__PURE__ */ React19.createElement("h3", { className: "wb-hub-section-title" }, title), group.map((row) => /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-session-row", key: row.id }, /* @__PURE__ */ React19.createElement("button", { type: "button", className: "wb-assistant-session", "data-session-id": row.id, "aria-label": "会话：" + row.title, "aria-current": row.id === id ? "true" : void 0, onClick: () => choose(row) }, /* @__PURE__ */ React19.createElement("span", null, /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-session-meta" }, /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-source" }, sourceLabel(row)), /* @__PURE__ */ React19.createElement(WorkspaceBadge, { binding: row.nativeBinding, compact: true })), /* @__PURE__ */ React19.createElement("strong", null, row.title), /* @__PURE__ */ React19.createElement("small", null, row.needsAttention ? "待你处理" : row.latestPreview || "开始或继续处理"))), /* @__PURE__ */ React19.createElement("button", { type: "button", className: "wb-iconbtn wb-hub-pin", "aria-label": (row.pinned ? "取消置顶：" : "置顶会话：") + row.title, "aria-pressed": !!row.pinned, title: row.pinned ? "取消置顶" : "置顶会话", disabled: !!pinBusy, onClick: () => pinConversation(row) }, /* @__PURE__ */ React19.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.7", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" }, /* @__PURE__ */ React19.createElement("path", { d: "m16 3 5 5-4 2-3 5-1 4-3-3-6 6 6-6-3-3 4-1 5-3 2-4Z" }))), /* @__PURE__ */ React19.createElement(AssistantConversationDeleteButton, { row, disabled: busy && row.id === id, onClick: setDeleteTarget }))), !group.length && /* @__PURE__ */ React19.createElement("p", { className: "wb-tiny wb-muted" }, query ? "没有匹配的会话" : filter === "chat" ? "暂无普通对话，可新建对话" : filter === "related" ? "暂无关联事项会话，可从事项进入" : "从事项进入或新建对话"))))), /* @__PURE__ */ React19.createElement("div", { className: "wb-assistant-conversation", "aria-busy": loading, "aria-hidden": compact && !collapsed ? true : void 0, ...compact && !collapsed ? { inert: "" } : {} }, /* @__PURE__ */ React19.createElement("header", { className: "wb-assistant-head wb-hub-context-head" }, compact && /* @__PURE__ */ React19.createElement(AssistantSidebarToggle, { collapsed, onClick: () => collapseSidebar(!collapsed), trigger: true }), /* @__PURE__ */ React19.createElement("div", { className: "wb-assistant-current" }, !system && /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-source", "aria-label": "会话来源" }, sourceLabel(conversation)), /* @__PURE__ */ React19.createElement("strong", null, conversation.title), (entity2?.status || entity2?.stage || conversation.status) && /* @__PURE__ */ React19.createElement("small", null, kind === "development" && entity2?.issue?.status ? "Linky：" + entity2.issue.status + " · 执行：" + statusOf(entity2?.status || conversation.status) : statusOf(entity2?.status || entity2?.stage || conversation.status))), /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-primary-actions" }, officeTopic ? /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled: busy || loading || !detail, onClick: startOfficeTopic }, officeTopic.kind === "work_report" ? officeTopic.input?.period === "week" ? "生成周报" : "生成日报" : "生成回复草稿") : /* @__PURE__ */ React19.createElement(QuickActions, { id, kind, entity: entity2, disabled: busy || loading, operate, setDraft: setText, showExtraction }))), /* @__PURE__ */ React19.createElement("div", { ref: body, className: "wb-assistant-body wb-hub-body", onScroll: () => {
+  } }, /* @__PURE__ */ React21.createElement(Input, { "aria-label": "搜索会话或事项", placeholder: "搜索会话或事项", value: query, onChange: (e) => setQuery(e.target.value) }), /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-conversation-filters", role: "group", "aria-label": "会话类型" }, CONVERSATION_FILTERS.map(([key2, label]) => /* @__PURE__ */ React21.createElement("button", { type: "button", key: key2, className: "wb-hub-filter " + (filter === key2 ? "is-active" : ""), "aria-pressed": filter === key2, onClick: () => setFilter(key2) }, label))), listLoading && !rows.some((row) => !row.fixed) && /* @__PURE__ */ React21.createElement("p", { role: "status", className: "wb-hub-list-notice" }, /* @__PURE__ */ React21.createElement(Spinner, { size: 12 }), "正在读取会话列表…"), listSlow && /* @__PURE__ */ React21.createElement("p", { role: "status", className: "wb-hub-list-notice" }, "列表正在后台更新，已显示的会话仍可使用。"), listError && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-list-notice" }, /* @__PURE__ */ React21.createElement("p", { role: "alert" }, listError), /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: () => setListRetry((n) => n + 1) }, "重试列表")), /* @__PURE__ */ React21.createElement("div", { className: "wb-assistant-session-items" }, [["置顶", pinnedRows], ["最近更新", recentRows]].map(([title, group]) => (group.length > 0 || title === "最近更新") && /* @__PURE__ */ React21.createElement("section", { key: title, "aria-label": title + "会话" }, /* @__PURE__ */ React21.createElement("h3", { className: "wb-hub-section-title" }, title), group.map((row) => /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-session-row", key: row.id }, /* @__PURE__ */ React21.createElement("button", { type: "button", className: "wb-assistant-session", "data-session-id": row.id, "aria-label": "会话：" + row.title, "aria-current": row.id === id ? "true" : void 0, onClick: () => choose(row) }, /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-session-copy" }, /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-session-meta" }, /* @__PURE__ */ React21.createElement(ConversationTypeIcon, { conversation: row }), /* @__PURE__ */ React21.createElement(WorkspaceBadge, { binding: row.nativeBinding, compact: true })), /* @__PURE__ */ React21.createElement("strong", null, row.title), /* @__PURE__ */ React21.createElement("small", null, row.needsAttention ? "待你处理" : row.latestPreview || "开始或继续处理"))), /* @__PURE__ */ React21.createElement("button", { type: "button", className: "wb-iconbtn wb-hub-pin", "aria-label": (row.pinned ? "取消置顶：" : "置顶会话：") + row.title, "aria-pressed": !!row.pinned, title: row.pinned ? "取消置顶" : "置顶会话", disabled: !!pinBusy, onClick: () => pinConversation(row) }, /* @__PURE__ */ React21.createElement("svg", { width: "14", height: "14", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.7", strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": "true" }, /* @__PURE__ */ React21.createElement("path", { d: "m16 3 5 5-4 2-3 5-1 4-3-3-6 6 6-6-3-3 4-1 5-3 2-4Z" }))), /* @__PURE__ */ React21.createElement(AssistantConversationDeleteButton, { row, disabled: busy && row.id === id, onClick: setDeleteTarget }))), !group.length && /* @__PURE__ */ React21.createElement("p", { className: "wb-tiny wb-muted" }, query ? "没有匹配的会话" : filter === "chat" ? "暂无普通对话，可新建对话" : filter === "related" ? "暂无关联事项会话，可从事项进入" : "从事项进入或新建对话"))))), /* @__PURE__ */ React21.createElement("div", { className: "wb-assistant-conversation", "aria-busy": loading, "aria-hidden": compact && !collapsed ? true : void 0, ...compact && !collapsed ? { inert: "" } : {} }, /* @__PURE__ */ React21.createElement("header", { className: "wb-assistant-head wb-hub-context-head" }, compact && /* @__PURE__ */ React21.createElement(AssistantSidebarToggle, { collapsed, onClick: () => collapseSidebar(!collapsed), trigger: true }), /* @__PURE__ */ React21.createElement("div", { className: "wb-assistant-current" }, !system && /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-source", "aria-label": "会话来源" }, sourceLabel(conversation)), /* @__PURE__ */ React21.createElement("strong", null, conversation.title), (entity2?.status || entity2?.stage || conversation.status) && /* @__PURE__ */ React21.createElement("small", null, kind === "development" && entity2?.issue?.status ? "Linky：" + entity2.issue.status + " · 执行：" + statusOf(entity2?.status || conversation.status) : statusOf(entity2?.status || entity2?.stage || conversation.status))), /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-primary-actions" }, officeTopic ? /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: busy || loading || !detail, onClick: startOfficeTopic }, officeTopic.kind === "work_report" ? officeTopic.input?.period === "week" ? "生成周报" : "生成日报" : "生成回复草稿") : /* @__PURE__ */ React21.createElement(QuickActions, { id, kind, entity: entity2, disabled: busy || loading, operate, setDraft: setText, showExtraction }))), /* @__PURE__ */ React21.createElement("div", { ref: body, className: "wb-assistant-body wb-hub-body", onScroll: () => {
     const el = body.current;
     if (el) pinned.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-  } }, state.assistantOfficeNotice && /* @__PURE__ */ React19.createElement("p", { role: "status", className: "wb-hub-notice" }, state.assistantOfficeNotice), detail?.historyError && /* @__PURE__ */ React19.createElement("p", { role: "alert", className: "wb-hub-error" }, "历史记录暂不可读：", detail.historyError), loading ? /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-loading" }, /* @__PURE__ */ React19.createElement(Spinner, { size: 16 }), "正在读取记录…") : /* @__PURE__ */ React19.createElement(React19.Fragment, null, ((morePast ?? detail?.hasMore) || backgroundHasMore) && /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-history-loaders", role: "group", "aria-label": "加载历史消息" }, (morePast ?? detail?.hasMore) && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled: pastLoading || backgroundLoading, onClick: older }, pastLoading ? "正在读取更早对话…" : "加载更早的对话"), backgroundHasMore && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled: backgroundLoading || pastLoading, onClick: olderBackground }, backgroundLoading ? "正在读取系统记录…" : "加载更早的系统记录")), id === "system:analysis" && /* @__PURE__ */ React19.createElement(ExtractionResults, { value: extraction?.key === extractionKey ? extraction.value : null, query: extractionOptions.query || "", kind: extractionOptions.kind || "all", busy: extractionBusy || extraction?.key !== extractionKey, selected: refs, onFilter: changeExtraction, onEdit: editExtraction, onOpen: openItem, onReview: openExtractionReview, sectionRef: extractionSection }), entity2 && (entity2.title || entity2.issue?.title) && /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-card" }, /* @__PURE__ */ React19.createElement("summary", null, entity2.title || entity2.issue.title), /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text" }, entity2.description || entity2.body || entity2.snippet || entity2.issue?.description || "暂无补充说明"), entity2.pauseReason && /* @__PURE__ */ React19.createElement("p", { role: "status" }, entity2.pauseReason)), id !== "system:analysis" && (detail?.items || []).length > 0 && /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-card", "aria-label": "关联结果", open: (detail.items || []).length <= 5 }, /* @__PURE__ */ React19.createElement("summary", null, "关联结果 · ", detail.items.length, " 项"), detail.items.map((item) => /* @__PURE__ */ React19.createElement("button", { type: "button", className: "wb-hub-item", key: item.kind + ":" + item.id, onClick: () => openItem(item) }, /* @__PURE__ */ React19.createElement("span", null, /* @__PURE__ */ React19.createElement("small", null, labels2[item.kind] || "结果", " · ", statusOf(item.status)), /* @__PURE__ */ React19.createElement("strong", null, item.title || item.id), item.body && /* @__PURE__ */ React19.createElement("span", null, String(item.body).slice(0, 160))), /* @__PURE__ */ React19.createElement(Icon, { name: "arrowRight", size: 14 })))), [...historical.entries()].map(([day, entries]) => /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-history-day", "aria-label": "历史记录：" + day, key: day, open: !!expandedDays[id + "|" + day], onToggle: (event) => toggleDay(day, event.currentTarget.open) }, /* @__PURE__ */ React19.createElement("summary", null, day, " · ", entries.length, "条记录"), /* @__PURE__ */ React19.createElement("div", null, entries.map(renderTimeline)))), currentTimeline.map(renderTimeline), !!messages.filter((m) => ["tool", "toolResult"].includes(m.role)).length && /* @__PURE__ */ React19.createElement("details", { className: "wb-hub-diagnostics" }, /* @__PURE__ */ React19.createElement("summary", null, "执行诊断"), messages.filter((m) => ["tool", "toolResult"].includes(m.role)).map((m, i) => /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-text", key: i }, m.text, m.summary ? " · " + m.summary : ""))), !turns.length && !messages.length && !events.length && !backgroundMessages.length && !detail?.runs?.length && !detail?.items?.length && /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-empty" }, /* @__PURE__ */ React19.createElement(Icon, { name: "messages", size: 24 }), /* @__PURE__ */ React19.createElement("strong", null, system ? "在这里查看结果并继续处理" : "从这里继续处理这件事"), /* @__PURE__ */ React19.createElement("p", null, "可以查看之前的进展、提出问题，或直接说明要执行的操作。"))), !result?.turn && !result?.turnId && (result?.note || result?.reply) && !events.some((event) => event.text === (result.note || result.reply)) && /* @__PURE__ */ React19.createElement(MessageRow, { author: result.operation ? "rule" : "system" }, /* @__PURE__ */ React19.createElement("p", { className: "wb-hub-notice", role: "status" }, result.note || result.reply)), result?.existing && relatedConversation(result.conversationId) && !events.some((event) => (event.result?.relatedConversationId || event.relatedConversationId) === result.conversationId) && /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-notice" }, /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: () => openItem({ conversationId: result.conversationId }) }, "打开原会话")), result?.code === "office_topic_expired" && result.officeTopicRequest && /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-notice" }, /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: () => prepareOfficeTopic(result.officeTopicRequest.kind, result.officeTopicRequest.input) }, "打开今日报告主题")), result?.draft && /* @__PURE__ */ React19.createElement("section", { className: "wb-hub-card" }, /* @__PURE__ */ React19.createElement("strong", null, "回复草稿"), /* @__PURE__ */ React19.createElement(Markdown, { text: result.draft?.text || result.draft })), Array.isArray(result?.items) && /* @__PURE__ */ React19.createElement("section", { className: "wb-hub-card" }, /* @__PURE__ */ React19.createElement("strong", null, "查询结果"), result.items.map((item) => /* @__PURE__ */ React19.createElement("button", { className: "wb-hub-item", key: item.id, onClick: () => openItem({ ...item, kind: item.kind === "knowledge" || !item.conversationId ? "knowledge" : item.kind, conversationId: item.conversationId || "knowledge:" + item.id }) }, item.title || item.id))), confirmations.filter((confirmation) => !ownsTurn(confirmation)).map((confirmation) => /* @__PURE__ */ React19.createElement(MessageRow, { key: confirmation.id, author: "rule", detail: "等待确认" }, /* @__PURE__ */ React19.createElement(Confirmation, { value: confirmation, disabled: busy, onAction: operate }))), historyBusy && /* @__PURE__ */ React19.createElement("p", { role: "status" }, "正在读取本轮记录…"), history && /* @__PURE__ */ React19.createElement("section", { className: "wb-hub-card", "aria-label": "本轮真实记录" }, /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-card-title" }, /* @__PURE__ */ React19.createElement("strong", null, "本轮真实记录"), /* @__PURE__ */ React19.createElement(IconBtn, { name: "close", label: "收起本轮记录", onClick: () => setHistory(null) })), history.note && /* @__PURE__ */ React19.createElement("p", null, history.note), history.runId && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: () => readHistory() }, "查看全部后台历史"), (history.threads || []).length > 1 && /* @__PURE__ */ React19.createElement("select", { className: "wb-input", "aria-label": "后台历史会话", value: history.sessionId || "", onChange: (e) => readHistory(history.runId, void 0, e.target.value) }, history.threads.map((thread) => /* @__PURE__ */ React19.createElement("option", { key: thread.id, value: thread.id }, thread.title || thread.id))), (history.messages || []).map((m, i) => /* @__PURE__ */ React19.createElement(MessageRow, { key: i, author: m.role === "assistant" ? "assistant" : m.role === "user" ? "function" : "system", at: m.at }, /* @__PURE__ */ React19.createElement("details", { open: true }, /* @__PURE__ */ React19.createElement("summary", null, m.role === "user" ? "实际提交内容" : "实际返回内容"), /* @__PURE__ */ React19.createElement(Markdown, { text: m.text }), /* @__PURE__ */ React19.createElement(MessageAttachments, { attachments: m.attachments })))), !(history.messages || []).length && /* @__PURE__ */ React19.createElement("p", { className: "wb-muted" }, "此轮暂未读取到原会话内容，已保留执行结果。"), history.hasMore && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", onClick: () => readHistory(history.runId, history.before, history.sessionId) }, "更早记录")), detail?.background?.turnActive && /* @__PURE__ */ React19.createElement(MessageRow, { author: "function" }, /* @__PURE__ */ React19.createElement("p", { role: "status", className: "wb-row wb-muted wb-hub-background-active" }, /* @__PURE__ */ React19.createElement(Spinner, { size: 12 }), "系统任务正在处理，结果会自动更新")), [...new Map([...detail?.background?.errors || [], ...backgroundPageErrors].map((failure) => [failure.sessionId + ":" + failure.note, failure])).values()].map((failure) => /* @__PURE__ */ React19.createElement("p", { role: "alert", className: "wb-hub-error", key: failure.sessionId + ":" + failure.note }, "系统记录暂不可读：", failure.note)), nativeBlocked && /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-native-blocked", role: "status" }, /* @__PURE__ */ React19.createElement("span", null, nativeBinding.reason || "当前会话暂不可继续发送。"), nativeBinding.primarySessionId && nativeBinding.primarySessionId !== nativeSessionId && /* @__PURE__ */ React19.createElement(Btn, { size: "sm", disabled: busy || loading, onClick: () => switchThread(nativeBinding.primarySessionId) }, "切回主会话")), streaming && !turns.some((turn) => ["recognizing", "executing"].includes(turn.status)) && /* @__PURE__ */ React19.createElement(MessageRow, { author: "assistant" }, /* @__PURE__ */ React19.createElement("p", { role: "status", className: "wb-row wb-muted" }, /* @__PURE__ */ React19.createElement(Spinner, { size: 12 }), "正在处理…")), error2 && /* @__PURE__ */ React19.createElement(MessageRow, { author: "system", detail: "处理异常" }, /* @__PURE__ */ React19.createElement("p", { role: "alert", className: "wb-hub-error" }, error2))), /* @__PURE__ */ React19.createElement("div", { className: "wb-assistant-composer", ...attachmentDragHandlers(addAttachments, busy || loading || nativeBlocked) }, /* @__PURE__ */ React19.createElement("div", { className: "wb-assistant-input" }, /* @__PURE__ */ React19.createElement(AssistantAttachmentCards, { items: attachments.items, disabled: busy, onRemove: attachments.remove, onRetry: attachments.retry }), refs.length > 0 && /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-selected-context", role: "region", "aria-label": "已选择的上下文" }, refs.map((ref) => /* @__PURE__ */ React19.createElement(Chip, { key: ref.kind + ":" + ref.id, active: true, title: ref.title, onRemove: busy ? void 0 : () => WB.assistant.remove(ref.kind, ref.id) }, labels2[ref.kind] || "上下文", "：", WB.util.truncate(ref.title || ref.id, 28)))), /* @__PURE__ */ React19.createElement(Textarea, { "aria-label": "助手消息", placeholder: attachments.items.length ? "描述附件需要如何处理，也可以直接发送…" : "输入问题，或直接说要继续处理、修改什么…", value: draft, disabled: loading || busy, rows: 2, onChange: (e) => setText(e.target.value), onKeyDown: (e) => {
+  } }, state.assistantOfficeNotice && /* @__PURE__ */ React21.createElement("p", { role: "status", className: "wb-hub-notice" }, state.assistantOfficeNotice), detail?.historyError && /* @__PURE__ */ React21.createElement("p", { role: "alert", className: "wb-hub-error" }, "历史记录暂不可读：", detail.historyError), loading ? /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-loading" }, /* @__PURE__ */ React21.createElement(Spinner, { size: 16 }), "正在读取记录…") : /* @__PURE__ */ React21.createElement(React21.Fragment, null, ((morePast ?? detail?.hasMore) || backgroundHasMore) && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-history-loaders", role: "group", "aria-label": "加载历史消息" }, (morePast ?? detail?.hasMore) && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: pastLoading || backgroundLoading, onClick: older }, pastLoading ? "正在读取更早对话…" : "加载更早的对话"), backgroundHasMore && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: backgroundLoading || pastLoading, onClick: olderBackground }, backgroundLoading ? "正在读取系统记录…" : "加载更早的系统记录")), id === "system:analysis" && /* @__PURE__ */ React21.createElement(ExtractionResults, { value: extraction?.key === extractionKey ? extraction.value : null, query: extractionOptions.query || "", kind: extractionOptions.kind || "all", busy: extractionBusy || extraction?.key !== extractionKey, selected: refs, onFilter: changeExtraction, onEdit: editExtraction, onOpen: openItem, onReview: openExtractionReview, sectionRef: extractionSection }), entity2 && (entity2.title || entity2.issue?.title) && /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-card" }, /* @__PURE__ */ React21.createElement("summary", null, entity2.title || entity2.issue.title), /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text" }, entity2.description || entity2.body || entity2.snippet || entity2.issue?.description || "暂无补充说明"), entity2.pauseReason && /* @__PURE__ */ React21.createElement("p", { role: "status" }, entity2.pauseReason)), id !== "system:analysis" && (detail?.items || []).length > 0 && /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-card", "aria-label": "关联结果", open: (detail.items || []).length <= 5 }, /* @__PURE__ */ React21.createElement("summary", null, "关联结果 · ", detail.items.length, " 项"), detail.items.map((item) => /* @__PURE__ */ React21.createElement("button", { type: "button", className: "wb-hub-item", key: item.kind + ":" + item.id, onClick: () => openItem(item) }, /* @__PURE__ */ React21.createElement("span", null, /* @__PURE__ */ React21.createElement("small", null, labels2[item.kind] || "结果", " · ", statusOf(item.status)), /* @__PURE__ */ React21.createElement("strong", null, item.title || item.id), item.body && /* @__PURE__ */ React21.createElement("span", null, String(item.body).slice(0, 160))), /* @__PURE__ */ React21.createElement(Icon, { name: "arrowRight", size: 14 })))), [...historical.entries()].map(([day, entries]) => /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-history-day", "aria-label": "历史记录：" + day, key: day, open: !!expandedDays[id + "|" + day], onToggle: (event) => toggleDay(day, event.currentTarget.open) }, /* @__PURE__ */ React21.createElement("summary", null, day, " · ", entries.length, "条记录"), /* @__PURE__ */ React21.createElement("div", null, entries.map(renderTimeline)))), currentTimeline.map(renderTimeline), !!messages.filter((m) => ["tool", "toolResult"].includes(m.role)).length && /* @__PURE__ */ React21.createElement("details", { className: "wb-hub-diagnostics" }, /* @__PURE__ */ React21.createElement("summary", null, "执行诊断"), messages.filter((m) => ["tool", "toolResult"].includes(m.role)).map((m, i) => /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-text", key: i }, m.text, m.summary ? " · " + m.summary : ""))), !turns.length && !messages.length && !events.length && !backgroundMessages.length && !detail?.runs?.length && !detail?.items?.length && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-empty" }, /* @__PURE__ */ React21.createElement(Icon, { name: "messages", size: 24 }), /* @__PURE__ */ React21.createElement("strong", null, system ? "在这里查看结果并继续处理" : "从这里继续处理这件事"), /* @__PURE__ */ React21.createElement("p", null, "可以查看之前的进展、提出问题，或直接说明要执行的操作。"))), !result?.turn && !result?.turnId && (result?.note || result?.reply) && !events.some((event) => event.text === (result.note || result.reply)) && /* @__PURE__ */ React21.createElement(MessageRow, { author: result.operation ? "rule" : "system" }, /* @__PURE__ */ React21.createElement("p", { className: "wb-hub-notice", role: "status" }, result.note || result.reply)), result?.existing && relatedConversation(result.conversationId) && !events.some((event) => (event.result?.relatedConversationId || event.relatedConversationId) === result.conversationId) && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-notice" }, /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: () => openItem({ conversationId: result.conversationId }) }, "打开原会话")), result?.code === "office_topic_expired" && result.officeTopicRequest && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-notice" }, /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: () => prepareOfficeTopic(result.officeTopicRequest.kind, result.officeTopicRequest.input) }, "打开今日报告主题")), result?.draft && /* @__PURE__ */ React21.createElement("section", { className: "wb-hub-card" }, /* @__PURE__ */ React21.createElement("strong", null, "回复草稿"), /* @__PURE__ */ React21.createElement(Markdown, { text: result.draft?.text || result.draft })), Array.isArray(result?.items) && /* @__PURE__ */ React21.createElement("section", { className: "wb-hub-card" }, /* @__PURE__ */ React21.createElement("strong", null, "查询结果"), result.items.map((item) => /* @__PURE__ */ React21.createElement("button", { className: "wb-hub-item", key: item.id, onClick: () => openItem({ ...item, kind: item.kind === "knowledge" || !item.conversationId ? "knowledge" : item.kind, conversationId: item.conversationId || "knowledge:" + item.id }) }, item.title || item.id))), confirmations.filter((confirmation) => !ownsTurn(confirmation)).map((confirmation) => /* @__PURE__ */ React21.createElement(MessageRow, { key: confirmation.id, author: "rule", detail: "等待确认" }, /* @__PURE__ */ React21.createElement(Confirmation, { value: confirmation, disabled: busy, onAction: operate }))), /* @__PURE__ */ React21.createElement(Modal, { open: historyBusy || !!history, title: history?.runId ? "处理记录" : "后台历史", width: 800, onClose: closeHistory }, historyBusy && /* @__PURE__ */ React21.createElement("p", { role: "status" }, "正在读取处理记录…"), history && /* @__PURE__ */ React21.createElement("section", { className: "wb-hub-history-content", "aria-label": "后台真实记录" }, history.error && /* @__PURE__ */ React21.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React21.createElement("p", { role: "alert", className: "wb-hub-warning" }, history.error), /* @__PURE__ */ React21.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: historyBusy, onClick: () => readHistory(history.failedRequest?.runId, history.failedRequest?.before, history.failedRequest?.sessionId) }, "重试读取"))), history.note && /* @__PURE__ */ React21.createElement("p", null, history.note), history.runId && /* @__PURE__ */ React21.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: historyBusy, onClick: () => readHistory() }, "查看全部后台历史")), (history.threads || []).length > 1 && /* @__PURE__ */ React21.createElement("select", { className: "wb-input", "aria-label": "后台历史会话", disabled: historyBusy, value: history.sessionId || "", onChange: (event) => readHistory(history.runId, void 0, event.target.value) }, history.threads.map((thread) => /* @__PURE__ */ React21.createElement("option", { key: thread.id, value: thread.id }, thread.title || thread.id))), (history.messages || []).map((message, index) => /* @__PURE__ */ React21.createElement(MessageRow, { key: message.id || message.seq || index, author: message.role === "assistant" ? "assistant" : message.role === "user" ? "function" : "system", at: message.at }, /* @__PURE__ */ React21.createElement("article", { className: "wb-assistant-message" }, /* @__PURE__ */ React21.createElement(Markdown, { text: message.text }), /* @__PURE__ */ React21.createElement(MessageAttachments, { attachments: message.attachments })))), !(history.messages || []).length && /* @__PURE__ */ React21.createElement("p", { className: "wb-muted" }, "暂无可读取的后台原始记录；会话中的处理进度和已保存事项仍然保留。"), history.hasMore && /* @__PURE__ */ React21.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: historyBusy, onClick: () => readHistory(history.runId, history.before, history.sessionId) }, "更早记录")))), detail?.background?.turnActive && /* @__PURE__ */ React21.createElement(MessageRow, { author: "function" }, /* @__PURE__ */ React21.createElement("p", { role: "status", className: "wb-row wb-muted wb-hub-background-active" }, /* @__PURE__ */ React21.createElement(Spinner, { size: 12 }), "系统任务正在处理，结果会自动更新")), [...new Map([...detail?.background?.errors || [], ...backgroundPageErrors].map((failure) => [failure.sessionId + ":" + failure.note, failure])).values()].map((failure) => /* @__PURE__ */ React21.createElement("p", { role: "alert", className: "wb-hub-error", key: failure.sessionId + ":" + failure.note }, "系统记录暂不可读：", failure.note)), nativeBlocked && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-native-blocked", role: "status" }, /* @__PURE__ */ React21.createElement("span", null, nativeBinding.reason || "当前会话暂不可继续发送。"), nativeBinding.primarySessionId && nativeBinding.primarySessionId !== nativeSessionId && /* @__PURE__ */ React21.createElement(Btn, { size: "sm", disabled: busy || loading, onClick: () => switchThread(nativeBinding.primarySessionId) }, "切回主会话")), streaming && !turns.some((turn) => ["recognizing", "executing"].includes(turn.status)) && /* @__PURE__ */ React21.createElement(MessageRow, { author: "assistant" }, /* @__PURE__ */ React21.createElement("p", { role: "status", className: "wb-row wb-muted" }, /* @__PURE__ */ React21.createElement(Spinner, { size: 12 }), "正在处理…")), readError && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-read-error" }, /* @__PURE__ */ React21.createElement("p", { role: "alert", className: "wb-hub-error" }, readError), /* @__PURE__ */ React21.createElement(Btn, { size: "sm", onClick: () => refresh().catch((failure) => setReadError(failure.message)) }, "重试读取")), error2 && /* @__PURE__ */ React21.createElement(MessageRow, { author: "system", detail: "处理异常" }, /* @__PURE__ */ React21.createElement("p", { role: "alert", className: "wb-hub-error" }, error2))), stopNote && /* @__PURE__ */ React21.createElement("p", { role: "status", className: "wb-tiny wb-muted wb-hub-stop-note" }, stopNote), /* @__PURE__ */ React21.createElement("div", { className: "wb-assistant-composer", ...attachmentDragHandlers(addAttachments, busy || loading || nativeBlocked) }, /* @__PURE__ */ React21.createElement("div", { className: "wb-assistant-input" }, /* @__PURE__ */ React21.createElement(AssistantAttachmentCards, { items: attachments.items, disabled: busy, onRemove: attachments.remove, onRetry: attachments.retry }), refs.length > 0 && /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-selected-context", role: "region", "aria-label": "已选择的上下文" }, refs.map((ref) => /* @__PURE__ */ React21.createElement(Chip, { key: ref.kind + ":" + ref.id, active: true, title: ref.title, onRemove: busy ? void 0 : () => WB.assistant.remove(ref.kind, ref.id) }, labels2[ref.kind] || "上下文", "：", WB.util.truncate(ref.title || ref.id, 28)))), /* @__PURE__ */ React21.createElement(Textarea, { "aria-label": "助手消息", placeholder: attachments.items.length ? "描述附件需要如何处理，也可以直接发送…" : "输入问题，或直接说要继续处理、修改什么…", value: draft, disabled: loading || busy, rows: 2, onChange: (e) => setText(e.target.value), onKeyDown: (e) => {
     if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent?.isComposing) {
       e.preventDefault();
       send();
     }
-  } }), /* @__PURE__ */ React19.createElement("div", { className: "wb-row wb-assistant-input-actions" }, /* @__PURE__ */ React19.createElement(AssistantAddMaterials, { data: state.data, refs, disabled: busy || loading || nativeBlocked, onAddFiles: addAttachments }), attachments.items.length > 0 && /* @__PURE__ */ React19.createElement("span", { className: "wb-hub-attachment-route" }, "有附件，由 AI 处理"), /* @__PURE__ */ React19.createElement("span", { className: "wb-spacer" }), /* @__PURE__ */ React19.createElement(Btn, { kind: "primary", icon: "arrowRight", disabled: loading || busy || nativeBlocked || !draft.trim() && !attachments.items.length, onClick: send }, busy ? "处理中" : "发送")))))), /* @__PURE__ */ React19.createElement(OfficeTools, { view: officeTool, onClose: () => setOfficeTool(null), onTool: officeToolOpen, onLaunch: officeLaunch, onTask: (task) => {
+  } }), /* @__PURE__ */ React21.createElement("div", { className: "wb-row wb-assistant-input-actions" }, /* @__PURE__ */ React21.createElement(AssistantAddMaterials, { data: state.data, refs, disabled: busy || loading || nativeBlocked, onAddFiles: addAttachments }), attachments.items.length > 0 && /* @__PURE__ */ React21.createElement("span", { className: "wb-hub-attachment-route" }, "有附件，由 AI 处理"), /* @__PURE__ */ React21.createElement("span", { className: "wb-spacer" }), showStop && /* @__PURE__ */ React21.createElement(Btn, { "aria-label": "停止当前会话", disabled: stopping || !busy && detail?.stop?.supported === false, onClick: stopCurrent }, /* @__PURE__ */ React21.createElement("svg", { width: "12", height: "12", viewBox: "0 0 16 16", "aria-hidden": "true" }, /* @__PURE__ */ React21.createElement("rect", { x: "3", y: "3", width: "10", height: "10", rx: "2", fill: "currentColor" })), stopping ? "正在停止…" : "停止"), /* @__PURE__ */ React21.createElement(Btn, { kind: "primary", icon: "arrowRight", disabled: loading || busy || stopping || nativeBlocked || !draft.trim() && !attachments.items.length, onClick: send }, busy ? "处理中" : "发送")))))), /* @__PURE__ */ React21.createElement(OfficeTools, { view: officeTool, onClose: () => setOfficeTool(null), onTool: officeToolOpen, onLaunch: officeLaunch, onTask: (task) => {
     setOfficeTool(null);
     choose({ id: "task:" + task.id, kind: "task", entityId: task.id, title: task.title });
-  }, onConfigure: (enabled) => queueOffice("busyReply.configure", { enabled }, id, enabled ? "开启私聊忙碌告知" : "关闭私聊忙碌告知", true), data: state.data, busyReply: detail?.busyReply, disabled: busy || loading || !detail, error: officeError || error2 || (result?.status === "error" ? result.note : "") }), deleteTarget && /* @__PURE__ */ React19.createElement(AssistantConversationDeleteDialog, { key: deleteTarget.id, target: deleteTarget, request: scopedCall, onClose: () => setDeleteTarget(null), onDeleted: conversationDeleted }), /* @__PURE__ */ React19.createElement(AssistantIdentitySettings, { open: identityOpen, onClose: () => setIdentityOpen(false), name: assistantName }), /* @__PURE__ */ React19.createElement(AssistantKnowledgeSettings, { open: knowledgeOpen, onClose: () => setKnowledgeOpen(false), data: state.data, mode: knowledgeMode, onMode: setKnowledgeMode, scope: knowledgeScope, onScope: (scope) => {
+  }, onConfigure: (enabled) => queueOffice("busyReply.configure", { enabled }, id, enabled ? "开启私聊忙碌告知" : "关闭私聊忙碌告知", true), data: state.data, busyReply: detail?.busyReply, disabled: busy || loading || !detail, error: officeError || error2 || (result?.status === "error" ? result.note : "") }), deleteTarget && /* @__PURE__ */ React21.createElement(AssistantConversationDeleteDialog, { key: deleteTarget.id, target: deleteTarget, request: scopedCall, onClose: () => setDeleteTarget(null), onDeleted: conversationDeleted }), connectOpen && /* @__PURE__ */ React21.createElement(AssistantConversationConnect, { onClose: () => setConnectOpen(false), onConnected: (row) => {
+    setConnectOpen(false);
+    listMutation.current++;
+    setRows((previous) => [row, ...previous.filter((item) => item.id !== row.id)]);
+    choose(row);
+  } }), /* @__PURE__ */ React21.createElement(AssistantIdentitySettings, { open: identityOpen, onClose: () => setIdentityOpen(false), name: assistantName }), /* @__PURE__ */ React21.createElement(AssistantKnowledgeSettings, { open: knowledgeOpen, onClose: () => setKnowledgeOpen(false), data: state.data, mode: knowledgeMode, onMode: setKnowledgeMode, scope: knowledgeScope, onScope: (scope) => {
     setKnowledgeScope(scope);
     WB.store.set({ assistantHubKnowledgeScope: scope, assistantHubThreadId: null });
-  } })));
+  }, onDemand: kind === "chat" })));
 }
 function QuickActions({ id, kind, entity: entity2, disabled, operate, setDraft, showExtraction, overflow = false }) {
   let actions2 = [];
@@ -10796,15 +11068,23 @@ function QuickActions({ id, kind, entity: entity2, disabled, operate, setDraft, 
   } else if (kind === "radar") actions2 = [["讨论这条资讯", null, "分析这条资讯与当前工作的关系。"], ["转为待办", "radar.toTask"], ["加入知识库", "radar.toKnowledge"]];
   else if (kind === "knowledge") actions2 = [["修改这条知识", null, "将这条知识修改为："], ["删除这条知识", "knowledge.delete"]];
   else actions2 = [["查看未完成待办", null, "列出我的未完成待办。"]];
-  return /* @__PURE__ */ React19.createElement("div", { className: "wb-hub-quick-actions" }, (overflow ? actions2.slice(2) : actions2.slice(0, 2)).map(([label, op, value]) => /* @__PURE__ */ React19.createElement(Btn, { size: "sm", key: label, disabled, onClick: () => op === "showExtraction" ? showExtraction() : op ? operate(op, value || {}) : setDraft(value) }, label)));
+  return /* @__PURE__ */ React21.createElement("div", { className: "wb-hub-quick-actions" }, (overflow ? actions2.slice(2) : actions2.slice(0, 2)).map(([label, op, value]) => /* @__PURE__ */ React21.createElement(Btn, { size: "sm", key: label, disabled, onClick: () => op === "showExtraction" ? showExtraction() : op ? operate(op, value || {}) : setDraft(value) }, label)));
 }
 var HUB_CSS = `
-.wb-hub-source{font-size:10px;line-height:1.5;white-space:nowrap;padding:1px 5px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);flex:none}.wb-hub-session-meta{display:flex;align-items:center;gap:5px;min-width:0}.wb-hub-workspace{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:40%;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}.wb-hub-workspace>svg{flex:none}.wb-hub-workspace>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.wb-hub-workspace.is-bound{color:var(--dsw-alias-brand-primary)}.wb-hub-workspace.is-pending,.wb-hub-workspace.is-unavailable{color:var(--dsw-alias-status-warning,var(--dsw-alias-label-secondary))}.wb-hub-workspace.is-compact{max-width:none;flex:1;font-size:9px}.wb-hub-native-context{display:flex;align-items:center;gap:10px;min-height:32px;box-sizing:border-box;padding:3px 14px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1);min-width:0}.wb-hub-native-session{display:flex;align-items:center;gap:6px;min-width:0;flex:1;font-size:11px}.wb-hub-native-caption{white-space:nowrap;color:var(--dsw-alias-label-secondary);font-size:10px}.wb-hub-native-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb-hub-native-context .wb-hub-threads{height:25px;min-height:25px;padding:2px 6px;font-size:11px;max-width:300px;min-width:0;flex:1}.wb-hub-native-context>.wb-iconbtn{width:24px;height:24px;flex:none}.wb-hub-native-blocked{width:100%;max-width:780px;box-sizing:border-box;flex:none;padding:8px 0;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);margin:0 auto}.wb-hub-native-blocked>span{flex:1;min-width:0;overflow-wrap:anywhere}.wb-hub-native-blocked>.wb-btn{flex:none}@media(max-width:640px){.wb-hub-native-context{padding:2px 8px;gap:5px}.wb-hub-native-caption{display:none}.wb-hub-native-context>.wb-hub-workspace{max-width:42%}.wb-hub-context-head .wb-hub-source{font-size:9px;padding:1px 3px}}@media(max-height:420px){.wb-hub-native-context{min-height:26px;padding-top:1px;padding-bottom:1px}.wb-hub-native-context .wb-hub-threads{height:22px;min-height:22px}.wb-hub .wb-assistant-composer{min-height:72px}.wb-hub-native-blocked{padding:4px 0}}
+.wb-hub-stop-note{flex:none;margin:0;padding:4px 24px;overflow-wrap:anywhere}.wb-hub-source{font-size:10px;line-height:1.5;white-space:nowrap;padding:1px 5px;border-radius:4px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);flex:none}.wb-hub-type-icon{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;flex:none;color:var(--dsw-alias-label-secondary)}.wb-hub-session-meta{display:flex;align-items:center;gap:5px;min-width:0}.wb-hub-workspace{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:40%;font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}.wb-hub-workspace>svg{flex:none}.wb-hub-workspace>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.wb-hub-workspace.is-bound{color:var(--dsw-alias-brand-primary)}.wb-hub-workspace.is-pending,.wb-hub-workspace.is-unavailable{color:var(--dsw-alias-status-warning,var(--dsw-alias-label-secondary))}.wb-hub-workspace.is-compact{max-width:none;flex:1;font-size:9px}.wb-hub-native-context{display:flex;align-items:center;gap:10px;min-height:32px;box-sizing:border-box;padding:3px 14px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1);min-width:0}.wb-hub-native-session{display:flex;align-items:center;gap:6px;min-width:0;flex:1;font-size:11px}.wb-hub-native-caption{white-space:nowrap;color:var(--dsw-alias-label-secondary);font-size:10px}.wb-hub-native-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb-hub-native-context .wb-hub-threads{height:25px;min-height:25px;padding:2px 6px;font-size:11px;max-width:300px;min-width:0;flex:1}.wb-hub-native-context>.wb-iconbtn{width:24px;height:24px;flex:none}.wb-hub-native-blocked{width:100%;max-width:780px;box-sizing:border-box;flex:none;padding:8px 0;display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary);margin:0 auto}.wb-hub-native-blocked>span{flex:1;min-width:0;overflow-wrap:anywhere}.wb-hub-native-blocked>.wb-btn{flex:none}@media(max-width:640px){.wb-hub-native-context{padding:2px 8px;gap:5px}.wb-hub-native-caption{display:none}.wb-hub-native-context>.wb-hub-workspace{max-width:42%}.wb-hub-context-head .wb-hub-source{font-size:9px;padding:1px 3px}}@media(max-height:420px){.wb-hub-native-context{min-height:26px;padding-top:1px;padding-bottom:1px}.wb-hub-native-context .wb-hub-threads{height:22px;min-height:22px}.wb-hub .wb-assistant-composer{min-height:72px}.wb-hub-native-blocked{padding:4px 0}}
 
-.wb-hub-capabilities{display:flex;align-items:center;gap:6px;flex:none;padding:7px 12px;border-bottom:1px solid var(--dsw-alias-border-l1)}.wb-hub-capabilities>button{font:inherit;font-size:12px;border:0;border-radius:7px;padding:6px 10px;background:transparent;color:inherit;display:flex;align-items:center;gap:6px;cursor:pointer;min-width:0}.wb-hub-capabilities>button[aria-current=true]{background:var(--dsw-alias-bg-layer-2);font-weight:600}.wb-hub-capabilities small{font-size:9px;color:var(--dsw-alias-label-secondary);white-space:nowrap}.wb-hub-context-head{position:relative;min-width:0}.wb-hub-context-head .wb-assistant-current{min-width:60px;flex:1;display:flex;flex-direction:row;align-items:center;gap:6px}.wb-hub-context-head>.wb-iconbtn{flex:none}.wb-hub-context-head .wb-assistant-current strong{flex:1;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}.wb-hub-context-head .wb-assistant-current small{font-size:10px;white-space:nowrap}.wb-hub-primary-actions{flex:none}.wb-hub-primary-actions .wb-hub-quick-actions{flex-wrap:nowrap}.wb-hub-more{flex:none;position:relative}.wb-hub-more>summary{list-style:none;cursor:pointer;font-size:18px;line-height:28px;text-align:center;width:24px}.wb-hub-more>summary::-webkit-details-marker{display:none}.wb-hub-more-menu{position:absolute;right:0;top:32px;z-index:30;width:220px;max-height:55vh;overflow:auto;padding:10px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base);box-shadow:0 6px 24px #0002;display:flex;flex-direction:column;gap:7px}.wb-hub-more-menu .wb-hub-quick-actions{display:flex;flex-direction:column;align-items:stretch}.wb-hub-mobile-actions{display:none}.wb-hub-session-row{display:flex;align-items:center;gap:1px;min-width:0}.wb-hub-session-row .wb-assistant-session{flex:1;min-width:0;padding:10px 8px}.wb-hub-session-row .wb-assistant-session strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;font-size:12px;line-height:1.6}.wb-hub-session-row .wb-assistant-session small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.wb-hub-session-row>.wb-iconbtn{flex:none;width:24px;min-width:24px;opacity:.6}.wb-hub-history-day{flex:none;width:100%;max-width:780px;margin:0 auto}.wb-hub-history-day>summary{font-size:11px;color:var(--dsw-alias-label-secondary);cursor:pointer;padding:8px 0}.wb-hub-history-day>div{display:flex;flex-direction:column;gap:14px}.wb-hub-artifact-preview{font-size:12px;white-space:pre-wrap;line-height:1.7;margin:0;color:var(--dsw-alias-label-secondary);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.wb-hub-pin[aria-pressed=true]{opacity:1;color:var(--dsw-alias-brand-primary)}.wb-hub-office-full>summary,.wb-hub-history-reply>summary{cursor:pointer;font-size:12px;color:var(--dsw-alias-brand-primary)}@media(max-width:640px){.wb-hub-primary-actions{display:none}.wb-hub-mobile-actions{display:block}.wb-hub-context-head .wb-assistant-current small{display:none}.wb-hub-capabilities{gap:3px;padding:5px 8px}.wb-hub-capabilities>button{padding:5px 7px;font-size:11px;gap:4px}.wb-hub-capabilities small{font-size:8px}.wb-hub-more-menu{max-height:60vh}.wb-hub-context-head .wb-assistant-current{min-width:0}}@media(max-height:420px){.wb-hub-capabilities{padding:3px 6px}.wb-hub-capabilities>button{padding:3px 6px}.wb-hub-more-menu{max-height:48vh}}
-.wb-hub-common-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.wb-hub-common-grid>button{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:14px;text-align:left;background:var(--dsw-alias-bg-base);color:inherit;font:inherit;cursor:pointer;display:flex;flex-direction:column;gap:5px;min-width:0}.wb-hub-common-grid>button span{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}.wb-hub-common-grid>button:disabled{opacity:.5;cursor:default}.wb-hub-office-picker{display:flex;flex-direction:column;gap:10px;min-width:0}.wb-hub-office-choices{max-height:min(360px,45vh);overflow:auto;display:flex;flex-direction:column;gap:6px}.wb-hub-office-choices>label{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--dsw-alias-border-l1);padding:10px;border-radius:8px;min-width:0}.wb-hub-office-choices>label input{margin-top:4px;flex:none}.wb-hub-office-choices>label>span{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}.wb-hub-office-choices strong{font-size:12px}.wb-hub-office-choices strong small{font-size:10px;font-weight:400;margin-left:8px;color:var(--dsw-alias-label-secondary)}.wb-hub-office-choices>label>span>span{font-size:12px;line-height:1.6}.wb-hub-busy-settings{display:flex;flex-direction:column;gap:10px;line-height:1.7}.wb-hub-busy-settings p{margin:0}.wb-hub-busy-settings blockquote{margin:0;padding:12px;border-left:2px solid var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-2);font-size:13px}.wb-hub-office-artifacts{display:flex;flex-direction:column;gap:14px;min-width:0}.wb-hub-office-artifacts:empty{display:none}.wb-hub-office-artifact{display:flex;flex-direction:column;gap:10px;min-width:0;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1)}.wb-hub-office-document{max-height:360px;overflow:auto;font-size:13px;line-height:1.8;overflow-wrap:anywhere}.wb-hub-office-progress{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);display:flex;flex-direction:column;gap:6px}.wb-hub-office-progress p{margin:0}.wb-hub-run{padding:12px 14px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base);display:flex;flex-direction:column;gap:8px}.wb-hub-past-runs{width:100%;max-width:780px;margin:0 auto;flex:none}.wb-hub-past-runs>div{margin-top:10px}@media(max-width:480px){.wb-hub-common-grid{grid-template-columns:1fr}.wb-hub-office-document{max-height:260px}}
+.wb-hub-capabilities{display:flex;align-items:center;gap:6px;flex:none;padding:7px 12px;border-bottom:1px solid var(--dsw-alias-border-l1)}.wb-hub-capabilities>button{font:inherit;font-size:12px;border:0;border-radius:7px;padding:6px 10px;background:transparent;color:inherit;display:flex;align-items:center;gap:6px;cursor:pointer;min-width:0}.wb-hub-capabilities>button[aria-current=true]{background:var(--dsw-alias-bg-layer-2);font-weight:600}.wb-hub-capabilities small{font-size:9px;color:var(--dsw-alias-label-secondary);white-space:nowrap}.wb-hub-context-head{position:relative;min-width:0}.wb-hub-context-head .wb-assistant-current{min-width:60px;flex:1;display:flex;flex-direction:row;align-items:center;gap:6px}.wb-hub-context-head>.wb-iconbtn{flex:none}.wb-hub-context-head .wb-assistant-current strong{flex:1;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}.wb-hub-context-head .wb-assistant-current small{font-size:10px;white-space:nowrap}.wb-hub-primary-actions{flex:none}.wb-hub-primary-actions .wb-hub-quick-actions{flex-wrap:nowrap}.wb-hub-more{flex:none;position:relative}.wb-hub-more>summary{list-style:none;cursor:pointer;font-size:18px;line-height:28px;text-align:center;width:24px}.wb-hub-more>summary::-webkit-details-marker{display:none}.wb-hub-more-menu{position:absolute;right:0;top:32px;z-index:30;width:220px;max-height:55vh;overflow:auto;padding:10px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base);box-shadow:0 6px 24px #0002;display:flex;flex-direction:column;gap:7px}.wb-hub-more-menu .wb-hub-quick-actions{display:flex;flex-direction:column;align-items:stretch}.wb-hub-mobile-actions{display:none}.wb-hub-session-row{display:flex;align-items:center;gap:1px;min-width:0}.wb-hub-session-row .wb-assistant-session{flex:1;min-width:0;padding:10px 8px;font-family:inherit}
+.wb-hub-session-row .wb-hub-session-copy{display:flex;flex-direction:column;flex:1;width:100%;min-width:0;gap:4px}
+.wb-hub-session-copy>.wb-hub-session-meta{display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:6px;height:18px;min-height:18px;line-height:18px}
+.wb-hub-session-meta>.wb-hub-type-icon{display:flex;align-items:center;justify-content:center;width:16px;height:18px;line-height:1}
+.wb-hub-session-meta>.wb-hub-workspace.is-compact{display:grid;grid-template-columns:12px minmax(0,1fr);align-items:center;gap:4px;min-width:0;max-width:none;height:18px;font-size:10px;line-height:18px}
+.wb-hub-session-meta>.wb-hub-workspace>svg{width:12px;height:12px;margin:0}
+.wb-hub-session-meta>.wb-hub-workspace>span{display:block;min-width:0;line-height:18px}
+.wb-hub-session-row .wb-hub-session-copy>strong{margin:0;line-height:18px}
+.wb-hub-session-row .wb-hub-session-copy>small{display:block;margin:0;line-height:16px}.wb-hub-session-row .wb-assistant-session strong{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;white-space:normal;font-size:12px;line-height:18px}.wb-hub-session-row .wb-assistant-session small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}.wb-hub-session-row>.wb-iconbtn{flex:none;width:24px;min-width:24px;opacity:.6}.wb-hub-history-day{flex:none;width:100%;max-width:780px;margin:0 auto}.wb-hub-history-day>summary{font-size:11px;color:var(--dsw-alias-label-secondary);cursor:pointer;padding:8px 0}.wb-hub-history-day>div{display:flex;flex-direction:column;gap:14px}.wb-hub-artifact-preview{font-size:12px;white-space:pre-wrap;line-height:1.7;margin:0;color:var(--dsw-alias-label-secondary);display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}.wb-hub-pin[aria-pressed=true]{opacity:1;color:var(--dsw-alias-brand-primary)}.wb-hub-office-full>summary,.wb-hub-history-reply>summary{cursor:pointer;font-size:12px;color:var(--dsw-alias-brand-primary)}@media(max-width:640px){.wb-hub-primary-actions{display:none}.wb-hub-mobile-actions{display:block}.wb-hub-context-head .wb-assistant-current small{display:none}.wb-hub-capabilities{gap:3px;padding:5px 8px}.wb-hub-capabilities>button{padding:5px 7px;font-size:11px;gap:4px}.wb-hub-capabilities small{font-size:8px}.wb-hub-more-menu{max-height:60vh}.wb-hub-context-head .wb-assistant-current{min-width:0}}@media(max-height:420px){.wb-hub-capabilities{padding:3px 6px}.wb-hub-capabilities>button{padding:3px 6px}.wb-hub-more-menu{max-height:48vh}}
+.wb-hub-common-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.wb-hub-common-grid>button{border:1px solid var(--dsw-alias-border-l1);border-radius:10px;padding:14px;text-align:left;background:var(--dsw-alias-bg-base);color:inherit;font:inherit;cursor:pointer;display:flex;flex-direction:column;gap:5px;min-width:0}.wb-hub-common-grid>button span{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}.wb-hub-common-grid>button:disabled{opacity:.5;cursor:default}.wb-hub-office-picker{display:flex;flex-direction:column;gap:10px;min-width:0}.wb-hub-office-choices{max-height:min(360px,45vh);overflow:auto;display:flex;flex-direction:column;gap:6px}.wb-hub-office-choices>label{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--dsw-alias-border-l1);padding:10px;border-radius:8px;min-width:0}.wb-hub-office-choices>label input{margin-top:4px;flex:none}.wb-hub-office-choices>label>span{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}.wb-hub-office-choices strong{font-size:12px}.wb-hub-office-choices strong small{font-size:10px;font-weight:400;margin-left:8px;color:var(--dsw-alias-label-secondary)}.wb-hub-office-choices>label>span>span{font-size:12px;line-height:1.6}.wb-hub-busy-settings{display:flex;flex-direction:column;gap:10px;line-height:1.7}.wb-hub-busy-settings p{margin:0}.wb-hub-busy-settings blockquote{margin:0;padding:12px;border-left:2px solid var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-2);font-size:13px}.wb-hub-office-artifacts{display:flex;flex-direction:column;gap:14px;min-width:0}.wb-hub-office-artifacts:empty{display:none}.wb-hub-office-artifact{display:flex;flex-direction:column;gap:10px;min-width:0;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l1)}.wb-hub-office-document{max-height:360px;overflow:auto;font-size:13px;line-height:1.8;overflow-wrap:anywhere}.wb-hub-office-progress{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary);display:flex;flex-direction:column;gap:6px}.wb-hub-office-progress p{margin:0}.wb-hub-run{padding:12px 14px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base);display:flex;flex-direction:column;gap:8px}.wb-hub-list-notice{font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.6;overflow-wrap:anywhere}.wb-hub-list-notice>p{margin:4px 0}.wb-hub-read-error{width:100%;max-width:780px;align-self:center}.wb-hub-past-runs{width:100%;max-width:780px;margin:0 auto;flex:none}.wb-hub-past-runs>div{margin-top:10px}@media(max-width:480px){.wb-hub-common-grid{grid-template-columns:1fr}.wb-hub-office-document{max-height:260px}}
 .wb-hub-recognition{margin-top:8px;font-size:12px}.wb-hub-recognition>ol{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-direction:column;gap:12px}.wb-hub-recognition>ol>li{border-top:1px solid var(--dsw-alias-border-l1);padding-top:8px;min-width:0}.wb-hub-recognition ul{padding-left:18px;margin:4px 0}.wb-hub-recognition li{overflow-wrap:anywhere}.wb-hub-recognition .wb-hub-command-title strong{font-size:11px;font-weight:500}
-.wb-hub-attachment-route{font-size:10px;color:var(--dsw-alias-label-secondary);line-height:1.5}.wb-hub .wb-assistant-input{border-color:var(--dsw-alias-border-l1);border-radius:14px;box-shadow:0 2px 8px #00000004}.wb-hub .wb-assistant-input:focus-within{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 38%,var(--dsw-alias-border-l1));box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-brand-primary) 7%,transparent)}.wb-hub-visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.wb-hub-message-attachments{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.wb-hub-message-file{display:flex;gap:8px;align-items:center;padding:8px 10px;max-width:100%;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);border-radius:8px}.wb-hub-message-file>span{min-width:0;display:flex;flex-direction:column;gap:3px}.wb-hub-message-file strong{font-size:12px;font-weight:500;overflow-wrap:anywhere}.wb-hub-message-file small{font-size:10px;color:var(--dsw-alias-label-secondary)}.wb-hub-turn{width:100%;max-width:780px;margin:0 auto;display:flex;flex-direction:column;gap:10px;flex:none;min-width:0}.wb-hub-turn-response{padding:12px 14px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;display:flex;flex-direction:column;gap:10px;min-width:0;background:var(--dsw-alias-bg-base)}.wb-hub-turn-footer{display:flex;align-items:center;justify-content:space-between;gap:6px 12px;flex-wrap:wrap;margin-top:2px;min-width:0}.wb-hub-turn-tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}.wb-hub-turn-tag{font-size:10px;line-height:1.6;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border-radius:4px;padding:1px 5px;white-space:nowrap}.wb-hub-turn-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary)}.wb-hub-turn-status.is-incomplete{color:var(--dsw-alias-status-warning,var(--dsw-alias-label-secondary))}.wb-hub-fallback-note{font-size:10px;color:var(--dsw-alias-label-secondary)}.wb-hub-turn-actions{display:flex;gap:8px;flex-wrap:wrap;min-width:0}.wb-hub-turn-actions:empty{display:none}.wb-hub-turn-actions .wb-link{appearance:none;border:0;background:transparent;border-radius:5px;padding:3px 5px;font:inherit;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);cursor:pointer}.wb-hub-turn-actions .wb-link:hover:not(:disabled){background:var(--dsw-alias-bg-layer-2)}.wb-hub-turn-actions .wb-link:hover:not(:disabled){color:var(--dsw-alias-brand-primary)}.wb-hub-turn-actions .wb-link:disabled{cursor:default;opacity:.5}.wb-hub-turn-actions .wb-link:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:3px;border-radius:3px}.wb-hub-turn-mode{margin:0;color:var(--dsw-alias-label-secondary);font-size:11px}.wb-hub-commands{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}.wb-hub-commands>li{border-top:1px solid var(--dsw-alias-border-l1);padding-top:8px;min-width:0;display:flex;flex-direction:column;gap:4px}.wb-hub-command-title{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px}.wb-hub-command-title strong{font-weight:500}.wb-hub-command-title span{font-size:11px;color:var(--dsw-alias-label-secondary)}.wb-hub-commands code{font-size:11px;overflow-wrap:anywhere;white-space:pre-wrap;color:var(--dsw-alias-label-secondary)}.wb-hub-command-details{font-size:11px;min-width:0}.wb-hub-command-details>summary{cursor:pointer;color:var(--dsw-alias-label-secondary);width:fit-content;max-width:100%}.wb-hub-command-details>code{display:block;margin-top:6px}.wb-hub-command-details .wb-code{margin-top:6px}.wb-hub-turn-event:empty{display:none}.wb-hub-turn .wb-hub-confirm{max-width:100%}
+.wb-hub-attachment-route{font-size:10px;color:var(--dsw-alias-label-secondary);line-height:1.5}.wb-hub .wb-assistant-input{border-color:var(--dsw-alias-border-l1);border-radius:14px;box-shadow:0 2px 8px #00000004}.wb-hub .wb-assistant-input:focus-within{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 38%,var(--dsw-alias-border-l1));box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-brand-primary) 7%,transparent)}.wb-hub-visually-hidden{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.wb-hub-message-attachments{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.wb-hub-message-file{display:flex;gap:8px;align-items:center;padding:8px 10px;max-width:100%;border:1px solid var(--dsw-alias-border-l1);background:var(--dsw-alias-bg-layer-1);border-radius:8px}.wb-hub-message-file>span{min-width:0;display:flex;flex-direction:column;gap:3px}.wb-hub-message-file strong{font-size:12px;font-weight:500;overflow-wrap:anywhere}.wb-hub-message-file small{font-size:10px;color:var(--dsw-alias-label-secondary)}.wb-hub-turn{width:100%;max-width:780px;margin:0 auto;display:flex;flex-direction:column;gap:10px;flex:none;min-width:0}.wb-hub-turn-response{padding:12px 14px 8px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;display:flex;flex-direction:column;gap:8px;min-width:0;background:var(--dsw-alias-bg-base)}.wb-hub-turn-footer{display:flex;align-items:center;justify-content:space-between;gap:4px 8px;flex-wrap:wrap;margin-top:0;min-width:0}.wb-hub-turn-tags{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0}.wb-hub-turn-tag{font-size:10px;line-height:16px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2);border-radius:4px;padding:0 4px;white-space:nowrap}.wb-hub-turn-status{display:inline-flex;align-items:center;gap:4px;font-size:11px;line-height:16px;color:var(--dsw-alias-label-secondary)}.wb-hub-turn-status.is-incomplete{color:var(--dsw-alias-status-warning,var(--dsw-alias-label-secondary))}.wb-hub-fallback-note{font-size:10px;color:var(--dsw-alias-label-secondary)}.wb-hub-turn-actions{display:flex;gap:8px;flex-wrap:wrap;min-width:0}.wb-hub-turn-actions:empty{display:none}.wb-hub-turn-actions .wb-link{appearance:none;border:0;background:transparent;border-radius:5px;padding:3px 5px;font:inherit;font-size:11px;line-height:1.7;color:var(--dsw-alias-label-secondary);cursor:pointer}.wb-hub-turn-actions .wb-link:hover:not(:disabled){background:var(--dsw-alias-bg-layer-2)}.wb-hub-turn-actions .wb-link:hover:not(:disabled){color:var(--dsw-alias-brand-primary)}.wb-hub-turn-actions .wb-link:disabled{cursor:default;opacity:.5}.wb-hub-turn-actions .wb-link:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:3px;border-radius:3px}.wb-hub-turn-mode{margin:0;color:var(--dsw-alias-label-secondary);font-size:11px}.wb-hub-commands{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:8px}.wb-hub-commands>li{border-top:1px solid var(--dsw-alias-border-l1);padding-top:8px;min-width:0;display:flex;flex-direction:column;gap:4px}.wb-hub-command-title{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12px}.wb-hub-command-title strong{font-weight:500}.wb-hub-command-title span{font-size:11px;color:var(--dsw-alias-label-secondary)}.wb-hub-commands code{font-size:11px;overflow-wrap:anywhere;white-space:pre-wrap;color:var(--dsw-alias-label-secondary)}.wb-hub-command-details{font-size:11px;min-width:0}.wb-hub-command-details>summary{cursor:pointer;color:var(--dsw-alias-label-secondary);width:fit-content;max-width:100%}.wb-hub-command-details>code{display:block;margin-top:6px}.wb-hub-command-details .wb-code{margin-top:6px}.wb-hub-turn-event:empty{display:none}.wb-hub-turn .wb-hub-confirm{max-width:100%}
 
 .wb-hub{display:flex;flex-direction:column;flex:1;min-width:0;min-height:0;max-width:100%;background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-primary);overflow:hidden!important}
 .wb-hub .wb-assistant-head{display:flex;align-items:center;gap:8px;padding:10px 14px;flex:none;border-bottom:1px solid var(--dsw-alias-border-l1)}
@@ -10816,11 +11096,11 @@ var HUB_CSS = `
 .wb-hub-card,.wb-hub-confirm,.wb-hub-event,.wb-hub-message,.wb-hub-notice{width:100%;max-width:780px;margin:0 auto;box-sizing:border-box;flex:none}
 .wb-hub-card,.wb-hub-confirm{border:1px solid var(--dsw-alias-border-l1);border-radius:12px;padding:14px 16px;display:flex;flex-direction:column;gap:8px;background:var(--dsw-alias-bg-base)}
 .wb-hub-card-title{display:flex;align-items:center;gap:12px;justify-content:space-between}.wb-hub-status{font-size:11px;white-space:nowrap;border-radius:6px;background:var(--dsw-alias-bg-layer-2);padding:3px 6px}.wb-hub-text{white-space:pre-wrap;overflow-wrap:anywhere;margin:2px 0;line-height:1.7}
-.wb-hub-run progress{width:100%;height:5px;accent-color:var(--dsw-alias-brand-primary)}.wb-hub-warning,.wb-hub-error{color:var(--dsw-alias-status-error,var(--dsw-alias-label-primary))}.wb-hub-error{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-width:780px;width:100%;margin:0 auto}
+.wb-hub-run.is-embedded{border:0;border-radius:0;background:transparent;padding:0}.wb-hub-run-heading{font-size:13px;font-weight:500;line-height:1.7}.wb-hub-run-items,.wb-hub-history-content{display:flex;flex-direction:column;gap:10px;min-width:0}.wb-hub-run progress{width:100%;height:5px;accent-color:var(--dsw-alias-brand-primary)}.wb-hub-warning,.wb-hub-error{color:var(--dsw-alias-status-error,var(--dsw-alias-label-primary))}.wb-hub-error{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-width:780px;width:100%;margin:0 auto}
 .wb-hub-message{padding:12px 0;line-height:1.7}.wb-hub-message.is-user{padding:12px 16px;border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.wb-hub-system-message{padding:12px 14px;border-left:2px solid var(--dsw-alias-border-l1);border-radius:0 8px 8px 0;background:var(--dsw-alias-bg-base)}.wb-hub-system-message.is-error{border-left-color:var(--dsw-alias-status-error,var(--dsw-alias-border-l1))}.wb-hub-system-raw{font-size:12px;color:var(--dsw-alias-label-secondary);margin-top:8px;max-width:100%;min-width:0}.wb-hub-system-raw>summary{cursor:pointer}.wb-hub-system-raw .wb-hub-markdown{max-height:320px;overflow:auto;font-size:12px}.wb-hub-message>small,.wb-hub-event>small{color:var(--dsw-alias-label-secondary);font-size:10px}.wb-hub-markdown{display:flex;flex-direction:column;gap:5px;margin-top:5px;white-space:pre-wrap;font-size:13px;line-height:1.75;overflow-wrap:anywhere}.wb-hub-markdown pre{max-width:100%;overflow:auto;white-space:pre-wrap}.wb-hub-markdown ul,.wb-hub-markdown ol{padding-left:22px;margin:3px 0}.wb-hub-markdown blockquote{margin:4px 0;border-left:2px solid var(--dsw-alias-border-l1);padding-left:10px}
 .wb-hub-item{display:flex;align-items:center;gap:12px;justify-content:space-between;padding:10px 0;background:transparent;border:0;border-top:1px solid var(--dsw-alias-border-l1);color:inherit;text-align:left;cursor:pointer;font:inherit;width:100%;min-width:0}.wb-hub-item>span{display:flex;flex-direction:column;gap:4px;min-width:0;overflow-wrap:anywhere}.wb-hub-item small,.wb-hub-item>span>span{font-size:11px;color:var(--dsw-alias-label-secondary)}
 .wb-hub-event{font-size:12px;padding:8px 12px;border-left:2px solid var(--dsw-alias-border-l1);color:var(--dsw-alias-label-secondary)}.wb-hub-confirm{border-color:var(--dsw-alias-brand-primary)}.wb-hub-values{margin:5px 0;display:grid;grid-template-columns:70px minmax(0,1fr);gap:5px;font-size:12px}.wb-hub-values dt{color:var(--dsw-alias-label-secondary)}.wb-hub-values dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}.wb-hub-artifact summary,.wb-hub-diagnostics summary{cursor:pointer;font-size:12px}.wb-hub-diagnostics{max-width:780px;width:100%;margin:0 auto;color:var(--dsw-alias-label-secondary);flex:none}
-.wb-hub-past-runs{width:100%;max-width:780px;margin:0 auto;flex:none}.wb-hub-past-runs>summary{font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer}.wb-hub-past-runs[open]{display:flex;flex-direction:column;gap:10px}.wb-hub-empty,.wb-hub-loading{padding:32px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;color:var(--dsw-alias-label-secondary);margin:auto 0}.wb-hub-empty p{max-width:340px;font-size:12px;line-height:1.7;margin:0}.wb-hub-notice{font-size:12px;white-space:pre-wrap}
+.wb-hub-list-notice{font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.6;overflow-wrap:anywhere}.wb-hub-list-notice>p{margin:4px 0}.wb-hub-read-error{width:100%;max-width:780px;align-self:center}.wb-hub-past-runs{width:100%;max-width:780px;margin:0 auto;flex:none}.wb-hub-past-runs>summary{font-size:12px;color:var(--dsw-alias-label-secondary);cursor:pointer}.wb-hub-past-runs[open]{display:flex;flex-direction:column;gap:10px}.wb-hub-empty,.wb-hub-loading{padding:32px 20px;display:flex;flex-direction:column;align-items:center;gap:12px;text-align:center;color:var(--dsw-alias-label-secondary);margin:auto 0}.wb-hub-empty p{max-width:340px;font-size:12px;line-height:1.7;margin:0}.wb-hub-notice{font-size:12px;white-space:pre-wrap}
 .wb-hub .wb-assistant-composer{padding:10px 18px 14px;min-height:106px;max-height:40%}.wb-hub .wb-assistant-input{max-width:780px;margin:0 auto}.wb-hub .wb-assistant-input>.wb-textarea{min-height:48px;max-height:120px}.wb-hub .wb-assistant-input-actions{margin-top:4px}
 .wb-hub-extraction{display:flex;flex-direction:column;max-height:360px;width:100%;max-width:780px;margin:0 auto;flex:none;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-base);padding:14px 16px;box-sizing:border-box;outline:none}.wb-hub-extraction:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}.wb-hub-extraction .wb-hub-card-title>div{min-width:0;flex:1}.wb-hub-extraction h2{font-size:15px;margin:0 0 4px}.wb-hub-extraction p{margin:4px 0}.wb-hub-extraction-controls{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:10px 0;flex-wrap:wrap}.wb-hub-extraction-controls>.wb-input{width:220px;max-width:100%;min-width:0}.wb-hub-extraction-list{flex:1;min-height:100px;align-content:start;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:220px;overflow:auto;overscroll-behavior:contain}.wb-hub-extraction-item{border:1px solid var(--dsw-alias-border-l1);border-radius:8px;padding:10px;min-width:0;display:flex;flex-direction:column;gap:5px;overflow-wrap:anywhere}.wb-hub-extraction-item.is-selected{border-color:var(--dsw-alias-brand-primary)}.wb-hub-extraction-title{font-size:12px;font-weight:600;line-height:1.6}.wb-hub-extraction-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;color:var(--dsw-alias-label-secondary);font-size:10px}.wb-hub-extraction-meta>span:first-child{background:var(--dsw-alias-bg-layer-2);border-radius:4px;padding:2px 5px}.wb-hub-extraction-body{font-size:11px;line-height:1.6;white-space:pre-wrap}.wb-hub-extraction-source{font-size:10px;color:var(--dsw-alias-label-secondary);line-height:1.6}.wb-hub-extraction-source>summary{cursor:pointer}.wb-hub-extraction-source .wb-hub-text{max-height:180px;overflow:auto}.wb-hub-extraction-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:auto;padding-top:5px}.wb-hub-extraction-actions>.wb-link{font-size:10px}.wb-hub-extraction-pagination{flex:none;display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:10px}.wb-hub-extraction>.wb-hub-card-title,.wb-hub-extraction-controls,.wb-hub-review-note{flex:none}.wb-hub-extraction .wb-link{border:0;background:transparent;padding:0;font:inherit;font-size:11px;cursor:pointer;color:var(--dsw-alias-brand-primary)}.wb-hub-review-note{font-size:11px;line-height:1.6;color:var(--dsw-alias-label-secondary)}.wb-hub-review-note .wb-link{margin-left:6px;font-size:inherit}.wb-hub-selected-context{display:flex;gap:4px;flex-wrap:wrap;max-height:48px;overflow:auto;margin-bottom:5px}.wb-hub-selected-context .wb-chip{white-space:normal;min-width:0;max-width:100%;overflow-wrap:anywhere}
 @media(max-width:640px){.wb-hub-extraction{padding:12px}.wb-hub-extraction-list{grid-template-columns:minmax(0,1fr);max-height:300px}.wb-hub-extraction-controls>.wb-input{width:100%}.wb-hub .wb-assistant-head{padding:8px}.wb-hub-body{padding:12px}.wb-hub-summary{padding:8px 10px}.wb-hub .wb-assistant-composer{padding:8px}.wb-hub .wb-assistant-sessions{width:min(260px,85vw);top:46px}.wb-hub-context-head{z-index:7;background:var(--dsw-alias-bg-layer-1)}.wb-hub-card,.wb-hub-confirm{padding:12px}.wb-hub-summary .wb-hub-threads{max-width:160px}}
@@ -10840,21 +11120,21 @@ var HUB_CSS = `
 `;
 
 // src/client/shell/workbench-shell.ts
-var React27 = __toESM(require("react"), 1);
+var React29 = __toESM(require("react"), 1);
 
 // src/client/components/TopNavigation.tsx
-var React20 = __toESM(require("react"), 1);
+var React22 = __toESM(require("react"), 1);
 var primary = ["dashboard", "assistant", "agents", "tasks", "replies", "radar", "knowledge", "web-ai"];
 function TopNavigation({ page }) {
-  const navRef = React20.useRef(null), measureRef = React20.useRef(null);
-  const detailsRef = React20.useRef(null);
+  const navRef = React22.useRef(null), measureRef = React22.useRef(null);
+  const detailsRef = React22.useRef(null);
   const order = [...primary.filter((id) => WB.ORDER.includes(id)), ...WB.ORDER.filter((id) => id !== "search" && !primary.includes(id))];
   const orderKey = order.join("|");
-  const [visibleCount, setVisibleCount] = React20.useState(primary.length);
-  const countRef = React20.useRef(visibleCount);
+  const [visibleCount, setVisibleCount] = React22.useState(primary.length);
+  const countRef = React22.useRef(visibleCount);
   countRef.current = visibleCount;
-  const restoreFocus = React20.useRef(null);
-  React20.useLayoutEffect(() => {
+  const restoreFocus = React22.useRef(null);
+  React22.useLayoutEffect(() => {
     const nav = navRef.current, track = measureRef.current;
     if (!nav || !track) return;
     let alive = true;
@@ -10900,14 +11180,14 @@ function TopNavigation({ page }) {
       window.removeEventListener?.("resize", measure);
     };
   }, [orderKey, page]);
-  React20.useLayoutEffect(() => {
+  React22.useLayoutEffect(() => {
     const target = restoreFocus.current;
     if (!target) return;
     restoreFocus.current = null;
     if (target === "more") detailsRef.current?.querySelector("summary")?.focus();
     else navRef.current?.querySelector(`button[data-page="${target}"]`)?.focus();
   }, [visibleCount]);
-  React20.useEffect(() => {
+  React22.useEffect(() => {
     const closeOutside = (event) => {
       const details = detailsRef.current;
       if (details?.open && !details.contains(event.target)) details.open = false;
@@ -10918,7 +11198,7 @@ function TopNavigation({ page }) {
   const more = order.slice(visibleCount);
   function item(id) {
     const meta = WB.PAGE_META[id];
-    return /* @__PURE__ */ React20.createElement("button", { key: id, type: "button", "data-page": id, className: "wb-nav-item" + (page === id ? " is-active" : ""), "aria-current": page === id ? "page" : void 0, onClick: (event) => {
+    return /* @__PURE__ */ React22.createElement("button", { key: id, type: "button", "data-page": id, className: "wb-nav-item" + (page === id ? " is-active" : ""), "aria-current": page === id ? "page" : void 0, onClick: (event) => {
       const details = event?.currentTarget?.closest("details");
       if (details) {
         details.open = false;
@@ -10926,14 +11206,14 @@ function TopNavigation({ page }) {
       }
       WB.go(id);
       WB.store.set({ assistantOpen: id === "assistant", contextHidden: true });
-    } }, /* @__PURE__ */ React20.createElement(Icon, { name: meta.icon, size: 15 }), /* @__PURE__ */ React20.createElement("span", null, meta.title));
+    } }, /* @__PURE__ */ React22.createElement(Icon, { name: meta.icon, size: 15 }), /* @__PURE__ */ React22.createElement("span", null, meta.title));
   }
-  return /* @__PURE__ */ React20.createElement("nav", { ref: navRef, className: "wb-topnav", "aria-label": "工作台导航" }, order.slice(0, visibleCount).map(item), more.length > 0 && /* @__PURE__ */ React20.createElement("details", { ref: detailsRef, className: "wb-more", onKeyDown: (event) => {
+  return /* @__PURE__ */ React22.createElement("nav", { ref: navRef, className: "wb-topnav", "aria-label": "工作台导航" }, order.slice(0, visibleCount).map(item), more.length > 0 && /* @__PURE__ */ React22.createElement("details", { ref: detailsRef, className: "wb-more", onKeyDown: (event) => {
     if (event.key === "Escape") {
       event.currentTarget.open = false;
       event.currentTarget.querySelector("summary")?.focus();
     }
-  } }, /* @__PURE__ */ React20.createElement("summary", null, /* @__PURE__ */ React20.createElement("span", null, "更多"), /* @__PURE__ */ React20.createElement(Icon, { name: "chevronDown", size: 12 })), /* @__PURE__ */ React20.createElement("div", { className: "wb-more-menu" }, more.map(item))), /* @__PURE__ */ React20.createElement("div", { className: "wb-nav-measure-clip", "aria-hidden": "true" }, /* @__PURE__ */ React20.createElement("div", { ref: measureRef, className: "wb-nav-measure" }, order.map((id) => /* @__PURE__ */ React20.createElement("span", { key: id, className: "wb-nav-item" + (page === id ? " is-active" : "") }, /* @__PURE__ */ React20.createElement(Icon, { name: WB.PAGE_META[id].icon, size: 15 }), /* @__PURE__ */ React20.createElement("span", null, WB.PAGE_META[id].title))), /* @__PURE__ */ React20.createElement("span", { className: "wb-nav-more-measure" }, /* @__PURE__ */ React20.createElement("span", null, "更多"), /* @__PURE__ */ React20.createElement(Icon, { name: "chevronDown", size: 12 })))));
+  } }, /* @__PURE__ */ React22.createElement("summary", null, /* @__PURE__ */ React22.createElement("span", null, "更多"), /* @__PURE__ */ React22.createElement(Icon, { name: "chevronDown", size: 12 })), /* @__PURE__ */ React22.createElement("div", { className: "wb-more-menu" }, more.map(item))), /* @__PURE__ */ React22.createElement("div", { className: "wb-nav-measure-clip", "aria-hidden": "true" }, /* @__PURE__ */ React22.createElement("div", { ref: measureRef, className: "wb-nav-measure" }, order.map((id) => /* @__PURE__ */ React22.createElement("span", { key: id, className: "wb-nav-item" + (page === id ? " is-active" : "") }, /* @__PURE__ */ React22.createElement(Icon, { name: WB.PAGE_META[id].icon, size: 15 }), /* @__PURE__ */ React22.createElement("span", null, WB.PAGE_META[id].title))), /* @__PURE__ */ React22.createElement("span", { className: "wb-nav-more-measure" }, /* @__PURE__ */ React22.createElement("span", null, "更多"), /* @__PURE__ */ React22.createElement(Icon, { name: "chevronDown", size: 12 })))));
 }
 var WB_LAYOUT_CSS = `
 .wb-root { flex-direction:column; padding-top:var(--dsh-frame-top-clearance,0px); container-type:inline-size; container-name:workbench; }
@@ -11045,23 +11325,23 @@ var WB_LAYOUT_CSS = `
 `;
 
 // src/client/components/ContextFormPane.tsx
-var React21 = __toESM(require("react"), 1);
+var React23 = __toESM(require("react"), 1);
 function ContextFormPane({ open, title, ariaLabel, sub, onClose, footer, children }) {
   if (!open) return null;
-  return /* @__PURE__ */ React21.createElement("aside", { className: "wb-context-pane", "aria-label": ariaLabel || title, onKeyDown: (e) => {
+  return /* @__PURE__ */ React23.createElement("aside", { className: "wb-context-pane", "aria-label": ariaLabel || title, onKeyDown: (e) => {
     if (e.key === "Escape") onClose();
-  } }, /* @__PURE__ */ React21.createElement("header", { className: "wb-context-header" }, /* @__PURE__ */ React21.createElement("div", { className: "wb-context-title" }, /* @__PURE__ */ React21.createElement("strong", null, title), sub && /* @__PURE__ */ React21.createElement("p", { className: "wb-tiny wb-muted" }, sub)), /* @__PURE__ */ React21.createElement("button", { type: "button", className: "wb-iconbtn", "aria-label": "关闭编辑", title: "关闭编辑", onClick: onClose }, /* @__PURE__ */ React21.createElement(Icon, { name: "close", size: 15 }))), /* @__PURE__ */ React21.createElement("div", { className: "wb-context-body" }, children), /* @__PURE__ */ React21.createElement("footer", { className: "wb-context-footer" }, footer));
+  } }, /* @__PURE__ */ React23.createElement("header", { className: "wb-context-header" }, /* @__PURE__ */ React23.createElement("div", { className: "wb-context-title" }, /* @__PURE__ */ React23.createElement("strong", null, title), sub && /* @__PURE__ */ React23.createElement("p", { className: "wb-tiny wb-muted" }, sub)), /* @__PURE__ */ React23.createElement("button", { type: "button", className: "wb-iconbtn", "aria-label": "关闭编辑", title: "关闭编辑", onClick: onClose }, /* @__PURE__ */ React23.createElement(Icon, { name: "close", size: 15 }))), /* @__PURE__ */ React23.createElement("div", { className: "wb-context-body" }, children), /* @__PURE__ */ React23.createElement("footer", { className: "wb-context-footer" }, footer));
 }
 
 // src/client/components/TaskEventFields.tsx
-var React22 = __toESM(require("react"), 1);
+var React24 = __toESM(require("react"), 1);
 function TaskEventFields({ value, onChange }) {
   const patch2 = (key2, next) => onChange({ ...value, [key2]: next });
-  return /* @__PURE__ */ React22.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React22.createElement("label", { className: "wb-label" }, "事项类型", /* @__PURE__ */ React22.createElement("select", { className: "wb-select", "aria-label": "事项类型", value: value.eventType, onChange: (e) => patch2("eventType", e.target.value) }, /* @__PURE__ */ React22.createElement("option", { value: "" }, "普通事项"), /* @__PURE__ */ React22.createElement("option", { value: "feature" }, "开发交付"), /* @__PURE__ */ React22.createElement("option", { value: "meeting" }, "会议"), /* @__PURE__ */ React22.createElement("option", { value: "logging" }, "登记填报"), /* @__PURE__ */ React22.createElement("option", { value: "other" }, "其他"))), /* @__PURE__ */ React22.createElement("label", { className: "wb-label" }, "交付物", /* @__PURE__ */ React22.createElement("input", { className: "wb-input", value: value.deliverable, onChange: (e) => patch2("deliverable", e.target.value), placeholder: "未知可留空" })), value.eventType === "meeting" && /* @__PURE__ */ React22.createElement(React22.Fragment, null, /* @__PURE__ */ React22.createElement("label", { className: "wb-label" }, "会议开始", /* @__PURE__ */ React22.createElement("input", { className: "wb-input", type: "datetime-local", value: WB.fmt.toLocalInput(value.meetingStart), onChange: (e) => patch2("meetingStart", WB.fmt.fromLocalInput(e.target.value) || "") })), /* @__PURE__ */ React22.createElement("label", { className: "wb-label" }, "会议结束", /* @__PURE__ */ React22.createElement("input", { className: "wb-input", type: "datetime-local", value: WB.fmt.toLocalInput(value.meetingEnd), onChange: (e) => patch2("meetingEnd", WB.fmt.fromLocalInput(e.target.value) || "") })), /* @__PURE__ */ React22.createElement("label", { className: "wb-label" }, "会议地点", /* @__PURE__ */ React22.createElement("input", { className: "wb-input", value: value.meetingLocation, onChange: (e) => patch2("meetingLocation", e.target.value) }))), value.eventType === "logging" && /* @__PURE__ */ React22.createElement("label", { className: "wb-label" }, "登记对象", /* @__PURE__ */ React22.createElement("input", { className: "wb-input", value: value.registrationTarget, onChange: (e) => patch2("registrationTarget", e.target.value) })));
+  return /* @__PURE__ */ React24.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React24.createElement("label", { className: "wb-label" }, "事项类型", /* @__PURE__ */ React24.createElement("select", { className: "wb-select", "aria-label": "事项类型", value: value.eventType, onChange: (e) => patch2("eventType", e.target.value) }, /* @__PURE__ */ React24.createElement("option", { value: "" }, "普通事项"), /* @__PURE__ */ React24.createElement("option", { value: "feature" }, "开发交付"), /* @__PURE__ */ React24.createElement("option", { value: "meeting" }, "会议"), /* @__PURE__ */ React24.createElement("option", { value: "logging" }, "登记填报"), /* @__PURE__ */ React24.createElement("option", { value: "other" }, "其他"))), /* @__PURE__ */ React24.createElement("label", { className: "wb-label" }, "交付物", /* @__PURE__ */ React24.createElement("input", { className: "wb-input", value: value.deliverable, onChange: (e) => patch2("deliverable", e.target.value), placeholder: "未知可留空" })), value.eventType === "meeting" && /* @__PURE__ */ React24.createElement(React24.Fragment, null, /* @__PURE__ */ React24.createElement("label", { className: "wb-label" }, "会议开始", /* @__PURE__ */ React24.createElement("input", { className: "wb-input", type: "datetime-local", value: WB.fmt.toLocalInput(value.meetingStart), onChange: (e) => patch2("meetingStart", WB.fmt.fromLocalInput(e.target.value) || "") })), /* @__PURE__ */ React24.createElement("label", { className: "wb-label" }, "会议结束", /* @__PURE__ */ React24.createElement("input", { className: "wb-input", type: "datetime-local", value: WB.fmt.toLocalInput(value.meetingEnd), onChange: (e) => patch2("meetingEnd", WB.fmt.fromLocalInput(e.target.value) || "") })), /* @__PURE__ */ React24.createElement("label", { className: "wb-label" }, "会议地点", /* @__PURE__ */ React24.createElement("input", { className: "wb-input", value: value.meetingLocation, onChange: (e) => patch2("meetingLocation", e.target.value) }))), value.eventType === "logging" && /* @__PURE__ */ React24.createElement("label", { className: "wb-label" }, "登记对象", /* @__PURE__ */ React24.createElement("input", { className: "wb-input", value: value.registrationTarget, onChange: (e) => patch2("registrationTarget", e.target.value) })));
 }
 
 // src/client/features/tasks/TaskReplyPanel.tsx
-var React24 = __toESM(require("react"), 1);
+var React26 = __toESM(require("react"), 1);
 
 // src/shared/message-display.ts
 function messageSender(source, contact) {
@@ -11128,14 +11408,14 @@ function taskReplyMatches(state, taskId, reply) {
 }
 
 // src/client/features/inbox/ReplyDraft.tsx
-var React23 = __toESM(require("react"), 1);
+var React25 = __toESM(require("react"), 1);
 function ReplyDraft({ reply, data, actions: actions2, taskId, initialOpen = false }) {
-  const [text2, setText] = React23.useState(data.replyDrafts?.[reply.id]?.text || ""), [busy, setBusy] = React23.useState(false), [error2, setError] = React23.useState(""), [open, setOpen] = React23.useState(initialOpen);
-  React23.useEffect(() => {
+  const [text2, setText] = React25.useState(data.replyDrafts?.[reply.id]?.text || ""), [busy, setBusy] = React25.useState(false), [error2, setError] = React25.useState(""), [open, setOpen] = React25.useState(initialOpen);
+  React25.useEffect(() => {
     if (initialOpen) setOpen(true);
   }, [initialOpen]);
-  const [preview, setPreview] = React23.useState(null), [blocked, setBlocked] = React23.useState(false);
-  const sending = React23.useRef(false);
+  const [preview, setPreview] = React25.useState(null), [blocked, setBlocked] = React25.useState(false);
+  const sending = React25.useRef(false);
   const source = (data.sources || []).find((row) => row.id === reply.sourceId), loc = source?.locator;
   const conversation = data.messageInbox?.accountId === loc?.accountId ? data.messageInbox?.conversations?.find((c) => c.groupId === loc?.groupId) : null;
   const privateChat = Number(loc?.groupType || conversation?.groupType || data.syncCursors?.[loc?.accountId + ":" + loc?.groupId]?.groupType) === 1;
@@ -11185,15 +11465,15 @@ function ReplyDraft({ reply, data, actions: actions2, taskId, initialOpen = fals
       setBusy(false);
     }
   }
-  return /* @__PURE__ */ React23.createElement("div", { className: "wb-reply-draft" }, taskId && /* @__PURE__ */ React23.createElement("p", { className: "wb-tiny wb-muted" }, "回复原会话：", messageOrigin(source, reply), " · ", messageSender(source, reply.contact), "。回复与待办完成状态分别维护。"), reply.stage === "已自动回复" && reply.autoReplyId && /* @__PURE__ */ React23.createElement("p", { className: "wb-tiny wb-muted" }, "已自动告知：", automatic?.text || "当前忙碌，稍后答复", "；仍需人工答复。"), delivery?.status === "sent" && /* @__PURE__ */ React23.createElement("p", { className: "wb-tiny" }, "已发送：", delivery.text || data.replyDrafts?.[reply.id]?.text, " ", delivery.at && /* @__PURE__ */ React23.createElement("time", { dateTime: delivery.at }, "（", messageSentTime({ locator: { sentAt: delivery.at } }), "）")), /* @__PURE__ */ React23.createElement("div", { className: "wb-reply-draft-toolbar" }, /* @__PURE__ */ React23.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React23.createElement(Btn, { size: "sm", kind: "primary", disabled: busy, onClick: () => setOpen(!open) }, open ? "收起回复" : "回复"), /* @__PURE__ */ React23.createElement(Btn, { size: "sm", disabled: busy, onClick: generate }, "生成回复草稿"), /* @__PURE__ */ React23.createElement(Btn, { size: "sm", icon: "sparkles", onClick: () => WB.assistant.openHub("reply", reply.id) }, "AI 回复")), actions2), open && /* @__PURE__ */ React23.createElement("div", { className: "wb-reply-editor" }, error2 && /* @__PURE__ */ React23.createElement("p", { role: "alert" }, error2), /* @__PURE__ */ React23.createElement("textarea", { className: "wb-input", "aria-label": "回复草稿", placeholder: "输入要回复的内容", disabled: busy || !!preview, value: text2, maxLength: 8e3, rows: 4, onChange: (e) => setText(e.target.value) }), /* @__PURE__ */ React23.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React23.createElement(Btn, { size: "sm", kind: "primary", disabled: busy || !text2.trim() || !canSend || deliveryBlocked, onClick: review }, "发送回复"), /* @__PURE__ */ React23.createElement(Btn, { size: "sm", disabled: busy, onClick: () => WB.rpc("workbench/saveReplyDraft", { id: reply.id, text: text2 }).then(() => WB.toast("草稿已保存", "ok")).catch((e) => setError(e.message)) }, "保存草稿"), /* @__PURE__ */ React23.createElement(Btn, { size: "sm", disabled: busy || !text2, onClick: () => navigator.clipboard.writeText(text2).then(() => WB.toast("已复制，请在云之家检查收件人后发送", "ok")).catch((e) => setError(e.message)) }, "复制草稿"), /* @__PURE__ */ React23.createElement(Btn, { size: "sm", disabled: busy, onClick: () => WB.actions.setReplyStage(reply.id, "已回复").catch((e) => setError(e.message)) }, "我已在云之家回复")), !canSend && /* @__PURE__ */ React23.createElement("p", { className: "wb-tiny wb-muted" }, taskId ? "原消息已回复或关联已变化，请先核实记录；待办内容和状态不受影响。" : "仅未处理且具有原消息定位的云之家消息支持直接回复，其他消息可复制后发送。"), deliveryBlocked && /* @__PURE__ */ React23.createElement("p", { className: "wb-tiny wb-muted" }, "已有发送记录，请到云之家核实结果，避免重复发送。"), /* @__PURE__ */ React23.createElement("p", { className: "wb-tiny wb-muted" }, privateChat ? "私聊将直接发送正文，不自动@对方或引用原消息。" : "群聊将以纯文本引用原消息，发送到原会话。", "生成、保存或复制草稿不会发送。")), /* @__PURE__ */ React23.createElement(Modal, { open: !!preview, title: "确认发送回复", onClose: () => {
+  return /* @__PURE__ */ React25.createElement("div", { className: "wb-reply-draft" }, taskId && /* @__PURE__ */ React25.createElement("p", { className: "wb-tiny wb-muted" }, "回复原会话：", messageOrigin(source, reply), " · ", messageSender(source, reply.contact), "。回复与待办完成状态分别维护。"), reply.stage === "已自动回复" && reply.autoReplyId && /* @__PURE__ */ React25.createElement("p", { className: "wb-tiny wb-muted" }, "已自动告知：", automatic?.text || "当前忙碌，稍后答复", "；仍需人工答复。"), delivery?.status === "sent" && /* @__PURE__ */ React25.createElement("p", { className: "wb-tiny" }, "已发送：", delivery.text || data.replyDrafts?.[reply.id]?.text, " ", delivery.at && /* @__PURE__ */ React25.createElement("time", { dateTime: delivery.at }, "（", messageSentTime({ locator: { sentAt: delivery.at } }), "）")), /* @__PURE__ */ React25.createElement("div", { className: "wb-reply-draft-toolbar" }, /* @__PURE__ */ React25.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React25.createElement(Btn, { size: "sm", kind: "primary", disabled: busy, onClick: () => setOpen(!open) }, open ? "收起回复" : "回复"), /* @__PURE__ */ React25.createElement(Btn, { size: "sm", disabled: busy, onClick: generate }, "生成回复草稿"), /* @__PURE__ */ React25.createElement(Btn, { size: "sm", icon: "sparkles", onClick: () => WB.assistant.openHub("reply", reply.id) }, "AI 回复")), actions2), open && /* @__PURE__ */ React25.createElement("div", { className: "wb-reply-editor" }, error2 && /* @__PURE__ */ React25.createElement("p", { role: "alert" }, error2), /* @__PURE__ */ React25.createElement("textarea", { className: "wb-input", "aria-label": "回复草稿", placeholder: "输入要回复的内容", disabled: busy || !!preview, value: text2, maxLength: 8e3, rows: 4, onChange: (e) => setText(e.target.value) }), /* @__PURE__ */ React25.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React25.createElement(Btn, { size: "sm", kind: "primary", disabled: busy || !text2.trim() || !canSend || deliveryBlocked, onClick: review }, "发送回复"), /* @__PURE__ */ React25.createElement(Btn, { size: "sm", disabled: busy, onClick: () => WB.rpc("workbench/saveReplyDraft", { id: reply.id, text: text2 }).then(() => WB.toast("草稿已保存", "ok")).catch((e) => setError(e.message)) }, "保存草稿"), /* @__PURE__ */ React25.createElement(Btn, { size: "sm", disabled: busy || !text2, onClick: () => navigator.clipboard.writeText(text2).then(() => WB.toast("已复制，请在云之家检查收件人后发送", "ok")).catch((e) => setError(e.message)) }, "复制草稿"), /* @__PURE__ */ React25.createElement(Btn, { size: "sm", disabled: busy, onClick: () => WB.actions.setReplyStage(reply.id, "已回复").catch((e) => setError(e.message)) }, "我已在云之家回复")), !canSend && /* @__PURE__ */ React25.createElement("p", { className: "wb-tiny wb-muted" }, taskId ? "原消息已回复或关联已变化，请先核实记录；待办内容和状态不受影响。" : "仅未处理且具有原消息定位的云之家消息支持直接回复，其他消息可复制后发送。"), deliveryBlocked && /* @__PURE__ */ React25.createElement("p", { className: "wb-tiny wb-muted" }, "已有发送记录，请到云之家核实结果，避免重复发送。"), /* @__PURE__ */ React25.createElement("p", { className: "wb-tiny wb-muted" }, privateChat ? "私聊将直接发送正文，不自动@对方或引用原消息。" : "群聊将以纯文本引用原消息，发送到原会话。", "生成、保存或复制草稿不会发送。")), /* @__PURE__ */ React25.createElement(Modal, { open: !!preview, title: "确认发送回复", onClose: () => {
     if (!sending.current) setPreview(null);
-  }, footer: /* @__PURE__ */ React23.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React23.createElement(Btn, { disabled: busy, onClick: () => setPreview(null) }, "取消"), /* @__PURE__ */ React23.createElement(Btn, { kind: "primary", disabled: busy, onClick: send }, busy ? "发送中…" : "确认发送")) }, preview && /* @__PURE__ */ React23.createElement("div", { style: { overflowWrap: "anywhere" } }, /* @__PURE__ */ React23.createElement("p", null, "会话：", preview.conversation), /* @__PURE__ */ React23.createElement("p", null, "发件人：", preview.sender), /* @__PURE__ */ React23.createElement("p", { className: "wb-tiny wb-muted" }, "原消息发出时间：", preview.sentTime), /* @__PURE__ */ React23.createElement("p", { className: "wb-tiny wb-muted" }, "原消息：", preview.excerpt), /* @__PURE__ */ React23.createElement("p", { style: { whiteSpace: "pre-wrap" } }, preview.request.text), /* @__PURE__ */ React23.createElement("details", null, /* @__PURE__ */ React23.createElement("summary", null, "查看发送定位"), /* @__PURE__ */ React23.createElement("p", null, "会话 ID：", preview.request.groupId, /* @__PURE__ */ React23.createElement("br", null), "原消息 ID：", preview.request.msgId, /* @__PURE__ */ React23.createElement("br", null), "账号：", preview.request.accountId)))));
+  }, footer: /* @__PURE__ */ React25.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React25.createElement(Btn, { disabled: busy, onClick: () => setPreview(null) }, "取消"), /* @__PURE__ */ React25.createElement(Btn, { kind: "primary", disabled: busy, onClick: send }, busy ? "发送中…" : "确认发送")) }, preview && /* @__PURE__ */ React25.createElement("div", { style: { overflowWrap: "anywhere" } }, /* @__PURE__ */ React25.createElement("p", null, "会话：", preview.conversation), /* @__PURE__ */ React25.createElement("p", null, "发件人：", preview.sender), /* @__PURE__ */ React25.createElement("p", { className: "wb-tiny wb-muted" }, "原消息发出时间：", preview.sentTime), /* @__PURE__ */ React25.createElement("p", { className: "wb-tiny wb-muted" }, "原消息：", preview.excerpt), /* @__PURE__ */ React25.createElement("p", { style: { whiteSpace: "pre-wrap" } }, preview.request.text), /* @__PURE__ */ React25.createElement("details", null, /* @__PURE__ */ React25.createElement("summary", null, "查看发送定位"), /* @__PURE__ */ React25.createElement("p", null, "会话 ID：", preview.request.groupId, /* @__PURE__ */ React25.createElement("br", null), "原消息 ID：", preview.request.msgId, /* @__PURE__ */ React25.createElement("br", null), "账号：", preview.request.accountId)))));
 }
 
 // src/client/features/tasks/TaskReplyPanel.tsx
 function TaskReplyPanel({ task, data, initialOpen = false }) {
-  const [replyId, setReplyId] = React24.useState(null), [busy, setBusy] = React24.useState(false), [error2, setError] = React24.useState("");
-  const preparing2 = React24.useRef(false);
+  const [replyId, setReplyId] = React26.useState(null), [busy, setBusy] = React26.useState(false), [error2, setError] = React26.useState("");
+  const preparing2 = React26.useRef(false);
   async function prepare() {
     if (preparing2.current) return;
     preparing2.current = true;
@@ -11210,16 +11490,16 @@ function TaskReplyPanel({ task, data, initialOpen = false }) {
       setBusy(false);
     }
   }
-  React24.useEffect(() => {
+  React26.useEffect(() => {
     if (initialOpen) void prepare();
   }, []);
   if (!taskReplyTarget(data, task.id)) return null;
   const reply = (data.replies || []).find((row) => row.id === replyId);
-  return /* @__PURE__ */ React24.createElement("section", { "aria-label": "待办原会话回复 " + task.title, style: { minWidth: 0, overflowWrap: "anywhere" }, onClick: (e) => e.stopPropagation() }, !reply && /* @__PURE__ */ React24.createElement(Btn, { size: "sm", disabled: busy, onClick: prepare }, busy ? "载入回复…" : "回复原会话"), error2 && /* @__PURE__ */ React24.createElement("p", { role: "alert" }, error2), reply && /* @__PURE__ */ React24.createElement(ReplyDraft, { key: reply.id, reply, data, taskId: task.id, initialOpen: true }));
+  return /* @__PURE__ */ React26.createElement("section", { "aria-label": "待办原会话回复 " + task.title, style: { minWidth: 0, overflowWrap: "anywhere" }, onClick: (e) => e.stopPropagation() }, !reply && /* @__PURE__ */ React26.createElement(Btn, { size: "sm", disabled: busy, onClick: prepare }, busy ? "载入回复…" : "回复原会话"), error2 && /* @__PURE__ */ React26.createElement("p", { role: "alert" }, error2), reply && /* @__PURE__ */ React26.createElement(ReplyDraft, { key: reply.id, reply, data, taskId: task.id, initialOpen: true }));
 }
 
 // src/client/features/tasks/task-form.ts
-var React25 = __toESM(require("react"), 1);
+var React27 = __toESM(require("react"), 1);
 var taskFormToLocalInput = WB.fmt.toLocalInput;
 var taskFormFromLocalInput = WB.fmt.fromLocalInput;
 function TaskFormHost(props) {
@@ -11228,20 +11508,20 @@ function TaskFormHost(props) {
   const task = request && request.task ? request.task : null;
   const defaults2 = request && request.defaults ? request.defaults : {};
   const data = state.data;
-  const [title, setTitle] = React25.useState("");
-  const [description, setDescription] = React25.useState("");
-  const [priority, setPriority] = React25.useState("normal");
-  const [status, setStatus] = React25.useState("ready");
-  const [dueInput, setDueInput] = React25.useState("");
-  const [projectId, setProjectId] = React25.useState("");
-  const [tags2, setTags] = React25.useState("");
-  const [assignee, setAssignee] = React25.useState("");
-  const [needsReply, setNeedsReply] = React25.useState(false);
-  const [replyStage, setReplyStage] = React25.useState("待答复");
-  const [busy, setBusy] = React25.useState(false);
-  const [error2, setError] = React25.useState(null);
-  const [eventFields, setEventFields] = React25.useState({ eventType: "", deliverable: "", meetingStart: "", meetingEnd: "", meetingLocation: "", registrationTarget: "" });
-  React25.useEffect(function() {
+  const [title, setTitle] = React27.useState("");
+  const [description, setDescription] = React27.useState("");
+  const [priority, setPriority] = React27.useState("normal");
+  const [status2, setStatus] = React27.useState("ready");
+  const [dueInput, setDueInput] = React27.useState("");
+  const [projectId, setProjectId] = React27.useState("");
+  const [tags2, setTags] = React27.useState("");
+  const [assignee, setAssignee] = React27.useState("");
+  const [needsReply, setNeedsReply] = React27.useState(false);
+  const [replyStage, setReplyStage] = React27.useState("待答复");
+  const [busy, setBusy] = React27.useState(false);
+  const [error2, setError] = React27.useState(null);
+  const [eventFields, setEventFields] = React27.useState({ eventType: "", deliverable: "", meetingStart: "", meetingEnd: "", meetingLocation: "", registrationTarget: "" });
+  React27.useEffect(function() {
     if (!request)
       return;
     setTitle(task ? task.title : defaults2.title || "");
@@ -11275,7 +11555,7 @@ function TaskFormHost(props) {
       title: trimmed,
       description: description.trim(),
       priority,
-      status,
+      status: status2,
       dueAt: task && dueInput === taskFormToLocalInput(task.dueAt) ? task.dueAt || null : taskFormFromLocalInput(dueInput),
       projectId: projectId || null,
       tags: task && tags2 === (task.tags || []).join(", ") ? [...task.tags || []] : tags2.split(/[,，\s]+/).map(function(tag) {
@@ -11317,7 +11597,7 @@ function TaskFormHost(props) {
     sub: task ? embedded ? null : task.title : "明确的事实与推测分开记录",
     onClose: close,
     width: 560,
-    footer: h(React25.Fragment, null, h(Btn, {
+    footer: h(React27.Fragment, null, h(Btn, {
       kind: "primary",
       disabled: busy,
       onClick: submit,
@@ -11338,7 +11618,7 @@ function TaskFormHost(props) {
     }
   })), h("div", { className: "wb-task-form-grid" }, h(Field, { label: "状态" }, h(Select, {
     options: statusOptions,
-    value: status,
+    value: status2,
     onChange: function(event) {
       setStatus(event.target.value);
     }
@@ -11389,7 +11669,7 @@ WB.TaskForm = TaskFormHost;
 WB.TaskFormHost = TaskFormHost;
 
 // src/client/features/search/SearchResultPreview.tsx
-var React26 = __toESM(require("react"), 1);
+var React28 = __toESM(require("react"), 1);
 
 // src/client/features/search/search-navigation.ts
 var collections = { task: "tasks", reply: "replies", source: "sources", knowledge: "knowledge", radar: "radar" };
@@ -11452,10 +11732,10 @@ function SearchResultPreview() {
   if (!selected) return null;
   const { item, groupLabel } = selected, row = searchRecord(item), body = searchResultBody(item);
   const close = () => WB.store.set({ searchResult: null });
-  return /* @__PURE__ */ React26.createElement(Modal, { open: true, title: row?.title || item.title || "搜索结果", sub: groupLabel, onClose: close, width: 680, footer: /* @__PURE__ */ React26.createElement(React26.Fragment, null, /* @__PURE__ */ React26.createElement(Btn, { onClick: close }, "关闭"), /* @__PURE__ */ React26.createElement(Btn, { kind: "primary", icon: "sparkles", onClick: () => {
+  return /* @__PURE__ */ React28.createElement(Modal, { open: true, title: row?.title || item.title || "搜索结果", sub: groupLabel, onClose: close, width: 680, footer: /* @__PURE__ */ React28.createElement(React28.Fragment, null, /* @__PURE__ */ React28.createElement(Btn, { onClick: close }, "关闭"), /* @__PURE__ */ React28.createElement(Btn, { kind: "primary", icon: "sparkles", onClick: () => {
     close();
     continueSearchResult(item, groupLabel);
-  } }, "交给 AI 继续处理")) }, /* @__PURE__ */ React26.createElement("p", { className: "wb-tiny wb-muted" }, row ? "已保存的工作内容" : "搜索来源摘要", !row ? "，详细内容请核对原文" : ""), /* @__PURE__ */ React26.createElement("div", { style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.8 } }, body || "暂无正文"), item.url && /^https?:\/\//i.test(item.url) && /* @__PURE__ */ React26.createElement("p", null, /* @__PURE__ */ React26.createElement("a", { className: "wb-link", href: item.url, target: "_blank", rel: "noopener noreferrer" }, "查看原文")));
+  } }, "交给 AI 继续处理")) }, /* @__PURE__ */ React28.createElement("p", { className: "wb-tiny wb-muted" }, row ? "已保存的工作内容" : "搜索来源摘要", !row ? "，详细内容请核对原文" : ""), /* @__PURE__ */ React28.createElement("div", { style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.8 } }, body || "暂无正文"), item.url && /^https?:\/\//i.test(item.url) && /* @__PURE__ */ React28.createElement("p", null, /* @__PURE__ */ React28.createElement("a", { className: "wb-link", href: item.url, target: "_blank", rel: "noopener noreferrer" }, "查看原文")));
 }
 
 // src/client/shell/workbench-shell.ts
@@ -11540,59 +11820,59 @@ function Toaster() {
 }
 function AssistantDrawer() {
   const state = useStore();
-  const [messages, setMessages] = React27.useState([]);
-  const [draft, setDraft] = React27.useState("");
-  const [sending, setSending] = React27.useState(false);
-  const [error2, setError] = React27.useState(null);
-  const [sessions, setSessions] = React27.useState([]);
-  const [activeId, setActiveId] = React27.useState(null);
-  const [resolving, setResolving] = React27.useState(true);
-  const [historyCollapsed, setHistoryCollapsed] = React27.useState(() => typeof window !== "undefined" && window.innerWidth < 640);
+  const [messages, setMessages] = React29.useState([]);
+  const [draft, setDraft] = React29.useState("");
+  const [sending, setSending] = React29.useState(false);
+  const [error2, setError] = React29.useState(null);
+  const [sessions, setSessions] = React29.useState([]);
+  const [activeId, setActiveId] = React29.useState(null);
+  const [resolving, setResolving] = React29.useState(true);
+  const [historyCollapsed, setHistoryCollapsed] = React29.useState(() => typeof window !== "undefined" && window.innerWidth < 640);
   const taskId = state.assistantTaskId || "", scopeKey = taskId + ":" + (state.assistantOpenSeq || 0) + ":" + (state.assistantSessionTarget || "");
-  const renderedScope = React27.useRef(scopeKey), resolvedScope = React27.useRef(null), drafts2 = React27.useRef({}), draftRef = React27.useRef(""), activeRef = React27.useRef(null);
+  const renderedScope = React29.useRef(scopeKey), resolvedScope = React29.useRef(null), drafts2 = React29.useRef({}), draftRef = React29.useRef(""), activeRef = React29.useRef(null);
   draftRef.current = draft;
   activeRef.current = activeId;
-  const [retrieval, setRetrieval] = React27.useState(null);
-  const [citationAudit, setCitationAudit] = React27.useState(null);
-  const [knowledgeMode, setKnowledgeMode] = React27.useState("auto");
-  const [knowledgeScope, setKnowledgeScope] = React27.useState({});
-  const [knowledgeOpen, setKnowledgeOpen] = React27.useState(false);
-  const knowledgeButton = React27.useRef(null);
+  const [retrieval, setRetrieval] = React29.useState(null);
+  const [citationAudit, setCitationAudit] = React29.useState(null);
+  const [knowledgeMode, setKnowledgeMode] = React29.useState("auto");
+  const [knowledgeScope, setKnowledgeScope] = React29.useState({});
+  const [knowledgeOpen, setKnowledgeOpen] = React29.useState(false);
+  const knowledgeButton = React29.useRef(null);
   const closeKnowledge = () => {
     setKnowledgeOpen(false);
     knowledgeButton.current?.focus();
   };
-  const [steerMode, setSteerMode] = React27.useState(false);
-  const bodyRef = React27.useRef(null);
-  const requestGeneration = React27.useRef(0);
-  const transcriptGeneration = React27.useRef(0);
+  const [steerMode, setSteerMode] = React29.useState(false);
+  const bodyRef = React29.useRef(null);
+  const requestGeneration = React29.useRef(0);
+  const transcriptGeneration = React29.useRef(0);
   if (renderedScope.current !== scopeKey) {
     renderedScope.current = scopeKey;
     requestGeneration.current++;
     transcriptGeneration.current++;
     resolvedScope.current = null;
   }
-  React27.useEffect(() => () => {
+  React29.useEffect(() => () => {
     requestGeneration.current += 1;
     transcriptGeneration.current += 1;
   }, []);
-  React27.useEffect(() => {
+  React29.useEffect(() => {
     const resize = () => {
       if (window.innerWidth < 640) setHistoryCollapsed(true);
     };
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, []);
-  React27.useEffect(() => {
+  React29.useEffect(() => {
     if (state.page === "assistant" && window.innerWidth >= 640) setHistoryCollapsed(false);
   }, [state.page]);
   const open = !!state.assistantOpen;
   const refs = Array.isArray(state.assistantRefs) ? state.assistantRefs : [];
   const settings = state.data && state.data.settings || {};
   const savedWidth = Number(settings.assistantWidth);
-  const [width, setWidth] = React27.useState(Number.isFinite(savedWidth) ? Math.max(640, savedWidth) : 800);
-  const widthRef = React27.useRef(width);
-  React27.useEffect(function() {
+  const [width, setWidth] = React29.useState(Number.isFinite(savedWidth) ? Math.max(640, savedWidth) : 800);
+  const widthRef = React29.useRef(width);
+  React29.useEffect(function() {
     widthRef.current = width;
   }, [width]);
   function startResize(event) {
@@ -11644,7 +11924,7 @@ function AssistantDrawer() {
       }
     });
   }
-  React27.useEffect(() => {
+  React29.useEffect(() => {
     if (!open) return;
     if (activeRef.current) drafts2.current[activeRef.current] = draftRef.current;
     requestGeneration.current++;
@@ -11673,7 +11953,7 @@ function AssistantDrawer() {
       resolvedScope.current = null;
     };
   }, [open, scopeKey]);
-  React27.useEffect(function() {
+  React29.useEffect(function() {
     const node = bodyRef.current;
     if (node)
       node.scrollTop = node.scrollHeight;
@@ -12066,14 +12346,14 @@ function MissingPage(props) {
   }));
 }
 function WorkbenchApp() {
-  const [webAIVisited, setWebAIVisited] = React27.useState(false);
+  const [webAIVisited, setWebAIVisited] = React29.useState(false);
   const state = useStore();
-  React27.useEffect(function() {
+  React29.useEffect(function() {
     if (!WB.store.get().data)
       WB.actions.reload().catch(function() {
       });
   }, []);
-  React27.useEffect(function() {
+  React29.useEffect(function() {
     const sync = () => {
       if (document.visibilityState !== "hidden") WB.actions.syncCheck().catch(function() {
       });
@@ -12093,7 +12373,7 @@ function WorkbenchApp() {
       document.removeEventListener?.("visibilitychange", onVisible);
     };
   }, []);
-  React27.useEffect(function() {
+  React29.useEffect(function() {
     function onKey(event) {
       const meta = event.metaKey || event.ctrlKey;
       if (!meta)
@@ -12122,18 +12402,18 @@ function WorkbenchApp() {
   }, []);
   const page = state.page;
   const Page = WB.pages[page];
-  React27.useEffect(() => {
+  React29.useEffect(() => {
     if (page === "assistant" && !state.assistantOpen && !state.taskForm?.open) WB.assistant.open();
   }, [page, state.assistantOpen, state.taskForm?.open]);
   const loading = state.status === "loading" && !state.data;
   const failed = state.status === "error" && !state.data;
   const WebAIPage2 = WB.pages["web-ai"];
-  React27.useEffect(() => {
+  React29.useEffect(() => {
     if (page === "web-ai") setWebAIVisited(true);
   }, [page]);
   return h(
     "div",
-    { className: "wb-root" + (page === "web-ai" ? " is-web-ai" : "") },
+    { className: "wb-root" + (page === "web-ai" ? " is-web-ai" : "") + (page === "agents" ? " is-development" : "") },
     h("style", null, WB_CSS + WB_LAYOUT_CSS),
     h("header", { className: "wb-head" }, h(Toolbar, { data: state.data, page, assistantOpen: state.assistantOpen }), h(TopNavigation, { page, data: state.data })),
     h(
@@ -12142,7 +12422,7 @@ function WorkbenchApp() {
       h("div", { className: "wb-main" }, h(
         "div",
         { className: "wb-scroll" },
-        page !== "web-ai" && page !== "assistant" ? h("div", { key: "business-page", className: "wb-page" }, loading ? h(LoadingScreen) : failed ? h(ErrorScreen, { error: state.error, onRetry: () => WB.actions.reload().catch(() => {
+        page !== "web-ai" && page !== "assistant" ? h("div", { key: "business-page", className: "wb-page" + (page === "agents" ? " wb-development-page" : "") }, loading ? h(LoadingScreen) : failed ? h(ErrorScreen, { error: state.error, onRetry: () => WB.actions.reload().catch(() => {
         }) }) : Page ? h(Page) : h(MissingPage, { page })) : null,
         (webAIVisited || page === "web-ai") && WebAIPage2 ? h("div", { key: "web-ai-surface", className: "wb-page wb-chat-page", hidden: page !== "web-ai" }, h(WebAIPage2)) : null
       )),
@@ -12224,7 +12504,7 @@ WB.apply = function apply(ctx) {
 };
 
 // src/client/components/MessageSelectionBadges.tsx
-var React28 = __toESM(require("react"), 1);
+var React30 = __toESM(require("react"), 1);
 
 // src/shared/conversation-read.ts
 var iso = (value) => typeof value === "string" && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
@@ -12241,17 +12521,17 @@ function isConversationRead(data, conversation) {
 // src/client/components/MessageSelectionBadges.tsx
 function MessageSelectionBadges({ source, inbox }) {
   const { data } = useStore();
-  if (source?.provider === "yunzhijia-calendar") return /* @__PURE__ */ React28.createElement(Badge, { tone: "accent" }, "日历会议");
+  if (source?.provider === "yunzhijia-calendar") return /* @__PURE__ */ React30.createElement(Badge, { tone: "accent" }, "日历会议");
   const selection = source?.selection;
   if (selection?.policy !== "focused-v1") return null;
   const current = inbox && inbox.accountId === source.locator?.accountId ? inbox.conversations?.find((c) => c.groupId === source.locator?.groupId) : null;
   const count = current ? current.unreadCount : selection.unreadCount;
   const read = current && inbox.accountId === data?.messageInbox?.accountId && isConversationRead(data, current);
-  return /* @__PURE__ */ React28.createElement("span", { className: "wb-row wb-row--wrap", style: { gap: 5 } }, selection.reasons.includes("mention_me") && /* @__PURE__ */ React28.createElement(Badge, { tone: "accent" }, "@本人"), selection.reasons.includes("mention_all") && /* @__PURE__ */ React28.createElement(Badge, { tone: "warn" }, "@全员"), selection.reasons.includes("followup") && /* @__PURE__ */ React28.createElement(Badge, { tone: "idle" }, "事项跟进"), read ? /* @__PURE__ */ React28.createElement("span", { title: "仅工作台已读；待回复状态保持不变" }, /* @__PURE__ */ React28.createElement(Badge, { tone: "idle" }, "工作台已读")) : count == null ? /* @__PURE__ */ React28.createElement(Badge, { tone: "idle" }, "会话未读未知") : /* @__PURE__ */ React28.createElement(Badge, { tone: count > 0 ? "warn" : "idle" }, count > 0 ? "会话未读 " + count : "会话已读"));
+  return /* @__PURE__ */ React30.createElement("span", { className: "wb-row wb-row--wrap", style: { gap: 5 } }, selection.reasons.includes("mention_me") && /* @__PURE__ */ React30.createElement(Badge, { tone: "accent" }, "@本人"), selection.reasons.includes("mention_all") && /* @__PURE__ */ React30.createElement(Badge, { tone: "warn" }, "@全员"), selection.reasons.includes("followup") && /* @__PURE__ */ React30.createElement(Badge, { tone: "idle" }, "事项跟进"), read ? /* @__PURE__ */ React30.createElement("span", { title: "仅工作台已读；待回复状态保持不变" }, /* @__PURE__ */ React30.createElement(Badge, { tone: "idle" }, "工作台已读")) : count == null ? /* @__PURE__ */ React30.createElement(Badge, { tone: "idle" }, "会话未读未知") : /* @__PURE__ */ React30.createElement(Badge, { tone: count > 0 ? "warn" : "idle" }, count > 0 ? "会话未读 " + count : "会话已读"));
 }
 
 // src/client/components/Pagination.tsx
-var React29 = __toESM(require("react"), 1);
+var React31 = __toESM(require("react"), 1);
 var PAGE_SIZE = 30;
 function pageIndex(page, total) {
   return Math.min(page, Math.max(0, Math.ceil(total / PAGE_SIZE) - 1));
@@ -12260,15 +12540,15 @@ function Pagination({ page, total, onChange }) {
   if (total <= PAGE_SIZE)
     return null;
   const index = pageIndex(page, total);
-  return /* @__PURE__ */ React29.createElement("nav", { "aria-label": "列表分页", className: "wb-row", style: { margin: "12px 0" } }, /* @__PURE__ */ React29.createElement(Btn, { size: "sm", disabled: index === 0, onClick: () => onChange(index - 1) }, "上一页"), /* @__PURE__ */ React29.createElement("span", null, index + 1, " / ", Math.ceil(total / PAGE_SIZE), " · ", total, " 条"), /* @__PURE__ */ React29.createElement(Btn, { size: "sm", disabled: (index + 1) * PAGE_SIZE >= total, onClick: () => onChange(index + 1) }, "下一页"));
+  return /* @__PURE__ */ React31.createElement("nav", { "aria-label": "列表分页", className: "wb-row", style: { margin: "12px 0" } }, /* @__PURE__ */ React31.createElement(Btn, { size: "sm", disabled: index === 0, onClick: () => onChange(index - 1) }, "上一页"), /* @__PURE__ */ React31.createElement("span", null, index + 1, " / ", Math.ceil(total / PAGE_SIZE), " · ", total, " 条"), /* @__PURE__ */ React31.createElement(Btn, { size: "sm", disabled: (index + 1) * PAGE_SIZE >= total, onClick: () => onChange(index + 1) }, "下一页"));
 }
 
 // src/client/components/AnalysisQueuePanel.tsx
-var React30 = __toESM(require("react"), 1);
+var React32 = __toESM(require("react"), 1);
 function AnalysisQueuePanel({ entries, sources }) {
-  const [page, setPage] = React30.useState(0);
-  const [busyId, setBusyId] = React30.useState(null);
-  const [visibility, setVisibility] = React30.useState("open");
+  const [page, setPage] = React32.useState(0);
+  const [busyId, setBusyId] = React32.useState(null);
+  const [visibility, setVisibility] = React32.useState("open");
   const rows = entries.filter((entry) => visibility === "all" || (visibility === "review" ? entry.status === "awaiting_human" : visibility === "failed" ? entry.status === "failed" : visibility === "done" ? entry.status === "done" : visibility === "skipped" ? ["skipped", "historical"].includes(entry.status) : !["done", "cancelled", "historical", "skipped"].includes(entry.status))).slice().reverse();
   const index = Math.min(page, Math.max(0, Math.ceil(rows.length / 20) - 1));
   const labels3 = { pending: "待识别", running: "分析中", failed: "失败", awaiting_human: "待确认", historical: "已跳过", skipped: "已跳过", done: "已完成", cancelled: "已取消" };
@@ -12289,30 +12569,30 @@ function AnalysisQueuePanel({ entries, sources }) {
       setBusyId(null);
     }
   }
-  return /* @__PURE__ */ React30.createElement(Panel, { title: "AI 识别队列", sub: "当前 " + rows.length + " 条；采集、分析和人工确认分别跟踪" }, /* @__PURE__ */ React30.createElement("div", null, /* @__PURE__ */ React30.createElement("label", { className: "wb-label" }, "识别记录 ", /* @__PURE__ */ React30.createElement("select", { className: "wb-select", "aria-label": "识别记录", value: visibility, onChange: (event) => {
+  return /* @__PURE__ */ React32.createElement(Panel, { title: "AI 识别队列", sub: "当前 " + rows.length + " 条；采集、分析和人工确认分别跟踪" }, /* @__PURE__ */ React32.createElement("div", null, /* @__PURE__ */ React32.createElement("label", { className: "wb-label" }, "识别记录 ", /* @__PURE__ */ React32.createElement("select", { className: "wb-select", "aria-label": "识别记录", value: visibility, onChange: (event) => {
     setVisibility(event.target.value);
     setPage(0);
-  } }, /* @__PURE__ */ React30.createElement("option", { value: "open" }, "待处理"), /* @__PURE__ */ React30.createElement("option", { value: "review" }, "待确认"), /* @__PURE__ */ React30.createElement("option", { value: "failed" }, "识别失败"), /* @__PURE__ */ React30.createElement("option", { value: "done" }, "已完成"), /* @__PURE__ */ React30.createElement("option", { value: "skipped" }, "已跳过（历史消息）"), /* @__PURE__ */ React30.createElement("option", { value: "all" }, "全部"))), rows.slice(index * 20, index * 20 + 20).map((entry) => {
+  } }, /* @__PURE__ */ React32.createElement("option", { value: "open" }, "待处理"), /* @__PURE__ */ React32.createElement("option", { value: "review" }, "待确认"), /* @__PURE__ */ React32.createElement("option", { value: "failed" }, "识别失败"), /* @__PURE__ */ React32.createElement("option", { value: "done" }, "已完成"), /* @__PURE__ */ React32.createElement("option", { value: "skipped" }, "已跳过（历史消息）"), /* @__PURE__ */ React32.createElement("option", { value: "all" }, "全部"))), rows.slice(index * 20, index * 20 + 20).map((entry) => {
     const source = sources.find((source2) => source2.id === entry.sourceId);
-    return /* @__PURE__ */ React30.createElement("article", { key: entry.id, className: "wb-reply-item" }, /* @__PURE__ */ React30.createElement("strong", null, labels3[entry.status] || entry.status), /* @__PURE__ */ React30.createElement("p", { className: "wb-tiny wb-muted", style: { overflowWrap: "anywhere" } }, "发件人：", messageSender(source), " · 来自：", messageOrigin(source)), /* @__PURE__ */ React30.createElement("p", { className: "wb-tiny wb-muted" }, "发出时间：", messageSentTime(source)), /* @__PURE__ */ React30.createElement("p", null, source?.excerpt || "原消息不可用"), entry.analysis?.summary && /* @__PURE__ */ React30.createElement("p", { className: "wb-tiny wb-muted" }, entry.analysis.summary), entry.lastError && /* @__PURE__ */ React30.createElement("p", { className: "wb-tiny wb-muted" }, entry.lastError), entry.reviewReason && /* @__PURE__ */ React30.createElement("p", { className: "wb-tiny wb-muted" }, entry.reviewReason), !!entry.rejectedEvidence?.length && /* @__PURE__ */ React30.createElement("details", null, /* @__PURE__ */ React30.createElement("summary", { className: "wb-tiny wb-muted" }, "未通过校验的依据"), entry.rejectedEvidence.map((text2, index2) => /* @__PURE__ */ React30.createElement("p", { key: index2, className: "wb-tiny", style: { overflowWrap: "anywhere" } }, text2))), !["skipped", "historical"].includes(entry.status) && /* @__PURE__ */ React30.createElement("div", { className: "wb-reply-actions" }, entry.analysis && /* @__PURE__ */ React30.createElement("select", { className: "wb-select", "aria-label": "复核识别结果", value: "", onChange: (event) => {
+    return /* @__PURE__ */ React32.createElement("article", { key: entry.id, className: "wb-reply-item" }, /* @__PURE__ */ React32.createElement("strong", null, labels3[entry.status] || entry.status), /* @__PURE__ */ React32.createElement("p", { className: "wb-tiny wb-muted", style: { overflowWrap: "anywhere" } }, "发件人：", messageSender(source), " · 来自：", messageOrigin(source)), /* @__PURE__ */ React32.createElement("p", { className: "wb-tiny wb-muted" }, "发出时间：", messageSentTime(source)), /* @__PURE__ */ React32.createElement("p", null, source?.excerpt || "原消息不可用"), entry.analysis?.summary && /* @__PURE__ */ React32.createElement("p", { className: "wb-tiny wb-muted" }, entry.analysis.summary), entry.lastError && /* @__PURE__ */ React32.createElement("p", { className: "wb-tiny wb-muted" }, entry.lastError), entry.reviewReason && /* @__PURE__ */ React32.createElement("p", { className: "wb-tiny wb-muted" }, entry.reviewReason), !!entry.rejectedEvidence?.length && /* @__PURE__ */ React32.createElement("details", null, /* @__PURE__ */ React32.createElement("summary", { className: "wb-tiny wb-muted" }, "未通过校验的依据"), entry.rejectedEvidence.map((text2, index2) => /* @__PURE__ */ React32.createElement("p", { key: index2, className: "wb-tiny", style: { overflowWrap: "anywhere" } }, text2))), !["skipped", "historical"].includes(entry.status) && /* @__PURE__ */ React32.createElement("div", { className: "wb-reply-actions" }, entry.analysis && /* @__PURE__ */ React32.createElement("select", { className: "wb-select", "aria-label": "复核识别结果", value: "", onChange: (event) => {
       const verdict = event.target.value;
       if (verdict) WB.rpc("workbench/reviewAnalysis", { entryId: entry.id, verdict, note: "" }).then(() => WB.toast("已记录质量复核", "ok")).catch((e) => WB.toast(e.message, "err"));
-    } }, /* @__PURE__ */ React30.createElement("option", { value: "" }, "复核识别结果"), /* @__PURE__ */ React30.createElement("option", { value: "correct" }, "识别正确"), /* @__PURE__ */ React30.createElement("option", { value: "false_positive" }, "误建事项"), /* @__PURE__ */ React30.createElement("option", { value: "missed_action" }, "遗漏待办"), /* @__PURE__ */ React30.createElement("option", { value: "wrong_date" }, "日期错误"), /* @__PURE__ */ React30.createElement("option", { value: "wrong_completion" }, "完成误判"), /* @__PURE__ */ React30.createElement("option", { value: "wrong_link" }, "关联错误")), entry.status === "pending" && /* @__PURE__ */ React30.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "analyze") }, "识别本条"), entry.status === "awaiting_human" && (entry.analysis && entry.reviewKind !== "recognition" ? /* @__PURE__ */ React30.createElement(React30.Fragment, null, /* @__PURE__ */ React30.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "confirm") }, "确认建档"), /* @__PURE__ */ React30.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "retry") }, "重新识别")) : /* @__PURE__ */ React30.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "retry") }, "重试本条")), entry.status === "failed" && /* @__PURE__ */ React30.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "retry") }, "重试"), ["done", "cancelled"].includes(entry.status) && /* @__PURE__ */ React30.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "retry") }, "重新识别"), !["done", "cancelled"].includes(entry.status) && /* @__PURE__ */ React30.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "cancel") }, "取消分析")));
-  }), !rows.length && /* @__PURE__ */ React30.createElement("p", { className: "wb-tiny wb-muted" }, "没有待处理的识别条目。"), rows.length > 20 && /* @__PURE__ */ React30.createElement("div", { className: "wb-reply-actions" }, /* @__PURE__ */ React30.createElement("button", { type: "button", className: "wb-chip", disabled: index === 0, onClick: () => setPage(index - 1) }, "上一页"), /* @__PURE__ */ React30.createElement("span", null, index + 1, " / ", Math.ceil(rows.length / 20)), /* @__PURE__ */ React30.createElement("button", { type: "button", className: "wb-chip", disabled: (index + 1) * 20 >= rows.length, onClick: () => setPage(index + 1) }, "下一页"))));
+    } }, /* @__PURE__ */ React32.createElement("option", { value: "" }, "复核识别结果"), /* @__PURE__ */ React32.createElement("option", { value: "correct" }, "识别正确"), /* @__PURE__ */ React32.createElement("option", { value: "false_positive" }, "误建事项"), /* @__PURE__ */ React32.createElement("option", { value: "missed_action" }, "遗漏待办"), /* @__PURE__ */ React32.createElement("option", { value: "wrong_date" }, "日期错误"), /* @__PURE__ */ React32.createElement("option", { value: "wrong_completion" }, "完成误判"), /* @__PURE__ */ React32.createElement("option", { value: "wrong_link" }, "关联错误")), entry.status === "pending" && /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "analyze") }, "识别本条"), entry.status === "awaiting_human" && (entry.analysis && entry.reviewKind !== "recognition" ? /* @__PURE__ */ React32.createElement(React32.Fragment, null, /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "confirm") }, "确认建档"), /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "retry") }, "重新识别")) : /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "retry") }, "重试本条")), entry.status === "failed" && /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "retry") }, "重试"), ["done", "cancelled"].includes(entry.status) && /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "retry") }, "重新识别"), !["done", "cancelled"].includes(entry.status) && /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-chip", disabled: !!busyId, onClick: () => action(entry, "cancel") }, "取消分析")));
+  }), !rows.length && /* @__PURE__ */ React32.createElement("p", { className: "wb-tiny wb-muted" }, "没有待处理的识别条目。"), rows.length > 20 && /* @__PURE__ */ React32.createElement("div", { className: "wb-reply-actions" }, /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-chip", disabled: index === 0, onClick: () => setPage(index - 1) }, "上一页"), /* @__PURE__ */ React32.createElement("span", null, index + 1, " / ", Math.ceil(rows.length / 20)), /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-chip", disabled: (index + 1) * 20 >= rows.length, onClick: () => setPage(index + 1) }, "下一页"))));
 }
 
 // src/client/features/inbox/RepliesPage.ts
-var React31 = __toESM(require("react"), 1);
+var React33 = __toESM(require("react"), 1);
 function RepliesPage() {
   const state = useStore();
   const data = state.data || {};
-  const [filter, setFilter] = React31.useState("open");
-  const [page, setPage] = React31.useState(0);
-  const [query, setQuery] = React31.useState("");
-  const [selectedReply, setSelectedReply] = React31.useState(null);
-  const [focusVersion, setFocusVersion] = React31.useState(0);
-  const [focusNotice, setFocusNotice] = React31.useState("");
-  const listRef = React31.useRef(null);
+  const [filter, setFilter] = React33.useState("open");
+  const [page, setPage] = React33.useState(0);
+  const [query, setQuery] = React33.useState("");
+  const [selectedReply, setSelectedReply] = React33.useState(null);
+  const [focusVersion, setFocusVersion] = React33.useState(0);
+  const [focusNotice, setFocusNotice] = React33.useState("");
+  const listRef = React33.useRef(null);
   const historyView = filter === "all" || filter === "已回复" || filter === "不需回复";
   const actionLabels = { "待回复": "恢复待回复", "已确认收到": "标记已收到", "已回复": "标记已回复", "不需回复": "无需回复" };
   const orderedReplies = (data.replies || []).filter((row) => !row.archivedAt).map((row) => ({ ...row, groupName: messageOrigin((data.sources || []).find((source) => source.id === row.sourceId), row), contact: messageSender((data.sources || []).find((source) => source.id === row.sourceId) || { locator: { groupId: row.groupId } }, row.contact) })).sort(function(a, b) {
@@ -12321,7 +12601,7 @@ function RepliesPage() {
   const replies = orderedReplies.filter(function(row) {
     return (filter === "all" || filter === "open" ? filter === "all" || row.stage === "待回复" || row.stage === "已确认收到" || row.stage === "已自动回复" : row.stage === filter) && (!query || [row.snippet, row.contact, row.groupName].join(" ").toLowerCase().includes(query.toLowerCase()));
   });
-  React31.useEffect(() => {
+  React33.useEffect(() => {
     const id = state.focusReplyId;
     if (!id) return;
     const target = orderedReplies.find((row) => row.id === id);
@@ -12335,7 +12615,7 @@ function RepliesPage() {
     setFocusNotice(target ? "" : "这条待回复已归档或不存在，请查看当前列表。");
     WB.store.set({ focusReplyId: null });
   }, [state.focusReplyId]);
-  React31.useLayoutEffect(() => {
+  React33.useLayoutEffect(() => {
     if (!selectedReply) return;
     const node = Array.from(listRef.current?.querySelectorAll("[data-reply-id]") || []).find((el) => el.dataset.replyId === selectedReply);
     node?.scrollIntoView?.({ block: "start" });
@@ -12469,23 +12749,23 @@ function newsCategory(item) {
 }
 
 // src/client/features/news/NewsBrief.tsx
-var React32 = __toESM(require("react"), 1);
+var React34 = __toESM(require("react"), 1);
 function NewsBrief({ data, compact = false }) {
-  const batch = data.radarBrief, overview = cleanNewsCopy(typeof batch?.overview === "string" ? batch.overview : ""), paragraph2 = React32.useRef(null);
-  const [expanded, setExpanded] = React32.useState(false), [hasMore, setHasMore] = React32.useState(false), [submitting, setSubmitting] = React32.useState(false), [sourcesExpanded, setSourcesExpanded] = React32.useState(false);
+  const batch = data.radarBrief, overview = cleanNewsCopy(typeof batch?.overview === "string" ? batch.overview : ""), paragraph2 = React34.useRef(null);
+  const [expanded, setExpanded] = React34.useState(false), [hasMore, setHasMore] = React34.useState(false), [submitting, setSubmitting] = React34.useState(false), [sourcesExpanded, setSourcesExpanded] = React34.useState(false);
   const sources = (data.radar || []).filter((item) => (batch?.ids || []).includes(item.id) && !isIgnoredNews(item) && item.url);
   function openNews(id) {
     WB.store.set({ radarFocusId: id });
     WB.go("radar");
   }
   const previous = batch && data.lastRadarFetch?.added === 0, active = (data.jobs || []).some((job) => job.kind === "summary" && ["queued", "running"].includes(job.status));
-  React32.useEffect(() => {
+  React34.useEffect(() => {
     setExpanded(false);
   }, [batch?.at, overview]);
-  React32.useEffect(() => {
+  React34.useEffect(() => {
     setSourcesExpanded(false);
   }, [batch?.at]);
-  React32.useEffect(() => {
+  React34.useEffect(() => {
     const measure = () => {
       if (!expanded && paragraph2.current) setHasMore(paragraph2.current.scrollHeight > paragraph2.current.clientHeight + 1);
     };
@@ -12509,7 +12789,7 @@ function NewsBrief({ data, compact = false }) {
       setSubmitting(false);
     }
   }
-  return /* @__PURE__ */ React32.createElement("section", { className: "wb-news-brief" + (compact ? " is-compact" : ""), "aria-label": "AI 技术简报" }, /* @__PURE__ */ React32.createElement("style", null, CSS), /* @__PURE__ */ React32.createElement("header", null, /* @__PURE__ */ React32.createElement("div", null, /* @__PURE__ */ React32.createElement("strong", null, "概览"), batch?.at && /* @__PURE__ */ React32.createElement("p", null, previous ? "暂无新增，保留上次简报 · " : "", WB.fmt.datetime(batch.at))), /* @__PURE__ */ React32.createElement(Btn, { size: "sm", onClick: () => WB.assistant.openHub("system", "radar") }, "继续问 AI")), overview ? /* @__PURE__ */ React32.createElement(React32.Fragment, null, /* @__PURE__ */ React32.createElement("p", { ref: paragraph2, className: "wb-news-batch-text" + (expanded ? " is-expanded" : "") }, overview), hasMore && /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-link", "aria-expanded": expanded, onClick: () => setExpanded(!expanded) }, expanded ? "收起总结" : "展开完整总结")) : /* @__PURE__ */ React32.createElement("p", { className: "wb-news-brief-empty", role: active ? "status" : void 0 }, !batch ? "暂无可展示的简报。更新资讯后，会为资讯内容生成一份总结和介绍。" : !data.settings?.aiExtract?.enabled ? "开启 AI 识别后可生成总结。" : active || batch.status === "running" ? "正在归纳资讯，完成后会自动展示整体总结。" : batch.status === "failed" ? "总结暂不可用，可重试生成。" : "整体总结待生成。"), !overview && batch && data.settings?.aiExtract?.enabled && !active && /* @__PURE__ */ React32.createElement(Btn, { size: "sm", disabled: submitting, onClick: generate }, submitting ? "提交中…" : batch.status === "failed" ? "重试总结" : "生成总结"), /* @__PURE__ */ React32.createElement("section", { className: "wb-news-brief-sources", "aria-label": "相关资讯" }, /* @__PURE__ */ React32.createElement("strong", null, "相关资讯"), sources.length ? /* @__PURE__ */ React32.createElement("ul", null, (sourcesExpanded ? sources : sources.slice(0, 3)).map((item) => /* @__PURE__ */ React32.createElement("li", { key: item.id }, /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-news-source-link", "aria-label": "查看资讯：" + item.title, title: item.title, onClick: () => openNews(item.id) }, item.title), /* @__PURE__ */ React32.createElement("span", { className: "wb-news-source-origin" }, item.source)))) : /* @__PURE__ */ React32.createElement("p", null, "暂无可展示的来源。"), sources.length > 3 && /* @__PURE__ */ React32.createElement("button", { type: "button", className: "wb-link", "aria-expanded": sourcesExpanded, onClick: () => setSourcesExpanded(!sourcesExpanded) }, sourcesExpanded ? "收起资讯" : "查看剩余资讯（" + (sources.length - 3) + "）"), batch?.error && /* @__PURE__ */ React32.createElement("p", { className: "wb-news-brief-error" }, cleanNewsCopy(batch.error))));
+  return /* @__PURE__ */ React34.createElement("section", { className: "wb-news-brief" + (compact ? " is-compact" : ""), "aria-label": "AI 技术简报" }, /* @__PURE__ */ React34.createElement("style", null, CSS), /* @__PURE__ */ React34.createElement("header", null, /* @__PURE__ */ React34.createElement("div", null, /* @__PURE__ */ React34.createElement("strong", null, "概览"), batch?.at && /* @__PURE__ */ React34.createElement("p", null, previous ? "暂无新增，保留上次简报 · " : "", WB.fmt.datetime(batch.at))), /* @__PURE__ */ React34.createElement(Btn, { size: "sm", onClick: () => WB.assistant.openHub("system", "radar") }, "继续问 AI")), overview ? /* @__PURE__ */ React34.createElement(React34.Fragment, null, /* @__PURE__ */ React34.createElement("p", { ref: paragraph2, className: "wb-news-batch-text" + (expanded ? " is-expanded" : "") }, overview), hasMore && /* @__PURE__ */ React34.createElement("button", { type: "button", className: "wb-link", "aria-expanded": expanded, onClick: () => setExpanded(!expanded) }, expanded ? "收起总结" : "展开完整总结")) : /* @__PURE__ */ React34.createElement("p", { className: "wb-news-brief-empty", role: active ? "status" : void 0 }, !batch ? "暂无可展示的简报。更新资讯后，会为资讯内容生成一份总结和介绍。" : !data.settings?.aiExtract?.enabled ? "开启 AI 识别后可生成总结。" : active || batch.status === "running" ? "正在归纳资讯，完成后会自动展示整体总结。" : batch.status === "failed" ? "总结暂不可用，可重试生成。" : "整体总结待生成。"), !overview && batch && data.settings?.aiExtract?.enabled && !active && /* @__PURE__ */ React34.createElement(Btn, { size: "sm", disabled: submitting, onClick: generate }, submitting ? "提交中…" : batch.status === "failed" ? "重试总结" : "生成总结"), /* @__PURE__ */ React34.createElement("section", { className: "wb-news-brief-sources", "aria-label": "相关资讯" }, /* @__PURE__ */ React34.createElement("strong", null, "相关资讯"), sources.length ? /* @__PURE__ */ React34.createElement("ul", null, (sourcesExpanded ? sources : sources.slice(0, 3)).map((item) => /* @__PURE__ */ React34.createElement("li", { key: item.id }, /* @__PURE__ */ React34.createElement("button", { type: "button", className: "wb-news-source-link", "aria-label": "查看资讯：" + item.title, title: item.title, onClick: () => openNews(item.id) }, item.title), /* @__PURE__ */ React34.createElement("span", { className: "wb-news-source-origin" }, item.source)))) : /* @__PURE__ */ React34.createElement("p", null, "暂无可展示的来源。"), sources.length > 3 && /* @__PURE__ */ React34.createElement("button", { type: "button", className: "wb-link", "aria-expanded": sourcesExpanded, onClick: () => setSourcesExpanded(!sourcesExpanded) }, sourcesExpanded ? "收起资讯" : "查看剩余资讯（" + (sources.length - 3) + "）"), batch?.error && /* @__PURE__ */ React34.createElement("p", { className: "wb-news-brief-error" }, cleanNewsCopy(batch.error))));
 }
 var CSS = `.wb-news-brief{padding:14px 16px;margin-bottom:12px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;min-width:0;overflow-wrap:anywhere}.wb-news-brief header{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.wb-news-brief header strong{font-size:14px}.wb-news-brief header p,.wb-news-brief-sources,.wb-news-brief-empty{font-size:11px;color:var(--dsw-alias-label-secondary);line-height:1.7}.wb-news-brief header p{margin:4px 0 0}.wb-news-batch-text{font-size:13px;line-height:1.9;margin:12px 0;white-space:pre-wrap;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:6;overflow:hidden}.wb-news-brief.is-compact .wb-news-batch-text{-webkit-line-clamp:4}.wb-news-batch-text.is-expanded{display:block;overflow:visible}.wb-news-brief .wb-link{font:inherit;font-size:11px;background:transparent;border:0;padding:0;cursor:pointer;color:var(--dsw-alias-label-secondary);margin-bottom:8px}.wb-news-brief-sources{margin-top:10px}.wb-news-brief-sources>strong{font-size:11px;font-weight:500}.wb-news-brief-sources ul{padding:0;margin:6px 0 8px;list-style:none}.wb-news-brief-sources li{display:flex;align-items:baseline;gap:4px 8px;min-width:0;padding:4px 0}.wb-news-source-link{background:none;border:0;padding:0;color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;text-align:left;cursor:pointer;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;min-width:0;flex:1;overflow-wrap:anywhere}.wb-news-source-link:hover{text-decoration:underline}.wb-news-source-link:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px;border-radius:3px}.wb-news-source-origin{max-width:35%;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb-news-brief-error{white-space:pre-wrap}@media(max-width:480px){.wb-news-brief{padding:12px}.wb-news-brief header{flex-wrap:wrap}.wb-news-batch-text{-webkit-line-clamp:4}}@media(max-height:500px){.wb-news-batch-text,.wb-news-brief.is-compact .wb-news-batch-text{-webkit-line-clamp:3}}`;
 function cleanNewsCopy(value) {
@@ -12517,20 +12797,20 @@ function cleanNewsCopy(value) {
 }
 
 // src/client/features/news/NewsFetchStatus.tsx
-var React33 = __toESM(require("react"), 1);
+var React35 = __toESM(require("react"), 1);
 function NewsFetchStatus({ report }) {
   if (!report) return null;
   const outcome = radarFetchOutcome(report), failed = ["error", "partial"].includes(outcome.status);
   const groups2 = [["rss", "RSS 订阅"], ["search", "网页查询"], ["other", "其他来源"]].map(([key2, label]) => ({ key: key2, label, rows: (report.perFeed || []).filter((row) => (row.channel || "other") === key2) })).filter((group) => group.rows.length);
   const color = outcome.tone === "err" ? T.err : outcome.tone === "warn" ? T.warn : T.text2;
-  return /* @__PURE__ */ React33.createElement("div", { role: failed ? "alert" : "status", className: "wb-news-fetch-status", style: { marginBottom: 12, padding: "10px 14px", border: "1px solid " + T.border1, borderRadius: 10, overflowWrap: "anywhere" } }, failed && /* @__PURE__ */ React33.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React33.createElement("span", { style: { color, fontSize: 12, flex: "1 1 220px" } }, outcome.text), outcome.status === "error" && /* @__PURE__ */ React33.createElement(Btn, { size: "sm", onClick: () => WB.go("settings") }, "检查资讯配置")), /* @__PURE__ */ React33.createElement("details", { style: { marginTop: 6, fontSize: 11.5, color: T.text2 } }, /* @__PURE__ */ React33.createElement("summary", { style: { cursor: "pointer" } }, "查看抓取详情"), /* @__PURE__ */ React33.createElement("p", null, outcome.text), groups2.map((group) => /* @__PURE__ */ React33.createElement("section", { key: group.key, "aria-label": group.label, style: { marginTop: 10 } }, /* @__PURE__ */ React33.createElement("strong", { style: { fontWeight: 500 } }, group.label), /* @__PURE__ */ React33.createElement("ul", { style: { paddingLeft: 18, margin: "6px 0 0" } }, group.rows.map((row, index) => /* @__PURE__ */ React33.createElement("li", { key: index, style: { marginTop: 5 } }, row.label || row.id, "：", ["error", "unavailable"].includes(row.status) ? "失败" : row.added ? "新增 " + row.added + " 条" : "暂无新增", row.reasons && Object.values(row.reasons).some((value) => Number(value) > 0) ? " · " + [["duplicate", "重复"], ["outdated", "过期"], ["irrelevant", "无关"], ["invalid", "无效链接"]].filter(([key2]) => row.reasons[key2] > 0).map(([key2, label]) => label + " " + row.reasons[key2] + " 条").join("，") : row.note ? " · " + row.note : "")))))));
+  return /* @__PURE__ */ React35.createElement("div", { role: failed ? "alert" : "status", className: "wb-news-fetch-status", style: { marginBottom: 12, padding: "10px 14px", border: "1px solid " + T.border1, borderRadius: 10, overflowWrap: "anywhere" } }, failed && /* @__PURE__ */ React35.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React35.createElement("span", { style: { color, fontSize: 12, flex: "1 1 220px" } }, outcome.text), outcome.status === "error" && /* @__PURE__ */ React35.createElement(Btn, { size: "sm", onClick: () => WB.go("settings") }, "检查资讯配置")), /* @__PURE__ */ React35.createElement("details", { style: { marginTop: 6, fontSize: 11.5, color: T.text2 } }, /* @__PURE__ */ React35.createElement("summary", { style: { cursor: "pointer" } }, "查看抓取详情"), /* @__PURE__ */ React35.createElement("p", null, outcome.text), groups2.map((group) => /* @__PURE__ */ React35.createElement("section", { key: group.key, "aria-label": group.label, style: { marginTop: 10 } }, /* @__PURE__ */ React35.createElement("strong", { style: { fontWeight: 500 } }, group.label), /* @__PURE__ */ React35.createElement("ul", { style: { paddingLeft: 18, margin: "6px 0 0" } }, group.rows.map((row, index) => /* @__PURE__ */ React35.createElement("li", { key: index, style: { marginTop: 5 } }, row.label || row.id, "：", ["error", "unavailable"].includes(row.status) ? "失败" : row.added ? "新增 " + row.added + " 条" : "暂无新增", row.reasons && Object.values(row.reasons).some((value) => Number(value) > 0) ? " · " + [["duplicate", "重复"], ["outdated", "过期"], ["irrelevant", "无关"], ["invalid", "无效链接"]].filter(([key2]) => row.reasons[key2] > 0).map(([key2, label]) => label + " " + row.reasons[key2] + " 条").join("，") : row.note ? " · " + row.note : "")))))));
 }
 
 // src/client/features/news/NewsPage.ts
-var React35 = __toESM(require("react"), 1);
+var React37 = __toESM(require("react"), 1);
 
 // src/client/features/news/news-presentation.ts
-var React34 = __toESM(require("react"), 1);
+var React36 = __toESM(require("react"), 1);
 
 // src/client/features/dashboard/selectors.ts
 function dashStoreNavigate(preset) {
@@ -12677,9 +12957,9 @@ function DashRadarRow(props) {
   const needsDigest = rawParts.length === 0 && !!item.excerpt;
   const published = item.dateKind !== "unknown" ? item.publishedAt : null;
   const topics = Array.isArray(item.topics) ? item.topics : [];
-  const [saving, setSaving] = React34.useState(false);
-  const [makingTask, setMakingTask] = React34.useState(false);
-  const [confirmTask, setConfirmTask] = React34.useState(false);
+  const [saving, setSaving] = React36.useState(false);
+  const [makingTask, setMakingTask] = React36.useState(false);
+  const [confirmTask, setConfirmTask] = React36.useState(false);
   function makePracticeTask() {
     if (makingTask)
       return;
@@ -12751,7 +13031,7 @@ function DashRadarRow(props) {
 }
 function DashRadarMenu(props) {
   const item = props.item;
-  const [open, setOpen] = React34.useState(false);
+  const [open, setOpen] = React36.useState(false);
   const entries = [
     {
       key: "save",
@@ -12861,18 +13141,18 @@ function DashRadarMenu(props) {
 }
 function DashRadarModal(props) {
   const editing = props.item || null;
-  const [title, setTitle] = React34.useState("");
-  const [source, setSource] = React34.useState("");
-  const [url, setUrl] = React34.useState("");
-  const [publishedAt, setPublishedAt] = React34.useState("");
-  const [topics, setTopics] = React34.useState("");
-  const [change, setChange] = React34.useState("");
-  const [usage, setUsage] = React34.useState("");
-  const [risk, setRisk] = React34.useState("");
-  const [practice, setPractice] = React34.useState("");
-  const [busy, setBusy] = React34.useState(false);
-  const [error2, setError] = React34.useState(null);
-  React34.useEffect(function() {
+  const [title, setTitle] = React36.useState("");
+  const [source, setSource] = React36.useState("");
+  const [url, setUrl] = React36.useState("");
+  const [publishedAt, setPublishedAt] = React36.useState("");
+  const [topics, setTopics] = React36.useState("");
+  const [change, setChange] = React36.useState("");
+  const [usage, setUsage] = React36.useState("");
+  const [risk, setRisk] = React36.useState("");
+  const [practice, setPractice] = React36.useState("");
+  const [busy, setBusy] = React36.useState(false);
+  const [error2, setError] = React36.useState(null);
+  React36.useEffect(function() {
     if (!props.open)
       return;
     const item = props.item || null;
@@ -12945,7 +13225,7 @@ function DashRadarModal(props) {
     sub: editing ? "补全四段摘要后，雷达卡片会展示结构化结论；摘要内容仍由你或 Agent 负责事实准确性" : "登记的资讯会和采集来源一起进入技术雷达",
     onClose: props.onClose,
     width: 580,
-    footer: h(React34.Fragment, null, h(Btn, { onClick: props.onClose, disabled: busy, children: "取消" }), h(Btn, {
+    footer: h(React36.Fragment, null, h(Btn, { onClick: props.onClose, disabled: busy, children: "取消" }), h(Btn, {
       kind: "primary",
       disabled: busy,
       onClick: submit,
@@ -13018,18 +13298,18 @@ function DashRadarModal(props) {
 function RadarPage() {
   const state = useStore();
   const data = state.data || {};
-  const [page, setPage] = React35.useState(0);
-  const resultsRef = React35.useRef(null), [focusResult, setFocusResult] = React35.useState(false);
-  const [query, setQuery] = React35.useState("");
-  const [category, setCategory] = React35.useState("all");
-  const [topic, setTopic] = React35.useState("all");
-  const [editing, setEditing] = React35.useState(false);
-  const [editingItem, setEditingItem] = React35.useState(null);
-  const [expandedIds, setExpandedIds] = React35.useState({});
-  React35.useEffect(() => {
+  const [page, setPage] = React37.useState(0);
+  const resultsRef = React37.useRef(null), [focusResult, setFocusResult] = React37.useState(false);
+  const [query, setQuery] = React37.useState("");
+  const [category, setCategory] = React37.useState("all");
+  const [topic, setTopic] = React37.useState("all");
+  const [editing, setEditing] = React37.useState(false);
+  const [editingItem, setEditingItem] = React37.useState(null);
+  const [expandedIds, setExpandedIds] = React37.useState({});
+  React37.useEffect(() => {
     setPage(0);
   }, [data.radarBrief?.at]);
-  React35.useEffect(() => {
+  React37.useEffect(() => {
     const target = state.radarFocusId;
     if (!target || !state.data) return;
     const item = (data.radar || []).find((row) => row.id === target);
@@ -13043,7 +13323,7 @@ function RadarPage() {
     }
     WB.store.set({ radarFocusId: null });
   }, [state.radarFocusId, state.data]);
-  React35.useEffect(() => {
+  React37.useEffect(() => {
     if (focusResult) {
       resultsRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
       setFocusResult(false);
@@ -13059,7 +13339,7 @@ function RadarPage() {
     if (relevance) return relevance;
     return new Date(b.publishedAt || b.fetchedAt || b.createdAt).getTime() - new Date(a.publishedAt || a.fetchedAt || a.createdAt).getTime();
   });
-  return h(React35.Fragment, null, h("style", null, NEWS_HEADER_CSS), h("div", { className: "wb-news-heading" }, h(PageHead, { title: "资讯", sub: "模型动态、技术实践与开源项目", actions: h("div", { className: "wb-news-actions" }, h(Btn, { size: "sm", icon: "messages", onClick: () => WB.assistant.openHub("system", "radar"), children: "资讯对话" }), h(Btn, { size: "sm", icon: "refresh", disabled: state.busy, onClick: function() {
+  return h(React37.Fragment, null, h("style", null, NEWS_HEADER_CSS), h("div", { className: "wb-news-heading" }, h(PageHead, { title: "资讯", sub: "模型动态、技术实践与开源项目", actions: h("div", { className: "wb-news-actions" }, h(Btn, { size: "sm", icon: "messages", onClick: () => WB.assistant.openHub("system", "radar"), children: "资讯对话" }), h(Btn, { size: "sm", icon: "refresh", disabled: state.busy, onClick: function() {
     WB.actions.fetchRadar().catch(function() {
     });
   }, children: "获取资讯" }), h(Btn, { size: "sm", icon: "plus", onClick: function() {
@@ -13090,7 +13370,7 @@ WB.pages.replies = RepliesPage;
 WB.pages.radar = RadarPage;
 
 // src/client/features/operations/RemindersPanel.tsx
-var React36 = __toESM(require("react"), 1);
+var React38 = __toESM(require("react"), 1);
 function downloadText(name2, text2, type = "text/plain") {
   const url = URL.createObjectURL(new Blob([text2], { type }));
   const a = document.createElement("a");
@@ -13100,8 +13380,8 @@ function downloadText(name2, text2, type = "text/plain") {
   setTimeout(() => URL.revokeObjectURL(url), 1e3);
 }
 function RemindersPanel({ revision }) {
-  const [items, setItems] = React36.useState([]), [error2, setError] = React36.useState("");
-  React36.useEffect(() => {
+  const [items, setItems] = React38.useState([]), [error2, setError] = React38.useState("");
+  React38.useEffect(() => {
     let live = true;
     const read = () => WB.rpc("workbench/operationsStatus", {}).then((r) => {
       if (live)
@@ -13119,7 +13399,7 @@ function RemindersPanel({ revision }) {
   }, [revision]);
   if (!items.length && !error2)
     return null;
-  return /* @__PURE__ */ React36.createElement(Panel, { className: "wb-panel--separated", title: "到期提醒", sub: "会前 30 分钟、24 小时内到期、超过一天待回复；关闭软件期间不弹出提醒" }, error2 && /* @__PURE__ */ React36.createElement("p", { role: "alert" }, error2), items.slice(0, 8).map((row) => /* @__PURE__ */ React36.createElement("div", { className: "wb-reply-item", key: row.id }, /* @__PURE__ */ React36.createElement("strong", null, row.kind === "meeting" ? "会议" : row.kind === "reply" ? "待回复" : "待办", " · ", row.title), /* @__PURE__ */ React36.createElement("p", { className: "wb-tiny wb-muted" }, row.kind === "reply" ? "等待回复" : row.overdue ? row.kind === "meeting" ? "会议已开始" : "已逾期" : "即将到期", " · ", WB.fmt.datetime(row.at)), /* @__PURE__ */ React36.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React36.createElement(Btn, { size: "sm", onClick: () => {
+  return /* @__PURE__ */ React38.createElement(Panel, { className: "wb-panel--separated", title: "到期提醒", sub: "会前 30 分钟、24 小时内到期、超过一天待回复；关闭软件期间不弹出提醒" }, error2 && /* @__PURE__ */ React38.createElement("p", { role: "alert" }, error2), items.slice(0, 8).map((row) => /* @__PURE__ */ React38.createElement("div", { className: "wb-reply-item", key: row.id }, /* @__PURE__ */ React38.createElement("strong", null, row.kind === "meeting" ? "会议" : row.kind === "reply" ? "待回复" : "待办", " · ", row.title), /* @__PURE__ */ React38.createElement("p", { className: "wb-tiny wb-muted" }, row.kind === "reply" ? "等待回复" : row.overdue ? row.kind === "meeting" ? "会议已开始" : "已逾期" : "即将到期", " · ", WB.fmt.datetime(row.at)), /* @__PURE__ */ React38.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React38.createElement(Btn, { size: "sm", onClick: () => {
     if (row.kind === "reply") {
       WB.store.set({ page: "replies" });
     } else {
@@ -13129,14 +13409,14 @@ function RemindersPanel({ revision }) {
       else
         WB.store.set({ page: "tasks" });
     }
-  } }, "查看"), /* @__PURE__ */ React36.createElement(Btn, { size: "sm", onClick: () => WB.rpc("workbench/snoozeReminder", { id: row.id, minutes: 60 }).then(() => {
+  } }, "查看"), /* @__PURE__ */ React38.createElement(Btn, { size: "sm", onClick: () => WB.rpc("workbench/snoozeReminder", { id: row.id, minutes: 60 }).then(() => {
     setItems((previous) => previous.filter((item) => item.id !== row.id));
     return WB.actions.reload();
-  }).catch((e) => setError(e.message)) }, "稍后 1 小时"), row.kind !== "reply" && /* @__PURE__ */ React36.createElement(Btn, { size: "sm", onClick: () => WB.rpc("workbench/exportCalendar", { id: row.entityId }).then((r) => downloadText(r.filename, r.content, "text/calendar;charset=utf-8")).catch((e) => setError(e.message)) }, "导出到日历")))), items.length > 8 && /* @__PURE__ */ React36.createElement("p", null, "还有 ", items.length - 8, " 条，请到任务中心或待回复查看。"));
+  }).catch((e) => setError(e.message)) }, "稍后 1 小时"), row.kind !== "reply" && /* @__PURE__ */ React38.createElement(Btn, { size: "sm", onClick: () => WB.rpc("workbench/exportCalendar", { id: row.entityId }).then((r) => downloadText(r.filename, r.content, "text/calendar;charset=utf-8")).catch((e) => setError(e.message)) }, "导出到日历")))), items.length > 8 && /* @__PURE__ */ React38.createElement("p", null, "还有 ", items.length - 8, " 条，请到任务中心或待回复查看。"));
 }
 
 // src/client/features/dashboard/BriefAgenda.tsx
-var React37 = __toESM(require("react"), 1);
+var React39 = __toESM(require("react"), 1);
 function briefTime(at, now = Date.now()) {
   const value = Date.parse(at);
   if (!Number.isFinite(value)) return "时间待确认";
@@ -13158,19 +13438,19 @@ function BriefAgenda({ data, now }) {
   const meetings = (data.tasks || []).filter((t) => t.eventType === "meeting" && own(t) && !t.archivedAt && !["completed", "cancelled"].includes(t.status) && Date.parse(t.meetingEnd || t.meetingStart) >= now).sort((a, b) => Date.parse(a.meetingStart) - Date.parse(b.meetingStart));
   const today = meetings.filter((t) => Date.parse(t.meetingStart) <= dashEndOfToday(now));
   const shown = today.length ? today.slice(0, 3) : meetings.slice(0, 1);
-  return /* @__PURE__ */ React37.createElement(Panel, { title: "日程", icon: "calendar", actions: /* @__PURE__ */ React37.createElement(Btn, { size: "sm", kind: "subtle", onClick: () => WB.store.set({ page: "tasks", taskPreset: { typeFilter: "meeting", status: "open", dueFilter: "all" } }) }, "全部日程") }, !shown.length ? /* @__PURE__ */ React37.createElement("p", { className: "wb-tiny wb-muted" }, "今天没有会议安排") : shown.map((t) => {
+  return /* @__PURE__ */ React39.createElement(Panel, { title: "日程", icon: "calendar", actions: /* @__PURE__ */ React39.createElement(Btn, { size: "sm", kind: "subtle", onClick: () => WB.store.set({ page: "tasks", taskPreset: { typeFilter: "meeting", status: "open", dueFilter: "all" } }) }, "全部日程") }, !shown.length ? /* @__PURE__ */ React39.createElement("p", { className: "wb-tiny wb-muted" }, "今天没有会议安排") : shown.map((t) => {
     const delta = Date.parse(t.meetingStart) - now;
     const label = delta <= 0 ? "进行中" : delta <= 30 * 6e4 ? "即将开始" : Date.parse(t.meetingStart) <= dashEndOfToday(now) ? "今日会议" : "下一场";
-    return /* @__PURE__ */ React37.createElement("div", { className: "wb-item", key: t.id }, /* @__PURE__ */ React37.createElement("div", { className: "wb-item-main" }, /* @__PURE__ */ React37.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React37.createElement(MessageSelectionBadges, { source: (data.sources || []).find((s) => s.id === t.sourceRefId) }), /* @__PURE__ */ React37.createElement(Badge, { tone: delta > 0 && delta <= 30 * 6e4 ? "warn" : "idle" }, label), /* @__PURE__ */ React37.createElement("span", { className: "wb-tiny wb-muted" }, briefTime(t.meetingStart, now))), /* @__PURE__ */ React37.createElement("button", { style: { display: "block", textAlign: "left", background: "transparent", border: 0, color: "inherit", font: "inherit", fontWeight: 600, padding: "8px 0", cursor: "pointer", overflowWrap: "anywhere", width: "100%" }, onClick: () => WB.openTaskForm(t) }, t.title), t.meetingLocation && /* @__PURE__ */ React37.createElement("div", { className: "wb-tiny wb-muted" }, t.meetingLocation)));
-  }), today.length > 3 && /* @__PURE__ */ React37.createElement("p", { className: "wb-tiny wb-muted" }, "今天还有 ", today.length - 3, " 场会议"));
+    return /* @__PURE__ */ React39.createElement("div", { className: "wb-item", key: t.id }, /* @__PURE__ */ React39.createElement("div", { className: "wb-item-main" }, /* @__PURE__ */ React39.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React39.createElement(MessageSelectionBadges, { source: (data.sources || []).find((s) => s.id === t.sourceRefId) }), /* @__PURE__ */ React39.createElement(Badge, { tone: delta > 0 && delta <= 30 * 6e4 ? "warn" : "idle" }, label), /* @__PURE__ */ React39.createElement("span", { className: "wb-tiny wb-muted" }, briefTime(t.meetingStart, now))), /* @__PURE__ */ React39.createElement("button", { style: { display: "block", textAlign: "left", background: "transparent", border: 0, color: "inherit", font: "inherit", fontWeight: 600, padding: "8px 0", cursor: "pointer", overflowWrap: "anywhere", width: "100%" }, onClick: () => WB.openTaskForm(t) }, t.title), t.meetingLocation && /* @__PURE__ */ React39.createElement("div", { className: "wb-tiny wb-muted" }, t.meetingLocation)));
+  }), today.length > 3 && /* @__PURE__ */ React39.createElement("p", { className: "wb-tiny wb-muted" }, "今天还有 ", today.length - 3, " 场会议"));
 }
 
 // src/client/features/inbox/ConversationReader.tsx
-var React38 = __toESM(require("react"), 1);
+var React40 = __toESM(require("react"), 1);
 function ConversationReader({ conversation, accountId, onClose }) {
-  const [messages, setMessages] = React38.useState([]), [result, setResult] = React38.useState(null), [busy, setBusy] = React38.useState(false), [error2, setError] = React38.useState(""), [bottomSpace, setBottomSpace] = React38.useState(0);
-  const [readStatus, setReadStatus] = React38.useState(""), [readError, setReadError] = React38.useState(""), ackView = React38.useRef("");
-  const generation = React38.useRef(0), loading = React38.useRef(false), cursor = React38.useRef(null), phase = React38.useRef("unread"), positioned = React38.useRef(false), root = React38.useRef(null), scrollBody = React38.useRef(null), anchor = React38.useRef(null), loadRef = React38.useRef(() => {
+  const [messages, setMessages] = React40.useState([]), [result, setResult] = React40.useState(null), [busy, setBusy] = React40.useState(false), [error2, setError] = React40.useState(""), [bottomSpace, setBottomSpace] = React40.useState(0);
+  const [readStatus, setReadStatus] = React40.useState(""), [readError, setReadError] = React40.useState(""), ackView = React40.useRef("");
+  const generation = React40.useRef(0), loading = React40.useRef(false), cursor = React40.useRef(null), phase = React40.useRef("unread"), positioned = React40.useRef(false), root = React40.useRef(null), scrollBody = React40.useRef(null), anchor = React40.useRef(null), loadRef = React40.useRef(() => {
   });
   function captureAnchor() {
     const body = scrollBody.current;
@@ -13212,7 +13492,7 @@ function ConversationReader({ conversation, accountId, onClose }) {
     }
   }
   loadRef.current = load;
-  React38.useEffect(() => {
+  React40.useEffect(() => {
     generation.current++;
     cursor.current = null;
     loading.current = false;
@@ -13247,10 +13527,10 @@ function ConversationReader({ conversation, accountId, onClose }) {
       }
     }
   }
-  React38.useEffect(() => {
+  React40.useEffect(() => {
     if (!busy && result?.status === "ok" && result.unreadComplete && result.unreadTotal > 0 && result.unreadLoaded === result.unreadTotal && !ackView.current) void markRead();
   }, [busy, result]);
-  React38.useEffect(() => {
+  React40.useEffect(() => {
     const body = root.current?.closest(".wb-modal-body");
     if (!body) return;
     scrollBody.current = body;
@@ -13290,7 +13570,7 @@ function ConversationReader({ conversation, accountId, onClose }) {
       scrollBody.current = null;
     };
   }, [accountId, conversation.groupId]);
-  React38.useLayoutEffect(() => {
+  React40.useLayoutEffect(() => {
     const body = scrollBody.current;
     if (!body) return;
     if (anchor.current) {
@@ -13305,86 +13585,110 @@ function ConversationReader({ conversation, accountId, onClose }) {
       }
       anchor.current = null;
     } else if (!busy && cursor.current?.unreadComplete && !positioned.current) {
-      setBottomSpace(Math.max(0, body.clientHeight - (root.current?.getBoundingClientRect().height || 0)));
-      body.scrollTop = 0;
+      body.scrollTop = body.scrollHeight;
       positioned.current = true;
     }
   }, [messages, busy, bottomSpace]);
   const firstUnreadIndex = messages.findIndex((row) => row.unread), contextCount = messages.filter((row) => !row.unread).length;
-  return /* @__PURE__ */ React38.createElement(Modal, { open: true, title: conversation.name || "会话消息", sub: "未读消息 · 顶部向上滚动，每次查看更早 10 条", width: 760, onClose, footer: /* @__PURE__ */ React38.createElement(React38.Fragment, null, /* @__PURE__ */ React38.createElement("span", { className: "wb-tiny wb-muted", style: { flex: 1 } }, result ? `未读 ${result.unreadLoaded}/${result.unreadTotal} 条 · 已查看历史 ${result.contextLoaded} 条` : "正在读取未读消息…"), !busy && error2 && /* @__PURE__ */ React38.createElement(Btn, { size: "sm", onClick: () => load(phase.current) }, "重试读取"), readStatus === "saved" && /* @__PURE__ */ React38.createElement("span", { className: "wb-tiny wb-muted", title: "仅记录工作台已读；云之家客户端未读红点暂不同步。待回复仍保留。" }, "工作台已读"), readStatus === "failed" && /* @__PURE__ */ React38.createElement(Btn, { size: "sm", title: readError, onClick: () => {
+  return /* @__PURE__ */ React40.createElement(Modal, { open: true, title: conversation.name || "会话消息", sub: "默认显示最新消息 · 向上滚动查看历史", width: 760, onClose, footer: /* @__PURE__ */ React40.createElement(React40.Fragment, null, /* @__PURE__ */ React40.createElement("span", { className: "wb-tiny wb-muted", style: { flex: 1 } }, result ? `未读 ${result.unreadLoaded}/${result.unreadTotal} 条 · 已查看历史 ${result.contextLoaded} 条` : "正在读取未读消息…"), !busy && error2 && /* @__PURE__ */ React40.createElement(Btn, { size: "sm", onClick: () => load(phase.current) }, "重试读取"), readStatus === "saved" && /* @__PURE__ */ React40.createElement("span", { className: "wb-tiny wb-muted", title: "仅记录工作台已读；云之家客户端未读红点暂不同步。待回复仍保留。" }, "工作台已读"), readStatus === "failed" && /* @__PURE__ */ React40.createElement(Btn, { size: "sm", title: readError, onClick: () => {
     ackView.current = "";
     void markRead();
-  } }, "重试保存已读")) }, /* @__PURE__ */ React38.createElement("style", null, READER_CSS), /* @__PURE__ */ React38.createElement("div", { ref: root, className: "wb-conversation-reader", "aria-label": "会话消息" }, /* @__PURE__ */ React38.createElement("div", { className: "wb-conversation-history-control", role: "status" }, busy ? /* @__PURE__ */ React38.createElement("span", { className: "wb-row wb-muted" }, /* @__PURE__ */ React38.createElement(Spinner, { size: 14 }), phase.current === "history" ? "正在读取更早消息…" : "正在读取未读消息…") : result?.unreadComplete ? result.hasMoreHistory ? /* @__PURE__ */ React38.createElement("button", { type: "button", className: "wb-link", "aria-label": "加载更早10条消息", onClick: () => load("history") }, "向上滚动，查看更早 10 条") : /* @__PURE__ */ React38.createElement("span", { className: "wb-tiny wb-muted" }, "已到最早消息") : null), contextCount > 0 && /* @__PURE__ */ React38.createElement("div", { className: "wb-conversation-divider", role: "separator" }, "历史消息 · ", contextCount, " 条"), messages.map((message, index) => /* @__PURE__ */ React38.createElement(React38.Fragment, { key: message.id }, index === firstUnreadIndex && /* @__PURE__ */ React38.createElement("div", { className: "wb-conversation-divider is-unread", role: "separator" }, "以下为打开时的未读消息"), /* @__PURE__ */ React38.createElement("article", { className: "wb-conversation-message" + (message.own ? " is-own" : ""), "data-message-id": message.id, "aria-label": (message.unread ? "未读消息：" : "之前的消息：") + message.sender }, /* @__PURE__ */ React38.createElement("header", null, /* @__PURE__ */ React38.createElement("strong", null, message.sender), /* @__PURE__ */ React38.createElement("time", null, messageSentTime({ locator: { sentAt: message.at } })), message.own && /* @__PURE__ */ React38.createElement(Badge, { tone: "idle" }, "本人")), /* @__PURE__ */ React38.createElement("p", null, message.text || "[非文本消息]")))), error2 && /* @__PURE__ */ React38.createElement("p", { role: "alert" }, error2), !busy && result?.note && !error2 && /* @__PURE__ */ React38.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, result.note), !busy && result?.unreadComplete && !messages.length && !error2 && !result.note && /* @__PURE__ */ React38.createElement("p", { className: "wb-muted" }, "当前没有未读消息，可向上滚动查看历史。"), /* @__PURE__ */ React38.createElement("div", { "aria-hidden": "true", style: { height: bottomSpace, flex: "none", marginTop: -12 } })));
+  } }, "重试保存已读")) }, /* @__PURE__ */ React40.createElement("style", null, READER_CSS), /* @__PURE__ */ React40.createElement("div", { ref: root, className: "wb-conversation-reader", "aria-label": "会话消息" }, /* @__PURE__ */ React40.createElement("div", { className: "wb-conversation-history-control", role: "status" }, busy ? /* @__PURE__ */ React40.createElement("span", { className: "wb-row wb-muted" }, /* @__PURE__ */ React40.createElement(Spinner, { size: 14 }), phase.current === "history" ? "正在读取更早消息…" : "正在读取未读消息…") : result?.unreadComplete ? result.hasMoreHistory ? /* @__PURE__ */ React40.createElement("button", { type: "button", className: "wb-link", "aria-label": "加载更早10条消息", onClick: () => load("history") }, "向上滚动，查看更早 10 条") : /* @__PURE__ */ React40.createElement("span", { className: "wb-tiny wb-muted" }, "已到最早消息") : null), contextCount > 0 && /* @__PURE__ */ React40.createElement("div", { className: "wb-conversation-divider", role: "separator" }, "历史消息 · ", contextCount, " 条"), messages.map((message, index) => /* @__PURE__ */ React40.createElement(React40.Fragment, { key: message.id }, index === firstUnreadIndex && /* @__PURE__ */ React40.createElement("div", { className: "wb-conversation-divider is-unread", role: "separator" }, "以下为打开时的未读消息"), /* @__PURE__ */ React40.createElement("article", { className: "wb-conversation-message" + (message.own ? " is-own" : ""), "data-message-id": message.id, "aria-label": (message.unread ? "未读消息：" : "之前的消息：") + message.sender }, /* @__PURE__ */ React40.createElement("header", null, /* @__PURE__ */ React40.createElement("strong", null, message.sender), /* @__PURE__ */ React40.createElement("time", null, messageSentTime({ locator: { sentAt: message.at } })), message.own && /* @__PURE__ */ React40.createElement(Badge, { tone: "idle" }, "本人")), /* @__PURE__ */ React40.createElement("p", null, message.text || "[非文本消息]")))), error2 && /* @__PURE__ */ React40.createElement("p", { role: "alert" }, error2), !busy && result?.note && !error2 && /* @__PURE__ */ React40.createElement("p", { role: "status", className: "wb-tiny wb-muted" }, result.note), !busy && result?.unreadComplete && !messages.length && !error2 && !result.note && /* @__PURE__ */ React40.createElement("p", { className: "wb-muted" }, "当前没有未读消息，可向上滚动查看历史。"), /* @__PURE__ */ React40.createElement("div", { "aria-hidden": "true", style: { height: bottomSpace, flex: "none", marginTop: -12 } })));
 }
 var READER_CSS = `
 .wb-modal:has(.wb-conversation-reader) .wb-modal-head h2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.wb-modal:has(.wb-conversation-reader){height:76vh}.wb-modal:has(.wb-conversation-reader) .wb-modal-body{overflow-anchor:none;flex:1}.wb-conversation-history-control{min-height:26px;display:flex;align-items:center;justify-content:center;font-size:11px}.wb-conversation-history-control button{appearance:none;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);padding:3px 6px;font:inherit;cursor:pointer}.wb-conversation-history-control button:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}.wb-conversation-history-control button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}.wb-conversation-reader{display:flex;flex-direction:column;gap:12px;min-width:0}.wb-conversation-reader>p{margin:0;overflow-wrap:anywhere}.wb-conversation-divider{display:flex;align-items:center;justify-content:center;gap:8px;min-height:24px;font-size:11px;color:var(--dsw-alias-label-secondary);scroll-margin-top:12px}.wb-conversation-divider:before,.wb-conversation-divider:after{content:'';height:1px;background:var(--dsw-alias-border-l1);flex:1}.wb-conversation-divider.is-unread{color:var(--dsw-alias-brand-primary)}.wb-conversation-message{align-self:flex-start;max-width:94%;min-width:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:3px 12px 12px 12px;background:var(--dsw-alias-bg-layer-1)}.wb-conversation-message.is-own{align-self:flex-end;background:var(--dsw-alias-bg-layer-2);border-radius:12px 3px 12px 12px}.wb-conversation-message header{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-size:12px}.wb-conversation-message header time{font-size:10px;color:var(--dsw-alias-label-secondary)}.wb-conversation-message p{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.7}.wb-conversation-message strong{overflow-wrap:anywhere}@media(max-width:640px){.wb-conversation-message{max-width:100%}}
 `;
 
 // src/client/features/inbox/FocusedInbox.tsx
-var React39 = __toESM(require("react"), 1);
+var React42 = __toESM(require("react"), 1);
 
-// src/shared/inbox-triage.ts
-function isIrrelevantConversation(data, conversation) {
-  const account = data.messageInbox?.accountId, group = conversation.groupId;
-  const count = conversation.unreadCount, head = conversation.latestMsgId;
-  if (!account || !group || !head || !Number.isInteger(count) || count <= 0) return false;
-  const cursor = data.syncCursors?.[account + ":" + group];
-  if (!cursor || cursor.accountId !== account || cursor.intakePolicy !== "focused-v1" || cursor.resumeBefore || cursor.lastMsgId !== head || cursor.unreadHeadId !== head || cursor.unreadCount !== count || data.syncCursors?.["__pending:" + account]?.pendingGroups?.some((row) => row.groupId === group)) return false;
-  const ids = new Set(Array.isArray(cursor.unreadMsgIds) ? cursor.unreadMsgIds : []);
-  if (ids.size !== count || !ids.has(head)) return false;
-  const sources = (data.sources || []).filter((source) => source.provider === "yunzhijia" && source.locator?.accountId === account && source.locator?.groupId === group);
-  const sourceIds = new Set(sources.map((source) => source.id));
-  if ((data.tasks || []).some((task) => !["completed", "cancelled"].includes(task.status) && (sourceIds.has(task.sourceRefId) || task.sourceRefs?.some((ref) => sourceIds.has(ref.sourceId))))) return false;
-  if ((data.replies || []).some((reply) => ["待回复", "已确认收到", "已自动回复"].includes(reply.stage) && (sourceIds.has(reply.sourceId) || reply.accountId === account && reply.groupId === group))) return false;
-  return [...ids].every((msgId) => {
-    const matches = sources.filter((source2) => source2.locator.msgId === msgId);
-    if (matches.length !== 1) return false;
-    const source = matches[0];
-    if (source.locator.direction !== "inbound" || String(source.excerpt || "").length >= 4e3 || source.selection?.policy !== "focused-v1" || !source.selection.reasons?.includes("unread")) return false;
-    const entries = (data.analysisQueue || []).filter((row) => row.sourceId === source.id);
-    return entries.length === 1 && entries.every((row) => row.accountId === account && row.groupId === group && row.msgId === msgId && row.status === "done" && row.analysis?.relevance === "irrelevant" && row.analysis.noise === true && Array.isArray(row.analysis.items) && !row.analysis.items.length && Number.isFinite(Date.parse(source.fetchedAt)) && Date.parse(row.analyzedAt) >= Date.parse(source.fetchedAt));
-  });
+// src/client/features/inbox/useConversationRows.ts
+var React41 = __toESM(require("react"), 1);
+var PREVIEW_ROWS = 3;
+function useConversationRows(account, signature) {
+  const ref = React41.useRef(null);
+  const [expanded, setExpanded] = React41.useState({ account, rows: PREVIEW_ROWS });
+  React41.useEffect(() => {
+    setExpanded((previous) => previous.account === account ? previous : { account, rows: PREVIEW_ROWS });
+  }, [account]);
+  const rowLimit = expanded.account === account ? expanded.rows : PREVIEW_ROWS;
+  const [layout, setLayout] = React41.useState({ count: Infinity, rows: 0 });
+  React41.useLayoutEffect(() => {
+    const list2 = ref.current;
+    if (!list2) return;
+    let active = true;
+    const measure = () => {
+      if (!active || list2.getBoundingClientRect().width === 0) return;
+      const rows = [];
+      for (const item of Array.from(list2.children)) {
+        const box = item.getBoundingClientRect();
+        const last = rows[rows.length - 1];
+        if (!last || Math.abs(last.top - box.top) > 1) rows.push({ top: box.top, bottom: box.bottom, count: 1 });
+        else {
+          last.bottom = Math.max(last.bottom, box.bottom);
+          last.count++;
+        }
+      }
+      const visible = rows.slice(0, rowLimit);
+      const next = {
+        count: visible.reduce((sum, row) => sum + row.count, 0),
+        rows: rows.length,
+        height: rows.length > rowLimit ? Math.ceil(visible[visible.length - 1].bottom - list2.getBoundingClientRect().top) : void 0
+      };
+      setLayout((previous) => previous.count === next.count && previous.rows === next.rows && previous.height === next.height ? previous : next);
+    };
+    measure();
+    const observer = typeof ResizeObserver === "undefined" ? void 0 : new ResizeObserver(measure);
+    observer?.observe(list2);
+    window.addEventListener("resize", measure);
+    document.fonts?.ready.then(measure);
+    return () => {
+      active = false;
+      observer?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [account, signature, rowLimit]);
+  return {
+    ref,
+    ...layout,
+    rowLimit,
+    more: () => setExpanded({ account, rows: rowLimit + PREVIEW_ROWS }),
+    collapse: () => setExpanded({ account, rows: PREVIEW_ROWS })
+  };
 }
 
 // src/client/features/inbox/FocusedInbox.tsx
-var UNREAD_PREVIEW_SIZE = 3;
 function FocusedInbox({ data, compact = false }) {
   const inbox = data.messageInbox, account = inbox?.accountId, sources = (data.sources || []).filter((s) => account && s.locator?.accountId === account && s.selection?.policy === "focused-v1"), unread = (inbox?.conversations || []).filter((c) => c.unreadCount > 0 && !isConversationRead(data, c));
-  const [includeHidden, setIncludeHidden] = React39.useState(false), [visibleCount, setVisibleCount] = React39.useState(UNREAD_PREVIEW_SIZE), [selected, setSelected] = React39.useState(null);
-  React39.useEffect(() => {
-    setIncludeHidden(false);
-    setVisibleCount(UNREAD_PREVIEW_SIZE);
+  const [selected, setSelected] = React42.useState(null);
+  React42.useEffect(() => {
     setSelected(null);
   }, [account]);
-  const hidden = new Set(unread.filter((c) => isIrrelevantConversation(data, c)).map((c) => c.groupId));
-  const visible = includeHidden ? unread : unread.filter((c) => !hidden.has(c.groupId));
-  const shown = visible.slice(0, visibleCount), remaining = Math.max(0, visible.length - shown.length);
-  const content = /* @__PURE__ */ React39.createElement(Panel, { title: "消息概览", icon: "chat" }, /* @__PURE__ */ React39.createElement("div", { className: "wb-stack", "aria-label": "云之家重点收件箱" }, /* @__PURE__ */ React39.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React39.createElement(Badge, { tone: inbox?.unreadTotal > 0 ? "warn" : "idle" }, "云之家未读 ", inbox?.unreadTotal ?? "未知"), /* @__PURE__ */ React39.createElement(Badge, { tone: "idle" }, "累计收录 @本人 ", sources.filter((s) => s.selection.reasons.includes("mention_me")).length), /* @__PURE__ */ React39.createElement(Badge, { tone: "idle" }, "累计收录 @全员 ", sources.filter((s) => s.selection.reasons.includes("mention_all")).length), /* @__PURE__ */ React39.createElement(Btn, { size: "sm", onClick: () => WB.go("replies") }, "待回复"), /* @__PURE__ */ React39.createElement(Btn, { size: "sm", onClick: () => WB.go("tasks") }, "待处理与会议")), inbox && /* @__PURE__ */ React39.createElement("p", { className: "wb-tiny wb-muted" }, "消息快照：", inbox.at ? WB.fmt.relative(inbox.at) : "尚未同步", " · 日历：", inbox.calendar?.status === "ok" ? "已同步 " + inbox.calendar.found + " 场" : inbox.calendar?.note || "尚未同步"), !!unread.length && /* @__PURE__ */ React39.createElement("section", { "aria-label": "未读会话预览" }, /* @__PURE__ */ React39.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, justifyContent: "space-between" } }, /* @__PURE__ */ React39.createElement("h3", { className: "wb-tiny", style: { margin: 0, fontWeight: 600 } }, "未读会话（", visible.length, "）"), !!hidden.size && /* @__PURE__ */ React39.createElement(Btn, { size: "sm", onClick: () => {
-    setIncludeHidden(!includeHidden);
-    setVisibleCount(UNREAD_PREVIEW_SIZE);
-  } }, includeHidden ? "隐藏已收起" : "显示已收起 " + hidden.size)), /* @__PURE__ */ React39.createElement("div", { role: "list", "aria-label": "未读会话列表" }, shown.map((c) => /* @__PURE__ */ React39.createElement("div", { role: "listitem", className: "wb-row wb-row--wrap", key: c.groupId, style: { gap: 8, padding: "6px 0", overflowWrap: "anywhere" } }, /* @__PURE__ */ React39.createElement("button", { type: "button", className: "wb-btn wb-btn--ghost", "aria-label": "查看会话：" + c.name, title: c.name, style: { minWidth: 0, flex: 1, height: "auto", minHeight: 30, padding: "6px 8px", textAlign: "left", justifyContent: "flex-start", whiteSpace: "normal", overflowWrap: "anywhere" }, onClick: () => setSelected({ ...c, viewerAccountId: account }) }, /* @__PURE__ */ React39.createElement("span", { className: "wb-inbox-conversation-name", style: { minWidth: 0, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", overflowWrap: "anywhere" } }, c.name)), includeHidden && hidden.has(c.groupId) && /* @__PURE__ */ React39.createElement(Badge, { tone: "idle" }, "已收起"), /* @__PURE__ */ React39.createElement(Badge, { tone: "warn" }, conversationReadMark(data, c) ? "新消息" : c.unreadCount)))), !visible.length && /* @__PURE__ */ React39.createElement("p", { className: "wb-tiny wb-muted" }, "暂无待关注会话"), visible.length > UNREAD_PREVIEW_SIZE && /* @__PURE__ */ React39.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, justifyContent: "space-between" } }, /* @__PURE__ */ React39.createElement("span", { className: "wb-tiny wb-muted" }, "已展示 ", shown.length, " / ", visible.length), /* @__PURE__ */ React39.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 6 } }, remaining > 0 && /* @__PURE__ */ React39.createElement(Btn, { size: "sm", onClick: () => setVisibleCount((count) => count + UNREAD_PREVIEW_SIZE) }, "展开更多（", Math.min(UNREAD_PREVIEW_SIZE, remaining), "条）"), visibleCount > UNREAD_PREVIEW_SIZE && /* @__PURE__ */ React39.createElement(Btn, { size: "sm", onClick: () => setVisibleCount(UNREAD_PREVIEW_SIZE) }, "收起列表")))), selected && account && selected.viewerAccountId === account && /* @__PURE__ */ React39.createElement(ConversationReader, { key: account + ":" + selected.groupId, accountId: account, conversation: selected, onClose: () => setSelected(null) })));
-  return compact ? /* @__PURE__ */ React39.createElement("details", { className: "wb-compact-status", open: true }, /* @__PURE__ */ React39.createElement("summary", null, "云之家消息 · 工作台未读 ", unread.length, " 个会话", /* @__PURE__ */ React39.createElement("span", { className: "wb-tiny wb-muted" }, "查看消息")), content) : content;
+  const rows = useConversationRows(account, JSON.stringify(unread.map((c) => [c.groupId, c.name, c.unreadCount, conversationReadMark(data, c)])));
+  const shownCount = Math.min(unread.length, rows.count), remaining = unread.length - shownCount;
+  const content = /* @__PURE__ */ React42.createElement("div", { className: "wb-stack wb-focused-inbox", "aria-label": "云之家重点收件箱" }, /* @__PURE__ */ React42.createElement("div", { className: "wb-inbox-metrics" }, /* @__PURE__ */ React42.createElement(Badge, { tone: inbox?.unreadTotal > 0 ? "warn" : "idle" }, "云之家未读 ", inbox?.unreadTotal ?? "未知"), /* @__PURE__ */ React42.createElement(Badge, { tone: "idle" }, "累计收录 @本人 ", sources.filter((s) => s.selection.reasons.includes("mention_me")).length), /* @__PURE__ */ React42.createElement(Badge, { tone: "idle" }, "累计收录 @全员 ", sources.filter((s) => s.selection.reasons.includes("mention_all")).length), /* @__PURE__ */ React42.createElement(Btn, { size: "sm", onClick: () => WB.go("replies") }, "待回复"), /* @__PURE__ */ React42.createElement(Btn, { size: "sm", onClick: () => WB.go("tasks") }, "待处理与会议"), inbox && /* @__PURE__ */ React42.createElement(React42.Fragment, null, /* @__PURE__ */ React42.createElement("span", { className: "wb-tiny wb-muted wb-inbox-snapshot" }, "消息快照：", inbox.at ? WB.fmt.relative(inbox.at) : "尚未同步"), /* @__PURE__ */ React42.createElement("span", { className: "wb-tiny wb-muted wb-inbox-snapshot" }, "日历：", inbox.calendar?.status === "ok" ? "已同步 " + inbox.calendar.found + " 场" : inbox.calendar?.note || "尚未同步"))), !!unread.length && /* @__PURE__ */ React42.createElement("section", { "aria-label": "未读会话预览" }, /* @__PURE__ */ React42.createElement("div", { ref: rows.ref, role: "list", "aria-label": "未读会话列表", className: "wb-inbox-conversations", style: { maxHeight: rows.height, overflow: "hidden" } }, unread.map((c, index) => /* @__PURE__ */ React42.createElement("div", { role: "listitem", "aria-hidden": index >= shownCount ? true : void 0, style: index >= shownCount ? { visibility: "hidden" } : void 0, className: "wb-inbox-conversation", key: c.groupId }, /* @__PURE__ */ React42.createElement("button", { type: "button", tabIndex: index >= shownCount ? -1 : void 0, className: "wb-btn wb-btn--ghost wb-inbox-conversation-open", "aria-label": "查看会话：" + c.name, title: c.name, onClick: () => setSelected({ ...c, viewerAccountId: account }) }, /* @__PURE__ */ React42.createElement("span", { className: "wb-inbox-conversation-name" }, c.name)), /* @__PURE__ */ React42.createElement(Badge, { tone: "warn" }, conversationReadMark(data, c) ? "新消息" : c.unreadCount)))), rows.rows > 3 && /* @__PURE__ */ React42.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React42.createElement("span", { className: "wb-tiny wb-muted" }, "已展示 ", shownCount, " / ", unread.length), /* @__PURE__ */ React42.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 6 } }, remaining > 0 && /* @__PURE__ */ React42.createElement(Btn, { size: "sm", onClick: rows.more }, "展开更多"), rows.rowLimit > 3 && /* @__PURE__ */ React42.createElement(Btn, { size: "sm", onClick: rows.collapse }, "收起列表")))), selected && account && selected.viewerAccountId === account && /* @__PURE__ */ React42.createElement(ConversationReader, { key: account + ":" + selected.groupId, accountId: account, conversation: selected, onClose: () => setSelected(null) }));
+  return compact ? /* @__PURE__ */ React42.createElement("details", { className: "wb-card wb-inbox-summary", open: true }, /* @__PURE__ */ React42.createElement("summary", { className: "wb-card-head" }, /* @__PURE__ */ React42.createElement("span", { className: "wb-card-icon" }, /* @__PURE__ */ React42.createElement(Icon, { name: "chat", size: 15 })), /* @__PURE__ */ React42.createElement("div", { className: "wb-card-titles" }, /* @__PURE__ */ React42.createElement("h3", { className: "wb-card-title" }, "云之家消息"), /* @__PURE__ */ React42.createElement("span", { className: "wb-tiny wb-muted" }, "工作台未读 ", unread.length, " 个会话")), /* @__PURE__ */ React42.createElement("span", { className: "wb-inbox-summary-toggle wb-tiny wb-muted" }, /* @__PURE__ */ React42.createElement("span", { className: "wb-inbox-show" }, "查看消息"), /* @__PURE__ */ React42.createElement("span", { className: "wb-inbox-hide" }, "收起"), /* @__PURE__ */ React42.createElement(Icon, { name: "chevronDown", size: 14 }))), /* @__PURE__ */ React42.createElement("div", { className: "wb-card-body" }, content)) : /* @__PURE__ */ React42.createElement(Panel, { title: "消息概览", icon: "chat" }, content);
 }
 
 // src/client/features/dashboard/dashboard.ts
-var React43 = __toESM(require("react"), 1);
+var React46 = __toESM(require("react"), 1);
 
 // src/client/components/SyncStatus.tsx
-var React40 = __toESM(require("react"), 1);
+var React43 = __toESM(require("react"), 1);
 function SyncStatus({ report, busy, onRetry }) {
   if (!report) return null;
-  return /* @__PURE__ */ React40.createElement("details", { className: "wb-compact-status" }, /* @__PURE__ */ React40.createElement("summary", null, /* @__PURE__ */ React40.createElement("span", null, report.status === "ok" ? "消息同步完成" : "部分消息尚未同步"), /* @__PURE__ */ React40.createElement("span", { className: "wb-tiny wb-muted" }, "新增 ", report.added || 0, " 条"), /* @__PURE__ */ React40.createElement("button", { className: "wb-chip", type: "button", disabled: busy, onClick: (e) => {
+  return /* @__PURE__ */ React43.createElement("details", { className: "wb-compact-status" }, /* @__PURE__ */ React43.createElement("summary", null, /* @__PURE__ */ React43.createElement("span", null, report.status === "ok" ? "消息同步完成" : "部分消息尚未同步"), /* @__PURE__ */ React43.createElement("span", { className: "wb-tiny wb-muted" }, "新增 ", report.added || 0, " 条"), /* @__PURE__ */ React43.createElement("button", { className: "wb-chip", type: "button", disabled: busy, onClick: (e) => {
     e?.preventDefault();
     onRetry();
-  } }, busy ? "同步中…" : "再拉一次"), /* @__PURE__ */ React40.createElement("span", { className: "wb-tiny wb-muted" }, "详情")), /* @__PURE__ */ React40.createElement("p", { style: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } }, report.note || report.status));
+  } }, busy ? "同步中…" : "再拉一次"), /* @__PURE__ */ React43.createElement("span", { className: "wb-tiny wb-muted" }, "详情")), /* @__PURE__ */ React43.createElement("p", { style: { overflowWrap: "anywhere", whiteSpace: "pre-wrap" } }, report.note || report.status));
 }
 
 // src/client/components/TaskMessageMetadata.tsx
-var React41 = __toESM(require("react"), 1);
+var React44 = __toESM(require("react"), 1);
 function TaskMessageMetadata({ task, data, showTime = true }) {
   const source = taskSource(task, data?.sources || []);
   if (source?.provider !== "yunzhijia") return null;
-  return /* @__PURE__ */ React41.createElement("div", { role: "group", "aria-label": "消息来源", className: "wb-tiny wb-muted", style: { overflowWrap: "anywhere", marginTop: 3 } }, /* @__PURE__ */ React41.createElement("div", null, "发件人：", messageSender(source), " · 来自：", messageOrigin(source)), showTime && /* @__PURE__ */ React41.createElement("div", null, "消息发出时间：", messageSentTime(source)));
+  return /* @__PURE__ */ React44.createElement("div", { role: "group", "aria-label": "消息来源", className: "wb-tiny wb-muted", style: { overflowWrap: "anywhere", marginTop: 3 } }, /* @__PURE__ */ React44.createElement("div", null, "发件人：", messageSender(source), " · 来自：", messageOrigin(source)), showTime && /* @__PURE__ */ React44.createElement("div", null, "消息发出时间：", messageSentTime(source)));
 }
 
 // src/client/features/dashboard/task-preview.ts
@@ -13454,9 +13758,9 @@ function DashTaskRow(props) {
 }
 
 // src/client/components/CompactEmptyState.tsx
-var React42 = __toESM(require("react"), 1);
+var React45 = __toESM(require("react"), 1);
 function CompactEmptyState({ empty: empty2, onCreate, onBrowse }) {
-  return /* @__PURE__ */ React42.createElement("div", { className: "wb-stack", style: { padding: "16px", gap: 8 } }, /* @__PURE__ */ React42.createElement("strong", null, empty2 ? "还没有待办" : "今天没有必须处理的待办"), /* @__PURE__ */ React42.createElement("p", { className: "wb-tiny wb-muted", style: { margin: 0 } }, empty2 ? "同步消息并开启 AI 后，可从待回复页确认识别出的事项。" : "其他事项可在任务中心继续查看。"), /* @__PURE__ */ React42.createElement("div", null, /* @__PURE__ */ React42.createElement(Btn, { size: "sm", kind: "primary", onClick: empty2 ? onCreate : onBrowse }, empty2 ? "新建第一条待办" : "查看全部待办")));
+  return /* @__PURE__ */ React45.createElement("div", { className: "wb-stack", style: { padding: "16px", gap: 8 } }, /* @__PURE__ */ React45.createElement("strong", null, empty2 ? "还没有待办" : "今天没有必须处理的待办"), /* @__PURE__ */ React45.createElement("p", { className: "wb-tiny wb-muted", style: { margin: 0 } }, empty2 ? "同步消息并开启 AI 后，可从待回复页确认识别出的事项。" : "其他事项可在任务中心继续查看。"), /* @__PURE__ */ React45.createElement("div", null, /* @__PURE__ */ React45.createElement(Btn, { size: "sm", kind: "primary", onClick: empty2 ? onCreate : onBrowse }, empty2 ? "新建第一条待办" : "查看全部待办")));
 }
 
 // src/client/features/dashboard/brief-export.ts
@@ -13513,19 +13817,19 @@ function dashBriefMarkdown(data) {
 function DashboardPage() {
   const state = WB.useStore();
   const data = state.data;
-  const [radarAll, setRadarAll] = React43.useState(false);
-  const [radarShowAll, setRadarShowAll] = React43.useState(false);
-  const [radarExpanded, setRadarExpanded] = React43.useState(null);
-  const [radarFormOpen, setRadarFormOpen] = React43.useState(false);
-  const [radarEditItem, setRadarEditItem] = React43.useState(null);
-  const [radarFetching, setRadarFetching] = React43.useState(false);
-  const [mentionsBusy, setMentionsBusy] = React43.useState(false);
-  const [reminderToolsOpen, setReminderToolsOpen] = React43.useState(false);
-  const [taskScope, setTaskScope] = React43.useState("today");
-  const [allTasksShown, setAllTasksShown] = React43.useState(false);
-  const [taskClock, setTaskClock] = React43.useState(Date.now);
-  const taskColumn = React43.useRef(null), [inlineTaskFilters, setInlineTaskFilters] = React43.useState(false);
-  React43.useLayoutEffect(() => {
+  const [radarAll, setRadarAll] = React46.useState(false);
+  const [radarShowAll, setRadarShowAll] = React46.useState(false);
+  const [radarExpanded, setRadarExpanded] = React46.useState(null);
+  const [radarFormOpen, setRadarFormOpen] = React46.useState(false);
+  const [radarEditItem, setRadarEditItem] = React46.useState(null);
+  const [radarFetching, setRadarFetching] = React46.useState(false);
+  const [mentionsBusy, setMentionsBusy] = React46.useState(false);
+  const [reminderToolsOpen, setReminderToolsOpen] = React46.useState(false);
+  const [taskScope, setTaskScope] = React46.useState("today");
+  const [allTasksShown, setAllTasksShown] = React46.useState(false);
+  const [taskClock, setTaskClock] = React46.useState(Date.now);
+  const taskColumn = React46.useRef(null), [inlineTaskFilters, setInlineTaskFilters] = React46.useState(false);
+  React46.useLayoutEffect(() => {
     const column = taskColumn.current;
     if (!column) return;
     const measure = () => setInlineTaskFilters(column.clientWidth >= 500);
@@ -13538,7 +13842,7 @@ function DashboardPage() {
       window.removeEventListener("resize", measure);
     };
   }, [!!data]);
-  React43.useEffect(() => {
+  React46.useEffect(() => {
     const tick = () => {
       if (document.visibilityState !== "hidden") setTaskClock(Date.now());
     };
@@ -13551,11 +13855,11 @@ function DashboardPage() {
       document.removeEventListener?.("visibilitychange", tick);
     };
   }, []);
-  const [analysis, setAnalysis] = React43.useState(null);
-  React43.useEffect(function() {
+  const [analysis, setAnalysis] = React46.useState(null);
+  React46.useEffect(function() {
     let active = true;
-    WB.actions.analysisStatus().then(function(status) {
-      if (active) setAnalysis(status);
+    WB.actions.analysisStatus().then(function(status2) {
+      if (active) setAnalysis(status2);
     }).catch(function() {
     });
     return () => {
@@ -13640,7 +13944,7 @@ function DashboardPage() {
     badge: taskSelection.length > 0 ? h(Badge, { tone: "accent" }, String(taskSelection.length)) : null,
     actions: h("div", { className: "wb-row wb-row--wrap", style: { gap: 6 } }, h(WorkspaceRefresh, { scope: "tasks" }), h(Btn, { size: "sm", kind: "subtle", onClick: () => WB.go("tasks"), children: "任务中心" })),
     flush: true
-  }, !inlineTaskFilters && taskFilters ? h("div", { className: "wb-brief-task-filters-body" }, taskFilters) : null, shownTasks.length > 0 ? h("div", { className: "wb-list", style: { padding: "0 16px" } }, shownTasks.map((task) => h("article", { key: task.id, style: { borderBottom: "1px solid " + T.border1 } }, h(DashTaskRow, { task, data })))) : tasks.length === 0 ? h(CompactEmptyState, { empty: true, onCreate: () => WB.openTaskForm(null), onBrowse: () => WB.go("tasks") }) : h("div", { className: "wb-stack", style: { padding: 16, gap: 8 } }, h("strong", null, taskScope === "all" ? "没有未完成待办" : "当前没有今日关注事项"), h("span", { className: "wb-tiny wb-muted" }, "今日关注包含今日新增、逾期、今日到期和高优先级事项。"), taskScope !== "all" ? h(Btn, { size: "sm", onClick: () => {
+  }, !inlineTaskFilters && taskFilters ? h("div", { className: "wb-brief-task-filters-body" }, taskFilters) : null, shownTasks.length > 0 ? h("div", { className: "wb-list wb-brief-task-list", style: { padding: "0 16px" } }, shownTasks.map((task) => h("article", { key: task.id }, h(DashTaskRow, { task, data })))) : tasks.length === 0 ? h(CompactEmptyState, { empty: true, onCreate: () => WB.openTaskForm(null), onBrowse: () => WB.go("tasks") }) : h("div", { className: "wb-stack", style: { padding: 16, gap: 8 } }, h("strong", null, taskScope === "all" ? "没有未完成待办" : "当前没有今日关注事项"), h("span", { className: "wb-tiny wb-muted" }, "今日关注包含今日新增、逾期、今日到期和高优先级事项。"), taskScope !== "all" ? h(Btn, { size: "sm", onClick: () => {
     setTaskScope("all");
     setAllTasksShown(false);
   }, children: "显示全部未完成" }) : null), taskSelection.length > 8 ? h("div", {
@@ -13687,7 +13991,7 @@ function DashboardPage() {
       // 副标题承担全部状态信息（关注主题 + 抓取时间），不再塞进标题旁的徽章
       sub: radarEmpty ? null : "模型发布、技术实践与开源动态",
       badge: radarEmpty ? h(Badge, { tone: lastFetch && radarFetchOutcome(lastFetch).status === "error" ? "err" : "idle" }, lastFetch ? radarFetchOutcome(lastFetch).status === "error" ? "获取失败" : "暂无新增" : "尚未抓取") : lastFetch && lastFetch.at && fetchStale ? h(Badge, { tone: "warn" }, "数据可能过期") : null,
-      actions: h(React43.Fragment, null, h(Btn, {
+      actions: h(React46.Fragment, null, h(Btn, {
         size: "sm",
         kind: "subtle",
         icon: "refresh",
@@ -13782,8 +14086,8 @@ function DashboardPage() {
       onClick: function() {
         WB.actions.analyzeRun().then(function(result) {
           return WB.actions.analysisStatus();
-        }).then(function(status) {
-          setAnalysis(status);
+        }).then(function(status2) {
+          setAnalysis(status2);
         }).catch(function() {
         });
       },
@@ -13803,8 +14107,8 @@ function DashboardPage() {
       onClick: function() {
         (canConfirm ? WB.actions.analyzeConfirm(entry.id) : WB.actions.analysisRetry(entry.id).then(() => WB.actions.analyzeRun(1, [entry.id]))).then(function() {
           return WB.actions.analysisStatus();
-        }).then(function(status) {
-          setAnalysis(status);
+        }).then(function(status2) {
+          setAnalysis(status2);
           WB.actions.reload().catch(function() {
           });
         }).catch(function(error2) {
@@ -13896,7 +14200,7 @@ function sortTasksByMessageTime(tasks, sources, order) {
 }
 
 // src/client/features/tasks/task-center.ts
-var React44 = __toESM(require("react"), 1);
+var React47 = __toESM(require("react"), 1);
 function tcToneColor(tone2) {
   if (tone2 === "err")
     return T.err;
@@ -13988,7 +14292,7 @@ function tcSortTasks(list2, order = "default", sources = []) {
 function tcFilterList(list2, filters) {
   const opts = filters || {};
   const query = opts.query ? String(opts.query).trim().toLowerCase() : "";
-  const status = opts.status || "all";
+  const status2 = opts.status || "all";
   const dueFilter = opts.dueFilter || "all";
   const now = Date.now();
   const endOfDay = tcEndOfToday();
@@ -14025,11 +14329,11 @@ function tcFilterList(list2, filters) {
       if (dueFilter === "week" && (due < now || due > weekAhead))
         return false;
     }
-    if (status !== "all") {
-      if (status === "open") {
+    if (status2 !== "all") {
+      if (status2 === "open") {
         if (task.status === "completed" || task.status === "cancelled")
           return false;
-      } else if (task.status !== status) {
+      } else if (task.status !== status2) {
         return false;
       }
     }
@@ -14124,8 +14428,8 @@ function TaskCenterRow(props) {
   const data = props.data;
   const expanded = props.expanded;
   const highlighted = props.highlighted;
-  const [busy, setBusy] = React44.useState(false);
-  const [replyOpen, setReplyOpen] = React44.useState(false);
+  const [busy, setBusy] = React47.useState(false);
+  const [replyOpen, setReplyOpen] = React47.useState(false);
   const done = task.status === "completed" || task.status === "cancelled";
   const priority = tcPriorityOf(task);
   const due = WB.fmt.due(task.dueAt);
@@ -14133,11 +14437,11 @@ function TaskCenterRow(props) {
   const projectColor = tcProjectColor(data, task.projectId);
   const source = tcFindSource(data, task);
   const tags2 = (Array.isArray(task.tags) ? task.tags : []).filter((tag) => !task.aiExtracted || !/^AI\s*(识别|提取)$/i.test(tag));
-  function updateStatus(status) {
-    if (busy || status === task.status)
+  function updateStatus(status2) {
+    if (busy || status2 === task.status)
       return;
     setBusy(true);
-    WB.actions.updateTask(task.id, { status }).finally(() => setBusy(false)).catch(() => {
+    WB.actions.updateTask(task.id, { status: status2 }).finally(() => setBusy(false)).catch(() => {
     });
   }
   function toggleDone() {
@@ -14169,7 +14473,7 @@ function TaskCenterRow(props) {
       setBusy(false);
     });
   }
-  return h(React44.Fragment, null, h("tr", {
+  return h(React47.Fragment, null, h("tr", {
     ref: props.rowRef || void 0,
     className: "wb-task-row" + (props.editing ? " is-editing" : ""),
     "data-task-id": task.id,
@@ -14243,7 +14547,7 @@ function TaskCenterRow(props) {
 function TaskCenterBoardCard(props) {
   const task = props.task;
   const data = props.data;
-  const [busy, setBusy] = React44.useState(false);
+  const [busy, setBusy] = React47.useState(false);
   const done = task.status === "completed" || task.status === "cancelled";
   const priority = tcPriorityOf(task);
   const due = WB.fmt.due(task.dueAt);
@@ -14252,11 +14556,11 @@ function TaskCenterBoardCard(props) {
   function open() {
     WB.openTaskForm(task);
   }
-  function updateStatus(status) {
-    if (busy || status === task.status)
+  function updateStatus(status2) {
+    if (busy || status2 === task.status)
       return;
     setBusy(true);
-    WB.actions.updateTask(task.id, { status }).finally(() => setBusy(false)).catch(() => {
+    WB.actions.updateTask(task.id, { status: status2 }).finally(() => setBusy(false)).catch(() => {
     });
   }
   function toggleDone() {
@@ -14309,31 +14613,31 @@ function TaskCenterPage() {
   const state = WB.useStore();
   const data = state.data;
   const editingId = state.taskForm?.open && !state.contextHidden && !state.assistantOpen ? state.taskForm.task?.id : null;
-  const [page, setPage] = React44.useState(0);
-  const [view, setView] = React44.useState("list");
-  const [filtersOpen, setFiltersOpen] = React44.useState(false);
-  const [search, setSearch] = React44.useState("");
-  const [status, setStatus] = React44.useState("all");
-  const [dueFilter, setDueFilter] = React44.useState("all");
-  const [messageFrom, setMessageFrom] = React44.useState("");
-  const [messageTo, setMessageTo] = React44.useState("");
-  const [sortOrder, setSortOrder] = React44.useState("default");
-  const [priority, setPriority] = React44.useState("all");
-  const [projectId, setProjectId] = React44.useState("all");
-  const [tag, setTag] = React44.useState(null);
-  const [expandedId, setExpandedId] = React44.useState(null);
-  const [showAllTags, setShowAllTags] = React44.useState(false);
-  const [pendingFocusId, setPendingFocusId] = React44.useState(null);
-  const [candidateBusy, setCandidateBusy] = React44.useState(false);
-  const [dragStatus, setDragStatus] = React44.useState(null);
-  const [typeFilter, setTypeFilter] = React44.useState("all");
-  React44.useEffect(() => {
+  const [page, setPage] = React47.useState(0);
+  const [view, setView] = React47.useState("list");
+  const [filtersOpen, setFiltersOpen] = React47.useState(false);
+  const [search, setSearch] = React47.useState("");
+  const [status2, setStatus] = React47.useState("all");
+  const [dueFilter, setDueFilter] = React47.useState("all");
+  const [messageFrom, setMessageFrom] = React47.useState("");
+  const [messageTo, setMessageTo] = React47.useState("");
+  const [sortOrder, setSortOrder] = React47.useState("default");
+  const [priority, setPriority] = React47.useState("all");
+  const [projectId, setProjectId] = React47.useState("all");
+  const [tag, setTag] = React47.useState(null);
+  const [expandedId, setExpandedId] = React47.useState(null);
+  const [showAllTags, setShowAllTags] = React47.useState(false);
+  const [pendingFocusId, setPendingFocusId] = React47.useState(null);
+  const [candidateBusy, setCandidateBusy] = React47.useState(false);
+  const [dragStatus, setDragStatus] = React47.useState(null);
+  const [typeFilter, setTypeFilter] = React47.useState("all");
+  React47.useEffect(() => {
     if (!pendingFocusId && !state.focusTaskId) setPage(0);
-  }, [search, status, dueFilter, priority, projectId, tag, typeFilter, messageFrom, messageTo, sortOrder]);
-  const focusRowRef = React44.useRef(null);
+  }, [search, status2, dueFilter, priority, projectId, tag, typeFilter, messageFrom, messageTo, sortOrder]);
+  const focusRowRef = React47.useRef(null);
   const preset = state.taskPreset;
   const focusId = state.focusTaskId;
-  React44.useEffect(function() {
+  React47.useEffect(function() {
     if (!preset)
       return;
     WB.store.set({ taskPreset: null });
@@ -14350,7 +14654,7 @@ function TaskCenterPage() {
     if (preset.view)
       setView(preset.view);
   }, [preset]);
-  React44.useEffect(function() {
+  React47.useEffect(function() {
     if (!focusId)
       return;
     setView("list");
@@ -14370,7 +14674,7 @@ function TaskCenterPage() {
     setPage(Math.floor(Math.max(0, ordered.findIndex((row) => row.id === focusId)) / PAGE_SIZE));
     WB.store.set({ focusTaskId: null });
   }, [focusId]);
-  React44.useEffect(function() {
+  React47.useEffect(function() {
     if (!pendingFocusId)
       return void 0;
     const timer = setTimeout(function() {
@@ -14410,7 +14714,7 @@ function TaskCenterPage() {
       return false;
     return true;
   };
-  const visible = tcSortTasks(tcFilterList(filterBase, { status }), sortOrder, data.sources || []).filter(dutyTypeFilter);
+  const visible = tcSortTasks(tcFilterList(filterBase, { status: status2 }), sortOrder, data.sources || []).filter(dutyTypeFilter);
   const tabCounts = tcTabCounts(filterBase);
   const tagCounts = tcTagCounts(tasks);
   const activeTagCount = tag && !tagCounts.some(function(item) {
@@ -14418,7 +14722,7 @@ function TaskCenterPage() {
   }) ? [{ tag, count: 0 }] : [];
   const tagList = activeTagCount.concat(tagCounts);
   const tagsShown = showAllTags ? tagList : tagList.slice(0, 8);
-  const filtersActive = search.trim().length > 0 || status !== "all" || dueFilter !== "all" || priority !== "all" || projectId !== "all" || !!tag || typeFilter !== "all" || !!messageFrom || !!messageTo || sortOrder !== "default";
+  const filtersActive = search.trim().length > 0 || status2 !== "all" || dueFilter !== "all" || priority !== "all" || projectId !== "all" || !!tag || typeFilter !== "all" || !!messageFrom || !!messageTo || sortOrder !== "default";
   const projectOptions = [{ value: "all", label: "全部项目" }, { value: "none", label: "未归属项目" }].concat(projects.map(function(project) {
     return { value: project.id, label: project.name };
   }));
@@ -14481,7 +14785,7 @@ function TaskCenterPage() {
       h("button", { type: "button", className: "wb-btn wb-btn--ghost", "aria-expanded": filtersOpen, "aria-controls": "wb-task-advanced", onClick: () => setFiltersOpen(!filtersOpen) }, h(Icon, { name: "filter", size: 13 }), "筛选" + (applied.length ? " · " + applied.length : "")),
       filtersActive ? h(Btn, { size: "sm", kind: "subtle", onClick: resetFilters, children: "重置筛选" }) : null
     ),
-    h("div", { className: "wb-task-filter-summary" }, h(Tabs, { items: tabItems, value: status, onChange: setStatus }), filtersActive ? h("span", { className: "wb-tiny wb-muted" }, "筛选结果 " + visible.length + " 条") : null),
+    h("div", { className: "wb-task-filter-summary" }, h(Tabs, { items: tabItems, value: status2, onChange: setStatus }), filtersActive ? h("span", { className: "wb-tiny wb-muted" }, "筛选结果 " + visible.length + " 条") : null),
     applied.length ? h("div", { className: "wb-task-applied", "aria-label": "已选筛选条件" }, applied.map((item) => h("button", { key: item.label, type: "button", className: "wb-chip is-active", "aria-label": "移除筛选：" + item.label, onClick: item.clear }, item.label, h(Icon, { name: "close", size: 12 })))) : null,
     h(
       "div",
@@ -14750,10 +15054,10 @@ function TaskCenterPage() {
 WB.pages.tasks = TaskCenterPage;
 
 // src/client/features/agents/DevelopmentPage.tsx
-var React49 = __toESM(require("react"), 1);
+var React52 = __toESM(require("react"), 1);
 
 // src/client/features/agents/WorkItemsBrowser.tsx
-var React46 = __toESM(require("react"), 1);
+var React49 = __toESM(require("react"), 1);
 
 // src/shared/development.ts
 var DEVELOPMENT_ISSUE_TYPES = [{ id: "requirement", label: "需求" }, { id: "user_story", label: "用户故事" }, { id: "bug", label: "缺陷" }];
@@ -14765,13 +15069,13 @@ var DEVELOPMENT_STAGES = [
   { id: "human", label: "人工审查" },
   { id: "delivery", label: "结果回写" }
 ];
+var DEVELOPMENT_STATUS_LABELS = { preparing: "准备中", ready: "待启动", running: "执行中", paused: "已暂停", waiting_review: "待人工审查", approved: "待回写", rejected: "已退回", delivered: "已回写", completed: "已结束", failed: "失败", interrupted: "已中断" };
 
 // src/client/features/agents/DevelopmentCreate.tsx
-var React45 = __toESM(require("react"), 1);
+var React48 = __toESM(require("react"), 1);
 
 // src/client/features/agents/development-ui.ts
-var statusLabels = { preparing: "准备中", ready: "待启动", running: "执行中", paused: "已暂停", waiting_review: "待人工审查", approved: "待回写", rejected: "已退回", delivered: "已回写", completed: "已结束", failed: "失败", interrupted: "已中断" };
-var tone = (status) => status === "running" ? "accent" : ["failed", "rejected"].includes(status) ? "err" : ["delivered", "completed"].includes(status) ? "ok" : "warn";
+var tone = (status2) => status2 === "running" ? "accent" : ["failed", "rejected"].includes(status2) ? "err" : ["delivered", "completed"].includes(status2) ? "ok" : "warn";
 async function developmentCall(request) {
   try {
     return await WB.rpc("workbench/development", { request });
@@ -14824,7 +15128,17 @@ function commandArgs(line) {
   return result;
 }
 var developmentCSS = `
-.wb-dev { --dev-border:var(--dsw-alias-border-l1); }
+.wb-root.is-development .wb-scroll { display:flex;min-height:0;overflow:hidden; }
+.wb-development-page { display:flex;flex-direction:column;flex:1;min-height:0;height:100%;overflow:hidden;margin:0 auto;padding-bottom:var(--wb-page-gutter,24px); }
+.wb-development-page > .wb-dev { height:100%;margin:0; }
+.wb-dev { --dev-border:var(--dsw-alias-border-l1);display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden; }
+.wb-dev-header { flex:none; }
+.wb-dev-notices { flex:0 1 auto;min-height:0;max-height:28%;overflow:auto; }
+.wb-dev-native-runs { flex:0 1 auto;min-height:0;max-height:28%;overflow:auto; }
+.wb-workitems { display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden; }
+.wb-workitems-controls { flex:none;min-height:0;max-height:45%;overflow:auto; }
+.wb-workitems-controls>.wb-dev-toolbar:last-child { margin-bottom:12px; }
+@media(max-height:520px){.wb-development-page{padding-top:8px;padding-bottom:8px}.wb-dev-header{margin-bottom:8px!important}.wb-dev-header h1{font-size:20px;margin-bottom:0}.wb-workitems-controls>.wb-dev-toolbar{margin-bottom:8px}}
 .wb-dev-header { display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px;flex-wrap:wrap; }
 .wb-dev-header h1 { font-size:25px;letter-spacing:-.6px;margin:0 0 6px;font-weight:650; }
 .wb-dev-header p,.wb-dev p { margin:0;line-height:1.7; }
@@ -14880,27 +15194,29 @@ var developmentCSS = `
 `;
 var workItemsCSS = `
 .wb-dev-records>summary{cursor:pointer;padding:14px 0;font-size:13px;color:var(--dsw-alias-label-secondary)}
-.wb-workitems-layout{display:grid;grid-template-columns:clamp(240px,28%,310px) minmax(0,1fr);gap:16px;align-items:start}
-.wb-workitems-list{display:flex;flex-direction:column;gap:6px;max-height:min(520px,60vh);overflow:auto;min-width:0;padding:2px}
+.wb-workitems-layout{display:grid;grid-template-columns:clamp(240px,28%,310px) minmax(0,1fr);gap:16px;align-items:stretch;flex:1;min-height:0;grid-template-rows:minmax(0,1fr)}
+.wb-workitems-list{display:flex;flex-direction:column;gap:6px;min-height:0;overflow:auto;min-width:0;padding:2px;overscroll-behavior:contain}
+.wb-workitem-detail{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
+.wb-workitem-start{border-top:1px solid var(--dev-border);margin-top:20px;padding-top:16px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
 .wb-workitems-list .wb-dev-task{flex:none;padding:10px 12px;border-radius:8px}
 .wb-workitems-list .wb-dev-task .wb-dev-actions{gap:6px}
 .wb-workitems-list .wb-dev-task h3{font-size:13px;line-height:1.5;margin:6px 0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .wb-workitems-list .wb-dev-task .wb-dev-meta{font-size:11px;line-height:1.5}
 .wb-workitem-description{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8;font-size:13px;max-height:380px;overflow:auto}
 .wb-space-list{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow:auto;margin-top:12px}
-@container content (max-width:740px){.wb-workitems-layout{grid-template-columns:1fr}.wb-workitems-list{max-height:min(280px,40vh)}}
+@container content (max-width:740px){.wb-workitems-layout{grid-template-columns:1fr;grid-template-rows:minmax(0,.35fr) minmax(0,1fr);gap:12px}.wb-workitem-detail{scrollbar-gutter:stable}}
 `;
 
 // src/client/features/agents/DevelopmentCreate.tsx
 function DevelopmentCreate({ config: config2, connection, projects, onClose, onCreated, onConfig, inline: inline2 = false, tasks = [], onExisting, disabled = false, selectedIssue }) {
   const available = connection.workspaces || [];
   const initialScope = available.some((w) => w.id === config2.workspaceId) ? config2.workspaceId : available.length === 1 ? available[0].id : "";
-  const [workspace, setWorkspace] = React45.useState(selectedIssue?.workspaceId || initialScope), [type, setType] = React45.useState("bug"), [code2, setCode] = React45.useState(""), [items, setItems] = React45.useState([]), [issue, setIssue] = React45.useState(selectedIssue || null);
-  const [step, setStep] = React45.useState(selectedIssue ? 2 : 1), [busy, setBusy] = React45.useState(""), [error2, setError] = React45.useState(""), [offset, setOffset] = React45.useState(0), [hasMore, setHasMore] = React45.useState(false), [loaded, setLoaded] = React45.useState(false);
-  const [project, setProject] = React45.useState(projects.length === 1 ? projects[0].id : ""), [commands, setCommands] = React45.useState(""), [agents, setAgents] = React45.useState([]), [agent, setAgent] = React45.useState(""), [agentError, setAgentError] = React45.useState(""), [testSource, setTestSource] = React45.useState(""), [projectError, setProjectError] = React45.useState(""), [workspaceMode, setWorkspaceMode] = React45.useState("directory"), [modeNote, setModeNote] = React45.useState(""), [addingDirectory, setAddingDirectory] = React45.useState(false), [directoryPath, setDirectoryPath] = React45.useState("");
-  const checkedProject = React45.useRef("");
-  const generation = React45.useRef(0), mounted = React45.useRef(true), lock = React45.useRef(false);
-  React45.useEffect(() => {
+  const [workspace, setWorkspace] = React48.useState(selectedIssue?.workspaceId || initialScope), [type, setType] = React48.useState("bug"), [code2, setCode] = React48.useState(""), [items, setItems] = React48.useState([]), [issue, setIssue] = React48.useState(selectedIssue || null);
+  const [step, setStep] = React48.useState(selectedIssue ? 2 : 1), [busy, setBusy] = React48.useState(""), [error2, setError] = React48.useState(""), [offset, setOffset] = React48.useState(0), [hasMore, setHasMore] = React48.useState(false), [loaded, setLoaded] = React48.useState(false);
+  const [project, setProject] = React48.useState(projects.length === 1 ? projects[0].id : ""), [commands, setCommands] = React48.useState(""), [agents, setAgents] = React48.useState([]), [agent, setAgent] = React48.useState(""), [agentError, setAgentError] = React48.useState(""), [testSource, setTestSource] = React48.useState(""), [projectError, setProjectError] = React48.useState(""), [workspaceMode, setWorkspaceMode] = React48.useState("directory"), [modeNote, setModeNote] = React48.useState(""), [addingDirectory, setAddingDirectory] = React48.useState(false), [directoryPath, setDirectoryPath] = React48.useState("");
+  const checkedProject = React48.useRef("");
+  const generation = React48.useRef(0), mounted = React48.useRef(true), lock = React48.useRef(false);
+  React48.useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -14931,7 +15247,7 @@ function DevelopmentCreate({ config: config2, connection, projects, onClose, onC
     setHasMore(value.hasMore);
     setLoaded(true);
   }
-  React45.useEffect(() => {
+  React48.useEffect(() => {
     setItems([]);
     if (!selectedIssue) setIssue(null);
     setLoaded(false);
@@ -14940,7 +15256,7 @@ function DevelopmentCreate({ config: config2, connection, projects, onClose, onC
     setAgent("");
     if (workspace && !selectedIssue) void run("读取工作项", () => readItems());
   }, [workspace, type]);
-  React45.useEffect(() => {
+  React48.useEffect(() => {
     if (step !== 2 || !project) return;
     let alive = true;
     const changed = checkedProject.current !== project;
@@ -14966,7 +15282,7 @@ function DevelopmentCreate({ config: config2, connection, projects, onClose, onC
       alive = false;
     };
   }, [step, project]);
-  React45.useEffect(() => {
+  React48.useEffect(() => {
     if (selectedIssue) void run("读取智能体", async () => {
       try {
         const value = await developmentCall({ action: "agents", workspaceId: workspace });
@@ -15026,37 +15342,41 @@ function DevelopmentCreate({ config: config2, connection, projects, onClose, onC
       else setAddingDirectory(true);
     });
   }
-  const footer = /* @__PURE__ */ React45.createElement(React45.Fragment, null, /* @__PURE__ */ React45.createElement("span", { className: "wb-dev-meta", style: { flex: 1 } }, "确认工程与验证"), step === 2 && !inline2 && /* @__PURE__ */ React45.createElement(Btn, { disabled: disabled || !!busy, onClick: () => setStep(1) }, "上一步"), /* @__PURE__ */ React45.createElement(Btn, { disabled: disabled || !!busy, onClick: () => {
+  const footer = /* @__PURE__ */ React48.createElement(React48.Fragment, null, /* @__PURE__ */ React48.createElement("span", { className: "wb-dev-meta", style: { flex: 1 } }, "确认工程与验证"), step === 2 && !inline2 && /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || !!busy, onClick: () => setStep(1) }, "上一步"), /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || !!busy, onClick: () => {
     setStep(1);
     onClose();
-  } }, "返回工作项"), step === 1 ? /* @__PURE__ */ React45.createElement(Btn, { kind: "primary", disabled: disabled || !!busy || !issue, onClick: () => void next() }, existing ? "查看研发过程" : "下一步：选择工程") : /* @__PURE__ */ React45.createElement(Btn, { kind: "primary", disabled: disabled || !!busy || !project || !!projectError || testSource === "正在检查工程…", onClick: () => void create() }, busy === "创建工作区与会话" ? "正在创建…" : "确认并准备开发"));
-  const content = /* @__PURE__ */ React45.createElement(React45.Fragment, null, /* @__PURE__ */ React45.createElement("div", { className: "wb-dev-form" }, error2 && /* @__PURE__ */ React45.createElement("p", { role: "alert", style: { color: "var(--wb-danger)" } }, error2), step === 1 ? /* @__PURE__ */ React45.createElement(React45.Fragment, null, /* @__PURE__ */ React45.createElement("div", { className: "wb-dev-form-grid" }, /* @__PURE__ */ React45.createElement(Field, { label: "Linky 工作空间" }, /* @__PURE__ */ React45.createElement(Select, { "aria-label": "选择 Linky 工作空间", disabled: disabled || !!busy, value: workspace, options: [{ value: "", label: "选择工作空间" }, ...available.map((w) => ({ value: w.id, label: w.name }))], onChange: (e) => setWorkspace(e.target.value) })), /* @__PURE__ */ React45.createElement(Field, { label: "工作项类型" }, /* @__PURE__ */ React45.createElement(Select, { "aria-label": "工作项类型", disabled: disabled || !!busy, value: type, options: [{ value: "bug", label: "缺陷" }, { value: "requirement", label: "需求" }, { value: "user_story", label: "用户故事" }], onChange: (e) => setType(e.target.value) }))), !available.length && /* @__PURE__ */ React45.createElement("p", { className: "wb-dev-meta" }, "当前账号没有可用工作空间，请先在 Linky 加入项目。"), /* @__PURE__ */ React45.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React45.createElement(Input, { "aria-label": "Linky 工作项编号", style: { flex: 1 }, placeholder: "输入需求号或缺陷号", value: code2, onChange: (e) => setCode(e.target.value) }), /* @__PURE__ */ React45.createElement(Btn, { disabled: disabled || !!busy || !workspace || !code2.trim(), onClick: () => void run("查询工作项", async () => {
+  } }, "返回工作项"), step === 1 ? /* @__PURE__ */ React48.createElement(Btn, { kind: "primary", disabled: disabled || !!busy || !issue, onClick: () => void next() }, existing ? "查看研发过程" : "下一步：选择工程") : /* @__PURE__ */ React48.createElement(Btn, { kind: "primary", disabled: disabled || !!busy || !project || !!projectError || testSource === "正在检查工程…", onClick: () => void create() }, busy === "创建工作区与会话" ? "正在创建…" : "确认并准备开发"));
+  const content = /* @__PURE__ */ React48.createElement(React48.Fragment, null, /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-form" }, error2 && /* @__PURE__ */ React48.createElement("p", { role: "alert", style: { color: "var(--wb-danger)" } }, error2), step === 1 ? /* @__PURE__ */ React48.createElement(React48.Fragment, null, /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-form-grid" }, /* @__PURE__ */ React48.createElement(Field, { label: "Linky 工作空间" }, /* @__PURE__ */ React48.createElement(Select, { "aria-label": "选择 Linky 工作空间", disabled: disabled || !!busy, value: workspace, options: [{ value: "", label: "选择工作空间" }, ...available.map((w) => ({ value: w.id, label: w.name }))], onChange: (e) => setWorkspace(e.target.value) })), /* @__PURE__ */ React48.createElement(Field, { label: "工作项类型" }, /* @__PURE__ */ React48.createElement(Select, { "aria-label": "工作项类型", disabled: disabled || !!busy, value: type, options: [{ value: "bug", label: "缺陷" }, { value: "requirement", label: "需求" }, { value: "user_story", label: "用户故事" }], onChange: (e) => setType(e.target.value) }))), !available.length && /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, "当前账号没有可用工作空间，请先在 Linky 加入项目。"), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React48.createElement(Input, { "aria-label": "Linky 工作项编号", style: { flex: 1 }, placeholder: "输入需求号或缺陷号", value: code2, onChange: (e) => setCode(e.target.value) }), /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || !!busy || !workspace || !code2.trim(), onClick: () => void run("查询工作项", async () => {
     const value = await developmentCall({ action: "issue", code: code2.trim(), workspaceId: workspace });
     setIssue(value);
     setItems((old) => old.some((r) => r.id === value.id) ? old : [value, ...old]);
-  }) }, "按编号查询")), /* @__PURE__ */ React45.createElement("div", { className: "wb-dev-toolbar", style: { margin: 0 } }, /* @__PURE__ */ React45.createElement("strong", null, "分配给我的工作项"), /* @__PURE__ */ React45.createElement(Btn, { size: "sm", disabled: disabled || !!busy || !workspace, onClick: () => void run("读取工作项", () => readItems()) }, "刷新工作项")), busy && /* @__PURE__ */ React45.createElement("p", { role: "status", className: "wb-dev-meta" }, busy, "…"), /* @__PURE__ */ React45.createElement("div", { className: "wb-dev-issue-list" }, items.map((row) => /* @__PURE__ */ React45.createElement("button", { type: "button", key: row.id, className: "wb-dev-issue", "aria-pressed": issue?.id === row.id, disabled: disabled || !!busy, onClick: () => setIssue(row) }, /* @__PURE__ */ React45.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React45.createElement(Badge, null, row.code), /* @__PURE__ */ React45.createElement("span", { className: "wb-dev-meta" }, row.status || "状态未提供")), /* @__PURE__ */ React45.createElement("strong", null, row.title)))), !items.length && !busy && /* @__PURE__ */ React45.createElement("p", { className: "wb-dev-meta" }, loaded ? "当前类型下没有分配给你的工作项，也可以按编号查找。" : "选择工作空间后自动读取本人工作项。"), hasMore && /* @__PURE__ */ React45.createElement(Btn, { disabled: disabled || !!busy, onClick: () => void run("加载更多", () => readItems(offset + 50)) }, "加载更多工作项")) : /* @__PURE__ */ React45.createElement(React45.Fragment, null, /* @__PURE__ */ React45.createElement("section", { "aria-label": "所选工作项" }, /* @__PURE__ */ React45.createElement(Badge, null, issue.code), /* @__PURE__ */ React45.createElement("h3", { style: { fontSize: 16, margin: "8px 0" } }, issue.title), /* @__PURE__ */ React45.createElement("details", null, /* @__PURE__ */ React45.createElement("summary", { className: "wb-dev-meta" }, "查看工作项描述"), /* @__PURE__ */ React45.createElement("p", { className: "wb-dev-meta", style: { whiteSpace: "pre-wrap", maxHeight: 180, overflow: "auto" } }, issue.description || "未提供描述"))), /* @__PURE__ */ React45.createElement(Field, { label: "本地工程" }, /* @__PURE__ */ React45.createElement(Select, { "aria-label": "开发工程", disabled: disabled || !!busy, value: project, options: [{ value: "", label: "选择用于开发的本地工程" }, ...projects.map((p) => ({ value: p.id, label: p.name }))], onChange: (e) => setProject(e.target.value) })), /* @__PURE__ */ React45.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React45.createElement(Btn, { disabled: disabled || !!busy, onClick: () => void pickDirectory2() }, "选择其他目录"), /* @__PURE__ */ React45.createElement(Btn, { disabled: disabled || !!busy, onClick: () => setAddingDirectory(!addingDirectory) }, "填写目录")), addingDirectory && /* @__PURE__ */ React45.createElement(Field, { label: "本地目录" }, /* @__PURE__ */ React45.createElement(Input, { "aria-label": "本地开发目录", placeholder: "填写本机目录的绝对路径", value: directoryPath, onChange: (e) => setDirectoryPath(e.target.value) }), /* @__PURE__ */ React45.createElement(Btn, { disabled: disabled || !!busy || !directoryPath.trim(), onClick: () => void run("保存目录", () => addDirectory(directoryPath)) }, "使用此目录")), project && /* @__PURE__ */ React45.createElement("p", { className: "wb-dev-meta", "aria-label": "目录检查结果" }, testSource === "正在检查工程…" ? "正在自动识别目录…" : workspaceMode === "worktree" ? "将使用 Git 独立工作区。" : "将直接在所选目录开发。", modeNote && testSource !== "正在检查工程…" ? " " + modeNote : ""), projectError && /* @__PURE__ */ React45.createElement("p", { role: "alert", style: { color: "var(--wb-danger)" } }, projectError), /* @__PURE__ */ React45.createElement(Field, { label: "执行角色" }, /* @__PURE__ */ React45.createElement(Select, { "aria-label": "Linky 研发智能体", disabled: disabled || !!busy, value: agent, options: [{ value: "", label: "Harness 默认研发助手" }, ...agents.map((a) => ({ value: a.id, label: a.name }))], onChange: (e) => setAgent(e.target.value) })), agentError && /* @__PURE__ */ React45.createElement("p", { className: "wb-dev-meta" }, "智能体读取失败：", agentError, "。可使用 Harness 默认助手，或返回上一步重试。"), /* @__PURE__ */ React45.createElement(Field, { label: "测试命令（可稍后配置）", hint: testSource || "每行一个命令，例如 pnpm test。" }, /* @__PURE__ */ React45.createElement(Textarea, { "aria-label": "工程测试命令", disabled: disabled || !!busy || !project || testSource === "正在检查工程…", rows: 3, value: commands, onChange: (e) => setCommands(e.target.value) })), /* @__PURE__ */ React45.createElement("p", { className: "wb-dev-meta" }, workspaceMode === "directory" ? "使用所选目录，保留现有文件并记录开发前后变化。Git 初始化、提交与推送由你后续单独决定。" : "基于工程当前提交创建独立工作区。创建后先查看任务，再启动分析与开发。"))));
-  return inline2 && step === 1 ? /* @__PURE__ */ React45.createElement("section", { className: "wb-dev-card", "aria-label": "我的 Linky 工作项" }, /* @__PURE__ */ React45.createElement("h2", null, "我的 Linky 工作项"), /* @__PURE__ */ React45.createElement("p", { className: "wb-dev-meta" }, "登录后自动读取，选择工作项后继续处理。"), content, /* @__PURE__ */ React45.createElement("div", { className: "wb-dev-actions", style: { marginTop: 16 } }, /* @__PURE__ */ React45.createElement(Btn, { kind: "primary", disabled: disabled || !!busy || !issue, onClick: () => void next() }, existing ? "查看研发过程" : "下一步：选择工程"))) : /* @__PURE__ */ React45.createElement(Modal, { open: true, title: "确认开发工程", sub: "选择开发目录，自动识别并准备专属会话", onClose: busy ? () => {
+  }) }, "按编号查询")), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-toolbar", style: { margin: 0 } }, /* @__PURE__ */ React48.createElement("strong", null, "分配给我的工作项"), /* @__PURE__ */ React48.createElement(Btn, { size: "sm", disabled: disabled || !!busy || !workspace, onClick: () => void run("读取工作项", () => readItems()) }, "刷新工作项")), busy && /* @__PURE__ */ React48.createElement("p", { role: "status", className: "wb-dev-meta" }, busy, "…"), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-issue-list" }, items.map((row) => /* @__PURE__ */ React48.createElement("button", { type: "button", key: row.id, className: "wb-dev-issue", "aria-pressed": issue?.id === row.id, disabled: disabled || !!busy, onClick: () => setIssue(row) }, /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React48.createElement(Badge, null, row.code), /* @__PURE__ */ React48.createElement("span", { className: "wb-dev-meta" }, row.status || "状态未提供")), /* @__PURE__ */ React48.createElement("strong", null, row.title)))), !items.length && !busy && /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, loaded ? "当前类型下没有分配给你的工作项，也可以按编号查找。" : "选择工作空间后自动读取本人工作项。"), hasMore && /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || !!busy, onClick: () => void run("加载更多", () => readItems(offset + 50)) }, "加载更多工作项")) : /* @__PURE__ */ React48.createElement(React48.Fragment, null, /* @__PURE__ */ React48.createElement("section", { "aria-label": "所选工作项" }, /* @__PURE__ */ React48.createElement(Badge, null, issue.code), /* @__PURE__ */ React48.createElement("h3", { style: { fontSize: 16, margin: "8px 0" } }, issue.title), /* @__PURE__ */ React48.createElement("details", null, /* @__PURE__ */ React48.createElement("summary", { className: "wb-dev-meta" }, "查看工作项描述"), /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta", style: { whiteSpace: "pre-wrap", maxHeight: 180, overflow: "auto" } }, issue.description || "未提供描述"))), /* @__PURE__ */ React48.createElement(Field, { label: "本地工程" }, /* @__PURE__ */ React48.createElement(Select, { "aria-label": "开发工程", disabled: disabled || !!busy, value: project, options: [{ value: "", label: "选择用于开发的本地工程" }, ...projects.map((p) => ({ value: p.id, label: p.name }))], onChange: (e) => setProject(e.target.value) })), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || !!busy, onClick: () => void pickDirectory2() }, "选择其他目录"), /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || !!busy, onClick: () => setAddingDirectory(!addingDirectory) }, "填写目录")), addingDirectory && /* @__PURE__ */ React48.createElement(Field, { label: "本地目录" }, /* @__PURE__ */ React48.createElement(Input, { "aria-label": "本地开发目录", placeholder: "填写本机目录的绝对路径", value: directoryPath, onChange: (e) => setDirectoryPath(e.target.value) }), /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || !!busy || !directoryPath.trim(), onClick: () => void run("保存目录", () => addDirectory(directoryPath)) }, "使用此目录")), project && /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta", "aria-label": "目录检查结果" }, testSource === "正在检查工程…" ? "正在自动识别目录…" : workspaceMode === "worktree" ? "将使用 Git 独立工作区。" : "将直接在所选目录开发。", modeNote && testSource !== "正在检查工程…" ? " " + modeNote : ""), projectError && /* @__PURE__ */ React48.createElement("p", { role: "alert", style: { color: "var(--wb-danger)" } }, projectError), /* @__PURE__ */ React48.createElement(Field, { label: "执行角色" }, /* @__PURE__ */ React48.createElement(Select, { "aria-label": "Linky 研发智能体", disabled: disabled || !!busy, value: agent, options: [{ value: "", label: "Harness 默认研发助手" }, ...agents.map((a) => ({ value: a.id, label: a.name }))], onChange: (e) => setAgent(e.target.value) })), agentError && /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, "智能体读取失败：", agentError, "。可使用 Harness 默认助手，或返回上一步重试。"), /* @__PURE__ */ React48.createElement(Field, { label: "测试命令（可稍后配置）", hint: testSource || "每行一个命令，例如 pnpm test。" }, /* @__PURE__ */ React48.createElement(Textarea, { "aria-label": "工程测试命令", disabled: disabled || !!busy || !project || testSource === "正在检查工程…", rows: 3, value: commands, onChange: (e) => setCommands(e.target.value) })), /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, workspaceMode === "directory" ? "使用所选目录，保留现有文件并记录开发前后变化。Git 初始化、提交与推送由你后续单独决定。" : "基于工程当前提交创建独立工作区。创建后先查看任务，再启动分析与开发。"))));
+  return inline2 && step === 1 ? /* @__PURE__ */ React48.createElement("section", { className: "wb-dev-card", "aria-label": "我的 Linky 工作项" }, /* @__PURE__ */ React48.createElement("h2", null, "我的 Linky 工作项"), /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, "登录后自动读取，选择工作项后继续处理。"), content, /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-actions", style: { marginTop: 16 } }, /* @__PURE__ */ React48.createElement(Btn, { kind: "primary", disabled: disabled || !!busy || !issue, onClick: () => void next() }, existing ? "查看研发过程" : "下一步：选择工程"))) : /* @__PURE__ */ React48.createElement(Modal, { open: true, title: "确认开发工程", sub: "选择开发目录，自动识别并准备专属会话", onClose: busy ? () => {
   } : selectedIssue ? onClose : () => setStep(1), footer }, content);
 }
 
 // src/client/features/agents/WorkItemsBrowser.tsx
-function WorkItemsBrowser({ config: config2, connection, projects, tasks, disabled, onConfig, onExisting, onCreated, onInspect, refreshKey = 0 }) {
+function WorkItemsBrowser({ config: config2, connection, projects, tasks, disabled, onConfig, onExisting, onCreated, onInspect, refreshKey = 0, focusTaskId, onQueryChange, renderTask }) {
   const saved = WB.store.get().developmentView?.[config2.profile] || {};
-  const spaces = connection.workspaces || [], defaultId = config2.defaultWorkspaceId ?? config2.workspaceId, initial = spaces.some((w) => w.id === defaultId) ? defaultId : spaces.length === 1 ? spaces[0].id : "";
-  const [workspace, setWorkspace] = React46.useState(initial), [switching, setSwitching] = React46.useState(!initial), [settingDefault, setSettingDefault] = React46.useState(false), [spaceSearch, setSpaceSearch] = React46.useState(""), [type, setType] = React46.useState(saved.type || "all"), [status, setStatus] = React46.useState(saved.workspace === initial ? saved.status || "" : ""), [showCompleted, setShowCompleted] = React46.useState(saved.showCompleted === true), [query, setQuery] = React46.useState(saved.workspace === initial ? saved.query || "" : "");
-  const [items, setItems] = React46.useState([]), [statuses4, setStatuses] = React46.useState([]), [cursors, setCursors] = React46.useState(null), [hasMore, setHasMore] = React46.useState(false), [busy, setBusy] = React46.useState(false), [error2, setError] = React46.useState(""), [selected, setSelected] = React46.useState(saved.workspace === initial ? saved.selected || null : null), [detailBusy, setDetailBusy] = React46.useState(false), [preparing2, setPreparing] = React46.useState(false), [pinBusy, setPinBusy] = React46.useState(false);
-  const generation = React46.useRef(0), detailGeneration = React46.useRef(0), selectedRef = React46.useRef(selected), refreshSeen = React46.useRef(refreshKey), firstQuery = React46.useRef(true), inFlight = React46.useRef(null);
+  const connected = connection.status === "ready", spaces = connection.workspaces || [], defaultId = config2.defaultWorkspaceId ?? config2.workspaceId, initial = spaces.some((w) => w.id === defaultId) ? defaultId : spaces.length === 1 ? spaces[0].id : !connected ? defaultId || "" : "";
+  const [workspace, setWorkspace] = React49.useState(initial), [switching, setSwitching] = React49.useState(!initial), [settingDefault, setSettingDefault] = React49.useState(false), [spaceSearch, setSpaceSearch] = React49.useState(""), [type, setType] = React49.useState(saved.type || "all"), [status2, setStatus] = React49.useState(saved.workspace === initial ? saved.status || "" : ""), [showCompleted, setShowCompleted] = React49.useState(saved.showCompleted === true), [query, setQuery] = React49.useState(saved.workspace === initial ? saved.query || "" : "");
+  const [items, setItems] = React49.useState([]), [statuses4, setStatuses] = React49.useState([]), [cursors, setCursors] = React49.useState(null), [hasMore, setHasMore] = React49.useState(false), [busy, setBusy] = React49.useState(false), [error2, setError] = React49.useState(""), [selected, setSelected] = React49.useState(saved.workspace === initial ? saved.selected || null : null), [detailBusy, setDetailBusy] = React49.useState(false), [preparing2, setPreparing] = React49.useState(false), [pinBusy, setPinBusy] = React49.useState(false);
+  const appliedFocus = React49.useRef(""), focusSwitch = React49.useRef(false), generation = React49.useRef(0), detailGeneration = React49.useRef(0), selectedRef = React49.useRef(selected), refreshSeen = React49.useRef(refreshKey), previousFilters = React49.useRef(JSON.stringify([workspace, type, status2, showCompleted])), inFlight = React49.useRef(null);
   selectedRef.current = selected;
+  function mergeIssue(row, full) {
+    if (full?.id !== row.id || full.workspaceId && full.workspaceId !== (row.workspaceId || workspace)) throw Error("工作项详情与当前选中项不一致，请刷新重试；原记录已保留");
+    return { ...row, ...full, taskId: row.taskId, workspaceId: row.workspaceId || workspace };
+  }
   async function load(append = false) {
-    if (!workspace || disabled) return;
-    const requestKey = JSON.stringify({ workspace, type, status, showCompleted, ...append ? { cursors } : {} });
-    if (inFlight.current === requestKey) return;
-    inFlight.current = requestKey;
+    if (!connected || !workspace || disabled) return;
+    const requestKey = JSON.stringify({ workspace, type, status: status2, showCompleted, ...append ? { cursors } : {} });
+    if (inFlight.current?.key === requestKey && inFlight.current.id === generation.current) return;
     const chosen = selectedRef.current, selectionVersion = detailGeneration.current, id = ++generation.current;
+    inFlight.current = { key: requestKey, id };
     setBusy(true);
     setError("");
     try {
-      const value = await developmentCall({ action: "workItems", workspaceId: workspace, type, status, showCompleted, ...append ? { cursors } : {} });
+      const value = await developmentCall({ action: "workItems", workspaceId: workspace, type, status: status2, showCompleted, ...append ? { cursors } : {} });
       if (id !== generation.current) return;
       setItems((old) => append ? [...old, ...value.items.filter((r) => !old.some((i) => i.id === r.id))] : value.items);
       setStatuses(value.statuses || []);
@@ -15066,7 +15386,7 @@ function WorkItemsBrowser({ config: config2, connection, projects, tasks, disabl
         const detailId = ++detailGeneration.current;
         try {
           const full = await developmentCall({ action: "issue", code: chosen.id, workspaceId: workspace });
-          if (generation.current === id && detailId === detailGeneration.current) setSelected({ ...chosen, ...full });
+          if (generation.current === id && detailId === detailGeneration.current) setSelected(mergeIssue(chosen, full));
         } catch (e) {
           if (detailId === detailGeneration.current) setError(e.message || String(e));
         }
@@ -15074,35 +15394,48 @@ function WorkItemsBrowser({ config: config2, connection, projects, tasks, disabl
     } catch (e) {
       if (id === generation.current) setError(e.message || String(e));
     } finally {
-      if (inFlight.current === requestKey) inFlight.current = null;
+      if (inFlight.current?.id === id) inFlight.current = null;
       if (id === generation.current) setBusy(false);
     }
   }
-  React46.useEffect(() => {
+  React49.useEffect(() => {
+    if (connected && !spaces.some((space) => space.id === workspace)) {
+      const fallback = spaces.some((space) => space.id === defaultId) ? defaultId : spaces.length === 1 ? spaces[0].id : "";
+      setWorkspace(fallback);
+      setSwitching(!fallback);
+    }
+  }, [connected]);
+  React49.useEffect(() => {
+    const key2 = JSON.stringify([workspace, type, status2, showCompleted]);
     setItems([]);
     setHasMore(false);
-    if (!firstQuery.current) {
+    if (previousFilters.current !== key2 && !focusSwitch.current) {
       selectedRef.current = null;
       setSelected(null);
       setDetailBusy(false);
+      onInspect?.();
     }
-    firstQuery.current = false;
+    previousFilters.current = key2;
+    focusSwitch.current = false;
     detailGeneration.current++;
-    if (workspace) void load();
+    if (workspace && connected) void load();
     return () => {
       generation.current++;
       detailGeneration.current++;
     };
-  }, [workspace, type, status, showCompleted]);
-  React46.useEffect(() => {
+  }, [workspace, type, status2, showCompleted, connected]);
+  React49.useEffect(() => {
     if (refreshSeen.current !== refreshKey) {
       refreshSeen.current = refreshKey;
       void load();
     }
   }, [refreshKey]);
-  React46.useEffect(() => {
-    WB.store.set({ developmentView: { ...WB.store.get().developmentView || {}, [config2.profile]: { workspace, type, status, showCompleted, query, selected } } });
-  }, [workspace, type, status, showCompleted, query, selected]);
+  React49.useEffect(() => {
+    onQueryChange?.(query);
+  }, [query]);
+  React49.useEffect(() => {
+    WB.store.set({ developmentView: { ...WB.store.get().developmentView || {}, [config2.profile]: { workspace, type, status: status2, showCompleted, query, selected } } });
+  }, [workspace, type, status2, showCompleted, query, selected]);
   function switchWorkspace(id) {
     onInspect?.();
     setWorkspace(id);
@@ -15125,15 +15458,26 @@ function WorkItemsBrowser({ config: config2, connection, projects, tasks, disabl
       setPinBusy(false);
     }
   }
-  async function select(row) {
+  const taskFor = (row) => tasks.find((t) => t.id === row?.taskId) || tasks.find((t) => t.profile === config2.profile && t.issue.id === row?.id && t.issue.workspaceId === (row?.workspaceId || workspace));
+  function inspect(row) {
     onInspect?.();
-    const id = ++detailGeneration.current;
-    setSelected(row);
-    setDetailBusy(true);
+    const task = taskFor(row);
+    if (task) onExisting(task);
+    return { ...row, ...task ? { taskId: task.id } : {} };
+  }
+  async function select(row) {
+    const chosen = inspect(row), id = ++detailGeneration.current;
+    selectedRef.current = chosen;
+    setSelected(chosen);
     setError("");
+    if (!connected) {
+      setDetailBusy(false);
+      return;
+    }
+    setDetailBusy(true);
     try {
       const full = await developmentCall({ action: "issue", code: row.id, workspaceId: workspace });
-      if (id === detailGeneration.current) setSelected({ ...row, ...full });
+      if (id === detailGeneration.current) setSelected(mergeIssue(chosen, full));
     } catch (e) {
       if (id === detailGeneration.current) setError(e.message || String(e));
     } finally {
@@ -15149,7 +15493,7 @@ function WorkItemsBrowser({ config: config2, connection, projects, tasks, disabl
     try {
       const value = await developmentCall({ action: "issue", code: query.trim(), workspaceId: workspace });
       if (id === detailGeneration.current) {
-        setSelected(value);
+        setSelected(inspect(value));
         setItems((old) => old.some((r) => r.id === value.id) ? old : [value, ...old]);
       }
     } catch (e) {
@@ -15158,37 +15502,75 @@ function WorkItemsBrowser({ config: config2, connection, projects, tasks, disabl
       if (id === detailGeneration.current) setDetailBusy(false);
     }
   }
-  const existing = selected && tasks.find((t) => t.profile === config2.profile && t.issue.id === selected.id && t.issue.workspaceId === workspace);
-  const visible = items.filter((row) => !query || [row.code, row.title].some((v) => v.toLowerCase().includes(query.toLowerCase())));
-  return /* @__PURE__ */ React46.createElement("section", { "aria-label": "我的工作项", className: "wb-workitems" }, /* @__PURE__ */ React46.createElement("div", { className: "wb-dev-toolbar" }, /* @__PURE__ */ React46.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React46.createElement("strong", null, spaces.find((w) => w.id === workspace)?.name || "选择工作空间"), /* @__PURE__ */ React46.createElement("span", { className: "wb-dev-meta" }, defaultId === workspace && workspace ? "默认空间" : "本次查看"), /* @__PURE__ */ React46.createElement(Btn, { size: "sm", disabled: disabled || pinBusy, onClick: () => {
+  const existing = selected && taskFor(selected);
+  React49.useEffect(() => {
+    if (existing && !focusTaskId) onExisting(existing);
+  }, [existing?.id, selected?.id]);
+  React49.useEffect(() => {
+    if (!focusTaskId) {
+      appliedFocus.current = "";
+      return;
+    }
+    if (appliedFocus.current === focusTaskId) return;
+    const row = tasks.find((t) => t.id === focusTaskId);
+    if (!row) return;
+    appliedFocus.current = focusTaskId;
+    if (selectedRef.current?.id === row.issue.id && taskFor(selectedRef.current)?.id === row.id) return;
+    const target = { ...row.issue, taskId: row.id };
+    selectedRef.current = target;
+    setSelected(target);
+    setDetailBusy(false);
+    detailGeneration.current++;
+    focusSwitch.current = type !== "all" || !!status2 || ["completed", "delivered"].includes(row.status) && !showCompleted || connected && row.profile === config2.profile && spaces.some((space) => space.id === row.issue.workspaceId) && workspace !== row.issue.workspaceId;
+    setQuery("");
+    setType("all");
+    setStatus("");
+    if (["completed", "delivered"].includes(row.status)) setShowCompleted(true);
+    if (connected && row.profile === config2.profile && spaces.some((s) => s.id === row.issue.workspaceId)) setWorkspace(row.issue.workspaceId);
+  }, [focusTaskId, tasks, connected]);
+  const local = tasks.filter((task) => !connected || task.profile === config2.profile && task.issue.workspaceId === workspace);
+  const merged = [...items];
+  for (const task of local) {
+    if (merged.some((row) => row.id === task.issue.id)) continue;
+    const state = statuses4.find((s) => s.type === task.issue.type && (s.key === task.issue.statusKey || s.name === task.issue.status)), chosen = statuses4.find((s) => s.type + ":" + s.key === status2);
+    if (type !== "all" && task.issue.type !== type || status2 && (!chosen || chosen.type !== task.issue.type || chosen.key !== task.issue.statusKey && chosen.name !== task.issue.status) || !showCompleted && (["delivered", "completed"].includes(task.status) || state?.category === "done")) continue;
+    merged.push({ ...task.issue, taskId: task.id, localOnly: true });
+  }
+  const visible = merged.filter((row) => !query || [row.code, row.title, taskFor(row)?.sessionId].some((v) => v?.toLowerCase().includes(query.toLowerCase())));
+  return /* @__PURE__ */ React49.createElement("section", { "aria-label": "我的工作项", className: "wb-workitems" }, /* @__PURE__ */ React49.createElement("div", { className: "wb-workitems-controls" }, connected && /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-toolbar" }, /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React49.createElement("strong", null, spaces.find((w) => w.id === workspace)?.name || "选择工作空间"), /* @__PURE__ */ React49.createElement("span", { className: "wb-dev-meta" }, defaultId === workspace && workspace ? "默认空间" : "本次查看"), /* @__PURE__ */ React49.createElement(Btn, { size: "sm", disabled: disabled || pinBusy, onClick: () => {
     setSettingDefault(false);
     setSwitching(true);
-  } }, "切换"), /* @__PURE__ */ React46.createElement(Btn, { size: "sm", disabled: disabled || pinBusy, onClick: () => {
+  } }, "切换"), /* @__PURE__ */ React49.createElement(Btn, { size: "sm", disabled: disabled || pinBusy, onClick: () => {
     setSettingDefault(true);
     setSwitching(true);
-  } }, defaultId ? "重新设置默认" : "设置默认")), /* @__PURE__ */ React46.createElement(Btn, { size: "sm", disabled: disabled || busy || !workspace, onClick: () => void load() }, "刷新工作项")), /* @__PURE__ */ React46.createElement("div", { className: "wb-dev-toolbar" }, /* @__PURE__ */ React46.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React46.createElement(Select, { "aria-label": "工作项类型", value: type, disabled, options: [{ value: "all", label: "全部类型" }, ...DEVELOPMENT_ISSUE_TYPES.map((t) => ({ value: t.id, label: t.label }))], onChange: (e) => {
+  } }, defaultId ? "重新设置默认" : "设置默认")), /* @__PURE__ */ React49.createElement("span", { className: "wb-dev-meta" }, "Linky 已连接 · " + (connection.user?.name || connection.profile))), /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-toolbar" }, /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React49.createElement(Select, { "aria-label": "工作项类型", value: type, disabled, options: [{ value: "all", label: "全部类型" }, ...DEVELOPMENT_ISSUE_TYPES.map((t) => ({ value: t.id, label: t.label }))], onChange: (e) => {
     setStatus("");
     setType(e.target.value);
-  } }), /* @__PURE__ */ React46.createElement(Select, { "aria-label": "工作项状态", value: status, disabled, options: [{ value: "", label: "全部状态" }, ...statuses4.filter((s) => type === "all" || s.type === type).map((s) => ({ value: s.type + ":" + s.key, label: (type === "all" ? (DEVELOPMENT_ISSUE_TYPES.find((t) => t.id === s.type)?.label || s.type) + " · " : "") + s.name }))], onChange: (e) => {
+  } }), /* @__PURE__ */ React49.createElement(Select, { "aria-label": "工作项状态", value: status2, disabled, options: [{ value: "", label: "全部状态" }, ...statuses4.filter((s) => type === "all" || s.type === type).map((s) => ({ value: s.type + ":" + s.key, label: (type === "all" ? (DEVELOPMENT_ISSUE_TYPES.find((t) => t.id === s.type)?.label || s.type) + " · " : "") + s.name }))], onChange: (e) => {
     setStatus(e.target.value);
     if (statuses4.find((s) => s.type + ":" + s.key === e.target.value)?.category === "done") setShowCompleted(true);
-  } }), /* @__PURE__ */ React46.createElement("label", { className: "wb-dev-meta" }, /* @__PURE__ */ React46.createElement("input", { type: "checkbox", "aria-label": "显示已完成", checked: showCompleted, disabled, onChange: (e) => {
+  } }), /* @__PURE__ */ React49.createElement("label", { className: "wb-dev-meta" }, /* @__PURE__ */ React49.createElement("input", { type: "checkbox", "aria-label": "显示已完成", checked: showCompleted, disabled, onChange: (e) => {
     setShowCompleted(e.target.checked);
     setStatus("");
-  } }), " 显示已完成")), /* @__PURE__ */ React46.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React46.createElement(Input, { "aria-label": "搜索工作项", placeholder: "搜索编号或标题", value: query, onChange: (e) => setQuery(e.target.value), style: { maxWidth: 240 } }), query.trim() && /* @__PURE__ */ React46.createElement(Btn, { disabled: disabled || detailBusy || !workspace, onClick: () => void lookup() }, "按编号查询"))), error2 && /* @__PURE__ */ React46.createElement("p", { role: "alert", style: { color: "var(--wb-danger)", marginBottom: 12 } }, error2), /* @__PURE__ */ React46.createElement("div", { className: "wb-workitems-layout" }, /* @__PURE__ */ React46.createElement("div", { className: "wb-workitems-list", "aria-label": "工作项列表" }, busy && !items.length ? /* @__PURE__ */ React46.createElement("p", { role: "status" }, "正在读取工作项…") : visible.length ? visible.map((row) => {
-    const task = tasks.find((t) => t.profile === config2.profile && t.issue.id === row.id && t.issue.workspaceId === workspace);
-    return /* @__PURE__ */ React46.createElement("button", { type: "button", key: row.id, className: "wb-dev-task", title: row.title, "aria-pressed": selected?.id === row.id, disabled, onClick: () => void select(row) }, /* @__PURE__ */ React46.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React46.createElement(Badge, null, DEVELOPMENT_ISSUE_TYPES.find((t) => t.id === row.type)?.label || row.type || "工作项"), /* @__PURE__ */ React46.createElement("span", { className: "wb-dev-meta" }, row.code), /* @__PURE__ */ React46.createElement(Badge, null, row.status || "未知状态")), /* @__PURE__ */ React46.createElement("h3", null, row.title), /* @__PURE__ */ React46.createElement("span", { className: "wb-dev-meta" }, task ? "研发进度 · " + (statusLabels[task.status] || task.status) : "尚未开始研发"));
-  }) : /* @__PURE__ */ React46.createElement("div", { className: "wb-dev-empty" }, /* @__PURE__ */ React46.createElement("p", null, workspace ? "当前筛选下没有工作项" : "请先选择默认工作空间"), !showCompleted && workspace && /* @__PURE__ */ React46.createElement("p", { className: "wb-dev-meta" }, "已完成默认隐藏，可勾选“显示已完成”查看。")), hasMore && /* @__PURE__ */ React46.createElement(Btn, { disabled: disabled || busy, onClick: () => void load(true) }, busy ? "正在加载…" : "加载更多工作项")), /* @__PURE__ */ React46.createElement("article", { className: "wb-dev-card", "aria-label": "工作项详情" }, selected ? /* @__PURE__ */ React46.createElement(React46.Fragment, null, /* @__PURE__ */ React46.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React46.createElement(Badge, null, selected.code), /* @__PURE__ */ React46.createElement(Badge, null, selected.status)), /* @__PURE__ */ React46.createElement("h2", null, selected.title), detailBusy ? /* @__PURE__ */ React46.createElement("p", { role: "status" }, "正在读取详情…") : /* @__PURE__ */ React46.createElement("div", { className: "wb-workitem-description" }, selected.description || "未提供描述"), /* @__PURE__ */ React46.createElement("section", { style: { borderTop: "1px solid var(--dsw-alias-border-l1)", marginTop: 20, paddingTop: 16 } }, /* @__PURE__ */ React46.createElement("strong", null, "研发进度"), existing ? /* @__PURE__ */ React46.createElement(React46.Fragment, null, /* @__PURE__ */ React46.createElement("p", { style: { margin: "10px 0" } }, statusLabels[existing.status] || existing.status, " · ", DEVELOPMENT_STAGES.find((s) => s.id === existing.stage)?.label), existing.pauseReason && /* @__PURE__ */ React46.createElement("p", { className: "wb-dev-meta" }, existing.pauseReason), /* @__PURE__ */ React46.createElement(Btn, { disabled, onClick: () => onExisting(existing) }, "打开研发过程")) : /* @__PURE__ */ React46.createElement(React46.Fragment, null, /* @__PURE__ */ React46.createElement("p", { className: "wb-dev-meta", style: { margin: "10px 0" } }, "尚未开始。选择开发目录后，自动识别目录状态并准备专属会话。"), /* @__PURE__ */ React46.createElement(Btn, { kind: "primary", disabled: disabled || detailBusy, onClick: () => setPreparing(true) }, "下一步：选择工程")))) : /* @__PURE__ */ React46.createElement("div", { className: "wb-dev-empty" }, /* @__PURE__ */ React46.createElement("h2", null, "选择工作项查看详情"), /* @__PURE__ */ React46.createElement("p", { className: "wb-dev-meta" }, "工作项描述与对应研发进度在这里展示。")))), switching && /* @__PURE__ */ React46.createElement(Modal, { open: true, title: settingDefault ? "设置默认工作空间" : "切换工作空间", sub: settingDefault ? "下次进入时默认展示，可随时更改或清除。" : "仅切换本次查看，不更改默认空间。", footer: settingDefault && defaultId ? /* @__PURE__ */ React46.createElement(Btn, { disabled: disabled || pinBusy, onClick: () => void pin("") }, "清除默认") : null, onClose: () => !pinBusy && setSwitching(false) }, /* @__PURE__ */ React46.createElement(Input, { "aria-label": "搜索工作空间", placeholder: "搜索工作空间", value: spaceSearch, onChange: (e) => setSpaceSearch(e.target.value) }), /* @__PURE__ */ React46.createElement("div", { className: "wb-space-list" }, spaces.filter((w) => !spaceSearch || w.name.toLowerCase().includes(spaceSearch.toLowerCase())).map((w) => /* @__PURE__ */ React46.createElement("button", { key: w.id, type: "button", className: "wb-dev-issue", disabled: disabled || pinBusy, onClick: () => settingDefault ? void pin(w.id) : switchWorkspace(w.id) }, w.name, w.id === defaultId ? " · 当前默认" : "")))), preparing2 && selected && /* @__PURE__ */ React46.createElement(DevelopmentCreate, { selectedIssue: selected, config: { ...config2, workspaceId: workspace }, connection, projects, onConfig, onClose: () => setPreparing(false), onCreated: (row) => {
+  } }), " 显示已完成")), /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React49.createElement(Input, { "aria-label": "搜索工作项", placeholder: "搜索工作项或研发会话", value: query, onChange: (e) => setQuery(e.target.value), style: { width: 240, maxWidth: "100%" } }), connected && query.trim() && /* @__PURE__ */ React49.createElement(Btn, { disabled: disabled || detailBusy || !workspace, onClick: () => void lookup() }, "按编号查询"))), error2 && /* @__PURE__ */ React49.createElement("p", { role: "alert", style: { color: "var(--wb-danger)", marginBottom: 12 } }, error2)), /* @__PURE__ */ React49.createElement("div", { className: "wb-workitems-layout" }, /* @__PURE__ */ React49.createElement("section", { className: "wb-workitems-list", "aria-label": "工作项列表" }, busy && !merged.length ? /* @__PURE__ */ React49.createElement("p", { role: "status" }, "正在读取工作项…") : visible.length ? visible.map((row) => {
+    const task = taskFor(row);
+    return /* @__PURE__ */ React49.createElement("button", { type: "button", key: row.id, className: "wb-dev-task", title: row.title, "aria-pressed": selected?.id === row.id, disabled, onClick: () => void select(row) }, /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React49.createElement(Badge, null, DEVELOPMENT_ISSUE_TYPES.find((t) => t.id === row.type)?.label || row.type || "工作项"), /* @__PURE__ */ React49.createElement("span", { className: "wb-dev-meta" }, row.code), /* @__PURE__ */ React49.createElement(Badge, null, row.status || "未知状态"), task && /* @__PURE__ */ React49.createElement(Badge, { tone: tone(task.status) }, DEVELOPMENT_STATUS_LABELS[task.status] || task.status)), /* @__PURE__ */ React49.createElement("h3", null, row.title), /* @__PURE__ */ React49.createElement("span", { className: "wb-dev-meta" }, task ? "研发进度 · " + (DEVELOPMENT_STAGES.find((s) => s.id === task.stage)?.label || task.stage) : "尚未开始研发", row.localOnly ? " · 本地记录" : ""));
+  }) : /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-empty" }, /* @__PURE__ */ React49.createElement("p", null, query ? "没有匹配的工作项" : connected ? "当前筛选下没有工作项" : "暂无本地研发记录"), !showCompleted && /* @__PURE__ */ React49.createElement("p", { className: "wb-dev-meta" }, "已完成默认隐藏，可勾选“显示已完成”查看。"), (query || type !== "all" || status2) && /* @__PURE__ */ React49.createElement(Btn, { onClick: () => {
+    setQuery("");
+    setType("all");
+    setStatus("");
+  } }, "清除筛选")), connected && hasMore && /* @__PURE__ */ React49.createElement(Btn, { disabled: disabled || busy, onClick: () => void load(true) }, busy ? "正在加载…" : "加载更多工作项")), /* @__PURE__ */ React49.createElement("div", { className: "wb-workitem-detail", "aria-label": "研发详情区域" }, existing && renderTask ? renderTask(existing, selected) : /* @__PURE__ */ React49.createElement("article", { className: "wb-dev-card", "aria-label": "工作项详情" }, selected ? /* @__PURE__ */ React49.createElement(React49.Fragment, null, /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React49.createElement(Badge, null, selected.code), /* @__PURE__ */ React49.createElement(Badge, null, selected.status)), /* @__PURE__ */ React49.createElement("h2", null, selected.title), detailBusy ? /* @__PURE__ */ React49.createElement("p", { role: "status" }, "正在读取详情…") : /* @__PURE__ */ React49.createElement("div", { className: "wb-workitem-description" }, selected.description || "未提供描述"), /* @__PURE__ */ React49.createElement("section", { className: "wb-workitem-start" }, /* @__PURE__ */ React49.createElement("strong", null, "研发进度"), /* @__PURE__ */ React49.createElement("p", { className: "wb-dev-meta" }, "尚未开始。选择开发目录后，自动识别目录状态并准备专属会话。"), /* @__PURE__ */ React49.createElement(Btn, { kind: "primary", disabled: disabled || detailBusy || !connected, onClick: () => setPreparing(true) }, "下一步：选择工程"))) : /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-empty" }, /* @__PURE__ */ React49.createElement("h2", null, "选择工作项查看详情"), /* @__PURE__ */ React49.createElement("p", { className: "wb-dev-meta" }, "有研发进度的工作项会直接展示阶段、测试结果和执行过程。"))))), switching && /* @__PURE__ */ React49.createElement(Modal, { open: true, title: settingDefault ? "设置默认工作空间" : "切换工作空间", sub: settingDefault ? "下次进入时默认展示，可随时更改或清除。" : "仅切换本次查看，不更改默认空间。", footer: settingDefault && defaultId ? /* @__PURE__ */ React49.createElement(Btn, { disabled: disabled || pinBusy, onClick: () => void pin("") }, "清除默认") : null, onClose: () => !pinBusy && setSwitching(false) }, /* @__PURE__ */ React49.createElement(Input, { "aria-label": "搜索工作空间", placeholder: "搜索工作空间", value: spaceSearch, onChange: (e) => setSpaceSearch(e.target.value) }), /* @__PURE__ */ React49.createElement("div", { className: "wb-space-list" }, spaces.filter((w) => !spaceSearch || w.name.toLowerCase().includes(spaceSearch.toLowerCase())).map((w) => /* @__PURE__ */ React49.createElement("button", { key: w.id, type: "button", className: "wb-dev-issue", disabled: disabled || pinBusy, onClick: () => settingDefault ? void pin(w.id) : switchWorkspace(w.id) }, w.name, w.id === defaultId ? " · 当前默认" : "")))), preparing2 && selected && /* @__PURE__ */ React49.createElement(DevelopmentCreate, { selectedIssue: selected, config: { ...config2, workspaceId: workspace }, connection, projects, onConfig, onClose: () => setPreparing(false), onCreated: (row) => {
     setPreparing(false);
+    setSelected({ ...row.issue, taskId: row.id });
     onCreated(row);
   } }));
 }
 
 // src/client/features/agents/DevelopmentSettings.tsx
-var React47 = __toESM(require("react"), 1);
+var React50 = __toESM(require("react"), 1);
 function DevelopmentSettings({ config: config2, connection, adapter, projects, projectId: initialProject, onClose, onSave, disabled }) {
-  const [draft, setDraft] = React47.useState({ ...config2 }), [projectId, setProjectId] = React47.useState(initialProject), [checks, setChecks] = React47.useState((config2.checks?.[initialProject] || []).map(commandText).join("\n"));
-  const [command, setCommand] = React47.useState(commandText(config2.harnessCommand || [])), [roots, setRoots] = React47.useState((config2.adapterRoots || []).join("\n")), [error2, setError] = React47.useState("");
+  const [draft, setDraft] = React50.useState({ ...config2 }), [projectId, setProjectId] = React50.useState(initialProject), [checks, setChecks] = React50.useState((config2.checks?.[initialProject] || []).map(commandText).join("\n"));
+  const [command, setCommand] = React50.useState(commandText(config2.harnessCommand || [])), [roots, setRoots] = React50.useState((config2.adapterRoots || []).join("\n")), [error2, setError] = React50.useState("");
   async function save2() {
     setError("");
     try {
@@ -15200,19 +15582,19 @@ function DevelopmentSettings({ config: config2, connection, adapter, projects, p
       setError(e.message || String(e));
     }
   }
-  return /* @__PURE__ */ React47.createElement(Modal, { open: true, title: "研发设置", sub: "常用配置自动识别；工程验证命令只在对应工作区运行。", onClose: disabled ? () => {
-  } : onClose, footer: /* @__PURE__ */ React47.createElement(React47.Fragment, null, /* @__PURE__ */ React47.createElement(Btn, { disabled, onClick: onClose }, "取消"), /* @__PURE__ */ React47.createElement(Btn, { kind: "primary", disabled, onClick: () => void save2() }, "保存")) }, /* @__PURE__ */ React47.createElement("div", { className: "wb-dev-form" }, error2 && /* @__PURE__ */ React47.createElement("p", { role: "alert" }, error2), /* @__PURE__ */ React47.createElement("div", null, /* @__PURE__ */ React47.createElement("strong", null, "Linky · ", connection?.status === "ready" ? "已连接 " + (connection.user?.name || "") : "待连接"), /* @__PURE__ */ React47.createElement("p", { className: "wb-dev-meta" }, "自动复用本机安装和客户端登录。更换账号后可重新检测。")), /* @__PURE__ */ React47.createElement(Field, { label: "本地工程" }, /* @__PURE__ */ React47.createElement(Select, { "aria-label": "验证工程", value: projectId, options: [{ value: "", label: "选择工程" }, ...projects.map((p) => ({ value: p.id, label: p.name }))], onChange: (e) => {
+  return /* @__PURE__ */ React50.createElement(Modal, { open: true, title: "研发设置", sub: "常用配置自动识别；工程验证命令只在对应工作区运行。", onClose: disabled ? () => {
+  } : onClose, footer: /* @__PURE__ */ React50.createElement(React50.Fragment, null, /* @__PURE__ */ React50.createElement(Btn, { disabled, onClick: onClose }, "取消"), /* @__PURE__ */ React50.createElement(Btn, { kind: "primary", disabled, onClick: () => void save2() }, "保存")) }, /* @__PURE__ */ React50.createElement("div", { className: "wb-dev-form" }, error2 && /* @__PURE__ */ React50.createElement("p", { role: "alert" }, error2), /* @__PURE__ */ React50.createElement("div", null, /* @__PURE__ */ React50.createElement("strong", null, "Linky · ", connection?.status === "ready" ? "已连接 " + (connection.user?.name || "") : "待连接"), /* @__PURE__ */ React50.createElement("p", { className: "wb-dev-meta" }, "自动复用本机安装和客户端登录。更换账号后可重新检测。")), /* @__PURE__ */ React50.createElement(Field, { label: "本地工程" }, /* @__PURE__ */ React50.createElement(Select, { "aria-label": "验证工程", value: projectId, options: [{ value: "", label: "选择工程" }, ...projects.map((p) => ({ value: p.id, label: p.name }))], onChange: (e) => {
     setProjectId(e.target.value);
     setChecks((draft.checks?.[e.target.value] || []).map(commandText).join("\n"));
-  } })), /* @__PURE__ */ React47.createElement(Field, { label: "测试命令", hint: "每行一个命令，例如 pnpm test；支持带引号的参数。" }, /* @__PURE__ */ React47.createElement(Textarea, { "aria-label": "工程测试命令", disabled: !projectId, value: checks, onChange: (e) => setChecks(e.target.value), rows: 3 })), /* @__PURE__ */ React47.createElement(Field, { label: "独立工作区位置" }, /* @__PURE__ */ React47.createElement(Input, { "aria-label": "独立工作区根目录", value: draft.worktreeRoot || "", onChange: (e) => setDraft({ ...draft, worktreeRoot: e.target.value }) })), /* @__PURE__ */ React47.createElement("details", { className: "wb-dev-advanced" }, /* @__PURE__ */ React47.createElement("summary", null, "高级连接设置"), /* @__PURE__ */ React47.createElement("div", { className: "wb-dev-form" }, /* @__PURE__ */ React47.createElement(Field, { label: "Linky CLI 路径" }, /* @__PURE__ */ React47.createElement(Input, { "aria-label": "Linky CLI 路径", value: draft.cliPath || "", onChange: (e) => setDraft({ ...draft, cliPath: e.target.value }) })), connection?.cliPaths?.filter((p) => p !== draft.cliPath).map((p) => /* @__PURE__ */ React47.createElement("div", { key: p, className: "wb-stack" }, /* @__PURE__ */ React47.createElement("span", { className: "wb-dev-meta" }, p), /* @__PURE__ */ React47.createElement(Btn, { onClick: () => setDraft({ ...draft, cliPath: p }) }, "使用此安装"))), /* @__PURE__ */ React47.createElement(Field, { label: "登录配置（Profile）" }, /* @__PURE__ */ React47.createElement(Input, { "aria-label": "登录 Profile", list: "dev-linky-profiles", value: draft.profile || "", onChange: (e) => setDraft({ ...draft, profile: e.target.value, workspaceId: "", agentId: "" }) }), /* @__PURE__ */ React47.createElement("datalist", { id: "dev-linky-profiles" }, connection?.profiles?.map((p) => /* @__PURE__ */ React47.createElement("option", { key: p, value: p })))))), /* @__PURE__ */ React47.createElement("details", { className: "wb-dev-advanced" }, /* @__PURE__ */ React47.createElement("summary", null, "从 Linky 发起任务（CLI 适配）"), /* @__PURE__ */ React47.createElement("div", { className: "wb-dev-form" }, /* @__PURE__ */ React47.createElement("p", { className: "wb-dev-meta" }, "实际由 Harness 执行，无需安装 Codex。此处用于 Linky 端发起任务；本页创建任务无需配置。"), /* @__PURE__ */ React47.createElement(Field, { label: "Harness 启动命令" }, /* @__PURE__ */ React47.createElement(Input, { "aria-label": "Harness 启动参数", value: command, onChange: (e) => setCommand(e.target.value) })), /* @__PURE__ */ React47.createElement(Field, { label: "模型" }, /* @__PURE__ */ React47.createElement(Input, { "aria-label": "适配模型", value: draft.model, onChange: (e) => setDraft({ ...draft, model: e.target.value }) })), /* @__PURE__ */ React47.createElement(Field, { label: "允许的工作区根目录", hint: "每行一个绝对路径。" }, /* @__PURE__ */ React47.createElement(Textarea, { "aria-label": "允许的 Linky 工作区根目录", rows: 2, value: roots, onChange: (e) => setRoots(e.target.value) })), /* @__PURE__ */ React47.createElement(Field, { label: "任务权限" }, /* @__PURE__ */ React47.createElement(Select, { "aria-label": "Linky 任务权限", value: draft.adapterPermissionMode || "read-only", options: [{ value: "read-only", label: "只读验证" }, { value: "workspace-write", label: "允许在工作区开发" }], onChange: (e) => setDraft({ ...draft, adapterPermissionMode: e.target.value }) })), /* @__PURE__ */ React47.createElement("p", { className: "wb-dev-meta" }, adapter?.installed ? "适配器已就绪" : "适配器尚未构建", "。保存后在启动 Linky 的终端设置以下变量。工作台不会自动订阅全部工作空间。"), adapter && /* @__PURE__ */ React47.createElement("pre", null, `export LINKY_CODEX_PATH='${String(adapter.path).replace(/'/g, "'\\''")}'
+  } })), /* @__PURE__ */ React50.createElement(Field, { label: "测试命令", hint: "每行一个命令，例如 pnpm test；支持带引号的参数。" }, /* @__PURE__ */ React50.createElement(Textarea, { "aria-label": "工程测试命令", disabled: !projectId, value: checks, onChange: (e) => setChecks(e.target.value), rows: 3 })), /* @__PURE__ */ React50.createElement(Field, { label: "独立工作区位置" }, /* @__PURE__ */ React50.createElement(Input, { "aria-label": "独立工作区根目录", value: draft.worktreeRoot || "", onChange: (e) => setDraft({ ...draft, worktreeRoot: e.target.value }) })), /* @__PURE__ */ React50.createElement("details", { className: "wb-dev-advanced" }, /* @__PURE__ */ React50.createElement("summary", null, "高级连接设置"), /* @__PURE__ */ React50.createElement("div", { className: "wb-dev-form" }, /* @__PURE__ */ React50.createElement(Field, { label: "Linky CLI 路径" }, /* @__PURE__ */ React50.createElement(Input, { "aria-label": "Linky CLI 路径", value: draft.cliPath || "", onChange: (e) => setDraft({ ...draft, cliPath: e.target.value }) })), connection?.cliPaths?.filter((p) => p !== draft.cliPath).map((p) => /* @__PURE__ */ React50.createElement("div", { key: p, className: "wb-stack" }, /* @__PURE__ */ React50.createElement("span", { className: "wb-dev-meta" }, p), /* @__PURE__ */ React50.createElement(Btn, { onClick: () => setDraft({ ...draft, cliPath: p }) }, "使用此安装"))), /* @__PURE__ */ React50.createElement(Field, { label: "登录配置（Profile）" }, /* @__PURE__ */ React50.createElement(Input, { "aria-label": "登录 Profile", list: "dev-linky-profiles", value: draft.profile || "", onChange: (e) => setDraft({ ...draft, profile: e.target.value, workspaceId: "", agentId: "" }) }), /* @__PURE__ */ React50.createElement("datalist", { id: "dev-linky-profiles" }, connection?.profiles?.map((p) => /* @__PURE__ */ React50.createElement("option", { key: p, value: p })))))), /* @__PURE__ */ React50.createElement("details", { className: "wb-dev-advanced" }, /* @__PURE__ */ React50.createElement("summary", null, "从 Linky 发起任务（CLI 适配）"), /* @__PURE__ */ React50.createElement("div", { className: "wb-dev-form" }, /* @__PURE__ */ React50.createElement("p", { className: "wb-dev-meta" }, "实际由 Harness 执行，无需安装 Codex。此处用于 Linky 端发起任务；本页创建任务无需配置。"), /* @__PURE__ */ React50.createElement(Field, { label: "Harness 启动命令" }, /* @__PURE__ */ React50.createElement(Input, { "aria-label": "Harness 启动参数", value: command, onChange: (e) => setCommand(e.target.value) })), /* @__PURE__ */ React50.createElement(Field, { label: "模型" }, /* @__PURE__ */ React50.createElement(Input, { "aria-label": "适配模型", value: draft.model, onChange: (e) => setDraft({ ...draft, model: e.target.value }) })), /* @__PURE__ */ React50.createElement(Field, { label: "允许的工作区根目录", hint: "每行一个绝对路径。" }, /* @__PURE__ */ React50.createElement(Textarea, { "aria-label": "允许的 Linky 工作区根目录", rows: 2, value: roots, onChange: (e) => setRoots(e.target.value) })), /* @__PURE__ */ React50.createElement(Field, { label: "任务权限" }, /* @__PURE__ */ React50.createElement(Select, { "aria-label": "Linky 任务权限", value: draft.adapterPermissionMode || "read-only", options: [{ value: "read-only", label: "只读验证" }, { value: "workspace-write", label: "允许在工作区开发" }], onChange: (e) => setDraft({ ...draft, adapterPermissionMode: e.target.value }) })), /* @__PURE__ */ React50.createElement("p", { className: "wb-dev-meta" }, adapter?.installed ? "适配器已就绪" : "适配器尚未构建", "。保存后在启动 Linky 的终端设置以下变量。工作台不会自动订阅全部工作空间。"), adapter && /* @__PURE__ */ React50.createElement("pre", null, `export LINKY_CODEX_PATH='${String(adapter.path).replace(/'/g, "'\\''")}'
 export HARNESS_LINKY_CONFIG='${String(adapter.configPath).replace(/'/g, "'\\''")}'`)))));
 }
 
 // src/client/features/agents/DevelopmentTaskDetail.tsx
-var React48 = __toESM(require("react"), 1);
+var React51 = __toESM(require("react"), 1);
 function DevelopmentTaskDetail({ task: current, messages = [], workspace, workspaceError, needsTestCommands = false, disabled, onAction, onGuidance, onConfigure }) {
-  const [tab, setTab] = React48.useState("evidence"), [note, setNote] = React48.useState(""), [guidance, setGuidance] = React48.useState(current.guidance || "");
-  const [runs, setRuns] = React48.useState(null), [runsBusy, setRunsBusy] = React48.useState(false), [runsError, setRunsError] = React48.useState("");
+  const [tab, setTab] = React51.useState("evidence"), [note, setNote] = React51.useState(""), [guidance, setGuidance] = React51.useState(current.guidance || "");
+  const [runs, setRuns] = React51.useState(null), [runsBusy, setRunsBusy] = React51.useState(false), [runsError, setRunsError] = React51.useState("");
   async function readRuns() {
     setRunsBusy(true);
     setRunsError("");
@@ -15233,27 +15615,22 @@ function DevelopmentTaskDetail({ task: current, messages = [], workspace, worksp
     return steps.filter((s) => s.stage === stage).at(-1);
   };
   const done = DEVELOPMENT_STAGES.filter((s) => stepOf(s.id)?.status === "completed").length;
-  const openSession = (id) => {
-    if (WB.openSessionById(id)) WB.openConversation();
-    else WB.toast("当前宿主未提供会话跳转，请按会话 ID 在 Harness 中查找", "warn");
-  };
+  const openSession = (id) => WB.assistant.openHub("development", current.id, id);
   const next = { ready: "工作区已就绪，可以开始开发", running: "Harness 正在执行，完成后进入人工审查", waiting_review: "轮到你审查本次变更", approved: "审查已通过，确认后同步结果", delivered: "结果已回写至 Linky", paused: "任务已暂停，需要处理后继续", rejected: "变更已退回，可以继续修复" };
-  return /* @__PURE__ */ React48.createElement("article", { className: "wb-dev-card", "aria-label": "任务详情" }, /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React48.createElement(Badge, null, current.issue.code), /* @__PURE__ */ React48.createElement(Badge, { tone: tone(current.status) }, statusLabels[current.status] || current.status), /* @__PURE__ */ React48.createElement(Btn, { size: "sm", icon: "sparkles", onClick: () => WB.assistant.openHub("development", current.id) }, "AI 助手继续处理")), /* @__PURE__ */ React48.createElement("h2", null, current.issue.title), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-meta" }, "累计 ", done, " / ", DEVELOPMENT_STAGES.length, " 阶段 · 剩余 ", DEVELOPMENT_STAGES.length - done), /* @__PURE__ */ React48.createElement("progress", { "aria-label": "研发流程进度", max: DEVELOPMENT_STAGES.length, value: done, style: { width: "100%", height: 4, accentColor: "var(--wb-accent)" } }), /* @__PURE__ */ React48.createElement("ol", { className: "wb-dev-timeline", "aria-label": "研发阶段" }, DEVELOPMENT_STAGES.map((s, i) => {
-    const finished2 = stepOf(s.id)?.status === "completed";
-    return /* @__PURE__ */ React48.createElement("li", { key: s.id, "data-state": finished2 ? "done" : current.stage === s.id ? "current" : "pending", "aria-current": current.stage === s.id ? "step" : void 0 }, /* @__PURE__ */ React48.createElement("span", null, i + 1, ". ", s.label, " · ", finished2 ? "完成" : current.stage === s.id ? "当前" : "待处理"));
-  })), /* @__PURE__ */ React48.createElement("section", { className: "wb-dev-next" }, /* @__PURE__ */ React48.createElement("strong", null, needsTestCommands ? "分析与开发已完成，请先配置测试命令" : next[current.status] || statusLabels[current.status] || current.status), current.pauseReason && /* @__PURE__ */ React48.createElement("p", { role: "status", className: "wb-dev-meta", style: { marginTop: 6, whiteSpace: "pre-wrap" } }, current.pauseReason), !!current.sessionRecoveries?.length && /* @__PURE__ */ React48.createElement("details", { className: "wb-dev-advanced" }, /* @__PURE__ */ React48.createElement("summary", null, "已保留原历史会话 · ", current.sessionRecoveries.length, " 次兼容接续"), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-form" }, current.sessionRecoveries.map((recovery, index) => /* @__PURE__ */ React48.createElement("div", { key: index }, /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, DEVELOPMENT_STAGES.find((stage) => stage.id === recovery.stage)?.label, " · ", recovery.model.model), /* @__PURE__ */ React48.createElement(Btn, { size: "sm", onClick: () => openSession(recovery.fromSessionId) }, "打开原历史会话 ", index + 1))))), workspaceError && /* @__PURE__ */ React48.createElement("p", { role: "alert", className: "wb-dev-meta" }, "工作区关联失败：", workspaceError), current.status === "ready" && /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, "分析、开发、测试和自动审查将连续执行，人工批准后才能回写结果。"), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-actions" }, ["ready", "paused", "rejected"].includes(current.status) && /* @__PURE__ */ React48.createElement(Btn, { kind: "primary", disabled, onClick: () => needsTestCommands ? onConfigure() : onAction("start") }, needsTestCommands ? "配置测试命令" : current.status === "ready" ? "开始开发流程" : "继续执行"), current.status === "running" && /* @__PURE__ */ React48.createElement(Btn, { disabled, onClick: () => onAction("pause") }, "暂停执行"), current.status === "paused" && !needsTestCommands && /* @__PURE__ */ React48.createElement(Btn, { disabled, onClick: onConfigure }, "检查工程设置"), current.sessionId && /* @__PURE__ */ React48.createElement(Btn, { onClick: () => openSession(current.sessionId) }, "打开 Harness 开发会话")), current.status === "waiting_review" && /* @__PURE__ */ React48.createElement("section", { "aria-label": "人工审查", className: "wb-dev-form" }, /* @__PURE__ */ React48.createElement(Field, { label: "审查意见" }, /* @__PURE__ */ React48.createElement(Textarea, { "aria-label": "人工审查意见", placeholder: "检查差异、测试结果和自动审查意见，填写结论", value: note, onChange: (e) => setNote(e.target.value), rows: 3 })), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React48.createElement(Btn, { kind: "primary", disabled: disabled || !note.trim(), onClick: () => onAction("approve", note) }, "批准本次变更"), /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || !note.trim(), onClick: () => onAction("reject", note) }, "退回修复"))), current.status === "approved" && /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-form" }, /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, "将审查意见、测试结果和会话编号写入此工作项评论。代码提交、发布与业务状态流转按实际流程确认。"), /* @__PURE__ */ React48.createElement(Btn, { kind: "primary", disabled, onClick: () => onAction("writeback") }, "确认回写 Linky 评论"))), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-detail-tabs" }, /* @__PURE__ */ React48.createElement(Segmented, { value: tab, onChange: setTab, items: [{ value: "evidence", label: "变更与验证" }, { value: "conversation", label: "会话过程" }, { value: "context", label: "任务信息" }] })), tab === "evidence" && /* @__PURE__ */ React48.createElement("div", null, current.diff && /* @__PURE__ */ React48.createElement("details", { className: "wb-dev-evidence", open: true }, /* @__PURE__ */ React48.createElement("summary", null, "实际代码差异"), /* @__PURE__ */ React48.createElement("pre", null, current.diff)), current.steps.length ? current.steps.map((step, i) => /* @__PURE__ */ React48.createElement("details", { key: i, className: "wb-dev-evidence", open: step.stage === "test" || step.stage === "review" }, /* @__PURE__ */ React48.createElement("summary", null, DEVELOPMENT_STAGES.find((s) => s.id === step.stage)?.label, " · ", step.status === "completed" ? "完成" : step.status === "failed" ? "失败" : "执行中", step.exitCode != null && /* @__PURE__ */ React48.createElement("span", null, " · 退出码 ", step.exitCode)), /* @__PURE__ */ React48.createElement("pre", null, step.output || "正在处理，请查看会话过程。"))) : /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, "启动后将在这里呈现实际差异、测试输出和审查结论。"), !["running", "delivered"].includes(current.status) && /* @__PURE__ */ React48.createElement("details", { className: "wb-dev-advanced" }, /* @__PURE__ */ React48.createElement("summary", null, "补充要求或重新修复"), /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-form" }, /* @__PURE__ */ React48.createElement(Field, { label: "补充开发要求" }, /* @__PURE__ */ React48.createElement(Textarea, { "aria-label": "补充开发要求", rows: 3, value: guidance, onChange: (e) => setGuidance(e.target.value) })), /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || !guidance.trim(), onClick: () => onGuidance(guidance) }, "保存要求，重新修复")))), tab === "conversation" && /* @__PURE__ */ React48.createElement("div", { className: "wb-stack" }, current.reviewSessionId && /* @__PURE__ */ React48.createElement(Btn, { onClick: () => openSession(current.reviewSessionId) }, "打开审查会话"), messages.some((g) => g.entries?.length) ? messages.map((group) => /* @__PURE__ */ React48.createElement("section", { key: group.sessionId }, /* @__PURE__ */ React48.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React48.createElement("span", { className: "wb-dev-meta" }, "会话 ", group.sessionId), /* @__PURE__ */ React48.createElement(Btn, { size: "sm", onClick: () => openSession(group.sessionId) }, "打开会话")), (group.entries || []).slice(-30).map((entry, i) => /* @__PURE__ */ React48.createElement("div", { key: i, className: "wb-dev-evidence" }, /* @__PURE__ */ React48.createElement(Badge, null, entry.role), /* @__PURE__ */ React48.createElement("p", { style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, entry.text))))) : /* @__PURE__ */ React48.createElement("p", { className: "wb-dev-meta" }, "暂未读取到会话内容，可打开原生 Harness 会话查看。")), tab === "context" && /* @__PURE__ */ React48.createElement("div", { className: "wb-stack wb-dev-meta" }, /* @__PURE__ */ React48.createElement("p", null, "Linky 状态：", current.issue.status || "未提供"), workspace && /* @__PURE__ */ React48.createElement("p", null, "Harness 工作区：", workspace.title), /* @__PURE__ */ React48.createElement("p", null, "开发目录：", current.cwd), /* @__PURE__ */ React48.createElement("p", null, "工作方式：", current.workspaceMode === "directory" ? "直接目录开发（未要求 Git）" : "Git 独立工作区"), current.branch && /* @__PURE__ */ React48.createElement("p", null, "分支：", current.branch), /* @__PURE__ */ React48.createElement("p", null, "开发会话：", current.sessionId || "未创建"), current.reviewSessionId && /* @__PURE__ */ React48.createElement("p", null, "审查会话：", current.reviewSessionId), /* @__PURE__ */ React48.createElement("p", null, "执行角色：", current.agentName || "Harness 默认研发助手"), current.contextNote && /* @__PURE__ */ React48.createElement("p", null, current.contextNote), /* @__PURE__ */ React48.createElement("details", null, /* @__PURE__ */ React48.createElement("summary", null, "工作项原始描述"), /* @__PURE__ */ React48.createElement("p", { style: { whiteSpace: "pre-wrap" } }, current.issue.description || "未提供描述")), /* @__PURE__ */ React48.createElement("div", null, /* @__PURE__ */ React48.createElement(Btn, { disabled: disabled || runsBusy, onClick: () => void readRuns() }, runsBusy ? "正在读取…" : "读取 Linky 执行记录")), runsError && /* @__PURE__ */ React48.createElement("p", { role: "alert" }, runsError), runs && /* @__PURE__ */ React48.createElement("section", { "aria-label": "Linky 执行记录" }, runs.length ? runs.map((r, i) => /* @__PURE__ */ React48.createElement("div", { key: r.id || i, className: "wb-dev-evidence" }, /* @__PURE__ */ React48.createElement("strong", null, r.name || r.title || r.id || "执行记录"), /* @__PURE__ */ React48.createElement("p", null, statusLabels[r.status] || r.status || "未提供状态", r.started_at ? " · " + r.started_at : ""), (r.summary || r.error) && /* @__PURE__ */ React48.createElement("p", null, String(r.summary || r.error)))) : /* @__PURE__ */ React48.createElement("p", null, "此工作项暂无 Linky 执行记录。"))));
+  return /* @__PURE__ */ React51.createElement("article", { className: "wb-dev-card", "aria-label": "任务详情" }, /* @__PURE__ */ React51.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React51.createElement(Badge, null, current.issue.code), /* @__PURE__ */ React51.createElement(Badge, { tone: tone(current.status) }, DEVELOPMENT_STATUS_LABELS[current.status] || current.status), /* @__PURE__ */ React51.createElement(Btn, { size: "sm", icon: "sparkles", onClick: () => WB.assistant.openHub("development", current.id) }, "AI 助手继续处理")), /* @__PURE__ */ React51.createElement("h2", null, current.issue.title), /* @__PURE__ */ React51.createElement("div", { className: "wb-dev-meta" }, "累计 ", done, " / ", DEVELOPMENT_STAGES.length, " 阶段 · 剩余 ", DEVELOPMENT_STAGES.length - done), /* @__PURE__ */ React51.createElement("progress", { "aria-label": "研发流程进度", max: DEVELOPMENT_STAGES.length, value: done, style: { width: "100%", height: 4, accentColor: "var(--wb-accent)" } }), /* @__PURE__ */ React51.createElement("ol", { className: "wb-dev-timeline", "aria-label": "研发阶段" }, DEVELOPMENT_STAGES.map((s, i) => {
+    const finished = stepOf(s.id)?.status === "completed";
+    return /* @__PURE__ */ React51.createElement("li", { key: s.id, "data-state": finished ? "done" : current.stage === s.id ? "current" : "pending", "aria-current": current.stage === s.id ? "step" : void 0 }, /* @__PURE__ */ React51.createElement("span", null, i + 1, ". ", s.label, " · ", finished ? "完成" : current.stage === s.id ? "当前" : "待处理"));
+  })), /* @__PURE__ */ React51.createElement("section", { className: "wb-dev-next" }, /* @__PURE__ */ React51.createElement("strong", null, needsTestCommands ? "分析与开发已完成，请先配置测试命令" : next[current.status] || DEVELOPMENT_STATUS_LABELS[current.status] || current.status), current.pauseReason && /* @__PURE__ */ React51.createElement("p", { role: "status", className: "wb-dev-meta", style: { marginTop: 6, whiteSpace: "pre-wrap" } }, current.pauseReason), !!current.sessionRecoveries?.length && /* @__PURE__ */ React51.createElement("details", { className: "wb-dev-advanced" }, /* @__PURE__ */ React51.createElement("summary", null, "已保留原历史会话 · ", current.sessionRecoveries.length, " 次兼容接续"), /* @__PURE__ */ React51.createElement("div", { className: "wb-dev-form" }, current.sessionRecoveries.map((recovery, index) => /* @__PURE__ */ React51.createElement("div", { key: index }, /* @__PURE__ */ React51.createElement("p", { className: "wb-dev-meta" }, DEVELOPMENT_STAGES.find((stage) => stage.id === recovery.stage)?.label, " · ", recovery.model.model), /* @__PURE__ */ React51.createElement(Btn, { size: "sm", onClick: () => openSession(recovery.fromSessionId) }, "打开原历史会话 ", index + 1))))), workspaceError && /* @__PURE__ */ React51.createElement("p", { role: "alert", className: "wb-dev-meta" }, "工作区关联失败：", workspaceError), current.status === "ready" && /* @__PURE__ */ React51.createElement("p", { className: "wb-dev-meta" }, "分析、开发、测试和自动审查将连续执行，人工批准后才能回写结果。"), /* @__PURE__ */ React51.createElement("div", { className: "wb-dev-actions" }, ["ready", "paused", "rejected"].includes(current.status) && /* @__PURE__ */ React51.createElement(Btn, { kind: "primary", disabled, onClick: () => needsTestCommands ? onConfigure() : onAction("start") }, needsTestCommands ? "配置测试命令" : current.status === "ready" ? "开始开发流程" : "继续执行"), current.status === "running" && /* @__PURE__ */ React51.createElement(Btn, { disabled, onClick: () => onAction("pause") }, "暂停执行"), current.status === "paused" && !needsTestCommands && /* @__PURE__ */ React51.createElement(Btn, { disabled, onClick: onConfigure }, "检查工程设置"), current.sessionId && /* @__PURE__ */ React51.createElement(Btn, { onClick: () => openSession(current.sessionId) }, "在 AI 助手中查看会话")), current.status === "waiting_review" && /* @__PURE__ */ React51.createElement("section", { "aria-label": "人工审查", className: "wb-dev-form" }, /* @__PURE__ */ React51.createElement(Field, { label: "审查意见" }, /* @__PURE__ */ React51.createElement(Textarea, { "aria-label": "人工审查意见", placeholder: "检查差异、测试结果和自动审查意见，填写结论", value: note, onChange: (e) => setNote(e.target.value), rows: 3 })), /* @__PURE__ */ React51.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React51.createElement(Btn, { kind: "primary", disabled: disabled || !note.trim(), onClick: () => onAction("approve", note) }, "批准本次变更"), /* @__PURE__ */ React51.createElement(Btn, { disabled: disabled || !note.trim(), onClick: () => onAction("reject", note) }, "退回修复"))), current.status === "approved" && /* @__PURE__ */ React51.createElement("div", { className: "wb-dev-form" }, /* @__PURE__ */ React51.createElement("p", { className: "wb-dev-meta" }, "将审查意见、测试结果和会话编号写入此工作项评论。代码提交、发布与业务状态流转按实际流程确认。"), /* @__PURE__ */ React51.createElement(Btn, { kind: "primary", disabled, onClick: () => onAction("writeback") }, "确认回写 Linky 评论"))), /* @__PURE__ */ React51.createElement("div", { className: "wb-dev-detail-tabs" }, /* @__PURE__ */ React51.createElement(Segmented, { value: tab, onChange: setTab, items: [{ value: "evidence", label: "变更与验证" }, { value: "conversation", label: "会话过程" }, { value: "context", label: "任务信息" }] })), tab === "evidence" && /* @__PURE__ */ React51.createElement("div", null, current.diff && /* @__PURE__ */ React51.createElement("details", { className: "wb-dev-evidence", open: true }, /* @__PURE__ */ React51.createElement("summary", null, "实际代码差异"), /* @__PURE__ */ React51.createElement("pre", null, current.diff)), current.steps.length ? current.steps.map((step, i) => /* @__PURE__ */ React51.createElement("details", { key: i, className: "wb-dev-evidence", open: step.stage === "test" || step.stage === "review" }, /* @__PURE__ */ React51.createElement("summary", null, DEVELOPMENT_STAGES.find((s) => s.id === step.stage)?.label, " · ", step.status === "completed" ? "完成" : step.status === "failed" ? "失败" : "执行中", step.exitCode != null && /* @__PURE__ */ React51.createElement("span", null, " · 退出码 ", step.exitCode)), /* @__PURE__ */ React51.createElement("pre", null, step.output || "正在处理，请查看会话过程。"))) : /* @__PURE__ */ React51.createElement("p", { className: "wb-dev-meta" }, "启动后将在这里呈现实际差异、测试输出和审查结论。"), !["running", "delivered"].includes(current.status) && /* @__PURE__ */ React51.createElement("details", { className: "wb-dev-advanced" }, /* @__PURE__ */ React51.createElement("summary", null, "补充要求或重新修复"), /* @__PURE__ */ React51.createElement("div", { className: "wb-dev-form" }, /* @__PURE__ */ React51.createElement(Field, { label: "补充开发要求" }, /* @__PURE__ */ React51.createElement(Textarea, { "aria-label": "补充开发要求", rows: 3, value: guidance, onChange: (e) => setGuidance(e.target.value) })), /* @__PURE__ */ React51.createElement(Btn, { disabled: disabled || !guidance.trim(), onClick: () => onGuidance(guidance) }, "保存要求，重新修复")))), tab === "conversation" && /* @__PURE__ */ React51.createElement("div", { className: "wb-stack" }, current.reviewSessionId && /* @__PURE__ */ React51.createElement(Btn, { onClick: () => openSession(current.reviewSessionId) }, "打开审查会话"), messages.some((g) => g.entries?.length) ? messages.map((group) => /* @__PURE__ */ React51.createElement("section", { key: group.sessionId }, /* @__PURE__ */ React51.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React51.createElement("span", { className: "wb-dev-meta" }, "会话 ", group.sessionId), /* @__PURE__ */ React51.createElement(Btn, { size: "sm", onClick: () => openSession(group.sessionId) }, "打开会话")), (group.entries || []).slice(-30).map((entry, i) => /* @__PURE__ */ React51.createElement("div", { key: i, className: "wb-dev-evidence" }, /* @__PURE__ */ React51.createElement(Badge, null, entry.role), /* @__PURE__ */ React51.createElement("p", { style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, entry.text))))) : /* @__PURE__ */ React51.createElement("p", { className: "wb-dev-meta" }, "暂未读取到会话内容，可在 AI 助手中查看对应会话。")), tab === "context" && /* @__PURE__ */ React51.createElement("div", { className: "wb-stack wb-dev-meta" }, /* @__PURE__ */ React51.createElement("p", null, "Linky 状态：", current.issue.status || "未提供"), workspace && /* @__PURE__ */ React51.createElement("p", null, "Harness 工作区：", workspace.title), /* @__PURE__ */ React51.createElement("p", null, "开发目录：", current.cwd), /* @__PURE__ */ React51.createElement("p", null, "工作方式：", current.workspaceMode === "directory" ? "直接目录开发（未要求 Git）" : "Git 独立工作区"), current.branch && /* @__PURE__ */ React51.createElement("p", null, "分支：", current.branch), /* @__PURE__ */ React51.createElement("p", null, "开发会话：", current.sessionId || "未创建"), current.reviewSessionId && /* @__PURE__ */ React51.createElement("p", null, "审查会话：", current.reviewSessionId), /* @__PURE__ */ React51.createElement("p", null, "执行角色：", current.agentName || "Harness 默认研发助手"), current.contextNote && /* @__PURE__ */ React51.createElement("p", null, current.contextNote), /* @__PURE__ */ React51.createElement("details", null, /* @__PURE__ */ React51.createElement("summary", null, "工作项原始描述"), /* @__PURE__ */ React51.createElement("p", { style: { whiteSpace: "pre-wrap" } }, current.issue.description || "未提供描述")), /* @__PURE__ */ React51.createElement("div", null, /* @__PURE__ */ React51.createElement(Btn, { disabled: disabled || runsBusy, onClick: () => void readRuns() }, runsBusy ? "正在读取…" : "读取 Linky 执行记录")), runsError && /* @__PURE__ */ React51.createElement("p", { role: "alert" }, runsError), runs && /* @__PURE__ */ React51.createElement("section", { "aria-label": "Linky 执行记录" }, runs.length ? runs.map((r, i) => /* @__PURE__ */ React51.createElement("div", { key: r.id || i, className: "wb-dev-evidence" }, /* @__PURE__ */ React51.createElement("strong", null, r.name || r.title || r.id || "执行记录"), /* @__PURE__ */ React51.createElement("p", null, DEVELOPMENT_STATUS_LABELS[r.status] || r.status || "未提供状态", r.started_at ? " · " + r.started_at : ""), (r.summary || r.error) && /* @__PURE__ */ React51.createElement("p", null, String(r.summary || r.error)))) : /* @__PURE__ */ React51.createElement("p", null, "此工作项暂无 Linky 执行记录。"))));
 }
 
 // src/client/features/agents/DevelopmentPage.tsx
-var attention = ["paused", "waiting_review", "approved", "rejected", "failed", "interrupted"];
-var finished = ["delivered", "completed"];
 function DevelopmentPage() {
   const store = WB.useStore(), projects = (store.data?.projects || []).filter((p) => p.repoPath);
-  const [snapshot2, setSnapshot] = React49.useState(null), [connection, setConnection] = React49.useState(null), [detecting, setDetecting] = React49.useState(false);
-  const [busy, setBusy] = React49.useState(""), [error2, setError] = React49.useState(""), [selected, setSelected] = React49.useState(""), [detail, setDetail] = React49.useState(null);
-  const [filter, setFilter] = React49.useState("all"), [query, setQuery] = React49.useState(""), [settings, setSettings] = React49.useState(false), [refreshKey, setRefreshKey] = React49.useState(0);
-  const root = React49.useRef(null), refreshing = React49.useRef(false), lastRefresh = React49.useRef(0), refreshRef = React49.useRef(() => {
-  }), openSeq = React49.useRef(store.developmentOpenSeq), mounted = React49.useRef(true), selection = React49.useRef(""), lock = React49.useRef(false), loadVersion = React49.useRef(0);
+  const [snapshot2, setSnapshot] = React52.useState(null), [connection, setConnection] = React52.useState(null), [detecting, setDetecting] = React52.useState(false);
+  const [busy, setBusy] = React52.useState(""), [error2, setError] = React52.useState(""), [selected, setSelected] = React52.useState(""), [detail, setDetail] = React52.useState(null);
+  const [query, setQuery] = React52.useState(""), [settings, setSettings] = React52.useState(false), [refreshKey, setRefreshKey] = React52.useState(0);
+  const root = React52.useRef(null), refreshing = React52.useRef(false), lastRefresh = React52.useRef(0), refreshRef = React52.useRef(() => {
+  }), openSeq = React52.useRef(store.developmentOpenSeq), mounted = React52.useRef(true), selection = React52.useRef(""), lock = React52.useRef(false), loadVersion = React52.useRef(0);
   selection.current = selected;
   async function load() {
     const version = ++loadVersion.current, result = await developmentCall({ action: "state" });
@@ -15272,7 +15649,7 @@ function DevelopmentPage() {
       if (mounted.current) setDetecting(false);
     }
   }
-  React49.useEffect(() => {
+  React52.useEffect(() => {
     mounted.current = true;
     void load().then(() => {
       if (mounted.current) void detect();
@@ -15295,7 +15672,7 @@ function DevelopmentPage() {
       if (mounted.current) setBusy("");
     }
   }
-  React49.useEffect(() => {
+  React52.useEffect(() => {
     let alive = true, inFlight = false;
     const refresh = async () => {
       if (inFlight) return;
@@ -15341,7 +15718,7 @@ function DevelopmentPage() {
       }
     })();
   };
-  React49.useEffect(() => {
+  React52.useEffect(() => {
     const refresh = () => refreshRef.current(), visible = () => {
       if (document.visibilityState !== "hidden") refresh();
     };
@@ -15362,46 +15739,51 @@ function DevelopmentPage() {
       observer?.disconnect();
     };
   }, []);
-  React49.useEffect(() => {
+  React52.useEffect(() => {
     if (openSeq.current !== store.developmentOpenSeq) {
       openSeq.current = store.developmentOpenSeq;
       refreshRef.current();
     }
   }, [store.developmentOpenSeq]);
   function choose(row) {
+    if (selection.current === row.id) return;
     selection.current = row.id;
     setSelected(row.id);
     setDetail(null);
-    requestAnimationFrame(() => document.querySelector('.wb-dev [aria-label="任务详情"]')?.scrollIntoView?.({ block: "start", behavior: "smooth" }));
+    requestAnimationFrame(() => {
+      const pane = document.querySelector(".wb-dev .wb-workitem-detail");
+      if (pane) pane.scrollTop = 0;
+    });
   }
-  React49.useEffect(() => {
+  React52.useEffect(() => {
     const target = store.developmentFocusId;
     if (!target || !snapshot2) return;
     const row = snapshot2.tasks?.find((item) => item.id === target);
     if (row) {
-      setFilter("all");
       setQuery("");
       choose(row);
     }
     WB.store.set({ developmentFocusId: null });
   }, [store.developmentFocusId, snapshot2]);
-  async function taskAction(action, note) {
-    if (!selected) return;
-    await developmentCall({ action, id: selected, note });
+  async function taskAction(action, note, id = selected) {
+    if (!id) return;
+    await developmentCall({ action, id, note });
     await load();
-    const value = await developmentCall({ action: "detail", id: selected });
-    if (selection.current === selected) setDetail(value);
+    const value = await developmentCall({ action: "detail", id });
+    if (selection.current === id) setDetail(value);
   }
   const all = snapshot2?.tasks || [], current = detail?.task || all.find((row) => row.id === selected);
-  const counts = { all: all.length, active: all.filter((t) => ["running", "ready", "preparing"].includes(t.status)).length, attention: all.filter((t) => attention.includes(t.status)).length, done: all.filter((t) => finished.includes(t.status)).length };
-  const tasks = all.filter((row) => (filter === "all" || (filter === "active" ? ["running", "ready", "preparing"].includes(row.status) : filter === "attention" ? attention.includes(row.status) : finished.includes(row.status))) && (!query || [row.issue.code, row.issue.title, row.sessionId].some((v) => v?.toLowerCase().includes(query.toLowerCase()))));
   const unavailable = !snapshot2 || error2.startsWith("当前宿主尚未加载研发接口"), disabled = !!busy || unavailable;
   const connected = connection?.status === "ready";
   const setConfig = (config2) => setSnapshot((old) => ({ ...old, config: config2 }));
-  return /* @__PURE__ */ React49.createElement("div", { ref: root, className: "wb-page wb-dev" }, /* @__PURE__ */ React49.createElement("style", null, developmentCSS + workItemsCSS), /* @__PURE__ */ React49.createElement("header", { className: "wb-dev-header" }, /* @__PURE__ */ React49.createElement("div", null, /* @__PURE__ */ React49.createElement("h1", null, "研发任务")), /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React49.createElement(Btn, { disabled: disabled || detecting, onClick: () => setSettings(true), icon: "settings" }, "研发设置"))), error2 && /* @__PURE__ */ React49.createElement("div", { role: "alert", className: "wb-dev-banner", "data-kind": "error" }, /* @__PURE__ */ React49.createElement("p", null, error2), /* @__PURE__ */ React49.createElement(Btn, { disabled: !!busy, onClick: () => void perform("重新连接", async () => {
+  return /* @__PURE__ */ React52.createElement("div", { ref: root, className: "wb-page wb-dev" }, /* @__PURE__ */ React52.createElement("style", null, developmentCSS + workItemsCSS), /* @__PURE__ */ React52.createElement("header", { className: "wb-dev-header" }, /* @__PURE__ */ React52.createElement("div", null, /* @__PURE__ */ React52.createElement("h1", null, "研发任务")), /* @__PURE__ */ React52.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React52.createElement(Btn, { size: "sm", disabled: !!busy, onClick: () => void perform("刷新", async () => {
+    await load();
+    if (!connected) await detect();
+    setRefreshKey((value) => value + 1);
+  }) }, "刷新任务"), /* @__PURE__ */ React52.createElement(Btn, { disabled: disabled || detecting, onClick: () => setSettings(true), icon: "settings" }, "研发设置"))), /* @__PURE__ */ React52.createElement("div", { className: "wb-dev-notices" }, error2 && /* @__PURE__ */ React52.createElement("div", { role: "alert", className: "wb-dev-banner", "data-kind": "error" }, /* @__PURE__ */ React52.createElement("p", null, error2), /* @__PURE__ */ React52.createElement(Btn, { disabled: !!busy, onClick: () => void perform("重新连接", async () => {
     await load();
     await detect();
-  }) }, "重新连接研发服务")), detecting ? /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-banner" }, /* @__PURE__ */ React49.createElement("p", null, "正在检测本机 Linky 与登录状态…")) : connection && !connected ? /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-banner" }, /* @__PURE__ */ React49.createElement("div", null, /* @__PURE__ */ React49.createElement("strong", null, connection.status === "missing_cli" ? "连接 Linky，开始处理需求与缺陷" : connection.status === "needs_login" ? "请先登录 Linky" : "Linky 暂时无法连接"), /* @__PURE__ */ React49.createElement("p", null, connection.message), connection.status === "needs_login" && /* @__PURE__ */ React49.createElement("p", null, "在 Linky 客户端完成登录，然后点击重新检测。"), connection.status === "missing_cli" && /* @__PURE__ */ React49.createElement("p", null, "安装客户端并登录；若已安装，可在“个人设置 → 命令行工具”完成 CLI 安装。")), /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, connection.status === "missing_cli" && /* @__PURE__ */ React49.createElement("a", { className: "wb-link", href: "https://linky.kingdee.com/home/", target: "_blank", rel: "noreferrer" }, "打开 Linky 安装入口 ↗"), /* @__PURE__ */ React49.createElement(Btn, { disabled, onClick: () => void perform("检测连接", detect) }, "重新检测"))) : null, connected && snapshot2 && /* @__PURE__ */ React49.createElement("div", { style: { marginBottom: 20 } }, /* @__PURE__ */ React49.createElement(WorkItemsBrowser, { refreshKey, disabled, key: snapshot2.config.profile, config: snapshot2.config, connection, projects, tasks: all, onExisting: choose, onInspect: () => {
+  }) }, "重新连接研发服务")), detecting ? /* @__PURE__ */ React52.createElement("div", { className: "wb-dev-banner" }, /* @__PURE__ */ React52.createElement("p", null, "正在检测本机 Linky 与登录状态…")) : connection && !connected ? /* @__PURE__ */ React52.createElement("div", { className: "wb-dev-banner" }, /* @__PURE__ */ React52.createElement("div", null, /* @__PURE__ */ React52.createElement("strong", null, connection.status === "missing_cli" ? "连接 Linky，开始处理需求与缺陷" : connection.status === "needs_login" ? "请先登录 Linky" : "Linky 暂时无法连接"), /* @__PURE__ */ React52.createElement("p", null, connection.message), connection.status === "needs_login" && /* @__PURE__ */ React52.createElement("p", null, "在 Linky 客户端完成登录，然后点击重新检测。"), connection.status === "missing_cli" && /* @__PURE__ */ React52.createElement("p", null, "安装客户端并登录；若已安装，可在“个人设置 → 命令行工具”完成 CLI 安装。")), /* @__PURE__ */ React52.createElement("div", { className: "wb-dev-actions" }, connection.status === "missing_cli" && /* @__PURE__ */ React52.createElement("a", { className: "wb-link", href: "https://linky.kingdee.com/home/", target: "_blank", rel: "noreferrer" }, "打开 Linky 安装入口 ↗"), /* @__PURE__ */ React52.createElement(Btn, { disabled, onClick: () => void perform("检测连接", detect) }, "重新检测"))) : null, !snapshot2 && !error2 && /* @__PURE__ */ React52.createElement("div", { className: "wb-dev-empty" }, /* @__PURE__ */ React52.createElement("p", null, "正在读取研发任务…"))), snapshot2 && /* @__PURE__ */ React52.createElement(WorkItemsBrowser, { refreshKey, disabled, key: snapshot2.config.profile, config: snapshot2.config, connection: connection || { status: "loading", workspaces: [] }, projects, tasks: all, focusTaskId: selected, onQueryChange: setQuery, onExisting: choose, onInspect: () => {
     selection.current = "";
     setSelected("");
     setDetail(null);
@@ -15410,22 +15792,15 @@ function DevelopmentPage() {
     void perform("刷新", async () => {
       await load();
     });
-  } })), /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-toolbar" }, all.length > 0 && /* @__PURE__ */ React49.createElement(Input, { "aria-label": "搜索研发会话", placeholder: "搜索需求号、缺陷号或任务标题", value: query, onChange: (e) => setQuery(e.target.value) }), /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React49.createElement("span", { className: "wb-dev-meta" }, connected ? "Linky 已连接 · " + (connection.user?.name || connection.profile) : "Linky 未连接"), /* @__PURE__ */ React49.createElement(Btn, { size: "sm", disabled: !!busy, onClick: () => void perform("刷新", async () => {
-    await load();
-    if (!connected) await detect();
-    setRefreshKey((value) => value + 1);
-  }) }, "刷新任务"))), all.length > 0 && /* @__PURE__ */ React49.createElement("details", { className: "wb-dev-records", open: !!current || !connected }, /* @__PURE__ */ React49.createElement("summary", null, "研发执行记录"), all.length > 0 && /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-overview", "aria-label": "研发任务概览" }, [{ id: "all", label: "全部任务" }, { id: "active", label: "进行中" }, { id: "attention", label: "需要处理" }, { id: "done", label: "已回写 / 结束" }].map(({ id, label }) => /* @__PURE__ */ React49.createElement("button", { type: "button", key: id, className: "wb-dev-stat", "aria-pressed": filter === id, onClick: () => setFilter(id) }, /* @__PURE__ */ React49.createElement("span", null, label), /* @__PURE__ */ React49.createElement("strong", null, counts[id])))), !snapshot2 && !error2 ? /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-empty" }, /* @__PURE__ */ React49.createElement("p", null, "正在读取研发任务…")) : !all.length ? null : /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-layout" }, /* @__PURE__ */ React49.createElement("section", { className: "wb-dev-list", "aria-label": "研发任务列表" }, tasks.length ? tasks.map((row) => /* @__PURE__ */ React49.createElement("button", { type: "button", key: row.id, className: "wb-dev-task", "aria-pressed": selected === row.id, onClick: () => choose(row) }, /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React49.createElement(Badge, null, row.issue.code), /* @__PURE__ */ React49.createElement(Badge, { tone: tone(row.status) }, statusLabels[row.status] || row.status)), /* @__PURE__ */ React49.createElement("h3", null, row.issue.title), /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-meta" }, projects.find((p) => p.id === row.projectId)?.name || "本地工程", " · ", row.agentName || "Harness", row.updatedAt ? " · " + WB.fmt.datetime(row.updatedAt) : ""), row.pauseReason && attention.includes(row.status) && /* @__PURE__ */ React49.createElement("p", { className: "wb-dev-meta", style: { marginTop: 8 } }, row.pauseReason))) : /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-empty" }, /* @__PURE__ */ React49.createElement("p", null, "没有符合条件的任务"), /* @__PURE__ */ React49.createElement(Btn, { onClick: () => {
-    setQuery("");
-    setFilter("all");
-  } }, "清除筛选"))), current ? /* @__PURE__ */ React49.createElement(DevelopmentTaskDetail, { key: current.id, task: current, messages: detail?.messages || [], workspace: detail?.workspace, workspaceError: detail?.workspaceError, needsTestCommands: current.status === "paused" && current.stage === "test" && !snapshot2.config.checks?.[current.projectId]?.length, disabled, onConfigure: () => setSettings(true), onAction: (action, note) => void perform("更新任务", () => taskAction(action, note)), onGuidance: (text2) => void perform("补充要求", async () => {
-    await developmentCall({ action: "guidance", id: current.id, text: text2 });
-    await load();
-    const value = await developmentCall({ action: "detail", id: current.id });
-    if (selection.current === current.id) setDetail(value);
-  }) }) : /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-card wb-dev-empty" }, /* @__PURE__ */ React49.createElement(Icon, { name: "agent", size: 28 }), /* @__PURE__ */ React49.createElement("h2", null, "选择任务，查看下一步"), /* @__PURE__ */ React49.createElement("p", { className: "wb-dev-meta" }, "进度、暂停原因、测试结果和审查操作都在这里。"), counts.attention > 0 && /* @__PURE__ */ React49.createElement("div", { className: "wb-dev-actions" }, /* @__PURE__ */ React49.createElement(Btn, { onClick: () => {
-    setFilter("attention");
-    choose(all.find((t) => attention.includes(t.status)));
-  } }, "查看需要处理的任务"))))), (snapshot2?.nativeRuns || []).length > 0 && /* @__PURE__ */ React49.createElement("section", { className: "wb-dev-card", style: { marginTop: 20 } }, /* @__PURE__ */ React49.createElement("h2", null, "从 Linky 发起的执行"), /* @__PURE__ */ React49.createElement("p", { className: "wb-dev-meta" }, "按来源保留执行记录，审查状态以对应工作项为准。"), snapshot2.nativeRuns.filter((r) => !query || [r.issueCode, r.issueId, r.sessionId].some((v) => v?.toLowerCase().includes(query.toLowerCase()))).map((r) => /* @__PURE__ */ React49.createElement("details", { key: r.id, className: "wb-dev-evidence" }, /* @__PURE__ */ React49.createElement("summary", null, r.issueCode || r.issueId || "未关联工作项", " · ", statusLabels[r.status] || r.status), /* @__PURE__ */ React49.createElement("p", { className: "wb-dev-meta" }, "Harness 会话：", r.sessionId, " · 工作区：", r.cwd), r.error && /* @__PURE__ */ React49.createElement("p", null, r.error), r.output && /* @__PURE__ */ React49.createElement("pre", null, r.output)))), settings && snapshot2 && /* @__PURE__ */ React49.createElement(DevelopmentSettings, { key: current?.projectId || "settings", config: snapshot2.config, connection, adapter: snapshot2.adapter, projects, projectId: current?.projectId || "", disabled: !!busy, onClose: () => setSettings(false), onSave: async (patch2) => {
+  }, renderTask: (row, issue) => {
+    const active = current?.id === row.id ? current : row, loaded = detail?.task?.id === row.id ? detail : null;
+    return /* @__PURE__ */ React52.createElement(DevelopmentTaskDetail, { key: active.id, task: { ...active, issue: { ...active.issue, ...issue } }, messages: loaded?.messages || [], workspace: loaded?.workspace, workspaceError: loaded?.workspaceError, needsTestCommands: active.status === "paused" && active.stage === "test" && !snapshot2.config.checks?.[active.projectId]?.length, disabled, onConfigure: () => setSettings(true), onAction: (action, note) => void perform("更新任务", () => taskAction(action, note, active.id)), onGuidance: (text2) => void perform("补充要求", async () => {
+      await developmentCall({ action: "guidance", id: active.id, text: text2 });
+      await load();
+      const value = await developmentCall({ action: "detail", id: active.id });
+      if (selection.current === active.id) setDetail(value);
+    }) });
+  } }), (snapshot2?.nativeRuns || []).length > 0 && /* @__PURE__ */ React52.createElement("section", { className: "wb-dev-card wb-dev-native-runs", style: { marginTop: 12 } }, /* @__PURE__ */ React52.createElement("h2", null, "从 Linky 发起的执行"), /* @__PURE__ */ React52.createElement("p", { className: "wb-dev-meta" }, "按来源保留执行记录，审查状态以对应工作项为准。"), snapshot2.nativeRuns.filter((r) => !query || [r.issueCode, r.issueId, r.sessionId].some((v) => v?.toLowerCase().includes(query.toLowerCase()))).map((r) => /* @__PURE__ */ React52.createElement("details", { key: r.id, className: "wb-dev-evidence" }, /* @__PURE__ */ React52.createElement("summary", null, r.issueCode || r.issueId || "未关联工作项", " · ", DEVELOPMENT_STATUS_LABELS[r.status] || r.status), /* @__PURE__ */ React52.createElement("p", { className: "wb-dev-meta" }, "Harness 会话：", r.sessionId, " · 工作区：", r.cwd), r.error && /* @__PURE__ */ React52.createElement("p", null, r.error), r.output && /* @__PURE__ */ React52.createElement("pre", null, r.output)))), settings && snapshot2 && /* @__PURE__ */ React52.createElement(DevelopmentSettings, { key: current?.projectId || "settings", config: snapshot2.config, connection, adapter: snapshot2.adapter, projects, projectId: current?.projectId || "", disabled: !!busy, onClose: () => setSettings(false), onSave: async (patch2) => {
     if (lock.current) throw new Error("请等待当前操作完成");
     lock.current = true;
     setBusy("保存设置");
@@ -15442,10 +15817,10 @@ function DevelopmentPage() {
 }
 
 // src/client/features/agents/agent-center.ts
-var React50 = __toESM(require("react"), 1);
+var React53 = __toESM(require("react"), 1);
 WB.pages.agents = DevelopmentPage;
 WB.pages.office = function OfficePage() {
-  React50.useEffect(() => {
+  React53.useEffect(() => {
     WB.assistant.openHub("system", "office");
   }, []);
   return null;
@@ -15513,12 +15888,12 @@ var TOOLBOX_CSS = `
 `;
 
 // src/client/features/toolbox/tools/DataWorkbench.tsx
-var React51 = __toESM(require("react"), 1);
+var React54 = __toESM(require("react"), 1);
 var defaults = { kind: "mysql", name: "", host: "127.0.0.1", port: 3306, database: "", username: "", password: "", tls: false, ca: "", url: "http://127.0.0.1:9200" };
 var initialQuery = { mysql: "SELECT 1 AS value", postgres: "SELECT 1 AS value", es: '{\n  "query": {"match_all": {}},\n  "size": 20\n}', redis: '["TYPE", "example:key"]' };
 function DataWorkbench({ value: v, patch: patch2 }) {
-  const [connections, setConnections] = React51.useState([]), [busy, setBusy] = React51.useState(""), [error2, setError] = React51.useState(""), [note, setNote] = React51.useState("");
-  const live = React51.useRef(true), lock = React51.useRef(false), current = React51.useRef(v);
+  const [connections, setConnections] = React54.useState([]), [busy, setBusy] = React54.useState(""), [error2, setError] = React54.useState(""), [note, setNote] = React54.useState("");
+  const live = React54.useRef(true), lock = React54.useRef(false), current = React54.useRef(v);
   current.current = v;
   const form = { ...defaults, ...v.form }, selected = v.selected || [];
   const rpc = (method, request) => WB.rpc("workbench/" + method, method === "dataConnections" ? {} : { request });
@@ -15530,7 +15905,7 @@ function DataWorkbench({ value: v, patch: patch2 }) {
       if (current.current.id === void 0 && items.length) choose(items[0].id, items);
     }
   }
-  React51.useEffect(() => {
+  React54.useEffect(() => {
     live.current = true;
     void refresh().catch((e) => setError(e.message));
     return () => {
@@ -15564,24 +15939,24 @@ function DataWorkbench({ value: v, patch: patch2 }) {
   const needsConnection = !v.id || !connections.some((c) => c.id === v.id && c.unlocked);
   const objectKey = (o) => JSON.stringify([o.schemaName || "", o.name]);
   const result = v.result;
-  const [configOpen, setConfigOpen] = React51.useState(false), [aiOpen, setAiOpen] = React51.useState(false), [objectFilter, setObjectFilter] = React51.useState("");
+  const [configOpen, setConfigOpen] = React54.useState(false), [aiOpen, setAiOpen] = React54.useState(false), [objectFilter, setObjectFilter] = React54.useState("");
   const objects = (v.objects || []).filter((o) => [o.schemaName, o.name, o.comment].join(" ").toLowerCase().includes(objectFilter.toLowerCase()));
   const executeQuery = () => run("查询", async () => {
     const r = await rpc("dataQuery", { id: v.id, query: v.query, ...v.generated ? { schemaHash: v.generated.schemaHash, selected: v.generated.selected } : {}, index: selected[0]?.name });
     if (live.current) patch2({ result: r });
     return { note: r.note || "查询完成" };
   });
-  return /* @__PURE__ */ React51.createElement("div", { className: "wb-data-workspace" }, /* @__PURE__ */ React51.createElement("aside", { className: "wb-data-sidebar", "aria-label": "连接与对象" }, /* @__PURE__ */ React51.createElement("div", { className: "wb-data-sidebar-head" }, /* @__PURE__ */ React51.createElement("strong", null, "数据库连接"), /* @__PURE__ */ React51.createElement(Btn, { size: "sm", disabled: !!busy, onClick: () => {
+  return /* @__PURE__ */ React54.createElement("div", { className: "wb-data-workspace" }, /* @__PURE__ */ React54.createElement("aside", { className: "wb-data-sidebar", "aria-label": "连接与对象" }, /* @__PURE__ */ React54.createElement("div", { className: "wb-data-sidebar-head" }, /* @__PURE__ */ React54.createElement("strong", null, "数据库连接"), /* @__PURE__ */ React54.createElement(Btn, { size: "sm", disabled: !!busy, onClick: () => {
     choose("");
     setConfigOpen(true);
-  } }, "新建连接")), /* @__PURE__ */ React51.createElement("label", { className: "wb-label" }, "连接", /* @__PURE__ */ React51.createElement("select", { "aria-label": "数据连接", className: "wb-select", value: v.id || "", disabled: !!busy, onChange: (e) => {
+  } }, "新建连接")), /* @__PURE__ */ React54.createElement("label", { className: "wb-label" }, "连接", /* @__PURE__ */ React54.createElement("select", { "aria-label": "数据连接", className: "wb-select", value: v.id || "", disabled: !!busy, onChange: (e) => {
     choose(e.target.value);
     if (!e.target.value) setConfigOpen(true);
-  } }, /* @__PURE__ */ React51.createElement("option", { value: "" }, "新建连接"), connections.map((c) => /* @__PURE__ */ React51.createElement("option", { key: c.id, value: c.id }, c.name, " · ", c.kind, c.unlocked ? "" : " · 需输入密码")))), /* @__PURE__ */ React51.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React51.createElement(Btn, { size: "sm", disabled: !!busy, onClick: () => setConfigOpen(true) }, "连接配置"), /* @__PURE__ */ React51.createElement(Btn, { size: "sm", disabled: !!busy || !v.id, onClick: () => run("测试连接", async () => {
+  } }, /* @__PURE__ */ React54.createElement("option", { value: "" }, "新建连接"), connections.map((c) => /* @__PURE__ */ React54.createElement("option", { key: c.id, value: c.id }, c.name, " · ", c.kind, c.unlocked ? "" : " · 需输入密码")))), /* @__PURE__ */ React54.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React54.createElement(Btn, { size: "sm", disabled: !!busy, onClick: () => setConfigOpen(true) }, "连接配置"), /* @__PURE__ */ React54.createElement(Btn, { size: "sm", disabled: !!busy || !v.id, onClick: () => run("测试连接", async () => {
     const r = await rpc("dataTest", { id: v.id });
     await refresh();
     return r;
-  }) }, "测试连接"), v.id && /* @__PURE__ */ React51.createElement(Btn, { size: "sm", onClick: async () => {
+  }) }, "测试连接"), v.id && /* @__PURE__ */ React54.createElement(Btn, { size: "sm", onClick: async () => {
     try {
       await rpc("dataDisconnect", { id: v.id });
       patch2({ result: null });
@@ -15590,46 +15965,46 @@ function DataWorkbench({ value: v, patch: patch2 }) {
     } catch (e) {
       setError(e.message);
     }
-  } }, busy ? "停止并断开" : "断开连接")), /* @__PURE__ */ React51.createElement(Btn, { disabled: !!busy || !v.id, onClick: () => run("读取对象", async () => {
+  } }, busy ? "停止并断开" : "断开连接")), /* @__PURE__ */ React54.createElement(Btn, { disabled: !!busy || !v.id, onClick: () => run("读取对象", async () => {
     const r = await rpc("dataObjects", { id: v.id, pattern: v.pattern || "*", cursor: "0" });
     if (live.current) patch2({ objects: r.objects, cursor: r.cursor, selected: [], structure: null });
     return { note: r.truncated ? "对象较多，仅展示前500项" : "已读取对象" };
-  }) }, "读取表 / 索引 / Key"), form.kind === "redis" && /* @__PURE__ */ React51.createElement(Field, { label: "Key匹配模式" }, /* @__PURE__ */ React51.createElement(Input, { "aria-label": "Redis Key模式", disabled: !!busy, value: v.pattern || "*", onChange: (e) => patch2({ pattern: e.target.value }) })), /* @__PURE__ */ React51.createElement(Input, { "aria-label": "筛选表、索引或Key", placeholder: "搜索表、索引或 Key…", value: objectFilter, onChange: (e) => setObjectFilter(e.target.value) }), /* @__PURE__ */ React51.createElement("div", { className: "wb-stack", style: { minWidth: 0 } }, /* @__PURE__ */ React51.createElement("strong", { className: "wb-tiny" }, "对象与结构 · 已选 ", selected.length, "/12"), /* @__PURE__ */ React51.createElement("div", { style: { maxHeight: 250, overflow: "auto", border: "1px solid var(--dsw-alias-border-l1)", borderRadius: 8, padding: 8 } }, objects.length ? objects.map((o) => /* @__PURE__ */ React51.createElement("label", { key: objectKey(o), style: { display: "flex", gap: 6, padding: "5px 0", overflowWrap: "anywhere", fontSize: 12 } }, /* @__PURE__ */ React51.createElement("input", { type: "checkbox", disabled: !!busy, checked: selected.some((s) => objectKey(s) === objectKey(o)), onChange: (e) => {
+  }) }, "读取表 / 索引 / Key"), form.kind === "redis" && /* @__PURE__ */ React54.createElement(Field, { label: "Key匹配模式" }, /* @__PURE__ */ React54.createElement(Input, { "aria-label": "Redis Key模式", disabled: !!busy, value: v.pattern || "*", onChange: (e) => patch2({ pattern: e.target.value }) })), /* @__PURE__ */ React54.createElement(Input, { "aria-label": "筛选表、索引或Key", placeholder: "搜索表、索引或 Key…", value: objectFilter, onChange: (e) => setObjectFilter(e.target.value) }), /* @__PURE__ */ React54.createElement("div", { className: "wb-stack", style: { minWidth: 0 } }, /* @__PURE__ */ React54.createElement("strong", { className: "wb-tiny" }, "对象与结构 · 已选 ", selected.length, "/12"), /* @__PURE__ */ React54.createElement("div", { style: { maxHeight: 250, overflow: "auto", border: "1px solid var(--dsw-alias-border-l1)", borderRadius: 8, padding: 8 } }, objects.length ? objects.map((o) => /* @__PURE__ */ React54.createElement("label", { key: objectKey(o), style: { display: "flex", gap: 6, padding: "5px 0", overflowWrap: "anywhere", fontSize: 12 } }, /* @__PURE__ */ React54.createElement("input", { type: "checkbox", disabled: !!busy, checked: selected.some((s) => objectKey(s) === objectKey(o)), onChange: (e) => {
     const next = e.target.checked ? [...selected, o] : selected.filter((s) => objectKey(s) !== objectKey(o));
     if (next.length > 12) {
       setError("最多选择12个对象");
       return;
     }
     patch2({ selected: next, structure: null, generated: null, ...form.kind === "redis" && e.target.checked ? { query: JSON.stringify(["TYPE", o.name]) } : {} });
-  } }), /* @__PURE__ */ React51.createElement("span", { style: { minWidth: 0 } }, o.schemaName ? o.schemaName + "." : "", o.name, o.comment && /* @__PURE__ */ React51.createElement("small", { className: "wb-muted", style: { display: "block" } }, o.comment)))) : /* @__PURE__ */ React51.createElement("p", { className: "wb-tiny wb-muted" }, "连接后读取对象，勾选需要的表、索引或Key。")), form.kind === "redis" && v.cursor && v.cursor !== "0" && /* @__PURE__ */ React51.createElement(Btn, { disabled: !!busy, onClick: () => run("扫描下一页", async () => {
+  } }), /* @__PURE__ */ React54.createElement("span", { style: { minWidth: 0 } }, o.schemaName ? o.schemaName + "." : "", o.name, o.comment && /* @__PURE__ */ React54.createElement("small", { className: "wb-muted", style: { display: "block" } }, o.comment)))) : /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny wb-muted" }, "连接后读取对象，勾选需要的表、索引或Key。")), form.kind === "redis" && v.cursor && v.cursor !== "0" && /* @__PURE__ */ React54.createElement(Btn, { disabled: !!busy, onClick: () => run("扫描下一页", async () => {
     const r = await rpc("dataObjects", { id: v.id, cursor: v.cursor, pattern: v.pattern || "*" });
     if (live.current) patch2({ objects: r.objects, cursor: r.cursor });
     return { note: "已扫描下一页，空页也可继续" };
-  }) }, "扫描下一页"), /* @__PURE__ */ React51.createElement(Btn, { disabled: !!busy || !selected.length, onClick: () => run("刷新结构", async () => {
+  }) }, "扫描下一页"), /* @__PURE__ */ React54.createElement(Btn, { disabled: !!busy || !selected.length, onClick: () => run("刷新结构", async () => {
     const r = await rpc("dataStructure", { id: v.id, selected });
     if (live.current) patch2({ structure: r });
     return { note: "结构已更新" };
-  }) }, "读取 / 刷新所选结构"), /* @__PURE__ */ React51.createElement(Btn, { disabled: !!busy || !selected.length, onClick: () => {
+  }) }, "读取 / 刷新所选结构"), /* @__PURE__ */ React54.createElement(Btn, { disabled: !!busy || !selected.length, onClick: () => {
     const o = selected[0];
     const quote = (name2) => form.kind === "mysql" ? "`" + name2.replace(/`/g, "``") + "`" : '"' + name2.replace(/"/g, '""') + '"';
     const query = form.kind === "redis" ? JSON.stringify(["TYPE", o.name]) : form.kind === "es" ? initialQuery.es : "SELECT * FROM " + (o.schemaName ? quote(o.schemaName) + "." : "") + quote(o.name) + " LIMIT 100";
     patch2({ query, generated: null, result: null });
-  } }, "生成所选对象查询"))), /* @__PURE__ */ React51.createElement("div", { className: "wb-data-main" }, busy && /* @__PURE__ */ React51.createElement("span", { role: "status", className: "wb-tiny" }, busy, "中…"), /* @__PURE__ */ React51.createElement("div", { className: "wb-data-query-head" }, /* @__PURE__ */ React51.createElement("strong", null, form.kind === "es" ? "DSL 查询" : form.kind === "redis" ? "Redis 命令" : "SQL 查询", /* @__PURE__ */ React51.createElement("span", { className: "wb-tiny wb-muted" }, " · ", form.database || form.name || "未选择连接")), "        ", /* @__PURE__ */ React51.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React51.createElement(Btn, { icon: "sparkles", disabled: !!busy, onClick: () => {
+  } }, "生成所选对象查询"))), /* @__PURE__ */ React54.createElement("div", { className: "wb-data-main" }, busy && /* @__PURE__ */ React54.createElement("span", { role: "status", className: "wb-tiny" }, busy, "中…"), /* @__PURE__ */ React54.createElement("div", { className: "wb-data-query-head" }, /* @__PURE__ */ React54.createElement("strong", null, form.kind === "es" ? "DSL 查询" : form.kind === "redis" ? "Redis 命令" : "SQL 查询", /* @__PURE__ */ React54.createElement("span", { className: "wb-tiny wb-muted" }, " · ", form.database || form.name || "未选择连接")), "        ", /* @__PURE__ */ React54.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React54.createElement(Btn, { icon: "sparkles", disabled: !!busy, onClick: () => {
     setError("");
     setAiOpen(true);
-  } }, "AI 生成"), /* @__PURE__ */ React51.createElement(Btn, { kind: "primary", disabled: !!busy || !v.id || !v.query || v.generated?.mode === "script", onClick: executeQuery, title: "执行（⌘ / Ctrl + Enter）" }, "执行只读查询"), /* @__PURE__ */ React51.createElement(toolCopyButton, { text: v.query, label: ["mysql", "postgres"].includes(form.kind) ? "复制 SQL" : "复制脚本" }))), !v.id && /* @__PURE__ */ React51.createElement("div", { className: "wb-data-empty" }, /* @__PURE__ */ React51.createElement("strong", null, "选择或新建一个连接"), /* @__PURE__ */ React51.createElement(Btn, { onClick: () => setConfigOpen(true) }, "配置数据库")), "        ", v.generated?.explanation && /* @__PURE__ */ React51.createElement("p", { className: "wb-tiny", style: { whiteSpace: "pre-wrap" } }, v.generated.explanation), /* @__PURE__ */ React51.createElement(Field, { label: form.kind === "redis" ? "读取命令（JSON字符串数组）" : form.kind === "es" ? "查询 DSL" : "SQL 编辑器" }, /* @__PURE__ */ React51.createElement(Textarea, { "aria-label": "数据查询编辑器", placeholder: form.kind === "es" ? "粘贴 DSL，或使用右上角 AI 生成" : form.kind === "redis" ? "粘贴 Redis 命令，或使用右上角 AI 生成" : "粘贴 SQL，或使用右上角 AI 生成", onKeyDown: (e) => {
+  } }, "AI 生成"), /* @__PURE__ */ React54.createElement(Btn, { kind: "primary", disabled: !!busy || !v.id || !v.query || v.generated?.mode === "script", onClick: executeQuery, title: "执行（⌘ / Ctrl + Enter）" }, "执行只读查询"), /* @__PURE__ */ React54.createElement(toolCopyButton, { text: v.query, label: ["mysql", "postgres"].includes(form.kind) ? "复制 SQL" : "复制脚本" }))), !v.id && /* @__PURE__ */ React54.createElement("div", { className: "wb-data-empty" }, /* @__PURE__ */ React54.createElement("strong", null, "选择或新建一个连接"), /* @__PURE__ */ React54.createElement(Btn, { onClick: () => setConfigOpen(true) }, "配置数据库")), "        ", v.generated?.explanation && /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny", style: { whiteSpace: "pre-wrap" } }, v.generated.explanation), /* @__PURE__ */ React54.createElement(Field, { label: form.kind === "redis" ? "读取命令（JSON字符串数组）" : form.kind === "es" ? "查询 DSL" : "SQL 编辑器" }, /* @__PURE__ */ React54.createElement(Textarea, { "aria-label": "数据查询编辑器", placeholder: form.kind === "es" ? "粘贴 DSL，或使用右上角 AI 生成" : form.kind === "redis" ? "粘贴 Redis 命令，或使用右上角 AI 生成" : "粘贴 SQL，或使用右上角 AI 生成", onKeyDown: (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
       if (!busy && v.id && v.query && v.generated?.mode !== "script") void executeQuery();
     }
-  }, rows: 8, spellCheck: false, style: { fontFamily: "monospace" }, value: v.query || "", disabled: !!busy, onChange: (e) => patch2({ query: e.target.value, result: null }) })), v.generated?.rollback && /* @__PURE__ */ React51.createElement("details", null, /* @__PURE__ */ React51.createElement("summary", null, "回滚建议（仅预览）"), /* @__PURE__ */ React51.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, v.generated.rollback), /* @__PURE__ */ React51.createElement(toolCopyButton, { text: v.generated.rollback })), error2 && !configOpen && !aiOpen && /* @__PURE__ */ React51.createElement("p", { role: "alert", className: "wb-tiny", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", color: "var(--dsw-alias-state-error-primary)" } }, error2), note && /* @__PURE__ */ React51.createElement("p", { role: "status", className: "wb-tiny" }, note), result && /* @__PURE__ */ React51.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React51.createElement("strong", { className: "wb-tiny" }, "结果 · ", result.durationMs, " ms ", result.rows ? " · " + result.rows.length + " 行" : "", result.truncated ? " · 已截断（最多200行/1MB）" : ""), /* @__PURE__ */ React51.createElement(toolCopyButton, { text: JSON.stringify(result.rows || result.result, null, 2), label: "复制结果" }), result.rows ? /* @__PURE__ */ React51.createElement("div", { role: "region", "aria-label": "数据库查询结果，可横向滚动", tabIndex: 0, style: { overflow: "auto", maxHeight: 400, maxWidth: "100%" } }, /* @__PURE__ */ React51.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React51.createElement("thead", null, /* @__PURE__ */ React51.createElement("tr", null, result.columns.map((c) => /* @__PURE__ */ React51.createElement("th", { key: c }, c)))), /* @__PURE__ */ React51.createElement("tbody", null, result.rows.map((row, i) => /* @__PURE__ */ React51.createElement("tr", { key: i }, result.columns.map((c) => /* @__PURE__ */ React51.createElement("td", { key: c, style: { maxWidth: 300, whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, row[c] === null ? "NULL" : typeof row[c] === "object" ? JSON.stringify(row[c]) : String(row[c] ?? ""))))))), !result.rows.length && /* @__PURE__ */ React51.createElement("p", { className: "wb-tiny" }, "查询成功，无返回记录")) : /* @__PURE__ */ React51.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 400, overflow: "auto" } }, JSON.stringify(result.result, null, 2))), !result && /* @__PURE__ */ React51.createElement("div", { className: "wb-data-empty" }, /* @__PURE__ */ React51.createElement(Icon, { name: "database", size: 22 }), /* @__PURE__ */ React51.createElement("strong", null, "查询结果"), /* @__PURE__ */ React51.createElement("span", null, "执行只读查询后在此查看结果")), v.structure && /* @__PURE__ */ React51.createElement("details", { className: "wb-data-structure", open: true }, /* @__PURE__ */ React51.createElement("summary", null, "所选结构 · ", v.structure.at), v.structure.tables.map((table2) => /* @__PURE__ */ React51.createElement("section", { key: objectKey(table2) }, /* @__PURE__ */ React51.createElement("h4", null, table2.schemaName ? table2.schemaName + "." : "", table2.name), table2.columns ? /* @__PURE__ */ React51.createElement("div", { className: "wb-data-table-scroll" }, /* @__PURE__ */ React51.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React51.createElement("thead", null, /* @__PURE__ */ React51.createElement("tr", null, /* @__PURE__ */ React51.createElement("th", null, "字段"), /* @__PURE__ */ React51.createElement("th", null, "类型"), /* @__PURE__ */ React51.createElement("th", null, "约束"), /* @__PURE__ */ React51.createElement("th", null, "注释"))), /* @__PURE__ */ React51.createElement("tbody", null, table2.columns.map((col) => /* @__PURE__ */ React51.createElement("tr", { key: col.name }, /* @__PURE__ */ React51.createElement("td", null, col.name), /* @__PURE__ */ React51.createElement("td", null, col.type), /* @__PURE__ */ React51.createElement("td", null, col.notNull ? "NOT NULL" : ""), /* @__PURE__ */ React51.createElement("td", null, col.comment || "—")))))) : null, /* @__PURE__ */ React51.createElement("details", null, /* @__PURE__ */ React51.createElement("summary", null, table2.definition ? "建表语句" : "原始结构"), /* @__PURE__ */ React51.createElement("pre", { className: "wb-code" }, table2.definition || JSON.stringify(table2, null, 2)))))), /* @__PURE__ */ React51.createElement(Modal, { open: aiOpen, title: "AI 生成", sub: "描述需求，生成后直接填入查询编辑器", onClose: () => setAiOpen(false) }, /* @__PURE__ */ React51.createElement("div", { className: "wb-stack", style: { paddingTop: 10, minWidth: 0 } }, !v.id || !selected.length ? /* @__PURE__ */ React51.createElement("p", { className: "wb-tiny wb-muted" }, "请先选择连接，并勾选需要的表、索引或 Key。") : /* @__PURE__ */ React51.createElement("p", { className: "wb-tiny wb-muted" }, "基于所选 ", selected.length, " 个对象生成"), /* @__PURE__ */ React51.createElement(Field, { label: "描述你要完成的查询或脚本" }, /* @__PURE__ */ React51.createElement(Textarea, { "aria-label": "数据库AI需求", autoFocus: true, rows: 4, value: v.instruction || "", disabled: !!busy, placeholder: "例如统计最近七天每天的订单金额", onChange: (e) => patch2({ instruction: e.target.value }) })), /* @__PURE__ */ React51.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React51.createElement("select", { "aria-label": "数据库生成模式", className: "wb-select", disabled: !!busy, value: v.mode || "query", onChange: (e) => patch2({ mode: e.target.value }) }, /* @__PURE__ */ React51.createElement("option", { value: "query" }, "只读查询"), ["mysql", "postgres"].includes(form.kind) && /* @__PURE__ */ React51.createElement("option", { value: "script" }, "变更脚本（仅预览）")), /* @__PURE__ */ React51.createElement(Btn, { kind: "primary", disabled: !!busy || !v.id || !selected.length || !String(v.instruction || "").trim(), onClick: () => run("AI生成", async () => {
+  }, rows: 8, spellCheck: false, style: { fontFamily: "monospace" }, value: v.query || "", disabled: !!busy, onChange: (e) => patch2({ query: e.target.value, result: null }) })), v.generated?.rollback && /* @__PURE__ */ React54.createElement("details", null, /* @__PURE__ */ React54.createElement("summary", null, "回滚建议（仅预览）"), /* @__PURE__ */ React54.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, v.generated.rollback), /* @__PURE__ */ React54.createElement(toolCopyButton, { text: v.generated.rollback })), error2 && !configOpen && !aiOpen && /* @__PURE__ */ React54.createElement("p", { role: "alert", className: "wb-tiny", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", color: "var(--dsw-alias-state-error-primary)" } }, error2), note && /* @__PURE__ */ React54.createElement("p", { role: "status", className: "wb-tiny" }, note), result && /* @__PURE__ */ React54.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React54.createElement("strong", { className: "wb-tiny" }, "结果 · ", result.durationMs, " ms ", result.rows ? " · " + result.rows.length + " 行" : "", result.truncated ? " · 已截断（最多200行/1MB）" : ""), /* @__PURE__ */ React54.createElement(toolCopyButton, { text: JSON.stringify(result.rows || result.result, null, 2), label: "复制结果" }), result.rows ? /* @__PURE__ */ React54.createElement("div", { role: "region", "aria-label": "数据库查询结果，可横向滚动", tabIndex: 0, style: { overflow: "auto", maxHeight: 400, maxWidth: "100%" } }, /* @__PURE__ */ React54.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React54.createElement("thead", null, /* @__PURE__ */ React54.createElement("tr", null, result.columns.map((c) => /* @__PURE__ */ React54.createElement("th", { key: c }, c)))), /* @__PURE__ */ React54.createElement("tbody", null, result.rows.map((row, i) => /* @__PURE__ */ React54.createElement("tr", { key: i }, result.columns.map((c) => /* @__PURE__ */ React54.createElement("td", { key: c, style: { maxWidth: 300, whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, row[c] === null ? "NULL" : typeof row[c] === "object" ? JSON.stringify(row[c]) : String(row[c] ?? ""))))))), !result.rows.length && /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny" }, "查询成功，无返回记录")) : /* @__PURE__ */ React54.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 400, overflow: "auto" } }, JSON.stringify(result.result, null, 2))), !result && /* @__PURE__ */ React54.createElement("div", { className: "wb-data-empty" }, /* @__PURE__ */ React54.createElement(Icon, { name: "database", size: 22 }), /* @__PURE__ */ React54.createElement("strong", null, "查询结果"), /* @__PURE__ */ React54.createElement("span", null, "执行只读查询后在此查看结果")), v.structure && /* @__PURE__ */ React54.createElement("details", { className: "wb-data-structure", open: true }, /* @__PURE__ */ React54.createElement("summary", null, "所选结构 · ", v.structure.at), v.structure.tables.map((table2) => /* @__PURE__ */ React54.createElement("section", { key: objectKey(table2) }, /* @__PURE__ */ React54.createElement("h4", null, table2.schemaName ? table2.schemaName + "." : "", table2.name), table2.columns ? /* @__PURE__ */ React54.createElement("div", { className: "wb-data-table-scroll" }, /* @__PURE__ */ React54.createElement("table", { className: "wb-table" }, /* @__PURE__ */ React54.createElement("thead", null, /* @__PURE__ */ React54.createElement("tr", null, /* @__PURE__ */ React54.createElement("th", null, "字段"), /* @__PURE__ */ React54.createElement("th", null, "类型"), /* @__PURE__ */ React54.createElement("th", null, "约束"), /* @__PURE__ */ React54.createElement("th", null, "注释"))), /* @__PURE__ */ React54.createElement("tbody", null, table2.columns.map((col) => /* @__PURE__ */ React54.createElement("tr", { key: col.name }, /* @__PURE__ */ React54.createElement("td", null, col.name), /* @__PURE__ */ React54.createElement("td", null, col.type), /* @__PURE__ */ React54.createElement("td", null, col.notNull ? "NOT NULL" : ""), /* @__PURE__ */ React54.createElement("td", null, col.comment || "—")))))) : null, /* @__PURE__ */ React54.createElement("details", null, /* @__PURE__ */ React54.createElement("summary", null, table2.definition ? "建表语句" : "原始结构"), /* @__PURE__ */ React54.createElement("pre", { className: "wb-code" }, table2.definition || JSON.stringify(table2, null, 2)))))), /* @__PURE__ */ React54.createElement(Modal, { open: aiOpen, title: "AI 生成", sub: "描述需求，生成后直接填入查询编辑器", onClose: () => setAiOpen(false) }, /* @__PURE__ */ React54.createElement("div", { className: "wb-stack", style: { paddingTop: 10, minWidth: 0 } }, !v.id || !selected.length ? /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny wb-muted" }, "请先选择连接，并勾选需要的表、索引或 Key。") : /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny wb-muted" }, "基于所选 ", selected.length, " 个对象生成"), /* @__PURE__ */ React54.createElement(Field, { label: "描述你要完成的查询或脚本" }, /* @__PURE__ */ React54.createElement(Textarea, { "aria-label": "数据库AI需求", autoFocus: true, rows: 4, value: v.instruction || "", disabled: !!busy, placeholder: "例如统计最近七天每天的订单金额", onChange: (e) => patch2({ instruction: e.target.value }) })), /* @__PURE__ */ React54.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React54.createElement("select", { "aria-label": "数据库生成模式", className: "wb-select", disabled: !!busy, value: v.mode || "query", onChange: (e) => patch2({ mode: e.target.value }) }, /* @__PURE__ */ React54.createElement("option", { value: "query" }, "只读查询"), ["mysql", "postgres"].includes(form.kind) && /* @__PURE__ */ React54.createElement("option", { value: "script" }, "变更脚本（仅预览）")), /* @__PURE__ */ React54.createElement(Btn, { kind: "primary", disabled: !!busy || !v.id || !selected.length || !String(v.instruction || "").trim(), onClick: () => run("AI生成", async () => {
     const r = await rpc("dataGenerate", { id: v.id, selected, instruction: v.instruction, mode: v.mode || "query" });
     if (live.current) {
       patch2({ query: r.query, generated: { ...r, selected }, result: null });
       setAiOpen(false);
     }
     return { note: "已填入编辑器，可复制或检查后执行" };
-  }) }, busy === "AI生成" ? "生成中…" : "生成并填入")), error2 && /* @__PURE__ */ React51.createElement("p", { role: "alert", className: "wb-tiny", style: { color: "var(--dsw-alias-state-error-primary)", whiteSpace: "pre-wrap" } }, error2), /* @__PURE__ */ React51.createElement("p", { className: "wb-tiny wb-muted", title: "生成前刷新所选结构，仅发送结构与需求，不发送连接密码或业务记录。" }, "使用宿主模型，生成后由你手动执行。")))), "        ", /* @__PURE__ */ React51.createElement(Modal, { open: configOpen, title: v.id ? "连接配置" : "新建连接", sub: "密码仅在本次宿主进程内保留", onClose: () => setConfigOpen(false) }, /* @__PURE__ */ React51.createElement("div", { className: "wb-stack", style: { paddingTop: 10 } }, error2 && /* @__PURE__ */ React51.createElement("p", { role: "alert", className: "wb-tiny" }, error2), /* @__PURE__ */ React51.createElement("div", { className: "wb-split" }, /* @__PURE__ */ React51.createElement(Field, { label: "连接名称" }, /* @__PURE__ */ React51.createElement(Input, { "aria-label": "连接名称", value: form.name, disabled: !!busy, onChange: (e) => edit("name", e.target.value) })), /* @__PURE__ */ React51.createElement("label", { className: "wb-label" }, "类型", /* @__PURE__ */ React51.createElement("select", { "aria-label": "数据库类型", className: "wb-select", value: form.kind, disabled: !!busy || !!v.id, onChange: (e) => patch2({ id: v.id ?? "", form: { ...defaults, kind: e.target.value, port: { mysql: 3306, postgres: 5432, es: 9200, redis: 6379 }[e.target.value] }, query: initialQuery[e.target.value] }) }, ["mysql", "postgres", "es", "redis"].map((k) => /* @__PURE__ */ React51.createElement("option", { key: k, value: k }, k))))), form.kind === "es" ? /* @__PURE__ */ React51.createElement(Field, { label: "ES URL" }, /* @__PURE__ */ React51.createElement(Input, { "aria-label": "ES URL", value: form.url, disabled: !!busy, onChange: (e) => edit("url", e.target.value) })) : /* @__PURE__ */ React51.createElement("div", { className: "wb-split" }, /* @__PURE__ */ React51.createElement(Field, { label: "主机" }, /* @__PURE__ */ React51.createElement(Input, { "aria-label": "数据库主机", value: form.host, disabled: !!busy, onChange: (e) => edit("host", e.target.value) })), /* @__PURE__ */ React51.createElement(Field, { label: "端口" }, /* @__PURE__ */ React51.createElement(Input, { "aria-label": "数据库端口", type: "number", value: form.port, disabled: !!busy, onChange: (e) => edit("port", e.target.value) }))), form.kind !== "es" && /* @__PURE__ */ React51.createElement(Field, { label: form.kind === "redis" ? "Redis DB（默认0）" : "数据库名称" }, /* @__PURE__ */ React51.createElement(Input, { "aria-label": "数据库名称", value: form.database, disabled: !!busy, onChange: (e) => edit("database", e.target.value) })), /* @__PURE__ */ React51.createElement("div", { className: "wb-split" }, /* @__PURE__ */ React51.createElement(Field, { label: "用户名" }, /* @__PURE__ */ React51.createElement(Input, { "aria-label": "数据库用户名", autoComplete: "off", value: form.username, disabled: !!busy, onChange: (e) => edit("username", e.target.value) })), /* @__PURE__ */ React51.createElement(Field, { label: "密码" }, /* @__PURE__ */ React51.createElement(Input, { "aria-label": "数据库密码", type: "password", autoComplete: "new-password", value: form.password, disabled: !!busy, placeholder: needsConnection ? "输入密码" : "留空沿用当前内存密码", onChange: (e) => edit("password", e.target.value) }))), form.kind !== "es" && /* @__PURE__ */ React51.createElement(React51.Fragment, null, /* @__PURE__ */ React51.createElement("label", { className: "wb-label" }, /* @__PURE__ */ React51.createElement("input", { type: "checkbox", checked: form.tls, disabled: !!busy, onChange: (e) => edit("tls", e.target.checked) }), " 使用 TLS（校验证书）"), form.tls && /* @__PURE__ */ React51.createElement(Field, { label: "CA证书（PEM，可选）" }, /* @__PURE__ */ React51.createElement(Textarea, { "aria-label": "数据库CA证书", rows: 3, value: form.ca, disabled: !!busy, onChange: (e) => edit("ca", e.target.value) }))), /* @__PURE__ */ React51.createElement(Btn, { disabled: !!busy, onClick: () => run("保存", async () => {
+  }) }, busy === "AI生成" ? "生成中…" : "生成并填入")), error2 && /* @__PURE__ */ React54.createElement("p", { role: "alert", className: "wb-tiny", style: { color: "var(--dsw-alias-state-error-primary)", whiteSpace: "pre-wrap" } }, error2), /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny wb-muted", title: "生成前刷新所选结构，仅发送结构与需求，不发送连接密码或业务记录。" }, "使用宿主模型，生成后由你手动执行。")))), "        ", /* @__PURE__ */ React54.createElement(Modal, { open: configOpen, title: v.id ? "连接配置" : "新建连接", sub: "密码仅在本次宿主进程内保留", onClose: () => setConfigOpen(false) }, /* @__PURE__ */ React54.createElement("div", { className: "wb-stack", style: { paddingTop: 10 } }, error2 && /* @__PURE__ */ React54.createElement("p", { role: "alert", className: "wb-tiny" }, error2), /* @__PURE__ */ React54.createElement("div", { className: "wb-split" }, /* @__PURE__ */ React54.createElement(Field, { label: "连接名称" }, /* @__PURE__ */ React54.createElement(Input, { "aria-label": "连接名称", value: form.name, disabled: !!busy, onChange: (e) => edit("name", e.target.value) })), /* @__PURE__ */ React54.createElement("label", { className: "wb-label" }, "类型", /* @__PURE__ */ React54.createElement("select", { "aria-label": "数据库类型", className: "wb-select", value: form.kind, disabled: !!busy || !!v.id, onChange: (e) => patch2({ id: v.id ?? "", form: { ...defaults, kind: e.target.value, port: { mysql: 3306, postgres: 5432, es: 9200, redis: 6379 }[e.target.value] }, query: initialQuery[e.target.value] }) }, ["mysql", "postgres", "es", "redis"].map((k) => /* @__PURE__ */ React54.createElement("option", { key: k, value: k }, k))))), form.kind === "es" ? /* @__PURE__ */ React54.createElement(Field, { label: "ES URL" }, /* @__PURE__ */ React54.createElement(Input, { "aria-label": "ES URL", value: form.url, disabled: !!busy, onChange: (e) => edit("url", e.target.value) })) : /* @__PURE__ */ React54.createElement("div", { className: "wb-split" }, /* @__PURE__ */ React54.createElement(Field, { label: "主机" }, /* @__PURE__ */ React54.createElement(Input, { "aria-label": "数据库主机", value: form.host, disabled: !!busy, onChange: (e) => edit("host", e.target.value) })), /* @__PURE__ */ React54.createElement(Field, { label: "端口" }, /* @__PURE__ */ React54.createElement(Input, { "aria-label": "数据库端口", type: "number", value: form.port, disabled: !!busy, onChange: (e) => edit("port", e.target.value) }))), form.kind !== "es" && /* @__PURE__ */ React54.createElement(Field, { label: form.kind === "redis" ? "Redis DB（默认0）" : "数据库名称" }, /* @__PURE__ */ React54.createElement(Input, { "aria-label": "数据库名称", value: form.database, disabled: !!busy, onChange: (e) => edit("database", e.target.value) })), /* @__PURE__ */ React54.createElement("div", { className: "wb-split" }, /* @__PURE__ */ React54.createElement(Field, { label: "用户名" }, /* @__PURE__ */ React54.createElement(Input, { "aria-label": "数据库用户名", autoComplete: "off", value: form.username, disabled: !!busy, onChange: (e) => edit("username", e.target.value) })), /* @__PURE__ */ React54.createElement(Field, { label: "密码" }, /* @__PURE__ */ React54.createElement(Input, { "aria-label": "数据库密码", type: "password", autoComplete: "new-password", value: form.password, disabled: !!busy, placeholder: needsConnection ? "输入密码" : "留空沿用当前内存密码", onChange: (e) => edit("password", e.target.value) }))), form.kind !== "es" && /* @__PURE__ */ React54.createElement(React54.Fragment, null, /* @__PURE__ */ React54.createElement("label", { className: "wb-label" }, /* @__PURE__ */ React54.createElement("input", { type: "checkbox", checked: form.tls, disabled: !!busy, onChange: (e) => edit("tls", e.target.checked) }), " 使用 TLS（校验证书）"), form.tls && /* @__PURE__ */ React54.createElement(Field, { label: "CA证书（PEM，可选）" }, /* @__PURE__ */ React54.createElement(Textarea, { "aria-label": "数据库CA证书", rows: 3, value: form.ca, disabled: !!busy, onChange: (e) => edit("ca", e.target.value) }))), /* @__PURE__ */ React54.createElement(Btn, { disabled: !!busy, onClick: () => run("保存", async () => {
     const response = await rpc("dataSave", { ...form, ...v.id ? { id: v.id } : {}, password: form.password || void 0 });
     if (live.current) patch2({ id: response.config.id, form: { ...response.config, password: "" }, objects: [], selected: [], structure: null, generated: null, result: null, query: v.query || initialQuery[form.kind] });
     await refresh();
@@ -15770,28 +16145,28 @@ function exportCurl(value) {
 }
 
 // src/client/features/toolbox/tools/DeveloperExtras.tsx
-var React52 = __toESM(require("react"), 1);
+var React55 = __toESM(require("react"), 1);
 function TypeGenerator({ value: v, patch: patch2 }) {
-  return /* @__PURE__ */ React52.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React52.createElement(Field, { label: "JSON 示例" }, /* @__PURE__ */ React52.createElement(Textarea, { "aria-label": "类型生成 JSON", rows: 10, value: v.input || "", onChange: (e) => patch2({ input: e.target.value }) })), /* @__PURE__ */ React52.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React52.createElement(Btn, { onClick: () => {
+  return /* @__PURE__ */ React55.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React55.createElement(Field, { label: "JSON 示例" }, /* @__PURE__ */ React55.createElement(Textarea, { "aria-label": "类型生成 JSON", rows: 10, value: v.input || "", onChange: (e) => patch2({ input: e.target.value }) })), /* @__PURE__ */ React55.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React55.createElement(Btn, { onClick: () => {
     try {
       patch2({ output: "export type Root = " + jsonType(JSON.parse(v.input)) + ";", error: "" });
     } catch (e) {
       patch2({ output: "", error: e.message });
     }
-  } }, "生成 TypeScript"), /* @__PURE__ */ React52.createElement(toolCopyButton, { text: v.output })), /* @__PURE__ */ React52.createElement("p", { className: "wb-tiny wb-muted" }, "根据当前样例推断类型；空数组为 unknown[]，字段可选性需根据实际接口补充。"), /* @__PURE__ */ React52.createElement(toolErrorBlock, { text: v.error }), v.output && /* @__PURE__ */ React52.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, v.output));
+  } }, "生成 TypeScript"), /* @__PURE__ */ React55.createElement(toolCopyButton, { text: v.output })), /* @__PURE__ */ React55.createElement("p", { className: "wb-tiny wb-muted" }, "根据当前样例推断类型；空数组为 unknown[]，字段可选性需根据实际接口补充。"), /* @__PURE__ */ React55.createElement(toolErrorBlock, { text: v.error }), v.output && /* @__PURE__ */ React55.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, v.output));
 }
 function LogAnalyzer({ value: v, patch: patch2 }) {
   const rows = analyzeLog(v.input || "", v.level || "all", v.query || "");
-  return /* @__PURE__ */ React52.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React52.createElement(Field, { label: "日志或异常堆栈" }, /* @__PURE__ */ React52.createElement(Textarea, { "aria-label": "日志输入", rows: 10, value: v.input || "", onChange: (e) => patch2({ input: e.target.value }) })), /* @__PURE__ */ React52.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React52.createElement("select", { "aria-label": "日志级别", className: "wb-select", value: v.level || "all", onChange: (e) => patch2({ level: e.target.value }) }, /* @__PURE__ */ React52.createElement("option", { value: "all" }, "全部级别"), /* @__PURE__ */ React52.createElement("option", { value: "error" }, "ERROR / 异常"), /* @__PURE__ */ React52.createElement("option", { value: "warn" }, "WARN"), /* @__PURE__ */ React52.createElement("option", { value: "info" }, "INFO")), /* @__PURE__ */ React52.createElement(Input, { "aria-label": "日志关键词", placeholder: "筛选关键词", value: v.query || "", onChange: (e) => patch2({ query: e.target.value }) }), /* @__PURE__ */ React52.createElement(toolCopyButton, { text: rows.map((r) => r.text).join("\n") })), /* @__PURE__ */ React52.createElement("p", { className: "wb-tiny wb-muted" }, "匹配 ", v.input ? rows.length : 0, " 行 · 保留匹配日志的堆栈续行 · JSON 日志自动展开"), v.input && /* @__PURE__ */ React52.createElement("pre", { className: "wb-code", style: { maxHeight: 420, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, rows.map((r) => `${r.line}  ${r.text}`).join("\n") || "没有匹配日志"));
+  return /* @__PURE__ */ React55.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React55.createElement(Field, { label: "日志或异常堆栈" }, /* @__PURE__ */ React55.createElement(Textarea, { "aria-label": "日志输入", rows: 10, value: v.input || "", onChange: (e) => patch2({ input: e.target.value }) })), /* @__PURE__ */ React55.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React55.createElement("select", { "aria-label": "日志级别", className: "wb-select", value: v.level || "all", onChange: (e) => patch2({ level: e.target.value }) }, /* @__PURE__ */ React55.createElement("option", { value: "all" }, "全部级别"), /* @__PURE__ */ React55.createElement("option", { value: "error" }, "ERROR / 异常"), /* @__PURE__ */ React55.createElement("option", { value: "warn" }, "WARN"), /* @__PURE__ */ React55.createElement("option", { value: "info" }, "INFO")), /* @__PURE__ */ React55.createElement(Input, { "aria-label": "日志关键词", placeholder: "筛选关键词", value: v.query || "", onChange: (e) => patch2({ query: e.target.value }) }), /* @__PURE__ */ React55.createElement(toolCopyButton, { text: rows.map((r) => r.text).join("\n") })), /* @__PURE__ */ React55.createElement("p", { className: "wb-tiny wb-muted" }, "匹配 ", v.input ? rows.length : 0, " 行 · 保留匹配日志的堆栈续行 · JSON 日志自动展开"), v.input && /* @__PURE__ */ React55.createElement("pre", { className: "wb-code", style: { maxHeight: 420, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, rows.map((r) => `${r.line}  ${r.text}`).join("\n") || "没有匹配日志"));
 }
 function JsonTree({ value, path = "$", depth = 0 }) {
-  if (depth > 30) return /* @__PURE__ */ React52.createElement("span", null, "层级超过 30，请缩小内容范围");
+  if (depth > 30) return /* @__PURE__ */ React55.createElement("span", null, "层级超过 30，请缩小内容范围");
   const object = value !== null && typeof value === "object";
-  return /* @__PURE__ */ React52.createElement("div", { style: { paddingLeft: depth ? 12 : 0, minWidth: 0 } }, object ? /* @__PURE__ */ React52.createElement("details", { open: depth < 2 }, /* @__PURE__ */ React52.createElement("summary", { style: { cursor: "pointer", overflowWrap: "anywhere" } }, path, " · ", Array.isArray(value) ? "数组" : "对象", " (", Object.keys(value).length, ")"), Object.keys(value).slice(0, 300).map((key2) => /* @__PURE__ */ React52.createElement(JsonTree, { key: key2, value: value[key2], path: path + "[" + JSON.stringify(key2) + "]", depth: depth + 1 })), Object.keys(value).length > 300 && /* @__PURE__ */ React52.createElement("span", null, "仅展示前 300 项")) : /* @__PURE__ */ React52.createElement("span", { style: { overflowWrap: "anywhere" } }, path, ": ", JSON.stringify(value)), " ", /* @__PURE__ */ React52.createElement(toolCopyButton, { text: path, label: "复制路径" }));
+  return /* @__PURE__ */ React55.createElement("div", { style: { paddingLeft: depth ? 12 : 0, minWidth: 0 } }, object ? /* @__PURE__ */ React55.createElement("details", { open: depth < 2 }, /* @__PURE__ */ React55.createElement("summary", { style: { cursor: "pointer", overflowWrap: "anywhere" } }, path, " · ", Array.isArray(value) ? "数组" : "对象", " (", Object.keys(value).length, ")"), Object.keys(value).slice(0, 300).map((key2) => /* @__PURE__ */ React55.createElement(JsonTree, { key: key2, value: value[key2], path: path + "[" + JSON.stringify(key2) + "]", depth: depth + 1 })), Object.keys(value).length > 300 && /* @__PURE__ */ React55.createElement("span", null, "仅展示前 300 项")) : /* @__PURE__ */ React55.createElement("span", { style: { overflowWrap: "anywhere" } }, path, ": ", JSON.stringify(value)), " ", /* @__PURE__ */ React55.createElement(toolCopyButton, { text: path, label: "复制路径" }));
 }
 var actions = { json: "解释字段并提出修复建议", diff: "总结差异及可能影响", regex: "根据要求生成 JavaScript 正则", cron: "根据要求生成五段 Cron", sql: "解释 SQL 并提出优化建议", sqlexplain: "解读执行计划并列出验证步骤", logs: "分析异常原因并列出验证步骤", "http-debug": "解释接口响应并提出排查建议" };
 function ToolAI({ id, value, patch: patch2, onApply }) {
-  const busy = React52.useRef(false);
+  const busy = React55.useRef(false);
   const action = actions[id];
   if (!action) return null;
   async function run() {
@@ -15812,7 +16187,7 @@ function ToolAI({ id, value, patch: patch2, onApply }) {
       busy.current = false;
     }
   }
-  return /* @__PURE__ */ React52.createElement("details", { style: { borderTop: "1px solid var(--wb-border-1)", paddingTop: 12 } }, /* @__PURE__ */ React52.createElement("summary", { style: { cursor: "pointer" } }, "AI 辅助 · ", action), /* @__PURE__ */ React52.createElement("div", { className: "wb-stack", style: { paddingTop: 10 } }, /* @__PURE__ */ React52.createElement("p", { className: "wb-tiny wb-muted" }, "点击后将当前材料交给宿主配置的模型，问答沿用宿主助手历史。"), /* @__PURE__ */ React52.createElement(Textarea, { "aria-label": "AI 处理要求", rows: 2, value: value.aiInstruction || "", placeholder: "补充要求，例如每个工作日上午 9 点执行", onChange: (e) => patch2({ aiInstruction: e.target.value }) }), /* @__PURE__ */ React52.createElement(Btn, { disabled: value.aiBusy, onClick: run }, value.aiBusy ? "分析中…" : "交给 AI 处理"), /* @__PURE__ */ React52.createElement(toolErrorBlock, { text: value.aiError }), value.aiOutput && /* @__PURE__ */ React52.createElement(React52.Fragment, null, /* @__PURE__ */ React52.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 400, overflow: "auto" } }, value.aiOutput), /* @__PURE__ */ React52.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React52.createElement(toolCopyButton, { text: value.aiOutput }), ["regex", "cron"].includes(id) && /* @__PURE__ */ React52.createElement(Btn, { onClick: () => {
+  return /* @__PURE__ */ React55.createElement("details", { style: { borderTop: "1px solid var(--wb-border-1)", paddingTop: 12 } }, /* @__PURE__ */ React55.createElement("summary", { style: { cursor: "pointer" } }, "AI 辅助 · ", action), /* @__PURE__ */ React55.createElement("div", { className: "wb-stack", style: { paddingTop: 10 } }, /* @__PURE__ */ React55.createElement("p", { className: "wb-tiny wb-muted" }, "点击后将当前材料交给宿主配置的模型，问答沿用宿主助手历史。"), /* @__PURE__ */ React55.createElement(Textarea, { "aria-label": "AI 处理要求", rows: 2, value: value.aiInstruction || "", placeholder: "补充要求，例如每个工作日上午 9 点执行", onChange: (e) => patch2({ aiInstruction: e.target.value }) }), /* @__PURE__ */ React55.createElement(Btn, { disabled: value.aiBusy, onClick: run }, value.aiBusy ? "分析中…" : "交给 AI 处理"), /* @__PURE__ */ React55.createElement(toolErrorBlock, { text: value.aiError }), value.aiOutput && /* @__PURE__ */ React55.createElement(React55.Fragment, null, /* @__PURE__ */ React55.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", maxHeight: 400, overflow: "auto" } }, value.aiOutput), /* @__PURE__ */ React55.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React55.createElement(toolCopyButton, { text: value.aiOutput }), ["regex", "cron"].includes(id) && /* @__PURE__ */ React55.createElement(Btn, { onClick: () => {
     try {
       const text2 = value.aiOutput.trim().replace(/^```(?:json)?\s*/, "").replace(/\s*```$/, "");
       const data = JSON.parse(text2);
@@ -15827,12 +16202,12 @@ function ToolAI({ id, value, patch: patch2, onApply }) {
 }
 
 // src/client/features/toolbox/tools/pomodoro.ts
-var React53 = __toESM(require("react"), 1);
+var React56 = __toESM(require("react"), 1);
 function ToolPomodoro() {
   const FOCUS = 25 * 60;
-  const [left, setLeft] = React53.useState(FOCUS);
-  const [running, setRunning] = React53.useState(false);
-  React53.useEffect(function() {
+  const [left, setLeft] = React56.useState(FOCUS);
+  const [running, setRunning] = React56.useState(false);
+  React56.useEffect(function() {
     if (!running)
       return void 0;
     const timer = setInterval(function() {
@@ -15872,12 +16247,12 @@ function ToolPomodoro() {
 }
 
 // src/client/features/toolbox/tools/NetworkDebugger.tsx
-var React54 = __toESM(require("react"), 1);
+var React57 = __toESM(require("react"), 1);
 function NetworkDebugger({ value: v, patch: patch2, mode, onTransfer }) {
-  const [busy, setBusy] = React54.useState(false), [error2, setError] = React54.useState("");
-  const live = React54.useRef(true), request = React54.useRef(""), connection = React54.useRef(""), pending = React54.useRef(null);
+  const [busy, setBusy] = React57.useState(false), [error2, setError] = React57.useState("");
+  const live = React57.useRef(true), request = React57.useRef(""), connection = React57.useRef(""), pending = React57.useRef(null);
   const rpc = (method, data) => WB.rpc("workbench/" + method, { request: data });
-  React54.useEffect(() => {
+  React57.useEffect(() => {
     live.current = true;
     return () => {
       live.current = false;
@@ -15917,20 +16292,20 @@ function NetworkDebugger({ value: v, patch: patch2, mode, onTransfer }) {
   const locked = busy || !!connection.current;
   const tools = v.tools || [], selected = tools.find((t) => t.name === v.toolName);
   const formatted = v.result ? JSON.stringify(v.result, null, 2) : "";
-  return /* @__PURE__ */ React54.createElement("div", { className: "wb-network-workspace" }, /* @__PURE__ */ React54.createElement("section", { className: "wb-stack wb-network-request" }, /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny wb-muted" }, "请求由宿主发送到你填写的地址。请求头、正文和响应不写入工作台数据文件；刷新会清空页面输入。", mode === "mcp" ? "支持 Streamable HTTP；工具调用会真实执行服务端工具。" : ""), mode === "http" && /* @__PURE__ */ React54.createElement("details", null, /* @__PURE__ */ React54.createElement("summary", null, "导入 cURL"), /* @__PURE__ */ React54.createElement(Textarea, { "aria-label": "cURL 命令", rows: 4, value: v.curl || "", disabled: busy, placeholder: "curl 'https://example.com/api' -H 'Accept: application/json'", onChange: (e) => patch2({ curl: e.target.value }) }), /* @__PURE__ */ React54.createElement(Btn, { disabled: busy, onClick: () => {
+  return /* @__PURE__ */ React57.createElement("div", { className: "wb-network-workspace" }, /* @__PURE__ */ React57.createElement("section", { className: "wb-stack wb-network-request" }, /* @__PURE__ */ React57.createElement("p", { className: "wb-tiny wb-muted" }, "请求由宿主发送到你填写的地址。请求头、正文和响应不写入工作台数据文件；刷新会清空页面输入。", mode === "mcp" ? "支持 Streamable HTTP；工具调用会真实执行服务端工具。" : ""), mode === "http" && /* @__PURE__ */ React57.createElement("details", null, /* @__PURE__ */ React57.createElement("summary", null, "导入 cURL"), /* @__PURE__ */ React57.createElement(Textarea, { "aria-label": "cURL 命令", rows: 4, value: v.curl || "", disabled: busy, placeholder: "curl 'https://example.com/api' -H 'Accept: application/json'", onChange: (e) => patch2({ curl: e.target.value }) }), /* @__PURE__ */ React57.createElement(Btn, { disabled: busy, onClick: () => {
     try {
       patch2({ ...importCurl(v.curl || ""), result: null });
       setError("");
     } catch (e) {
       setError(e.message);
     }
-  } }, "导入请求（不发送）")), /* @__PURE__ */ React54.createElement(Field, { label: mode === "http" ? "请求地址" : "MCP 服务地址" }, /* @__PURE__ */ React54.createElement(Input, { "aria-label": mode === "http" ? "接口请求地址" : "MCP 服务地址", value: v.url || "", disabled: locked, placeholder: mode === "http" ? "http://localhost:8080/api/health" : "http://localhost:3000/mcp", onChange: (e) => patch2({ url: e.target.value }) })), mode === "http" ? /* @__PURE__ */ React54.createElement("label", { className: "wb-label" }, "HTTP 方法 ", /* @__PURE__ */ React54.createElement("select", { className: "wb-select", "aria-label": "HTTP 方法", value: v.method || "GET", disabled: busy, onChange: (e) => patch2({ method: e.target.value }) }, ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => /* @__PURE__ */ React54.createElement("option", { key: m }, m)))) : /* @__PURE__ */ React54.createElement("label", { className: "wb-label" }, "MCP 协议版本 ", /* @__PURE__ */ React54.createElement("select", { className: "wb-select", "aria-label": "MCP 协议版本", disabled: locked, value: v.version || "2025-11-25", onChange: (e) => patch2({ version: e.target.value }) }, ["2025-11-25", "2025-06-18", "2025-03-26", "2026-07-28"].map((version) => /* @__PURE__ */ React54.createElement("option", { key: version }, version)))), /* @__PURE__ */ React54.createElement(Field, { label: "请求头（JSON）" }, /* @__PURE__ */ React54.createElement(Textarea, { "aria-label": "调试请求头", rows: 3, value: v.headers ?? "{}", disabled: locked, onChange: (e) => patch2({ headers: e.target.value }) })), /* @__PURE__ */ React54.createElement("label", { className: "wb-label" }, "超时（毫秒，1000–60000）", /* @__PURE__ */ React54.createElement(Input, { type: "number", "aria-label": "调试超时", min: 1e3, max: 6e4, disabled: busy, value: v.timeoutMs ?? 3e4, onChange: (e) => patch2({ timeoutMs: e.target.value }) })), mode === "http" && /* @__PURE__ */ React54.createElement(Field, { label: "请求正文" }, /* @__PURE__ */ React54.createElement(Textarea, { "aria-label": "接口请求正文", rows: 5, disabled: busy, value: v.body || "", onChange: (e) => patch2({ body: e.target.value }) })), /* @__PURE__ */ React54.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, mode === "http" && /* @__PURE__ */ React54.createElement(Btn, { disabled: !v.url || busy, onClick: () => {
+  } }, "导入请求（不发送）")), /* @__PURE__ */ React57.createElement(Field, { label: mode === "http" ? "请求地址" : "MCP 服务地址" }, /* @__PURE__ */ React57.createElement(Input, { "aria-label": mode === "http" ? "接口请求地址" : "MCP 服务地址", value: v.url || "", disabled: locked, placeholder: mode === "http" ? "http://localhost:8080/api/health" : "http://localhost:3000/mcp", onChange: (e) => patch2({ url: e.target.value }) })), mode === "http" ? /* @__PURE__ */ React57.createElement("label", { className: "wb-label" }, "HTTP 方法 ", /* @__PURE__ */ React57.createElement("select", { className: "wb-select", "aria-label": "HTTP 方法", value: v.method || "GET", disabled: busy, onChange: (e) => patch2({ method: e.target.value }) }, ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"].map((m) => /* @__PURE__ */ React57.createElement("option", { key: m }, m)))) : /* @__PURE__ */ React57.createElement("label", { className: "wb-label" }, "MCP 协议版本 ", /* @__PURE__ */ React57.createElement("select", { className: "wb-select", "aria-label": "MCP 协议版本", disabled: locked, value: v.version || "2025-11-25", onChange: (e) => patch2({ version: e.target.value }) }, ["2025-11-25", "2025-06-18", "2025-03-26", "2026-07-28"].map((version) => /* @__PURE__ */ React57.createElement("option", { key: version }, version)))), /* @__PURE__ */ React57.createElement(Field, { label: "请求头（JSON）" }, /* @__PURE__ */ React57.createElement(Textarea, { "aria-label": "调试请求头", rows: 3, value: v.headers ?? "{}", disabled: locked, onChange: (e) => patch2({ headers: e.target.value }) })), /* @__PURE__ */ React57.createElement("label", { className: "wb-label" }, "超时（毫秒，1000–60000）", /* @__PURE__ */ React57.createElement(Input, { type: "number", "aria-label": "调试超时", min: 1e3, max: 6e4, disabled: busy, value: v.timeoutMs ?? 3e4, onChange: (e) => patch2({ timeoutMs: e.target.value }) })), mode === "http" && /* @__PURE__ */ React57.createElement(Field, { label: "请求正文" }, /* @__PURE__ */ React57.createElement(Textarea, { "aria-label": "接口请求正文", rows: 5, disabled: busy, value: v.body || "", onChange: (e) => patch2({ body: e.target.value }) })), /* @__PURE__ */ React57.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, mode === "http" && /* @__PURE__ */ React57.createElement(Btn, { disabled: !v.url || busy, onClick: () => {
     try {
       void WB.util.copy(exportCurl(v)).catch((e) => setError(e.message));
     } catch (e) {
       setError(e.message);
     }
-  } }, "复制 cURL"), mode === "http" ? /* @__PURE__ */ React54.createElement(Btn, { kind: "primary", disabled: busy || !v.url, onClick: () => send("httpDebug", { url: v.url, method: v.method || "GET", headers: v.headers, body: v.body }) }, busy ? "请求中…" : "发送请求") : /* @__PURE__ */ React54.createElement(React54.Fragment, null, /* @__PURE__ */ React54.createElement(Btn, { kind: "primary", disabled: locked || !v.url, onClick: () => send("mcpConnect", { url: v.url, headers: v.headers, version: v.version || "2025-11-25" }) }, busy && !connection.current ? "连接中…" : "连接并发现工具"), /* @__PURE__ */ React54.createElement(Btn, { disabled: busy || !connection.current, onClick: async () => {
+  } }, "复制 cURL"), mode === "http" ? /* @__PURE__ */ React57.createElement(Btn, { kind: "primary", disabled: busy || !v.url, onClick: () => send("httpDebug", { url: v.url, method: v.method || "GET", headers: v.headers, body: v.body }) }, busy ? "请求中…" : "发送请求") : /* @__PURE__ */ React57.createElement(React57.Fragment, null, /* @__PURE__ */ React57.createElement(Btn, { kind: "primary", disabled: locked || !v.url, onClick: () => send("mcpConnect", { url: v.url, headers: v.headers, version: v.version || "2025-11-25" }) }, busy && !connection.current ? "连接中…" : "连接并发现工具"), /* @__PURE__ */ React57.createElement(Btn, { disabled: busy || !connection.current, onClick: async () => {
     setBusy(true);
     setError("");
     try {
@@ -15943,17 +16318,17 @@ function NetworkDebugger({ value: v, patch: patch2, mode, onTransfer }) {
     } finally {
       setBusy(false);
     }
-  } }, "断开连接")), busy && /* @__PURE__ */ React54.createElement(Btn, { onClick: () => rpc("debugCancel", { requestId: request.current }).catch((e) => setError(e.message)) }, "停止请求")), mode === "mcp" && connection.current && /* @__PURE__ */ React54.createElement(React54.Fragment, null, /* @__PURE__ */ React54.createElement("label", { className: "wb-label" }, "服务端工具 ", /* @__PURE__ */ React54.createElement("select", { className: "wb-select", "aria-label": "MCP 工具", value: v.toolName || "", disabled: busy, onChange: (e) => patch2({ toolName: e.target.value, arguments: "{}" }) }, !tools.length && /* @__PURE__ */ React54.createElement("option", { value: "" }, "服务端未提供工具"), tools.map((t) => /* @__PURE__ */ React54.createElement("option", { key: t.name, value: t.name }, t.name)))), selected && /* @__PURE__ */ React54.createElement(React54.Fragment, null, /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny" }, selected.description), /* @__PURE__ */ React54.createElement("details", null, /* @__PURE__ */ React54.createElement("summary", null, "工具参数定义"), /* @__PURE__ */ React54.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, JSON.stringify(selected.inputSchema, null, 2)))), /* @__PURE__ */ React54.createElement(Field, { label: "工具参数（JSON 对象）" }, /* @__PURE__ */ React54.createElement(Textarea, { "aria-label": "MCP 工具参数", rows: 5, disabled: busy, value: v.arguments ?? "{}", onChange: (e) => patch2({ arguments: e.target.value }) })), /* @__PURE__ */ React54.createElement(Btn, { kind: "primary", disabled: busy || !selected, onClick: () => send("mcpCall", { connectionId: connection.current, name: v.toolName, arguments: v.arguments || "{}" }) }, "调用所选工具"))), /* @__PURE__ */ React54.createElement("section", { className: "wb-stack wb-network-response" }, /* @__PURE__ */ React54.createElement("strong", null, "响应"), !v.result && !error2 && /* @__PURE__ */ React54.createElement("div", { className: "wb-data-empty" }, "发送请求后在此查看响应"), error2 && /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny", role: "alert", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, error2), mode === "http" && v.result?.text && /* @__PURE__ */ React54.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React54.createElement(Btn, { onClick: () => onTransfer?.("json", v.result.text) }, "响应 → JSON"), /* @__PURE__ */ React54.createElement(Btn, { onClick: () => onTransfer?.("diff", v.result.text) }, "响应 → Diff"), /* @__PURE__ */ React54.createElement(Btn, { onClick: () => onTransfer?.("types", v.result.text) }, "响应 → 类型生成")), v.result && /* @__PURE__ */ React54.createElement(React54.Fragment, null, /* @__PURE__ */ React54.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React54.createElement("strong", { className: "wb-tiny" }, mode === "http" ? "HTTP " + v.result.status : "MCP 返回", " · ", v.result.durationMs, " ms ", v.result.result?.isError ? " · 工具返回错误" : ""), /* @__PURE__ */ React54.createElement(toolCopyButton, { text: formatted })), /* @__PURE__ */ React54.createElement("pre", { className: "wb-code", "aria-label": "调试响应", style: { maxHeight: 480, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, formatted), v.result.truncated && /* @__PURE__ */ React54.createElement("p", { className: "wb-tiny wb-muted" }, "响应超过1MB，展示已截断。"))));
+  } }, "断开连接")), busy && /* @__PURE__ */ React57.createElement(Btn, { onClick: () => rpc("debugCancel", { requestId: request.current }).catch((e) => setError(e.message)) }, "停止请求")), mode === "mcp" && connection.current && /* @__PURE__ */ React57.createElement(React57.Fragment, null, /* @__PURE__ */ React57.createElement("label", { className: "wb-label" }, "服务端工具 ", /* @__PURE__ */ React57.createElement("select", { className: "wb-select", "aria-label": "MCP 工具", value: v.toolName || "", disabled: busy, onChange: (e) => patch2({ toolName: e.target.value, arguments: "{}" }) }, !tools.length && /* @__PURE__ */ React57.createElement("option", { value: "" }, "服务端未提供工具"), tools.map((t) => /* @__PURE__ */ React57.createElement("option", { key: t.name, value: t.name }, t.name)))), selected && /* @__PURE__ */ React57.createElement(React57.Fragment, null, /* @__PURE__ */ React57.createElement("p", { className: "wb-tiny" }, selected.description), /* @__PURE__ */ React57.createElement("details", null, /* @__PURE__ */ React57.createElement("summary", null, "工具参数定义"), /* @__PURE__ */ React57.createElement("pre", { className: "wb-code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, JSON.stringify(selected.inputSchema, null, 2)))), /* @__PURE__ */ React57.createElement(Field, { label: "工具参数（JSON 对象）" }, /* @__PURE__ */ React57.createElement(Textarea, { "aria-label": "MCP 工具参数", rows: 5, disabled: busy, value: v.arguments ?? "{}", onChange: (e) => patch2({ arguments: e.target.value }) })), /* @__PURE__ */ React57.createElement(Btn, { kind: "primary", disabled: busy || !selected, onClick: () => send("mcpCall", { connectionId: connection.current, name: v.toolName, arguments: v.arguments || "{}" }) }, "调用所选工具"))), /* @__PURE__ */ React57.createElement("section", { className: "wb-stack wb-network-response" }, /* @__PURE__ */ React57.createElement("strong", null, "响应"), !v.result && !error2 && /* @__PURE__ */ React57.createElement("div", { className: "wb-data-empty" }, "发送请求后在此查看响应"), error2 && /* @__PURE__ */ React57.createElement("p", { className: "wb-tiny", role: "alert", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, error2), mode === "http" && v.result?.text && /* @__PURE__ */ React57.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React57.createElement(Btn, { onClick: () => onTransfer?.("json", v.result.text) }, "响应 → JSON"), /* @__PURE__ */ React57.createElement(Btn, { onClick: () => onTransfer?.("diff", v.result.text) }, "响应 → Diff"), /* @__PURE__ */ React57.createElement(Btn, { onClick: () => onTransfer?.("types", v.result.text) }, "响应 → 类型生成")), v.result && /* @__PURE__ */ React57.createElement(React57.Fragment, null, /* @__PURE__ */ React57.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React57.createElement("strong", { className: "wb-tiny" }, mode === "http" ? "HTTP " + v.result.status : "MCP 返回", " · ", v.result.durationMs, " ms ", v.result.result?.isError ? " · 工具返回错误" : ""), /* @__PURE__ */ React57.createElement(toolCopyButton, { text: formatted })), /* @__PURE__ */ React57.createElement("pre", { className: "wb-code", "aria-label": "调试响应", style: { maxHeight: 480, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, formatted), v.result.truncated && /* @__PURE__ */ React57.createElement("p", { className: "wb-tiny wb-muted" }, "响应超过1MB，展示已截断。"))));
 }
 function HttpDebugger(props) {
-  return /* @__PURE__ */ React54.createElement(NetworkDebugger, { ...props, mode: "http" });
+  return /* @__PURE__ */ React57.createElement(NetworkDebugger, { ...props, mode: "http" });
 }
 function McpDebugger(props) {
-  return /* @__PURE__ */ React54.createElement(NetworkDebugger, { ...props, mode: "mcp" });
+  return /* @__PURE__ */ React57.createElement(NetworkDebugger, { ...props, mode: "mcp" });
 }
 
 // src/client/features/toolbox/toolbox.ts
-var React55 = __toESM(require("react"), 1);
+var React58 = __toESM(require("react"), 1);
 
 // src/client/features/toolbox/tools/json.ts
 function toolJsonError(error2, text2) {
@@ -17470,14 +17845,14 @@ var toolPanes = {
   sqlexplain: toolSqlExplainPane
 };
 function toolPage() {
-  const [state, setState] = React55.useState(toolInitialState);
-  const [paste, setPaste] = React55.useState(null);
-  const [query, setQuery] = React55.useState("");
-  const [category, setCategory] = React55.useState("常用");
-  const [recent, setRecent] = React55.useState([]);
-  const [pickerOpen, setPickerOpen] = React55.useState(false);
-  const pickerRef = React55.useRef(null), pickerDismissed = React55.useRef(false);
-  React55.useEffect(() => {
+  const [state, setState] = React58.useState(toolInitialState);
+  const [paste, setPaste] = React58.useState(null);
+  const [query, setQuery] = React58.useState("");
+  const [category, setCategory] = React58.useState("常用");
+  const [recent, setRecent] = React58.useState([]);
+  const [pickerOpen, setPickerOpen] = React58.useState(false);
+  const pickerRef = React58.useRef(null), pickerDismissed = React58.useRef(false);
+  React58.useEffect(() => {
     if (!pickerOpen) return;
     const close = (e) => {
       if (!pickerRef.current?.contains(e.target)) setPickerOpen(false);
@@ -17590,11 +17965,11 @@ function toolPage() {
 WB.pages.toolbox = toolPage;
 
 // src/client/features/knowledge/KnowledgeEnginePanel.tsx
-var React56 = __toESM(require("react"), 1);
+var React59 = __toESM(require("react"), 1);
 function KnowledgeEnginePanel({ data, scope }) {
-  const [status, setStatus] = React56.useState(null), [error2, setError] = React56.useState(""), [busy, setBusy] = React56.useState(false), [manage, setManage] = React56.useState(false), [name2, setName] = React56.useState(""), [project, setProject] = React56.useState(""), [space, setSpace] = React56.useState(scope.spaceId || "personal");
-  const active = React56.useRef(true), version = React56.useRef(0);
-  React56.useEffect(() => {
+  const [status2, setStatus] = React59.useState(null), [error2, setError] = React59.useState(""), [busy, setBusy] = React59.useState(false), [manage, setManage] = React59.useState(false), [name2, setName] = React59.useState(""), [project, setProject] = React59.useState(""), [space, setSpace] = React59.useState(scope.spaceId || "personal");
+  const active = React59.useRef(true), version = React59.useRef(0);
+  React59.useEffect(() => {
     active.current = true;
     let timer;
     const generation = ++version.current;
@@ -17640,20 +18015,20 @@ function KnowledgeEnginePanel({ data, scope }) {
       if (active.current) setBusy(false);
     }
   }
-  const downloading = status?.phase === "downloading", indexing = status?.index?.phase === "indexing", progress = downloading ? Math.min(100, Math.round(100 * (status.downloaded || 0) / (status.totalBytes || 1))) : indexing ? Math.round(100 * (status.index.processed || 0) / Math.max(1, status.index.total)) : null;
-  return /* @__PURE__ */ React56.createElement(React56.Fragment, null, /* @__PURE__ */ React56.createElement(Panel, { title: "本地语义检索", style: { marginBottom: 14 }, actions: /* @__PURE__ */ React56.createElement(Btn, { size: "sm", onClick: () => {
+  const downloading = status2?.phase === "downloading", indexing = status2?.index?.phase === "indexing", progress = downloading ? Math.min(100, Math.round(100 * (status2.downloaded || 0) / (status2.totalBytes || 1))) : indexing ? Math.round(100 * (status2.index.processed || 0) / Math.max(1, status2.index.total)) : null;
+  return /* @__PURE__ */ React59.createElement(React59.Fragment, null, /* @__PURE__ */ React59.createElement(Panel, { title: "本地语义检索", style: { marginBottom: 14 }, actions: /* @__PURE__ */ React59.createElement(Btn, { size: "sm", onClick: () => {
     setManage(true);
     setError("");
-  } }, "管理知识空间") }, /* @__PURE__ */ React56.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React56.createElement("span", { className: "wb-tiny" }, status?.enabled ? downloading ? "正在准备模型" : status.installed ? "本地模型已就绪" : "模型尚未准备" : "关键词检索已可用，语义增强按需启用"), /* @__PURE__ */ React56.createElement("span", { className: "wb-spacer" }), status?.enabled ? /* @__PURE__ */ React56.createElement(React56.Fragment, null, /* @__PURE__ */ React56.createElement(Btn, { size: "sm", disabled: busy || !status.installed || indexing, onClick: () => action("index") }, indexing ? "正在建立索引" : "更新当前范围索引"), (status.phase === "error" || !status.installed && !downloading) && /* @__PURE__ */ React56.createElement(Btn, { size: "sm", disabled: busy, onClick: () => action("prepare") }, "准备模型"), /* @__PURE__ */ React56.createElement(Btn, { size: "sm", disabled: busy, onClick: () => action("disable") }, "停用语义增强")) : /* @__PURE__ */ React56.createElement(Btn, { size: "sm", disabled: busy, onClick: () => action("enable") }, status?.installed ? "启用本地语义检索" : "下载并启用（约 47 MB）")), progress !== null && /* @__PURE__ */ React56.createElement("div", { className: "wb-stack", style: { gap: 4, marginTop: 8 } }, /* @__PURE__ */ React56.createElement("progress", { "aria-label": downloading ? "模型下载进度" : "知识索引进度", value: progress, max: 100, style: { width: "100%" } }), /* @__PURE__ */ React56.createElement("span", { className: "wb-tiny wb-muted" }, downloading ? "模型下载 " + progress + "%" : `索引 ${status.index.processed} / ${status.index.total}`)), /* @__PURE__ */ React56.createElement("p", { className: "wb-tiny wb-muted", style: { marginBottom: 0 } }, "本机计算，资料正文不上传到向量服务；首次使用加载，空闲释放。回答使用云端模型时，命中片段会随问题发送。"), (error2 || status?.note && status.phase === "error" || status?.index?.note) && /* @__PURE__ */ React56.createElement("p", { role: error2 || status?.phase === "error" ? "alert" : void 0, className: "wb-tiny" }, error2 || (status.phase === "error" ? status.note : status.index?.note))), /* @__PURE__ */ React56.createElement(Modal, { open: manage, title: "管理知识空间", width: 480, onClose: () => setManage(false), footer: /* @__PURE__ */ React56.createElement(Btn, { disabled: busy, onClick: () => setManage(false) }, "关闭") }, /* @__PURE__ */ React56.createElement("div", { className: "wb-stack", style: { gap: 12 } }, /* @__PURE__ */ React56.createElement(Field, { label: "新空间名称" }, /* @__PURE__ */ React56.createElement(Input, { "aria-label": "新知识空间名称", value: name2, onChange: (event) => setName(event.target.value), placeholder: "例如：公司资料、客户项目" })), /* @__PURE__ */ React56.createElement(Btn, { disabled: busy || !name2.trim(), onClick: () => save2({ action: "create", name: name2 }) }, "创建知识空间"), /* @__PURE__ */ React56.createElement(Field, { label: "项目归属" }, /* @__PURE__ */ React56.createElement(Select, { "aria-label": "归属项目", value: project, onChange: (event) => setProject(event.target.value), options: [{ value: "", label: "选择项目" }, ...(data?.projects || []).map((row) => ({ value: row.id, label: row.name }))] })), /* @__PURE__ */ React56.createElement(Field, { label: "归属空间" }, /* @__PURE__ */ React56.createElement(Select, { "aria-label": "项目归属空间", value: space, onChange: (event) => setSpace(event.target.value), options: knowledgeSpaceOptions(data) })), /* @__PURE__ */ React56.createElement("p", { className: "wb-tiny wb-muted" }, "设置后，该项目已有知识随项目归属进入目标空间，原文和来源账号保留。"), /* @__PURE__ */ React56.createElement(Btn, { disabled: busy || !project, onClick: () => save2({ action: "assignProject", projectId: project, spaceId: space }) }, "保存项目归属"), error2 && /* @__PURE__ */ React56.createElement("p", { role: "alert" }, error2))));
+  } }, "管理知识空间") }, /* @__PURE__ */ React59.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React59.createElement("span", { className: "wb-tiny" }, status2?.enabled ? downloading ? "正在准备模型" : status2.installed ? "本地模型已就绪" : "模型尚未准备" : "关键词检索已可用，语义增强按需启用"), /* @__PURE__ */ React59.createElement("span", { className: "wb-spacer" }), status2?.enabled ? /* @__PURE__ */ React59.createElement(React59.Fragment, null, /* @__PURE__ */ React59.createElement(Btn, { size: "sm", disabled: busy || !status2.installed || indexing, onClick: () => action("index") }, indexing ? "正在建立索引" : "更新当前范围索引"), (status2.phase === "error" || !status2.installed && !downloading) && /* @__PURE__ */ React59.createElement(Btn, { size: "sm", disabled: busy, onClick: () => action("prepare") }, "准备模型"), /* @__PURE__ */ React59.createElement(Btn, { size: "sm", disabled: busy, onClick: () => action("disable") }, "停用语义增强")) : /* @__PURE__ */ React59.createElement(Btn, { size: "sm", disabled: busy, onClick: () => action("enable") }, status2?.installed ? "启用本地语义检索" : "下载并启用（约 47 MB）")), progress !== null && /* @__PURE__ */ React59.createElement("div", { className: "wb-stack", style: { gap: 4, marginTop: 8 } }, /* @__PURE__ */ React59.createElement("progress", { "aria-label": downloading ? "模型下载进度" : "知识索引进度", value: progress, max: 100, style: { width: "100%" } }), /* @__PURE__ */ React59.createElement("span", { className: "wb-tiny wb-muted" }, downloading ? "模型下载 " + progress + "%" : `索引 ${status2.index.processed} / ${status2.index.total}`)), /* @__PURE__ */ React59.createElement("p", { className: "wb-tiny wb-muted", style: { marginBottom: 0 } }, "本机计算，资料正文不上传到向量服务；首次使用加载，空闲释放。回答使用云端模型时，命中片段会随问题发送。"), (error2 || status2?.note && status2.phase === "error" || status2?.index?.note) && /* @__PURE__ */ React59.createElement("p", { role: error2 || status2?.phase === "error" ? "alert" : void 0, className: "wb-tiny" }, error2 || (status2.phase === "error" ? status2.note : status2.index?.note))), /* @__PURE__ */ React59.createElement(Modal, { open: manage, title: "管理知识空间", width: 480, onClose: () => setManage(false), footer: /* @__PURE__ */ React59.createElement(Btn, { disabled: busy, onClick: () => setManage(false) }, "关闭") }, /* @__PURE__ */ React59.createElement("div", { className: "wb-stack", style: { gap: 12 } }, /* @__PURE__ */ React59.createElement(Field, { label: "新空间名称" }, /* @__PURE__ */ React59.createElement(Input, { "aria-label": "新知识空间名称", value: name2, onChange: (event) => setName(event.target.value), placeholder: "例如：公司资料、客户项目" })), /* @__PURE__ */ React59.createElement(Btn, { disabled: busy || !name2.trim(), onClick: () => save2({ action: "create", name: name2 }) }, "创建知识空间"), /* @__PURE__ */ React59.createElement(Field, { label: "项目归属" }, /* @__PURE__ */ React59.createElement(Select, { "aria-label": "归属项目", value: project, onChange: (event) => setProject(event.target.value), options: [{ value: "", label: "选择项目" }, ...(data?.projects || []).map((row) => ({ value: row.id, label: row.name }))] })), /* @__PURE__ */ React59.createElement(Field, { label: "归属空间" }, /* @__PURE__ */ React59.createElement(Select, { "aria-label": "项目归属空间", value: space, onChange: (event) => setSpace(event.target.value), options: knowledgeSpaceOptions(data) })), /* @__PURE__ */ React59.createElement("p", { className: "wb-tiny wb-muted" }, "设置后，该项目已有知识随项目归属进入目标空间，原文和来源账号保留。"), /* @__PURE__ */ React59.createElement(Btn, { disabled: busy || !project, onClick: () => save2({ action: "assignProject", projectId: project, spaceId: space }) }, "保存项目归属"), error2 && /* @__PURE__ */ React59.createElement("p", { role: "alert" }, error2))));
 }
 
 // src/client/features/knowledge/RetrievalPanel.tsx
-var React57 = __toESM(require("react"), 1);
+var React60 = __toESM(require("react"), 1);
 function RetrievalPanel({ data, onReview, scope, onScope }) {
-  const [query, setQuery] = React57.useState(""), [result, setResult] = React57.useState(null), [error2, setError] = React57.useState(""), [busy, setBusy] = React57.useState(false), [importTitle, setTitle] = React57.useState(""), [importBody, setBody] = React57.useState(""), [showImport, setImport] = React57.useState(false), [traces, setTraces] = React57.useState([]);
-  const version = React57.useRef(0), scopeKey = JSON.stringify(scope), currentScope = React57.useRef(scopeKey);
+  const [query, setQuery] = React60.useState(""), [result, setResult] = React60.useState(null), [error2, setError] = React60.useState(""), [busy, setBusy] = React60.useState(false), [importTitle, setTitle] = React60.useState(""), [importBody, setBody] = React60.useState(""), [showImport, setImport] = React60.useState(false), [traces, setTraces] = React60.useState([]);
+  const version = React60.useRef(0), scopeKey = JSON.stringify(scope), currentScope = React60.useRef(scopeKey);
   currentScope.current = scopeKey;
-  React57.useEffect(() => {
+  React60.useEffect(() => {
     version.current++;
     setResult(null);
     setTraces([]);
@@ -17696,9 +18071,9 @@ function RetrievalPanel({ data, onReview, scope, onScope }) {
       setError(e.message);
     }
   }
-  return /* @__PURE__ */ React57.createElement(Panel, { title: "知识检索与审核", sub: "只有已确认、未归档且有效的正文参与自动检索；模型生成与历史未审核条目先作为候选。", style: { marginBottom: 14 } }, /* @__PURE__ */ React57.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React57.createElement(Btn, { size: "sm", onClick: () => setImport(!showImport) }, "导入文本资料"), pending.length > 0 && /* @__PURE__ */ React57.createElement(Btn, { size: "sm", onClick: () => onReview(pending[0]) }, "审核待确认知识（", pending.length, "）")), /* @__PURE__ */ React57.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, marginTop: 10 } }, /* @__PURE__ */ React57.createElement(KnowledgeScopeFields, { data, scope, onChange: onScope, prefix: "检索知识" })), /* @__PURE__ */ React57.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, marginTop: 8 } }, /* @__PURE__ */ React57.createElement(Input, { "aria-label": "知识检索测试问题", placeholder: "例如：以前接口超时怎么处理？", value: query, onChange: (e) => setQuery(e.target.value), onKeyDown: (e) => {
+  return /* @__PURE__ */ React60.createElement(Panel, { title: "知识检索与审核", sub: "只有已确认、未归档且有效的正文参与自动检索；模型生成与历史未审核条目先作为候选。", style: { marginBottom: 14 } }, /* @__PURE__ */ React60.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React60.createElement(Btn, { size: "sm", onClick: () => setImport(!showImport) }, "导入文本资料"), pending.length > 0 && /* @__PURE__ */ React60.createElement(Btn, { size: "sm", onClick: () => onReview(pending[0]) }, "审核待确认知识（", pending.length, "）")), /* @__PURE__ */ React60.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, marginTop: 10 } }, /* @__PURE__ */ React60.createElement(KnowledgeScopeFields, { data, scope, onChange: onScope, prefix: "检索知识" })), /* @__PURE__ */ React60.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, marginTop: 8 } }, /* @__PURE__ */ React60.createElement(Input, { "aria-label": "知识检索测试问题", placeholder: "例如：以前接口超时怎么处理？", value: query, onChange: (e) => setQuery(e.target.value), onKeyDown: (e) => {
     if (e.key === "Enter" && query.trim() && !busy) test();
-  }, style: { flex: 1, minWidth: 160 } }), /* @__PURE__ */ React57.createElement(Btn, { disabled: busy || !query.trim(), onClick: test }, busy ? "检索中…" : "测试检索")), /* @__PURE__ */ React57.createElement(KnowledgeSources, { result }), !!traces.length && /* @__PURE__ */ React57.createElement("details", { style: { fontSize: 12, marginTop: 8 } }, /* @__PURE__ */ React57.createElement("summary", null, "最近检索记录（", traces.length, "）"), traces.slice(0, 10).map((t) => /* @__PURE__ */ React57.createElement("div", { key: t.id, style: { padding: 5, overflowWrap: "anywhere" } }, t.query, " · ", t.status, " · ", t.hits?.length || 0, "个片段 · ", t.elapsedMs, "ms"))), showImport && /* @__PURE__ */ React57.createElement("div", { className: "wb-stack", style: { marginTop: 12 } }, /* @__PURE__ */ React57.createElement(Field, { label: "资料标题" }, /* @__PURE__ */ React57.createElement(Input, { value: importTitle, onChange: (e) => setTitle(e.target.value) })), /* @__PURE__ */ React57.createElement(Field, { label: "文本文件（Markdown / TXT）" }, /* @__PURE__ */ React57.createElement("input", { type: "file", accept: ".md,.txt", "aria-label": "导入知识文本文件", onChange: async (e) => {
+  }, style: { flex: 1, minWidth: 160 } }), /* @__PURE__ */ React60.createElement(Btn, { disabled: busy || !query.trim(), onClick: test }, busy ? "检索中…" : "测试检索")), /* @__PURE__ */ React60.createElement(KnowledgeSources, { result }), !!traces.length && /* @__PURE__ */ React60.createElement("details", { style: { fontSize: 12, marginTop: 8 } }, /* @__PURE__ */ React60.createElement("summary", null, "最近检索记录（", traces.length, "）"), traces.slice(0, 10).map((t) => /* @__PURE__ */ React60.createElement("div", { key: t.id, style: { padding: 5, overflowWrap: "anywhere" } }, t.query, " · ", t.status, " · ", t.hits?.length || 0, "个片段 · ", t.elapsedMs, "ms"))), showImport && /* @__PURE__ */ React60.createElement("div", { className: "wb-stack", style: { marginTop: 12 } }, /* @__PURE__ */ React60.createElement(Field, { label: "资料标题" }, /* @__PURE__ */ React60.createElement(Input, { value: importTitle, onChange: (e) => setTitle(e.target.value) })), /* @__PURE__ */ React60.createElement(Field, { label: "文本文件（Markdown / TXT）" }, /* @__PURE__ */ React60.createElement("input", { type: "file", accept: ".md,.txt", "aria-label": "导入知识文本文件", onChange: async (e) => {
     setError("");
     const file = e.target.files?.[0];
     if (!file) return;
@@ -17713,11 +18088,11 @@ function RetrievalPanel({ data, onReview, scope, onScope }) {
     }
     setBody(text2);
     if (!importTitle) setTitle(file.name);
-  } })), /* @__PURE__ */ React57.createElement(Field, { label: "资料正文" }, /* @__PURE__ */ React57.createElement(Textarea, { rows: 6, value: importBody, onChange: (e) => setBody(e.target.value) })), /* @__PURE__ */ React57.createElement(Btn, { onClick: save2 }, "保存为待审核资料")), error2 && /* @__PURE__ */ React57.createElement("p", { role: "alert" }, error2));
+  } })), /* @__PURE__ */ React60.createElement(Field, { label: "资料正文" }, /* @__PURE__ */ React60.createElement(Textarea, { rows: 6, value: importBody, onChange: (e) => setBody(e.target.value) })), /* @__PURE__ */ React60.createElement(Btn, { onClick: save2 }, "保存为待审核资料")), error2 && /* @__PURE__ */ React60.createElement("p", { role: "alert" }, error2));
 }
 
 // src/client/features/knowledge/knowledge-space.ts
-var React58 = __toESM(require("react"), 1);
+var React61 = __toESM(require("react"), 1);
 var knowKindMeta = {
   bookmark: { label: "收藏", tone: "accent", icon: "link" },
   note: { label: "笔记", tone: "ok", icon: "book" },
@@ -17783,16 +18158,16 @@ function knowSortItems(items) {
 function knowPage() {
   const wbState = WB.useStore();
   const data = wbState && wbState.data ? wbState.data : null;
-  const [scope, setScope] = React58.useState(() => {
+  const [scope, setScope] = React61.useState(() => {
     const project = (data?.projects || []).find((row) => row.id === data?.settings?.defaultProjectId);
     return { spaceId: project?.knowledgeSpaceId || PERSONAL_KNOWLEDGE_SPACE, projectId: project?.id || null };
   });
   const items = data && Array.isArray(data.knowledge) ? data.knowledge.filter((row) => !row.archivedAt && knowledgeSpaceOf(row) === (scope.spaceId || PERSONAL_KNOWLEDGE_SPACE) && (!row.projectId || row.projectId === scope.projectId)) : [];
-  const [page, setPage] = React58.useState(0);
-  const [kind, setKind] = React58.useState("all");
-  const [query, setQuery] = React58.useState("");
-  const [tag, setTag] = React58.useState("");
-  React58.useEffect(() => {
+  const [page, setPage] = React61.useState(0);
+  const [kind, setKind] = React61.useState("all");
+  const [query, setQuery] = React61.useState("");
+  const [tag, setTag] = React61.useState("");
+  React61.useEffect(() => {
     const target = wbState.knowledgeFocusId;
     if (!target || !data) return;
     const item = (data.knowledge || []).find((row) => row.id === target);
@@ -17804,14 +18179,14 @@ function knowPage() {
     }
     WB.store.set({ knowledgeFocusId: null });
   }, [wbState.knowledgeFocusId, data]);
-  React58.useEffect(() => setPage(0), [kind, query, tag, scope.spaceId, scope.projectId]);
-  const [createOpen, setCreateOpen] = React58.useState(false);
-  const [formError, setFormError] = React58.useState("");
-  const [form, setForm] = React58.useState(function() {
+  React61.useEffect(() => setPage(0), [kind, query, tag, scope.spaceId, scope.projectId]);
+  const [createOpen, setCreateOpen] = React61.useState(false);
+  const [formError, setFormError] = React61.useState("");
+  const [form, setForm] = React61.useState(function() {
     return { kind: "note", title: "", url: "", body: "", tags: "" };
   });
-  const [confirmItem, setConfirmItem] = React58.useState(null);
-  const [editItem, setEditItem] = React58.useState(null);
+  const [confirmItem, setConfirmItem] = React61.useState(null);
+  const [editItem, setEditItem] = React61.useState(null);
   const counts = { all: items.length, bookmark: 0, note: 0, snippet: 0 };
   items.forEach(function(item) {
     if (item && counts[item.kind] !== void 0)
@@ -18176,10 +18551,10 @@ function knowPage() {
 WB.pages.knowledge = knowPage;
 
 // src/client/features/collaboration/ProjectLauncher.tsx
-var React60 = __toESM(require("react"), 1);
+var React63 = __toESM(require("react"), 1);
 
 // src/client/features/collaboration/LaunchConfigEditor.tsx
-var React59 = __toESM(require("react"), 1);
+var React62 = __toESM(require("react"), 1);
 
 // src/shared/developer-tools.ts
 function localServiceUrl(value) {
@@ -18204,15 +18579,15 @@ function normalizeLaunchCommands(value) {
 // src/client/features/collaboration/LaunchConfigEditor.tsx
 var executables = ["npm", "pnpm", "yarn", "bun", "node", "python", "python3", "java", "mvn", "./mvnw", "mvnw", "gradle", "./gradlew", "gradlew", "dotnet", "go", "cargo"];
 function LaunchConfigEditor({ commands, configured, onSave, onCancel, busy }) {
-  const [rows, setRows] = React59.useState(() => configured.map((row) => ({ ...row, common: row.common !== false, args: row.argv.slice(1).join("\n") })));
-  const [error2, setError] = React59.useState("");
+  const [rows, setRows] = React62.useState(() => configured.map((row) => ({ ...row, common: row.common !== false, args: row.argv.slice(1).join("\n") })));
+  const [error2, setError] = React62.useState("");
   function update(index, patch2) {
     setRows((previous) => previous.map((row, i) => i === index ? { ...row, ...patch2 } : row));
   }
   function add(command) {
     setRows((previous) => previous.concat({ ...command, id: command?.id || "custom-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7), name: command?.name || "", argv: command?.argv || ["npm"], args: command?.argv.slice(1).join("\n") || "", common: command?.common !== false }));
   }
-  return /* @__PURE__ */ React59.createElement("form", { className: "wb-stack", "aria-label": "项目启动配置", onSubmit: async (event) => {
+  return /* @__PURE__ */ React62.createElement("form", { className: "wb-stack", "aria-label": "项目启动配置", onSubmit: async (event) => {
     event.preventDefault();
     setError("");
     try {
@@ -18220,19 +18595,19 @@ function LaunchConfigEditor({ commands, configured, onSave, onCancel, busy }) {
     } catch (e) {
       setError(e.message);
     }
-  } }, rows.map((row, index) => /* @__PURE__ */ React59.createElement("fieldset", { key: row.id, disabled: busy, style: { minWidth: 0, border: "1px solid var(--dsw-alias-border-l1)", borderRadius: 8, padding: 12 } }, /* @__PURE__ */ React59.createElement("legend", null, "启动项 ", index + 1), /* @__PURE__ */ React59.createElement("div", { className: "wb-stack", style: { gap: 8 } }, /* @__PURE__ */ React59.createElement("label", { className: "wb-label" }, "名称", /* @__PURE__ */ React59.createElement("input", { className: "wb-input", "aria-label": "启动项名称 " + (index + 1), required: true, maxLength: 100, value: row.name, onChange: (e) => update(index, { name: e.target.value }) })), /* @__PURE__ */ React59.createElement("label", { className: "wb-label" }, "执行程序", /* @__PURE__ */ React59.createElement("select", { className: "wb-select", "aria-label": "执行程序 " + (index + 1), value: row.argv[0], onChange: (e) => update(index, { argv: [e.target.value, ...row.argv.slice(1)] }) }, executables.map((value) => /* @__PURE__ */ React59.createElement("option", { key: value, value }, value)))), /* @__PURE__ */ React59.createElement("label", { className: "wb-label" }, "参数", /* @__PURE__ */ React59.createElement(Textarea, { "aria-label": "启动参数 " + (index + 1), rows: 3, value: row.args, onChange: (e) => update(index, { args: e.target.value }) })), /* @__PURE__ */ React59.createElement("span", { className: "wb-tiny wb-muted" }, "每行一个参数；带空格的参数无需加引号。"), /* @__PURE__ */ React59.createElement("label", { className: "wb-label" }, "本机服务地址（可选）", /* @__PURE__ */ React59.createElement("input", { className: "wb-input", "aria-label": "服务地址 " + (index + 1), placeholder: "http://localhost:3000/", value: row.serviceUrl || "", onChange: (e) => update(index, { serviceUrl: e.target.value }) })), /* @__PURE__ */ React59.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 12 } }, /* @__PURE__ */ React59.createElement("label", null, /* @__PURE__ */ React59.createElement("input", { type: "checkbox", checked: row.common !== false, onChange: (e) => update(index, { common: e.target.checked }) }), " 常用启动项"), /* @__PURE__ */ React59.createElement(Btn, { size: "sm", onClick: () => setRows((previous) => previous.filter((_, i) => i !== index)) }, "移除启动项 ", index + 1))))), /* @__PURE__ */ React59.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React59.createElement(Btn, { disabled: busy || rows.length >= 20, onClick: () => add() }, "添加启动项"), /* @__PURE__ */ React59.createElement("select", { className: "wb-select", style: { width: "auto", maxWidth: "100%" }, "aria-label": "从项目脚本添加", value: "", disabled: busy || rows.length >= 20, onChange: (e) => {
+  } }, rows.map((row, index) => /* @__PURE__ */ React62.createElement("fieldset", { key: row.id, disabled: busy, style: { minWidth: 0, border: "1px solid var(--dsw-alias-border-l1)", borderRadius: 8, padding: 12 } }, /* @__PURE__ */ React62.createElement("legend", null, "启动项 ", index + 1), /* @__PURE__ */ React62.createElement("div", { className: "wb-stack", style: { gap: 8 } }, /* @__PURE__ */ React62.createElement("label", { className: "wb-label" }, "名称", /* @__PURE__ */ React62.createElement("input", { className: "wb-input", "aria-label": "启动项名称 " + (index + 1), required: true, maxLength: 100, value: row.name, onChange: (e) => update(index, { name: e.target.value }) })), /* @__PURE__ */ React62.createElement("label", { className: "wb-label" }, "执行程序", /* @__PURE__ */ React62.createElement("select", { className: "wb-select", "aria-label": "执行程序 " + (index + 1), value: row.argv[0], onChange: (e) => update(index, { argv: [e.target.value, ...row.argv.slice(1)] }) }, executables.map((value) => /* @__PURE__ */ React62.createElement("option", { key: value, value }, value)))), /* @__PURE__ */ React62.createElement("label", { className: "wb-label" }, "参数", /* @__PURE__ */ React62.createElement(Textarea, { "aria-label": "启动参数 " + (index + 1), rows: 3, value: row.args, onChange: (e) => update(index, { args: e.target.value }) })), /* @__PURE__ */ React62.createElement("span", { className: "wb-tiny wb-muted" }, "每行一个参数；带空格的参数无需加引号。"), /* @__PURE__ */ React62.createElement("label", { className: "wb-label" }, "本机服务地址（可选）", /* @__PURE__ */ React62.createElement("input", { className: "wb-input", "aria-label": "服务地址 " + (index + 1), placeholder: "http://localhost:3000/", value: row.serviceUrl || "", onChange: (e) => update(index, { serviceUrl: e.target.value }) })), /* @__PURE__ */ React62.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 12 } }, /* @__PURE__ */ React62.createElement("label", null, /* @__PURE__ */ React62.createElement("input", { type: "checkbox", checked: row.common !== false, onChange: (e) => update(index, { common: e.target.checked }) }), " 常用启动项"), /* @__PURE__ */ React62.createElement(Btn, { size: "sm", onClick: () => setRows((previous) => previous.filter((_, i) => i !== index)) }, "移除启动项 ", index + 1))))), /* @__PURE__ */ React62.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React62.createElement(Btn, { disabled: busy || rows.length >= 20, onClick: () => add() }, "添加启动项"), /* @__PURE__ */ React62.createElement("select", { className: "wb-select", style: { width: "auto", maxWidth: "100%" }, "aria-label": "从项目脚本添加", value: "", disabled: busy || rows.length >= 20, onChange: (e) => {
     const command = commands.find((row) => row.id === e.target.value);
     if (command) add(command);
-  } }, /* @__PURE__ */ React59.createElement("option", { value: "" }, "从项目脚本添加…"), commands.filter((command) => !rows.some((row) => row.id === command.id)).map((command) => /* @__PURE__ */ React59.createElement("option", { key: command.id, value: command.id }, command.name)))), error2 && /* @__PURE__ */ React59.createElement("p", { role: "alert", className: "wb-tiny" }, error2), /* @__PURE__ */ React59.createElement("div", { className: "wb-row", style: { justifyContent: "flex-end", gap: 8 } }, /* @__PURE__ */ React59.createElement(Btn, { disabled: busy, onClick: onCancel }, "取消"), /* @__PURE__ */ React59.createElement("button", { type: "submit", className: "wb-btn wb-btn--primary", disabled: busy }, "保存")));
+  } }, /* @__PURE__ */ React62.createElement("option", { value: "" }, "从项目脚本添加…"), commands.filter((command) => !rows.some((row) => row.id === command.id)).map((command) => /* @__PURE__ */ React62.createElement("option", { key: command.id, value: command.id }, command.name)))), error2 && /* @__PURE__ */ React62.createElement("p", { role: "alert", className: "wb-tiny" }, error2), /* @__PURE__ */ React62.createElement("div", { className: "wb-row", style: { justifyContent: "flex-end", gap: 8 } }, /* @__PURE__ */ React62.createElement(Btn, { disabled: busy, onClick: onCancel }, "取消"), /* @__PURE__ */ React62.createElement("button", { type: "submit", className: "wb-btn wb-btn--primary", disabled: busy }, "保存")));
 }
 
 // src/client/features/collaboration/ProjectLauncher.tsx
 function ProjectLauncher({ projectId = "", refreshVersion = 0 }) {
   const store = useStore(), selected = store.data?.projects?.find((p) => p.id === projectId);
-  const [runtime, setRuntime] = React60.useState(null), [error2, setError] = React60.useState(""), [busy, setBusy] = React60.useState(false), [editing, setEditing] = React60.useState(false);
-  const request = React60.useRef(0), mounted = React60.useRef(true), acting = React60.useRef(false);
+  const [runtime, setRuntime] = React63.useState(null), [error2, setError] = React63.useState(""), [busy, setBusy] = React63.useState(false), [editing, setEditing] = React63.useState(false);
+  const request = React63.useRef(0), mounted = React63.useRef(true), acting = React63.useRef(false);
   const rpc = (name2, args) => WB.rpc("workbench/" + name2, { request: args });
-  React60.useEffect(() => {
+  React63.useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
@@ -18251,7 +18626,7 @@ function ProjectLauncher({ projectId = "", refreshVersion = 0 }) {
       if (mounted.current && version === request.current) setError(e.message);
     }
   }
-  React60.useEffect(() => {
+  React63.useEffect(() => {
     if (projectId) void refresh(refreshVersion > 0);
   }, [projectId, refreshVersion]);
   async function action(method, args) {
@@ -18273,7 +18648,7 @@ function ProjectLauncher({ projectId = "", refreshVersion = 0 }) {
     }
   }
   const active = runtime?.runs?.some((r) => ["running", "stopping"].includes(r.status));
-  React60.useEffect(() => {
+  React63.useEffect(() => {
     if (!active) return;
     let live = true, timer;
     const poll = async () => {
@@ -18308,29 +18683,29 @@ function ProjectLauncher({ projectId = "", refreshVersion = 0 }) {
   const common = marked.length ? marked : commands.filter((c) => c.common !== false && /^(dev|start|serve)$/.test(c.argv[c.argv.length - 1] || "")).slice(0, 3);
   const primary2 = common.length ? common : commands.filter((c) => c.common !== false).slice(0, 3);
   function startButton(command) {
-    return /* @__PURE__ */ React60.createElement(Btn, { key: command.id, disabled: busy || runtime?.runs?.some((r) => ["running", "stopping"].includes(r.status) && JSON.stringify(r.argv) === JSON.stringify(command.argv)), title: JSON.stringify(command.argv), onClick: () => action("projectStart", { projectId, commandId: command.id }) }, "启动 ", command.name);
+    return /* @__PURE__ */ React63.createElement(Btn, { key: command.id, disabled: busy || runtime?.runs?.some((r) => ["running", "stopping"].includes(r.status) && JSON.stringify(r.argv) === JSON.stringify(command.argv)), title: JSON.stringify(command.argv), onClick: () => action("projectStart", { projectId, commandId: command.id }) }, "启动 ", command.name);
   }
-  return /* @__PURE__ */ React60.createElement(Panel, { title: "项目启动与运行", icon: "play", sub: runtime?.at ? "更新于 " + WB.fmt.relative(runtime.at) : void 0 }, /* @__PURE__ */ React60.createElement("div", { className: "wb-stack" }, !selected ? /* @__PURE__ */ React60.createElement("p", { className: "wb-tiny wb-muted" }, "先用“添加仓库目录”登记项目。") : /* @__PURE__ */ React60.createElement(React60.Fragment, null, /* @__PURE__ */ React60.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, [["vscode", "打开 VS Code"], ["idea", "打开 IDEA"], ["terminal", "打开终端"]].map(([target, title]) => /* @__PURE__ */ React60.createElement(Btn, { key: target, disabled: busy, onClick: () => action("projectOpen", { projectId, target }) }, title)), /* @__PURE__ */ React60.createElement(Btn, { disabled: busy, onClick: () => setEditing(!editing) }, "启动配置"), /* @__PURE__ */ React60.createElement(Btn, { disabled: busy, onClick: () => refresh(true) }, "刷新运行状态")), editing && /* @__PURE__ */ React60.createElement(LaunchConfigEditor, { configured: selected.launchCommands || [], commands, busy, onSave: save2, onCancel: () => setEditing(false) }), /* @__PURE__ */ React60.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, primary2.map(startButton)), commands.length > primary2.length && /* @__PURE__ */ React60.createElement("details", null, /* @__PURE__ */ React60.createElement("summary", { className: "wb-tiny", style: { cursor: "pointer" } }, "其他启动项（", commands.length - primary2.length, "）"), /* @__PURE__ */ React60.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, paddingTop: 8 } }, commands.filter((c) => !primary2.includes(c)).map(startButton))), runtime && !commands.length && /* @__PURE__ */ React60.createElement("p", { className: "wb-tiny wb-muted" }, "未发现可用脚本，可在“启动配置”中添加。"), (runtime?.runs || []).map((run) => {
-    const service = run.service, status = run.status === "running" && service?.status === "checking" ? "启动中" : { running: "进程运行", stopping: "停止中", completed: "已完成", failed: "启动或运行失败", stopped: "已停止" }[run.status] || run.status;
-    return /* @__PURE__ */ React60.createElement("details", { key: run.id, open: ["running", "stopping", "failed"].includes(run.status), className: "wb-reply-item" }, /* @__PURE__ */ React60.createElement("summary", null, run.name, " · ", status, run.exitCode !== void 0 ? " · 退出码 " + run.exitCode : ""), run.status === "running" && /* @__PURE__ */ React60.createElement("p", { className: "wb-tiny", role: "status" }, service?.status === "reachable" ? "服务地址可访问" : service?.status === "unreachable" ? "服务未就绪，进程仍在运行" : service?.status === "checking" ? "正在检测服务地址…" : "未配置服务地址，尚未检测就绪状态", service?.httpStatus ? " · HTTP " + service.httpStatus : ""), /* @__PURE__ */ React60.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, run.status === "running" && /* @__PURE__ */ React60.createElement(Btn, { disabled: busy, onClick: () => action("projectStop", { runId: run.id }) }, "停止本次运行"), run.status === "running" && service?.status === "reachable" && /* @__PURE__ */ React60.createElement("a", { className: "wb-btn wb-btn--ghost", href: service.url, target: "_blank", rel: "noreferrer" }, "打开服务")), /* @__PURE__ */ React60.createElement("p", { className: "wb-tiny wb-mono", style: { overflowWrap: "anywhere" } }, JSON.stringify(run.argv), " · ", WB.fmt.datetime(run.startedAt)), run.error && /* @__PURE__ */ React60.createElement("p", { role: "alert" }, run.error), /* @__PURE__ */ React60.createElement("strong", { className: "wb-tiny" }, "标准输出"), /* @__PURE__ */ React60.createElement("pre", { className: "wb-code", style: { maxHeight: 240, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, run.stdout || "暂无输出"), run.stderr && /* @__PURE__ */ React60.createElement(React60.Fragment, null, /* @__PURE__ */ React60.createElement("strong", { className: "wb-tiny" }, "标准错误"), /* @__PURE__ */ React60.createElement("pre", { className: "wb-code", style: { maxHeight: 180, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, run.stderr)), run.truncated && /* @__PURE__ */ React60.createElement("p", { className: "wb-tiny wb-muted" }, "日志缓冲已截断，仅展示保留的部分。"));
-  })), error2 && /* @__PURE__ */ React60.createElement("p", { role: "alert", className: "wb-tiny" }, error2)));
+  return /* @__PURE__ */ React63.createElement(Panel, { title: "项目启动与运行", icon: "play", sub: runtime?.at ? "更新于 " + WB.fmt.relative(runtime.at) : void 0 }, /* @__PURE__ */ React63.createElement("div", { className: "wb-stack" }, !selected ? /* @__PURE__ */ React63.createElement("p", { className: "wb-tiny wb-muted" }, "先用“添加仓库目录”登记项目。") : /* @__PURE__ */ React63.createElement(React63.Fragment, null, /* @__PURE__ */ React63.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, [["vscode", "打开 VS Code"], ["idea", "打开 IDEA"], ["terminal", "打开终端"]].map(([target, title]) => /* @__PURE__ */ React63.createElement(Btn, { key: target, disabled: busy, onClick: () => action("projectOpen", { projectId, target }) }, title)), /* @__PURE__ */ React63.createElement(Btn, { disabled: busy, onClick: () => setEditing(!editing) }, "启动配置"), /* @__PURE__ */ React63.createElement(Btn, { disabled: busy, onClick: () => refresh(true) }, "刷新运行状态")), editing && /* @__PURE__ */ React63.createElement(LaunchConfigEditor, { configured: selected.launchCommands || [], commands, busy, onSave: save2, onCancel: () => setEditing(false) }), /* @__PURE__ */ React63.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, primary2.map(startButton)), commands.length > primary2.length && /* @__PURE__ */ React63.createElement("details", null, /* @__PURE__ */ React63.createElement("summary", { className: "wb-tiny", style: { cursor: "pointer" } }, "其他启动项（", commands.length - primary2.length, "）"), /* @__PURE__ */ React63.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, paddingTop: 8 } }, commands.filter((c) => !primary2.includes(c)).map(startButton))), runtime && !commands.length && /* @__PURE__ */ React63.createElement("p", { className: "wb-tiny wb-muted" }, "未发现可用脚本，可在“启动配置”中添加。"), (runtime?.runs || []).map((run) => {
+    const service = run.service, status2 = run.status === "running" && service?.status === "checking" ? "启动中" : { running: "进程运行", stopping: "停止中", completed: "已完成", failed: "启动或运行失败", stopped: "已停止" }[run.status] || run.status;
+    return /* @__PURE__ */ React63.createElement("details", { key: run.id, open: ["running", "stopping", "failed"].includes(run.status), className: "wb-reply-item" }, /* @__PURE__ */ React63.createElement("summary", null, run.name, " · ", status2, run.exitCode !== void 0 ? " · 退出码 " + run.exitCode : ""), run.status === "running" && /* @__PURE__ */ React63.createElement("p", { className: "wb-tiny", role: "status" }, service?.status === "reachable" ? "服务地址可访问" : service?.status === "unreachable" ? "服务未就绪，进程仍在运行" : service?.status === "checking" ? "正在检测服务地址…" : "未配置服务地址，尚未检测就绪状态", service?.httpStatus ? " · HTTP " + service.httpStatus : ""), /* @__PURE__ */ React63.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, run.status === "running" && /* @__PURE__ */ React63.createElement(Btn, { disabled: busy, onClick: () => action("projectStop", { runId: run.id }) }, "停止本次运行"), run.status === "running" && service?.status === "reachable" && /* @__PURE__ */ React63.createElement("a", { className: "wb-btn wb-btn--ghost", href: service.url, target: "_blank", rel: "noreferrer" }, "打开服务")), /* @__PURE__ */ React63.createElement("p", { className: "wb-tiny wb-mono", style: { overflowWrap: "anywhere" } }, JSON.stringify(run.argv), " · ", WB.fmt.datetime(run.startedAt)), run.error && /* @__PURE__ */ React63.createElement("p", { role: "alert" }, run.error), /* @__PURE__ */ React63.createElement("strong", { className: "wb-tiny" }, "标准输出"), /* @__PURE__ */ React63.createElement("pre", { className: "wb-code", style: { maxHeight: 240, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, run.stdout || "暂无输出"), run.stderr && /* @__PURE__ */ React63.createElement(React63.Fragment, null, /* @__PURE__ */ React63.createElement("strong", { className: "wb-tiny" }, "标准错误"), /* @__PURE__ */ React63.createElement("pre", { className: "wb-code", style: { maxHeight: 180, overflow: "auto", whiteSpace: "pre-wrap", overflowWrap: "anywhere" } }, run.stderr)), run.truncated && /* @__PURE__ */ React63.createElement("p", { className: "wb-tiny wb-muted" }, "日志缓冲已截断，仅展示保留的部分。"));
+  })), error2 && /* @__PURE__ */ React63.createElement("p", { role: "alert", className: "wb-tiny" }, error2)));
 }
 
 // src/client/features/collaboration/GithubPanel.tsx
-var React61 = __toESM(require("react"), 1);
+var React64 = __toESM(require("react"), 1);
 function GithubPanel({ snapshot: snapshot2 }) {
   const state = snapshot2?.status;
-  return /* @__PURE__ */ React61.createElement(Panel, { title: "PR 与 CI", icon: "git", sub: snapshot2?.at ? "更新于 " + WB.fmt.relative(snapshot2.at) : void 0, badge: snapshot2 ? /* @__PURE__ */ React61.createElement(Badge, { tone: state === "ok" ? "ok" : state === "partial" ? "warn" : state === "unavailable" ? "idle" : "err" }, { ok: "已读取", partial: "部分失败", unavailable: "不可用", error: "读取失败" }[state] || "读取失败") : null }, !snapshot2 ? /* @__PURE__ */ React61.createElement("span", { className: "wb-tiny wb-muted" }, "读取中…") : state === "unavailable" ? /* @__PURE__ */ React61.createElement("p", { className: "wb-tiny", role: "alert" }, snapshot2.note) : /* @__PURE__ */ React61.createElement("div", { className: "wb-stack" }, ["prs", "runs"].map((key2) => {
+  return /* @__PURE__ */ React64.createElement(Panel, { title: "PR 与 CI", icon: "git", sub: snapshot2?.at ? "更新于 " + WB.fmt.relative(snapshot2.at) : void 0, badge: snapshot2 ? /* @__PURE__ */ React64.createElement(Badge, { tone: state === "ok" ? "ok" : state === "partial" ? "warn" : state === "unavailable" ? "idle" : "err" }, { ok: "已读取", partial: "部分失败", unavailable: "不可用", error: "读取失败" }[state] || "读取失败") : null }, !snapshot2 ? /* @__PURE__ */ React64.createElement("span", { className: "wb-tiny wb-muted" }, "读取中…") : state === "unavailable" ? /* @__PURE__ */ React64.createElement("p", { className: "wb-tiny", role: "alert" }, snapshot2.note) : /* @__PURE__ */ React64.createElement("div", { className: "wb-stack" }, ["prs", "runs"].map((key2) => {
     const group = snapshot2[key2], label = key2 === "prs" ? "PR" : "CI", failed = group?.status ? group.status !== "ok" : state !== "ok", items = group?.items || [];
-    return /* @__PURE__ */ React61.createElement("section", { key: key2, "aria-label": label + "读取结果" }, /* @__PURE__ */ React61.createElement("strong", { className: "wb-label" }, label, !failed ? "（" + items.length + "）" : ""), failed ? /* @__PURE__ */ React61.createElement("p", { role: "alert", className: "wb-tiny", style: { overflowWrap: "anywhere" } }, group?.note || snapshot2.note || label + "读取失败，请重新探测。") : !items.length ? /* @__PURE__ */ React61.createElement("p", { className: "wb-tiny wb-muted" }, key2 === "prs" ? "当前仓库没有打开的 PR。" : "没有 CI 运行记录。") : items.slice(0, 6).map((item) => {
+    return /* @__PURE__ */ React64.createElement("section", { key: key2, "aria-label": label + "读取结果" }, /* @__PURE__ */ React64.createElement("strong", { className: "wb-label" }, label, !failed ? "（" + items.length + "）" : ""), failed ? /* @__PURE__ */ React64.createElement("p", { role: "alert", className: "wb-tiny", style: { overflowWrap: "anywhere" } }, group?.note || snapshot2.note || label + "读取失败，请重新探测。") : !items.length ? /* @__PURE__ */ React64.createElement("p", { className: "wb-tiny wb-muted" }, key2 === "prs" ? "当前仓库没有打开的 PR。" : "没有 CI 运行记录。") : items.slice(0, 6).map((item) => {
       const title = key2 === "prs" ? item.title : item.workflow || "CI", badge = key2 === "prs" ? "#" + item.number : item.conclusion || item.status;
-      return /* @__PURE__ */ React61.createElement("div", { className: "wb-item", key: item.number || item.id }, /* @__PURE__ */ React61.createElement(Badge, { tone: key2 === "prs" ? "idle" : item.conclusion === "success" ? "ok" : item.conclusion === "failure" ? "err" : "warn" }, badge), /* @__PURE__ */ React61.createElement("div", { className: "wb-item-main" }, /* @__PURE__ */ React61.createElement("div", { className: "wb-item-title" }, item.url ? /* @__PURE__ */ React61.createElement("a", { className: "wb-link", href: item.url, target: "_blank", rel: "noreferrer" }, title) : title, item.draft && /* @__PURE__ */ React61.createElement(Badge, { tone: "idle" }, "草稿")), /* @__PURE__ */ React61.createElement("div", { className: "wb-item-sub" }, [item.author || item.branch, item.updatedAt || item.createdAt ? WB.fmt.relative(item.updatedAt || item.createdAt) : ""].filter(Boolean).join(" · "))));
+      return /* @__PURE__ */ React64.createElement("div", { className: "wb-item", key: item.number || item.id }, /* @__PURE__ */ React64.createElement(Badge, { tone: key2 === "prs" ? "idle" : item.conclusion === "success" ? "ok" : item.conclusion === "failure" ? "err" : "warn" }, badge), /* @__PURE__ */ React64.createElement("div", { className: "wb-item-main" }, /* @__PURE__ */ React64.createElement("div", { className: "wb-item-title" }, item.url ? /* @__PURE__ */ React64.createElement("a", { className: "wb-link", href: item.url, target: "_blank", rel: "noreferrer" }, title) : title, item.draft && /* @__PURE__ */ React64.createElement(Badge, { tone: "idle" }, "草稿")), /* @__PURE__ */ React64.createElement("div", { className: "wb-item-sub" }, [item.author || item.branch, item.updatedAt || item.createdAt ? WB.fmt.relative(item.updatedAt || item.createdAt) : ""].filter(Boolean).join(" · "))));
     }));
   })));
 }
 
 // src/client/features/collaboration/collaboration.ts
-var React62 = __toESM(require("react"), 1);
+var React65 = __toESM(require("react"), 1);
 function collabGitTone(repo) {
   if (repo.status === "ok")
     return repo.changed > 0 ? "warn" : "ok";
@@ -18388,15 +18763,15 @@ function CollabPage() {
   const state = useStore();
   const projects = state.data && state.data.projects || [];
   const configured = projects.filter((project) => project.repoPath);
-  const [selection, setSelection] = React62.useState(() => WB.store.get().collabProjectId || "");
+  const [selection, setSelection] = React65.useState(() => WB.store.get().collabProjectId || "");
   const projectId = configured.find((project) => project.id === selection)?.id || configured[0]?.id || "";
   const selected = configured.find((project) => project.id === projectId);
-  const [env, setEnv] = React62.useState(null);
-  const [github, setGithub] = React62.useState(null);
-  const [busy, setBusy] = React62.useState(false);
-  const [error2, setError] = React62.useState(null);
-  const [refreshVersion, setRefreshVersion] = React62.useState(0);
-  const generation = React62.useRef(0);
+  const [env, setEnv] = React65.useState(null);
+  const [github, setGithub] = React65.useState(null);
+  const [busy, setBusy] = React65.useState(false);
+  const [error2, setError] = React65.useState(null);
+  const [refreshVersion, setRefreshVersion] = React65.useState(0);
+  const generation = React65.useRef(0);
   async function load(force = false) {
     const version = ++generation.current;
     setBusy(true);
@@ -18419,7 +18794,7 @@ function CollabPage() {
     ]);
     if (version === generation.current) setBusy(false);
   }
-  React62.useEffect(() => {
+  React65.useEffect(() => {
     setEnv(null);
     setGithub(null);
     WB.store.set({ collabProjectId: projectId });
@@ -18524,12 +18899,12 @@ function CollabPage() {
 WB.pages.collab = CollabPage;
 
 // src/client/features/operations/BackgroundHistoryPanel.tsx
-var React63 = __toESM(require("react"), 1);
+var React66 = __toESM(require("react"), 1);
 function BackgroundHistoryPanel() {
-  const [archived, setArchived] = React63.useState(false), [offset, setOffset] = React63.useState(0);
-  const [page, setPage] = React63.useState(null), [selected, setSelected] = React63.useState([]);
-  const [busy, setBusy] = React63.useState(false), [error2, setError] = React63.useState(""), [result, setResult] = React63.useState("");
-  const requestSeq = React63.useRef(0);
+  const [archived, setArchived] = React66.useState(false), [offset, setOffset] = React66.useState(0);
+  const [page, setPage] = React66.useState(null), [selected, setSelected] = React66.useState([]);
+  const [busy, setBusy] = React66.useState(false), [error2, setError] = React66.useState(""), [result, setResult] = React66.useState("");
+  const requestSeq = React66.useRef(0);
   async function read(showArchived = archived, from = offset) {
     const seq2 = ++requestSeq.current;
     setError("");
@@ -18544,7 +18919,7 @@ function BackgroundHistoryPanel() {
       if (seq2 === requestSeq.current) setError(e.message);
     }
   }
-  React63.useEffect(() => {
+  React66.useEffect(() => {
     void read();
     return () => {
       requestSeq.current++;
@@ -18570,25 +18945,25 @@ function BackgroundHistoryPanel() {
     }
   }
   const rows = Array.isArray(page?.items) ? page.items : [];
-  return /* @__PURE__ */ React63.createElement("details", null, /* @__PURE__ */ React63.createElement("summary", null, "管理后台会话历史"), /* @__PURE__ */ React63.createElement(Panel, { title: "后台会话历史", sub: "保留当前复用会话，收起已停用的旧批次记录" }, /* @__PURE__ */ React63.createElement("p", { className: "wb-tiny wb-muted" }, page?.note), /* @__PURE__ */ React63.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React63.createElement(Btn, { disabled: busy, onClick: () => {
+  return /* @__PURE__ */ React66.createElement("details", null, /* @__PURE__ */ React66.createElement("summary", null, "管理后台会话历史"), /* @__PURE__ */ React66.createElement(Panel, { title: "后台会话历史", sub: "保留当前复用会话，收起已停用的旧批次记录" }, /* @__PURE__ */ React66.createElement("p", { className: "wb-tiny wb-muted" }, page?.note), /* @__PURE__ */ React66.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React66.createElement(Btn, { disabled: busy, onClick: () => {
     setArchived(!archived);
     setOffset(0);
     setSelected([]);
-  } }, archived ? "查看未归档会话" : "查看已归档会话"), /* @__PURE__ */ React63.createElement(Btn, { disabled: busy, onClick: () => read() }, "刷新会话历史"), !archived && /* @__PURE__ */ React63.createElement(Btn, { disabled: busy || !page?.supported || !rows.some((row) => !row.active && !row.protected), onClick: () => setSelected(rows.filter((row) => !row.active && !row.protected && !row.archived).map((row) => row.id)) }, "选择本页旧会话"), !archived && /* @__PURE__ */ React63.createElement(Btn, { disabled: busy || !page?.supported || !selected.length, onClick: archive }, busy ? "正在归档…" : `归档选中会话（${selected.length}）`)), error2 && /* @__PURE__ */ React63.createElement("p", { role: "alert" }, error2), result && /* @__PURE__ */ React63.createElement("p", { role: "status" }, result), rows.map((row) => /* @__PURE__ */ React63.createElement("article", { className: "wb-reply-item", key: row.id }, /* @__PURE__ */ React63.createElement("label", { className: "wb-row" }, !archived && /* @__PURE__ */ React63.createElement("input", { type: "checkbox", "aria-label": `选择后台会话 ${row.id.replace(/^session-/, "").slice(0, 8)}`, disabled: busy || !page?.supported || row.active || row.protected, checked: selected.includes(row.id), onChange: (e) => setSelected((previous) => e.target.checked ? [...previous, row.id] : previous.filter((id) => id !== row.id)) }), /* @__PURE__ */ React63.createElement("span", null, "后台会话 · ", row.id.replace(/^session-/, "").slice(0, 8), " · ", row.active ? "正在复用" : row.protected ? "人工会话保护" : row.archived ? "已归档" : "旧记录")), /* @__PURE__ */ React63.createElement(Btn, { size: "sm", onClick: () => {
+  } }, archived ? "查看未归档会话" : "查看已归档会话"), /* @__PURE__ */ React66.createElement(Btn, { disabled: busy, onClick: () => read() }, "刷新会话历史"), !archived && /* @__PURE__ */ React66.createElement(Btn, { disabled: busy || !page?.supported || !rows.some((row) => !row.active && !row.protected), onClick: () => setSelected(rows.filter((row) => !row.active && !row.protected && !row.archived).map((row) => row.id)) }, "选择本页旧会话"), !archived && /* @__PURE__ */ React66.createElement(Btn, { disabled: busy || !page?.supported || !selected.length, onClick: archive }, busy ? "正在归档…" : `归档选中会话（${selected.length}）`)), error2 && /* @__PURE__ */ React66.createElement("p", { role: "alert" }, error2), result && /* @__PURE__ */ React66.createElement("p", { role: "status" }, result), rows.map((row) => /* @__PURE__ */ React66.createElement("article", { className: "wb-reply-item", key: row.id }, /* @__PURE__ */ React66.createElement("label", { className: "wb-row" }, !archived && /* @__PURE__ */ React66.createElement("input", { type: "checkbox", "aria-label": `选择后台会话 ${row.id.replace(/^session-/, "").slice(0, 8)}`, disabled: busy || !page?.supported || row.active || row.protected, checked: selected.includes(row.id), onChange: (e) => setSelected((previous) => e.target.checked ? [...previous, row.id] : previous.filter((id) => id !== row.id)) }), /* @__PURE__ */ React66.createElement("span", null, "后台会话 · ", row.id.replace(/^session-/, "").slice(0, 8), " · ", row.active ? "正在复用" : row.protected ? "人工会话保护" : row.archived ? "已归档" : "旧记录")), /* @__PURE__ */ React66.createElement(Btn, { size: "sm", onClick: () => {
     if (!WB.openSessionById(row.id)) setError("当前宿主无法打开会话，请使用原生历史入口");
-  } }, "打开原生日志"))), page && /* @__PURE__ */ React63.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React63.createElement(Btn, { disabled: busy || offset === 0, onClick: () => setOffset(Math.max(0, offset - 20)) }, "上一页会话"), /* @__PURE__ */ React63.createElement("span", null, page.total, " 个 · 可归档 ", page.eligible, " 个"), /* @__PURE__ */ React63.createElement(Btn, { disabled: busy || offset + 20 >= page.total, onClick: () => setOffset(offset + 20) }, "下一页会话"))));
+  } }, "打开原生日志"))), page && /* @__PURE__ */ React66.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React66.createElement(Btn, { disabled: busy || offset === 0, onClick: () => setOffset(Math.max(0, offset - 20)) }, "上一页会话"), /* @__PURE__ */ React66.createElement("span", null, page.total, " 个 · 可归档 ", page.eligible, " 个"), /* @__PURE__ */ React66.createElement(Btn, { disabled: busy || offset + 20 >= page.total, onClick: () => setOffset(offset + 20) }, "下一页会话"))));
 }
 
 // src/client/features/settings/YunzhijiaConnection.tsx
-var React64 = __toESM(require("react"), 1);
+var React67 = __toESM(require("react"), 1);
 function YunzhijiaConnection({ initial }) {
-  const [connector, setConnector] = React64.useState(initial);
-  const [operation, setOperation] = React64.useState(null);
-  const [pending, setPending] = React64.useState(false);
-  const [checking, setChecking] = React64.useState(false);
-  const live = React64.useRef(false);
-  const inFlight = React64.useRef(false);
-  const refresh = React64.useCallback(async (force = true, operationOnly = false) => {
+  const [connector, setConnector] = React67.useState(initial);
+  const [operation, setOperation] = React67.useState(null);
+  const [pending, setPending] = React67.useState(false);
+  const [checking, setChecking] = React67.useState(false);
+  const live = React67.useRef(false);
+  const inFlight = React67.useRef(false);
+  const refresh = React67.useCallback(async (force = true, operationOnly = false) => {
     if (inFlight.current) return;
     inFlight.current = true;
     if (!operationOnly) setChecking(true);
@@ -18609,16 +18984,16 @@ function YunzhijiaConnection({ initial }) {
       if (live.current) setChecking(false);
     }
   }, []);
-  React64.useEffect(() => {
+  React67.useEffect(() => {
     live.current = true;
     return () => {
       live.current = false;
     };
   }, []);
-  React64.useEffect(() => {
+  React67.useEffect(() => {
     setConnector(initial);
   }, [initial]);
-  React64.useEffect(() => {
+  React67.useEffect(() => {
     if (operation?.status !== "running") return;
     const timer = setInterval(() => void refresh(false, true), 3e3);
     return () => clearInterval(timer);
@@ -18638,15 +19013,15 @@ function YunzhijiaConnection({ initial }) {
   };
   const meta = WB.connectorState(connector?.authState || "unconfigured");
   const installed = typeof connector?.installed === "boolean" ? connector.installed : ["ok", "unauthorized"].includes(connector?.authState);
-  return /* @__PURE__ */ React64.createElement("section", { className: "wb-item", style: { alignItems: "flex-start", flexWrap: "wrap" }, "aria-label": "云之家连接" }, /* @__PURE__ */ React64.createElement("div", { className: "wb-item-main", style: { flex: "1 1 140px" } }, /* @__PURE__ */ React64.createElement("div", { className: "wb-item-title" }, "云之家", /* @__PURE__ */ React64.createElement(Badge, { tone: meta.tone }, meta.label)), /* @__PURE__ */ React64.createElement("div", { className: "wb-item-sub" }, "同步云之家消息与文档，安装时获取最新版 CLI。")), /* @__PURE__ */ React64.createElement("div", { className: "wb-row wb-row--wrap", style: { flex: "0 1 auto" } }, /* @__PURE__ */ React64.createElement(Btn, { size: "sm", disabled: busy, onClick: () => start("install") }, busy && operation?.kind === "install" ? "安装中…" : installed ? "重新安装" : "安装"), installed && connector?.authState !== "ok" && /* @__PURE__ */ React64.createElement(Btn, { size: "sm", disabled: busy, onClick: () => start("login") }, busy && operation?.kind === "login" ? "等待登录…" : "登录授权"), /* @__PURE__ */ React64.createElement(Btn, { size: "sm", disabled: busy || checking, onClick: () => refresh() }, checking ? "检测中…" : "重新检测")));
+  return /* @__PURE__ */ React67.createElement("section", { className: "wb-item", style: { alignItems: "flex-start", flexWrap: "wrap" }, "aria-label": "云之家连接" }, /* @__PURE__ */ React67.createElement("div", { className: "wb-item-main", style: { flex: "1 1 140px" } }, /* @__PURE__ */ React67.createElement("div", { className: "wb-item-title" }, "云之家", /* @__PURE__ */ React67.createElement(Badge, { tone: meta.tone }, meta.label)), /* @__PURE__ */ React67.createElement("div", { className: "wb-item-sub" }, "同步云之家消息与文档，安装时获取最新版 CLI。")), /* @__PURE__ */ React67.createElement("div", { className: "wb-row wb-row--wrap", style: { flex: "0 1 auto" } }, /* @__PURE__ */ React67.createElement(Btn, { size: "sm", disabled: busy, onClick: () => start("install") }, busy && operation?.kind === "install" ? "安装中…" : installed ? "重新安装" : "安装"), installed && connector?.authState !== "ok" && /* @__PURE__ */ React67.createElement(Btn, { size: "sm", disabled: busy, onClick: () => start("login") }, busy && operation?.kind === "login" ? "等待登录…" : "登录授权"), /* @__PURE__ */ React67.createElement(Btn, { size: "sm", disabled: busy || checking, onClick: () => refresh() }, checking ? "检测中…" : "重新检测")));
 }
 
 // src/client/features/operations/OperationsPanel.tsx
-var React65 = __toESM(require("react"), 1);
+var React68 = __toESM(require("react"), 1);
 function OperationsPanel({ revision }) {
-  const [evaluating, setEvaluating] = React65.useState(false);
-  const [status, setStatus] = React65.useState(null), [error2, setError] = React65.useState(""), [calls, setCalls] = React65.useState(""), [tokens, setTokens] = React65.useState(""), [history, setHistory] = React65.useState(null), [offset, setOffset] = React65.useState(0), [selected, setSelected] = React65.useState(null), [busy, setBusy] = React65.useState(false);
-  const readGeneration = React65.useRef(0), draftGeneration = React65.useRef(0);
+  const [evaluating, setEvaluating] = React68.useState(false);
+  const [status2, setStatus] = React68.useState(null), [error2, setError] = React68.useState(""), [calls, setCalls] = React68.useState(""), [tokens, setTokens] = React68.useState(""), [history, setHistory] = React68.useState(null), [offset, setOffset] = React68.useState(0), [selected, setSelected] = React68.useState(null), [busy, setBusy] = React68.useState(false);
+  const readGeneration = React68.useRef(0), draftGeneration = React68.useRef(0);
   const read = () => {
     const generation = ++readGeneration.current;
     return WB.rpc("workbench/operationsStatus", {}, AbortSignal.timeout(15e3)).then((value) => {
@@ -18660,7 +19035,7 @@ function OperationsPanel({ revision }) {
       if (generation === readGeneration.current) setError(e.message);
     });
   };
-  React65.useEffect(() => {
+  React68.useEffect(() => {
     void read();
     return () => {
       readGeneration.current += 1;
@@ -18695,14 +19070,14 @@ function OperationsPanel({ revision }) {
       setBusy(false);
     }
   }
-  const reviews = status?.qualityReviews || [], counts = reviews.reduce((acc, row) => ({ ...acc, [row.verdict]: (acc[row.verdict] || 0) + 1 }), {});
-  return /* @__PURE__ */ React65.createElement(Panel, { title: "运行与质量", sub: "后台用量、积压和业务变更；不把执行成功当作识别正确" }, error2 && /* @__PURE__ */ React65.createElement("p", { role: "alert" }, error2), /* @__PURE__ */ React65.createElement(Btn, { size: "sm", onClick: read }, "读取最新状态"), status && /* @__PURE__ */ React65.createElement("p", null, "待分析 ", status.queue?.pending || 0, " · 失败 ", status.queue?.failed || 0, " · 最老待分析 ", status.queue?.oldestPendingMinutes || 0, " 分钟 · 数据 ", (status.storageBytes / 1048576).toFixed(1), " MB"), /* @__PURE__ */ React65.createElement("p", null, "今日后台调用 ", status?.usage?.calls || 0, " 次；收到用量的步骤 ", status?.usage?.reportedSteps || 0, " 个"), /* @__PURE__ */ React65.createElement("p", { className: "wb-tiny wb-muted" }, status?.usage?.reportedSteps ? `非缓存输入 ${status.usage.inputTokens} · 输出 ${status.usage.outputTokens} · 缓存读取 ${status.usage.cacheReadTokens} · 缓存写入 ${status.usage.cacheWriteTokens}` : "模型尚未回传 Token 用量，不能按 0 用量计算费用。", " 同一会话历史仍可能计费。"), /* @__PURE__ */ React65.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React65.createElement("label", null, "每日后台调用上限", /* @__PURE__ */ React65.createElement(Input, { type: "number", min: "0", value: calls, onChange: (e) => {
+  const reviews = status2?.qualityReviews || [], counts = reviews.reduce((acc, row) => ({ ...acc, [row.verdict]: (acc[row.verdict] || 0) + 1 }), {});
+  return /* @__PURE__ */ React68.createElement(Panel, { title: "运行与质量", sub: "后台用量、积压和业务变更；不把执行成功当作识别正确" }, error2 && /* @__PURE__ */ React68.createElement("p", { role: "alert" }, error2), /* @__PURE__ */ React68.createElement(Btn, { size: "sm", onClick: read }, "读取最新状态"), status2 && /* @__PURE__ */ React68.createElement("p", null, "待分析 ", status2.queue?.pending || 0, " · 失败 ", status2.queue?.failed || 0, " · 最老待分析 ", status2.queue?.oldestPendingMinutes || 0, " 分钟 · 数据 ", (status2.storageBytes / 1048576).toFixed(1), " MB"), /* @__PURE__ */ React68.createElement("p", null, "今日后台调用 ", status2?.usage?.calls || 0, " 次；收到用量的步骤 ", status2?.usage?.reportedSteps || 0, " 个"), /* @__PURE__ */ React68.createElement("p", { className: "wb-tiny wb-muted" }, status2?.usage?.reportedSteps ? `非缓存输入 ${status2.usage.inputTokens} · 输出 ${status2.usage.outputTokens} · 缓存读取 ${status2.usage.cacheReadTokens} · 缓存写入 ${status2.usage.cacheWriteTokens}` : "模型尚未回传 Token 用量，不能按 0 用量计算费用。", " 同一会话历史仍可能计费。"), /* @__PURE__ */ React68.createElement("div", { className: "wb-row wb-row--wrap" }, /* @__PURE__ */ React68.createElement("label", null, "每日后台调用上限", /* @__PURE__ */ React68.createElement(Input, { type: "number", min: "0", value: calls, onChange: (e) => {
     draftGeneration.current += 1;
     setCalls(e.target.value);
-  } })), /* @__PURE__ */ React65.createElement("label", null, "每日已知 Token 上限", /* @__PURE__ */ React65.createElement(Input, { type: "number", min: "0", value: tokens, onChange: (e) => {
+  } })), /* @__PURE__ */ React68.createElement("label", null, "每日已知 Token 上限", /* @__PURE__ */ React68.createElement(Input, { type: "number", min: "0", value: tokens, onChange: (e) => {
     draftGeneration.current += 1;
     setTokens(e.target.value);
-  } })), /* @__PURE__ */ React65.createElement(Btn, { onClick: saveBudget }, "保存")), /* @__PURE__ */ React65.createElement("p", { className: "wb-tiny wb-muted" }, "0 表示不限。达到上限后暂停新的后台请求；Token 上限按已回传值判断，单次请求可能越过阈值。用量缺失时请使用调用次数上限。"), /* @__PURE__ */ React65.createElement("p", null, "人工复核 ", reviews.length, " 条 · 正确 ", counts.correct || 0, " · 误建 ", counts.false_positive || 0, " · 漏办 ", counts.missed_action || 0, " · 日期错误 ", counts.wrong_date || 0, " · 完成误判 ", counts.wrong_completion || 0, " · 关联错误 ", counts.wrong_link || 0), /* @__PURE__ */ React65.createElement(Btn, { size: "sm", disabled: evaluating, onClick: async () => {
+  } })), /* @__PURE__ */ React68.createElement(Btn, { onClick: saveBudget }, "保存")), /* @__PURE__ */ React68.createElement("p", { className: "wb-tiny wb-muted" }, "0 表示不限。达到上限后暂停新的后台请求；Token 上限按已回传值判断，单次请求可能越过阈值。用量缺失时请使用调用次数上限。"), /* @__PURE__ */ React68.createElement("p", null, "人工复核 ", reviews.length, " 条 · 正确 ", counts.correct || 0, " · 误建 ", counts.false_positive || 0, " · 漏办 ", counts.missed_action || 0, " · 日期错误 ", counts.wrong_date || 0, " · 完成误判 ", counts.wrong_completion || 0, " · 关联错误 ", counts.wrong_link || 0), /* @__PURE__ */ React68.createElement(Btn, { size: "sm", disabled: evaluating, onClick: async () => {
     setEvaluating(true);
     setError("");
     try {
@@ -18713,35 +19088,38 @@ function OperationsPanel({ revision }) {
     } finally {
       setEvaluating(false);
     }
-  } }, evaluating ? "正在运行标注样本…" : "运行 10 条识别质量样本"), /* @__PURE__ */ React65.createElement("p", { className: "wb-tiny wb-muted" }, "使用已有模型，仅分析合成样本，不创建业务事项。不是实际业务总体准确率。"), status?.qualityEvaluation && /* @__PURE__ */ React65.createElement("p", null, "最近样本：返回 ", status.qualityEvaluation.report.returned, "/", status.qualityEvaluation.report.samples, " · 完全符合标签 ", status.qualityEvaluation.report.exact, " · 日期错误 ", status.qualityEvaluation.report.wrongDate, " · 完成误判 ", status.qualityEvaluation.report.wrongCompletion), /* @__PURE__ */ React65.createElement(Btn, { size: "sm", onClick: () => loadHistory(0) }, "查看变更记录"), history && /* @__PURE__ */ React65.createElement("div", null, (history.items || []).map((row) => /* @__PURE__ */ React65.createElement("article", { className: "wb-reply-item", key: row.id }, /* @__PURE__ */ React65.createElement("strong", null, row.title), /* @__PURE__ */ React65.createElement("p", { className: "wb-tiny wb-muted" }, row.actor === "ai" ? "AI" : "人工/工具", " · ", row.at, " · ", row.reason), /* @__PURE__ */ React65.createElement(Btn, { size: "sm", onClick: () => setSelected(row) }, "查看前后变化"))), /* @__PURE__ */ React65.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React65.createElement(Btn, { disabled: offset === 0, onClick: () => loadHistory(Math.max(0, offset - 10)) }, "上一页"), /* @__PURE__ */ React65.createElement("span", null, history.total, " 条"), /* @__PURE__ */ React65.createElement(Btn, { disabled: offset + 10 >= history.total, onClick: () => loadHistory(offset + 10) }, "下一页"))), /* @__PURE__ */ React65.createElement(Modal, { open: !!selected, title: "业务变更", onClose: () => setSelected(null), footer: /* @__PURE__ */ React65.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React65.createElement(Btn, { onClick: () => setSelected(null) }, "关闭"), /* @__PURE__ */ React65.createElement(Btn, { disabled: busy || !!selected?.revertedAt || !selected?.after, onClick: undo }, "撤销这次变更")) }, /* @__PURE__ */ React65.createElement("p", null, "撤销前会检查是否有后续修改。撤销新建待办会取消该事项并保留证据。"), /* @__PURE__ */ React65.createElement("details", { open: true }, /* @__PURE__ */ React65.createElement("summary", null, "修改前"), /* @__PURE__ */ React65.createElement("pre", { className: "wb-code" }, JSON.stringify(selected?.before, null, 2))), /* @__PURE__ */ React65.createElement("details", { open: true }, /* @__PURE__ */ React65.createElement("summary", null, "修改后"), /* @__PURE__ */ React65.createElement("pre", { className: "wb-code" }, JSON.stringify(selected?.after, null, 2)))));
+  } }, evaluating ? "正在运行标注样本…" : "运行 10 条识别质量样本"), /* @__PURE__ */ React68.createElement("p", { className: "wb-tiny wb-muted" }, "使用已有模型，仅分析合成样本，不创建业务事项。不是实际业务总体准确率。"), status2?.qualityEvaluation && /* @__PURE__ */ React68.createElement("p", null, "最近样本：返回 ", status2.qualityEvaluation.report.returned, "/", status2.qualityEvaluation.report.samples, " · 完全符合标签 ", status2.qualityEvaluation.report.exact, " · 日期错误 ", status2.qualityEvaluation.report.wrongDate, " · 完成误判 ", status2.qualityEvaluation.report.wrongCompletion), /* @__PURE__ */ React68.createElement(Btn, { size: "sm", onClick: () => loadHistory(0) }, "查看变更记录"), history && /* @__PURE__ */ React68.createElement("div", null, (history.items || []).map((row) => /* @__PURE__ */ React68.createElement("article", { className: "wb-reply-item", key: row.id }, /* @__PURE__ */ React68.createElement("strong", null, row.title), /* @__PURE__ */ React68.createElement("p", { className: "wb-tiny wb-muted" }, row.actor === "ai" ? "AI" : "人工/工具", " · ", row.at, " · ", row.reason), /* @__PURE__ */ React68.createElement(Btn, { size: "sm", onClick: () => setSelected(row) }, "查看前后变化"))), /* @__PURE__ */ React68.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React68.createElement(Btn, { disabled: offset === 0, onClick: () => loadHistory(Math.max(0, offset - 10)) }, "上一页"), /* @__PURE__ */ React68.createElement("span", null, history.total, " 条"), /* @__PURE__ */ React68.createElement(Btn, { disabled: offset + 10 >= history.total, onClick: () => loadHistory(offset + 10) }, "下一页"))), /* @__PURE__ */ React68.createElement(Modal, { open: !!selected, title: "业务变更", onClose: () => setSelected(null), footer: /* @__PURE__ */ React68.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React68.createElement(Btn, { onClick: () => setSelected(null) }, "关闭"), /* @__PURE__ */ React68.createElement(Btn, { disabled: busy || !!selected?.revertedAt || !selected?.after, onClick: undo }, "撤销这次变更")) }, /* @__PURE__ */ React68.createElement("p", null, "撤销前会检查是否有后续修改。撤销新建待办会取消该事项并保留证据。"), /* @__PURE__ */ React68.createElement("details", { open: true }, /* @__PURE__ */ React68.createElement("summary", null, "修改前"), /* @__PURE__ */ React68.createElement("pre", { className: "wb-code" }, JSON.stringify(selected?.before, null, 2))), /* @__PURE__ */ React68.createElement("details", { open: true }, /* @__PURE__ */ React68.createElement("summary", null, "修改后"), /* @__PURE__ */ React68.createElement("pre", { className: "wb-code" }, JSON.stringify(selected?.after, null, 2)))));
 }
 
 // src/client/features/operations/ArchiveBrowser.tsx
-var React66 = __toESM(require("react"), 1);
+var React69 = __toESM(require("react"), 1);
 function ArchiveBrowser() {
-  const [collection, setCollection] = React66.useState("tasks"), [archived, setArchived] = React66.useState(false), [result, setResult] = React66.useState(null), [offset, setOffset] = React66.useState(0), [error2, setError] = React66.useState("");
+  const [collection, setCollection] = React69.useState("tasks"), [archived, setArchived] = React69.useState(false), [result, setResult] = React69.useState(null), [offset, setOffset] = React69.useState(0), [error2, setError] = React69.useState("");
   const load = (nextCollection = collection, nextArchived = archived, from = 0) => {
     setCollection(nextCollection);
     setArchived(nextArchived);
     setOffset(from);
     WB.rpc("workbench/dataPage", { request: { collection: nextCollection, archived: nextArchived, offset: from, limit: 10 } }).then(setResult).catch((e) => setError(e.message));
   };
-  return /* @__PURE__ */ React66.createElement(Panel, { title: "记录归档", sub: "归档仅隐藏已处理记录，保留 ID 和关联，可随时恢复" }, /* @__PURE__ */ React66.createElement("select", { className: "wb-select", "aria-label": "归档集合", value: collection, onChange: (e) => load(e.target.value) }, [["tasks", "待办"], ["replies", "回复"], ["radar", "资讯"], ["knowledge", "知识"]].map(([value, label]) => /* @__PURE__ */ React66.createElement("option", { key: value, value }, label))), /* @__PURE__ */ React66.createElement(Btn, { onClick: () => load(collection, !archived) }, archived ? "查看未归档" : "查看已归档"), /* @__PURE__ */ React66.createElement(Btn, { onClick: () => load() }, "加载"), error2 && /* @__PURE__ */ React66.createElement("p", { role: "alert" }, error2), (result?.items || []).map((row) => /* @__PURE__ */ React66.createElement("div", { className: "wb-reply-item", key: row.id }, /* @__PURE__ */ React66.createElement("span", null, row.title || row.snippet || row.id), /* @__PURE__ */ React66.createElement(Btn, { size: "sm", onClick: () => WB.rpc("workbench/archiveRecord", { collection, id: row.id, archived: !archived }).then(() => {
+  return /* @__PURE__ */ React69.createElement(Panel, { title: "记录归档", sub: "归档仅隐藏已处理记录，保留 ID 和关联，可随时恢复" }, /* @__PURE__ */ React69.createElement("select", { className: "wb-select", "aria-label": "归档集合", value: collection, onChange: (e) => load(e.target.value) }, [["tasks", "待办"], ["replies", "回复"], ["radar", "资讯"], ["knowledge", "知识"]].map(([value, label]) => /* @__PURE__ */ React69.createElement("option", { key: value, value }, label))), /* @__PURE__ */ React69.createElement(Btn, { onClick: () => load(collection, !archived) }, archived ? "查看未归档" : "查看已归档"), /* @__PURE__ */ React69.createElement(Btn, { onClick: () => load() }, "加载"), error2 && /* @__PURE__ */ React69.createElement("p", { role: "alert" }, error2), (result?.items || []).map((row) => /* @__PURE__ */ React69.createElement("div", { className: "wb-reply-item", key: row.id }, /* @__PURE__ */ React69.createElement("span", null, row.title || row.snippet || row.id), /* @__PURE__ */ React69.createElement(Btn, { size: "sm", onClick: () => WB.rpc("workbench/archiveRecord", { collection, id: row.id, archived: !archived }).then(() => {
     load(collection, archived, offset);
     return WB.actions.reload();
-  }).catch((e) => setError(e.message)) }, archived ? "恢复显示" : "归档"))), result && /* @__PURE__ */ React66.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React66.createElement(Btn, { disabled: !offset, onClick: () => load(collection, archived, Math.max(0, offset - 10)) }, "上一页"), /* @__PURE__ */ React66.createElement("span", null, result.total, " 条"), /* @__PURE__ */ React66.createElement(Btn, { disabled: offset + 10 >= result.total, onClick: () => load(collection, archived, offset + 10) }, "下一页")));
+  }).catch((e) => setError(e.message)) }, archived ? "恢复显示" : "归档"))), result && /* @__PURE__ */ React69.createElement("div", { className: "wb-row" }, /* @__PURE__ */ React69.createElement(Btn, { disabled: !offset, onClick: () => load(collection, archived, Math.max(0, offset - 10)) }, "上一页"), /* @__PURE__ */ React69.createElement("span", null, result.total, " 条"), /* @__PURE__ */ React69.createElement(Btn, { disabled: offset + 10 >= result.total, onClick: () => load(collection, archived, offset + 10) }, "下一页")));
 }
 
+// src/client/features/settings/DataManagement.tsx
+var React71 = __toESM(require("react"), 1);
+
 // src/client/components/MigrationImportPanel.tsx
-var React67 = __toESM(require("react"), 1);
+var React70 = __toESM(require("react"), 1);
 function MigrationImportPanel() {
-  const [validated, setValidated] = React67.useState(false);
-  const [json, setJson] = React67.useState("");
-  const [mode, setMode] = React67.useState("merge");
-  const [paths, setPaths] = React67.useState({});
-  const [preview, setPreview] = React67.useState(null);
-  const [error2, setError] = React67.useState("");
-  const [busy, setBusy] = React67.useState(false);
+  const [validated, setValidated] = React70.useState(false);
+  const [json, setJson] = React70.useState("");
+  const [mode, setMode] = React70.useState("merge");
+  const [paths, setPaths] = React70.useState({});
+  const [preview, setPreview] = React70.useState(null);
+  const [error2, setError] = React70.useState("");
+  const [busy, setBusy] = React70.useState(false);
   async function inspect() {
     setBusy(true);
     setError("");
@@ -18772,11 +19150,11 @@ function MigrationImportPanel() {
       setBusy(false);
     }
   }
-  return /* @__PURE__ */ React67.createElement("section", { className: "wb-stack", "aria-label": "迁移导入" }, /* @__PURE__ */ React67.createElement("label", { className: "wb-label" }, "导入迁移包", /* @__PURE__ */ React67.createElement("textarea", { className: "wb-textarea", rows: 5, value: json, placeholder: "在这里粘贴导出的迁移包 JSON", onChange: (e) => {
+  return /* @__PURE__ */ React70.createElement("section", { className: "wb-stack wb-migration-import", "aria-label": "迁移导入" }, /* @__PURE__ */ React70.createElement("label", { className: "wb-label" }, "迁移包 JSON", /* @__PURE__ */ React70.createElement("textarea", { className: "wb-textarea", rows: 4, value: json, placeholder: "在这里粘贴导出的迁移包 JSON", onChange: (e) => {
     setJson(e.target.value);
     setPreview(null);
     setPaths({});
-  } })), /* @__PURE__ */ React67.createElement("label", { className: "wb-label" }, "或选择迁移文件", /* @__PURE__ */ React67.createElement("input", { type: "file", accept: "application/json,.json", onChange: async (e) => {
+  } })), /* @__PURE__ */ React70.createElement("label", { className: "wb-label wb-migration-file" }, "或选择迁移文件", /* @__PURE__ */ React70.createElement("input", { type: "file", accept: "application/json,.json", onChange: async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
@@ -18786,17 +19164,161 @@ function MigrationImportPanel() {
     setJson(await file.text());
     setPreview(null);
     setPaths({});
-  } })), /* @__PURE__ */ React67.createElement("div", { className: "wb-reply-actions" }, /* @__PURE__ */ React67.createElement("label", null, "导入方式 ", /* @__PURE__ */ React67.createElement("select", { className: "wb-select", value: mode, onChange: (e) => {
+  } })), /* @__PURE__ */ React70.createElement("div", { className: "wb-migration-controls" }, /* @__PURE__ */ React70.createElement("label", { className: "wb-label" }, "导入方式 ", /* @__PURE__ */ React70.createElement("select", { className: "wb-select", value: mode, onChange: (e) => {
     setMode(e.target.value);
     setPreview(null);
-  } }, /* @__PURE__ */ React67.createElement("option", { value: "merge" }, "合并：同 ID 保留当前数据"), /* @__PURE__ */ React67.createElement("option", { value: "replace" }, "替换包内业务集合"))), /* @__PURE__ */ React67.createElement("button", { type: "button", className: "wb-chip", disabled: busy || !json.trim(), onClick: inspect }, busy ? "处理中…" : "预检迁移包"), /* @__PURE__ */ React67.createElement("button", { type: "button", className: "wb-chip", disabled: busy || !preview || !validated, onClick: apply3 }, "执行导入")), error2 && /* @__PURE__ */ React67.createElement("p", { role: "alert" }, error2), preview && /* @__PURE__ */ React67.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React67.createElement("strong", null, validated ? "预检通过" : "目录已修改，请重新预检", " · ", preview.incomingTotal, " 条 · 尚未写入"), /* @__PURE__ */ React67.createElement("div", null, Object.entries(preview.countsByColumn).map(([key2, count]) => /* @__PURE__ */ React67.createElement("span", { key: key2, style: { display: "inline-block", marginRight: 12 } }, key2, "：", count, "（同 ID ", preview.conflictsByColumn[key2] || 0, "）"))), preview.warnings?.map((w) => /* @__PURE__ */ React67.createElement("p", { key: w }, w)), preview.mappedProjects.filter((p) => p.from).map((project) => /* @__PURE__ */ React67.createElement("label", { className: "wb-label", key: project.id }, project.name, " · ", project.from, /* @__PURE__ */ React67.createElement("input", { className: "wb-input", "aria-label": "目标目录 " + project.name, value: paths[project.from] ?? project.to, onChange: (e) => {
+  } }, /* @__PURE__ */ React70.createElement("option", { value: "merge" }, "合并：同 ID 保留当前数据"), /* @__PURE__ */ React70.createElement("option", { value: "replace" }, "替换包内业务集合"))), /* @__PURE__ */ React70.createElement("div", { className: "wb-settings-actions" }, /* @__PURE__ */ React70.createElement(Btn, { size: "sm", disabled: busy || !json.trim(), onClick: inspect }, busy ? "处理中…" : "预检迁移包"), /* @__PURE__ */ React70.createElement(Btn, { size: "sm", kind: "primary", disabled: busy || !preview || !validated, onClick: apply3 }, "执行导入"))), error2 && /* @__PURE__ */ React70.createElement("p", { role: "alert" }, error2), preview && /* @__PURE__ */ React70.createElement("div", { className: "wb-stack wb-migration-preview" }, /* @__PURE__ */ React70.createElement("strong", null, validated ? "预检通过" : "目录已修改，请重新预检", " · ", preview.incomingTotal, " 条 · 尚未写入"), /* @__PURE__ */ React70.createElement("div", null, Object.entries(preview.countsByColumn).map(([key2, count]) => /* @__PURE__ */ React70.createElement("span", { key: key2, style: { display: "inline-block", marginRight: 12 } }, key2, "：", count, "（同 ID ", preview.conflictsByColumn[key2] || 0, "）"))), preview.warnings?.map((w) => /* @__PURE__ */ React70.createElement("p", { key: w }, w)), preview.mappedProjects.filter((p) => p.from).map((project) => /* @__PURE__ */ React70.createElement("label", { className: "wb-label", key: project.id }, project.name, " · ", project.from, /* @__PURE__ */ React70.createElement("input", { className: "wb-input", "aria-label": "目标目录 " + project.name, value: paths[project.from] ?? project.to, onChange: (e) => {
     setPaths({ ...paths, [project.from]: e.target.value });
     setValidated(false);
-  } })))), /* @__PURE__ */ React67.createElement("p", { className: "wb-tiny wb-muted" }, "修改目录映射后重新预检；迁移包含待办、待回复、消息证据和队列。原生会话与凭据单独管理。"));
+  } })))), /* @__PURE__ */ React70.createElement("p", { className: "wb-tiny wb-muted" }, "修改目录映射后重新预检；迁移包含待办、待回复、消息证据和队列。原生会话与凭据单独管理。"));
 }
 
+// src/client/features/settings/DataManagement.tsx
+function DataCard({ title, hint, icon, className = "", children }) {
+  return /* @__PURE__ */ React71.createElement("section", { className: "wb-settings-data-card " + className, "aria-label": title + "卡片" }, /* @__PURE__ */ React71.createElement("header", null, /* @__PURE__ */ React71.createElement("span", { className: "wb-settings-data-icon" }, /* @__PURE__ */ React71.createElement(Icon, { name: icon, size: 16 })), /* @__PURE__ */ React71.createElement("div", null, /* @__PURE__ */ React71.createElement("h4", null, title), /* @__PURE__ */ React71.createElement("p", null, hint))), children);
+}
+function DataManagement({ onExportJson, onReset }) {
+  const [backups, setBackups] = React71.useState([]), [busy, setBusy] = React71.useState(false);
+  React71.useEffect(() => {
+    let alive = true;
+    WB.actions.backups().then((result) => {
+      if (alive) setBackups(result.backups || []);
+    }).catch(() => {
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+  async function backup() {
+    setBusy(true);
+    try {
+      const result = await WB.actions.backup();
+      setBackups(result.backups || []);
+      WB.toast("已创建备份", "ok");
+    } catch (e) {
+      WB.toast(String(e.message || e), "err");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function exportMigration() {
+    try {
+      const pack = await WB.actions.exportMigration();
+      await WB.util.copy(JSON.stringify(pack, null, 2));
+      WB.toast("迁移包已复制（含校验），粘贴到目标端即可导入", "ok");
+    } catch (e) {
+      WB.toast("导出失败：" + String(e.message || e), "err");
+    }
+  }
+  async function restore(id) {
+    if (!window.confirm("用这份备份覆盖当前数据？当前文件会先自动备份。")) return;
+    try {
+      await WB.actions.restoreBackup(id);
+      WB.toast("已从备份恢复", "ok");
+      await WB.actions.reload();
+    } catch (e) {
+      WB.toast("恢复失败：" + String(e.message || e), "err");
+    }
+  }
+  return /* @__PURE__ */ React71.createElement(Panel, { className: "wb-settings-data", title: "数据管理", sub: "导出、备份与迁移，统一管理本地工作台数据", icon: "database" }, /* @__PURE__ */ React71.createElement("div", { className: "wb-settings-data-grid" }, /* @__PURE__ */ React71.createElement("div", { className: "wb-settings-data-sidebar" }, /* @__PURE__ */ React71.createElement(DataCard, { title: "导出数据", hint: "保存快照，或复制迁移包到另一台设备。", icon: "download", className: "is-export" }, /* @__PURE__ */ React71.createElement("div", { className: "wb-settings-actions" }, /* @__PURE__ */ React71.createElement(Btn, { size: "sm", onClick: onExportJson }, "导出 JSON"), /* @__PURE__ */ React71.createElement(Btn, { size: "sm", onClick: () => void exportMigration() }, "导出迁移包"))), /* @__PURE__ */ React71.createElement(DataCard, { title: "备份与恢复", hint: "每天首次写入自动备份，保留最近 5 份。", icon: "save", className: "is-backup" }, /* @__PURE__ */ React71.createElement("div", { className: "wb-settings-actions" }, /* @__PURE__ */ React71.createElement(Btn, { size: "sm", disabled: busy, onClick: () => void backup() }, busy ? "备份中…" : "立即备份"), /* @__PURE__ */ React71.createElement("span", { className: "wb-tiny wb-muted" }, backups.length ? backups.length + " 份可用备份" : "暂无可用备份")), backups.length > 0 && /* @__PURE__ */ React71.createElement("ul", { className: "wb-settings-backups" }, backups.slice(0, 5).map((item) => /* @__PURE__ */ React71.createElement("li", { key: item.id }, /* @__PURE__ */ React71.createElement("div", null, /* @__PURE__ */ React71.createElement("span", { className: "wb-mono", title: item.id }, item.id), /* @__PURE__ */ React71.createElement("small", null, WB.fmt.bytes(item.bytes))), /* @__PURE__ */ React71.createElement(Btn, { size: "sm", onClick: () => void restore(item.id) }, "恢复")))))), /* @__PURE__ */ React71.createElement(DataCard, { title: "迁移导入", hint: "粘贴 JSON 或选择文件，先预检再导入。", icon: "upload", className: "is-import" }, /* @__PURE__ */ React71.createElement(MigrationImportPanel, null)), /* @__PURE__ */ React71.createElement(DataCard, { title: "示例与重置", hint: "体验示例布局，或按需清理工作台记录。", icon: "settings", className: "is-maintenance" }, /* @__PURE__ */ React71.createElement("div", { className: "wb-settings-maintenance" }, /* @__PURE__ */ React71.createElement("div", null, /* @__PURE__ */ React71.createElement("p", null, "添加标注为示例的待办与资讯。"), /* @__PURE__ */ React71.createElement(Btn, { size: "sm", onClick: () => {
+    void WB.actions.seedDemo().catch(() => {
+    });
+  } }, "载入示例数据")), /* @__PURE__ */ React71.createElement("div", null, /* @__PURE__ */ React71.createElement("p", null, "清空待办、执行记录、知识与资讯，保留设置。"), /* @__PURE__ */ React71.createElement(Btn, { size: "sm", kind: "danger", onClick: onReset }, "重置数据"))))));
+}
+
+// src/client/features/settings/BackgroundModels.tsx
+var React72 = __toESM(require("react"), 1);
+
+// src/shared/background-models.ts
+var identifier = (value) => typeof value === "string" && value.trim() === value && value.length > 0 && value.length <= 256 && !/[\u0000-\u001f\u007f]/.test(value);
+function backgroundModel(value) {
+  return value && identifier(value.provider) && identifier(value.model) ? { provider: value.provider, model: value.model } : null;
+}
+function normalizeBackgroundModels(value) {
+  return { analysis: backgroundModel(value?.analysis), summary: backgroundModel(value?.summary) };
+}
+function backgroundModelKey(value) {
+  return value ? JSON.stringify([value.provider, value.model]) : "";
+}
+
+// src/client/features/settings/BackgroundModels.tsx
+function BackgroundModels() {
+  const { data } = useStore(), models = normalizeBackgroundModels(data?.settings?.backgroundModels);
+  const [catalog, setCatalog] = React72.useState(null), [loading, setLoading] = React72.useState(false), [error2, setError] = React72.useState(""), [saving, setSaving] = React72.useState("");
+  const alive = React72.useRef(true), version = React72.useRef(0);
+  async function refresh() {
+    const current = ++version.current;
+    setLoading(true);
+    setError("");
+    try {
+      const value = await WB.actions.backgroundModelCatalog();
+      if (alive.current && current === version.current) setCatalog(value);
+    } catch (failure) {
+      if (alive.current && current === version.current) setError(failure.message || "模型列表读取失败");
+    } finally {
+      if (alive.current && current === version.current) setLoading(false);
+    }
+  }
+  React72.useEffect(() => {
+    alive.current = true;
+    void refresh();
+    return () => {
+      alive.current = false;
+      version.current++;
+    };
+  }, []);
+  async function save2(purpose, value) {
+    if (saving) return;
+    const choices = (catalog?.groups || []).flatMap((group) => group.models.map((model) => ({ provider: group.id, model: model.id }))), route = value ? choices.find((route2) => backgroundModelKey(route2) === value) : null;
+    if (value && !route) {
+      setError("所选模型已变化，请刷新列表");
+      return;
+    }
+    setSaving(purpose);
+    setError("");
+    try {
+      await WB.actions.backgroundModelConfigure(purpose, route);
+    } catch (failure) {
+      if (alive.current) setError(failure.message || "模型设置保存失败");
+    } finally {
+      if (alive.current) setSaving("");
+    }
+  }
+  return /* @__PURE__ */ React72.createElement(Panel, { title: "后台任务模型", icon: "sparkles", sub: "消息识别与资讯摘要分别设置，历史会话下一轮生效。", className: "wb-settings-wide" }, /* @__PURE__ */ React72.createElement("div", { className: "wb-row wb-row--wrap", style: { justifyContent: "space-between", gap: 8, marginBottom: 12 } }, /* @__PURE__ */ React72.createElement("span", { className: "wb-tiny wb-muted" }, "保留历史与已完成进度；不改变 Harness 默认模型。"), /* @__PURE__ */ React72.createElement(Btn, { size: "sm", disabled: loading || !!saving, onClick: () => refresh() }, loading ? /* @__PURE__ */ React72.createElement(React72.Fragment, null, /* @__PURE__ */ React72.createElement(Spinner, { size: 12 }), "读取模型…") : "刷新模型列表")), /* @__PURE__ */ React72.createElement("div", { className: "wb-stack", style: { gap: 12 } }, [["analysis", "消息识别"], ["summary", "资讯摘要"]].map(([purpose, title]) => {
+    const value = backgroundModelKey(models[purpose]), exists = !value || (catalog?.groups || []).some((group) => group.models.some((model) => value === backgroundModelKey({ provider: group.id, model: model.id })));
+    return /* @__PURE__ */ React72.createElement("label", { key: purpose, className: "wb-stack", style: { gap: 6, minWidth: 0 } }, /* @__PURE__ */ React72.createElement("span", { style: { fontWeight: 500, fontSize: 12 } }, title, saving === purpose && /* @__PURE__ */ React72.createElement("span", { role: "status", style: { marginLeft: 8 } }, "保存中…")), /* @__PURE__ */ React72.createElement("select", { className: "wb-input", "aria-label": title + "模型", value, disabled: loading || !!saving || !catalog?.available, onChange: (event) => save2(purpose, event.target.value), style: { width: "100%", minWidth: 0 } }, /* @__PURE__ */ React72.createElement("option", { value: "" }, "沿用会话模型（新会话使用宿主默认）"), !exists && /* @__PURE__ */ React72.createElement("option", { value }, "已配置：", models[purpose]?.provider, " / ", models[purpose]?.model, "（当前不可用）"), (catalog?.groups || []).map((group) => /* @__PURE__ */ React72.createElement("optgroup", { key: group.id, label: group.name }, group.models.map((model) => /* @__PURE__ */ React72.createElement("option", { key: model.id, value: backgroundModelKey({ provider: group.id, model: model.id }) }, model.name))))));
+  })), catalog && !catalog.available && /* @__PURE__ */ React72.createElement("p", { className: "wb-tiny wb-muted", role: "status" }, catalog.note || "当前宿主不支持独立后台模型，请更新或重连宿主。"), !!catalog?.failedProviders?.length && /* @__PURE__ */ React72.createElement("p", { className: "wb-tiny wb-muted" }, "部分服务商暂不可用，已保留其他可用模型与原配置。"), error2 && /* @__PURE__ */ React72.createElement("p", { role: "alert", style: { fontSize: 12, overflowWrap: "anywhere" } }, error2));
+}
+
+// src/client/features/settings/styles.ts
+var SETTINGS_CSS = `
+.wb-settings-page{min-width:0;container:settings / inline-size}
+.wb-settings-page .wb-settings-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.wb-settings-grid>.wb-card{min-width:0;margin:0}.wb-settings-grid>.wb-settings-wide,.wb-settings-grid>.wb-settings-data{grid-column:1/-1}
+.wb-settings-grid>.wb-card>.wb-card-head{padding:18px 18px 12px;align-items:flex-start}.wb-settings-grid>.wb-card>.wb-card-body{padding:4px 18px 18px}
+.wb-settings-grid .wb-card-sub{line-height:1.65}.wb-settings-grid .wb-item-sub{line-height:1.65}
+.wb-settings-controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:24px}.wb-settings-controls>.wb-item{min-width:0;gap:12px}.wb-settings-controls>.wb-item>.wb-item-main{min-width:0}
+.wb-settings-data-grid{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.3fr);grid-template-areas:'sidebar import' 'maintenance maintenance';gap:14px;align-items:start}
+.wb-settings-data-sidebar{grid-area:sidebar;display:flex;flex-direction:column;gap:14px;min-width:0}
+.wb-settings-data-card{min-width:0;padding:16px;border:1px solid var(--dsw-alias-border-l1);border-radius:10px;background:var(--dsw-alias-bg-base)}
+.wb-settings-data-card.is-export{grid-area:export}.wb-settings-data-card.is-backup{grid-area:backup}.wb-settings-data-card.is-import{grid-area:import}.wb-settings-data-card.is-maintenance{grid-area:maintenance}
+.wb-settings-data-card>header{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px}.wb-settings-data-card>header>div{min-width:0}
+.wb-settings-data-icon{display:flex;align-items:center;justify-content:center;flex:none;width:32px;height:32px;border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary)}
+.wb-settings-data-card h4{margin:0;font-size:13px;font-weight:600;line-height:1.6}.wb-settings-data-card p{margin:3px 0 0;font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.65;overflow-wrap:anywhere}
+.wb-settings-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}.wb-settings-maintenance{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.wb-settings-maintenance>div{display:flex;align-items:flex-start;flex-direction:column;gap:10px;min-width:0}.wb-settings-maintenance p{margin:0}
+.wb-settings-backups{list-style:none;margin:12px 0 0;padding:0;max-height:220px;overflow:auto}.wb-settings-backups li{display:flex;align-items:center;gap:10px;padding:9px 0;border-top:1px solid var(--dsw-alias-border-l1)}.wb-settings-backups li>div{flex:1;min-width:0}.wb-settings-backups span{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px}.wb-settings-backups small{font-size:10px;color:var(--dsw-alias-label-secondary)}
+.wb-migration-import{gap:12px}.wb-migration-import .wb-label{display:flex;flex-direction:column;gap:6px;min-width:0}.wb-migration-import :is(textarea,input,select){width:100%;min-width:0;max-width:100%;box-sizing:border-box}.wb-migration-import textarea{resize:vertical;min-height:100px}
+.wb-migration-file input{display:block;padding:7px;border:1px dashed var(--dsw-alias-border-l1);border-radius:8px;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;background:var(--dsw-alias-bg-layer-1)}
+.wb-migration-file input::file-selector-button{border:1px solid var(--dsw-alias-border-l1);border-radius:6px;padding:5px 8px;margin-right:8px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}
+.wb-migration-controls{display:flex;align-items:flex-end;flex-wrap:wrap;gap:10px}.wb-migration-controls>.wb-label{flex:1 1 200px}.wb-migration-import>.wb-tiny{margin:0}.wb-migration-preview{padding:12px;border:1px solid var(--dsw-alias-border-l1);border-radius:8px;background:var(--dsw-alias-bg-layer-1);overflow-wrap:anywhere}
+.wb-settings-operations{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}.wb-settings-operations>.wb-card{margin:0;min-width:0}.wb-settings-history{grid-column:1/-1;padding:14px 18px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1)}.wb-settings-history>details>summary{cursor:pointer;font-size:13px;font-weight:600}.wb-settings-history .wb-card{margin:12px 0 0}
+@container settings (max-width:780px){.wb-settings-page .wb-settings-grid,.wb-settings-operations{grid-template-columns:minmax(0,1fr)}.wb-settings-controls{grid-template-columns:minmax(0,1fr)}}
+@container settings (max-width:700px){.wb-settings-data-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:'sidebar' 'import' 'maintenance'}}
+@container settings (max-width:480px){.wb-settings-grid>.wb-card>.wb-card-head{padding:14px 14px 10px}.wb-settings-grid>.wb-card>.wb-card-body{padding:2px 14px 14px}.wb-settings-data-card{padding:14px}.wb-settings-maintenance{grid-template-columns:minmax(0,1fr)}.wb-settings-controls>.wb-item{flex-wrap:wrap}.wb-settings-controls>.wb-item>.wb-item-main{flex:1 1 180px}}
+`;
+
 // src/client/features/settings/settings.ts
-var React68 = __toESM(require("react"), 1);
+var React73 = __toESM(require("react"), 1);
 function SettingsRow(props) {
   return h("div", {
     className: "wb-item",
@@ -18806,24 +19328,23 @@ function SettingsRow(props) {
 function SettingsPage() {
   const state = useStore();
   const data = state.data;
-  const [diag, setDiag] = React68.useState(null);
-  const [diagError, setDiagError] = React68.useState(null);
-  const [diagBusy, setDiagBusy] = React68.useState(false);
-  const [topicDraft, setTopicDraft] = React68.useState("");
-  const [confirmReset, setConfirmReset] = React68.useState(null);
-  const [projectName, setProjectName] = React68.useState("");
-  const [projectPath, setProjectPath] = React68.useState("");
-  const [picking, setPicking] = React68.useState(false);
-  const [projectEdit, setProjectEdit] = React68.useState(null);
-  const [backups, setBackups] = React68.useState([]);
-  const [migrationJson, setMigrationJson] = React68.useState("");
-  const [migrationMode, setMigrationMode] = React68.useState("replace");
-  const [automation, setAutomation] = React68.useState(null);
-  const [automationRunning, setAutomationRunning] = React68.useState(false);
-  const [mentionDraft, setMentionDraft] = React68.useState("");
-  const [feedLabel, setFeedLabel] = React68.useState("");
-  const [feedUrl, setFeedUrl] = React68.useState("");
-  const [feedTopics, setFeedTopics] = React68.useState("");
+  const [diag, setDiag] = React73.useState(null);
+  const [diagError, setDiagError] = React73.useState(null);
+  const [diagBusy, setDiagBusy] = React73.useState(false);
+  const [topicDraft, setTopicDraft] = React73.useState("");
+  const [confirmReset, setConfirmReset] = React73.useState(null);
+  const [projectName, setProjectName] = React73.useState("");
+  const [projectPath, setProjectPath] = React73.useState("");
+  const [picking, setPicking] = React73.useState(false);
+  const [projectEdit, setProjectEdit] = React73.useState(null);
+  const [migrationJson, setMigrationJson] = React73.useState("");
+  const [migrationMode, setMigrationMode] = React73.useState("replace");
+  const [automation, setAutomation] = React73.useState(null);
+  const [automationRunning, setAutomationRunning] = React73.useState(false);
+  const [mentionDraft, setMentionDraft] = React73.useState("");
+  const [feedLabel, setFeedLabel] = React73.useState("");
+  const [feedUrl, setFeedUrl] = React73.useState("");
+  const [feedTopics, setFeedTopics] = React73.useState("");
   const settings = data && data.settings || { topics: [], staleHours: 24, showCompleted: false, defaultProjectId: null };
   const connectors = data && data.connectors || [];
   const projects = data && data.projects || [];
@@ -18839,18 +19360,14 @@ function SettingsPage() {
       setDiagBusy(false);
     });
   }
-  React68.useEffect(function() {
+  React73.useEffect(function() {
     runDiagnostics();
-    WB.actions.backups().then(function(result) {
-      setBackups(result.backups || []);
-    }).catch(function() {
-    });
-    WB.actions.automationStatus().then(function(status) {
-      setAutomation(status);
+    WB.actions.automationStatus().then(function(status2) {
+      setAutomation(status2);
     }).catch(function() {
     });
   }, []);
-  React68.useEffect(() => {
+  React73.useEffect(() => {
     if (data?.lastAutomation) setAutomation((current) => current ? { ...current, lastAutomation: data.lastAutomation } : current);
   }, [data?.lastAutomation]);
   function patchSettings(patch2) {
@@ -18935,7 +19452,7 @@ function SettingsPage() {
       WB.toast("导出失败：" + String(e && e.message || e), "err");
     }
   }
-  return h("div", null, h(PageHead, {
+  return h("div", { className: "wb-settings-page" }, h("style", null, SETTINGS_CSS), h(PageHead, {
     icon: "plug",
     title: WB.t("settings.title", "连接与设置"),
     sub: "连接器状态、关注主题与数据落盘位置；改动的都是 Host 侧持久化配置。",
@@ -18949,7 +19466,7 @@ function SettingsPage() {
       },
       children: "重新读取"
     })
-  }), h(BackgroundHistoryPanel), h(OperationsPanel, { revision: data?.revision }), h(ArchiveBrowser), h("div", { className: "wb-grid wb-settings-grid", style: { gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)" } }, h("div", { className: "wb-stack", style: { gap: 14 } }, h(Panel, {
+  }), h("div", { className: "wb-settings-grid" }, h(Panel, {
     title: "连接器",
     sub: "一个 Provider 一种能力；未接入的能力保持“未配置”而不是假装可用",
     icon: "plug"
@@ -19000,7 +19517,7 @@ function SettingsPage() {
     }, String(row[1])));
   }), diag.toolNames && diag.toolNames.length > 0 ? h("div", { style: { marginTop: 6 } }, h("div", { className: "wb-label", style: { marginBottom: 4 } }, "已注册的 Agent 工具"), h("div", { className: "wb-row wb-row--wrap" }, diag.toolNames.map(function(name2) {
     return h(Chip, { key: name2, icon: "command", children: name2 });
-  }))) : null))), h("div", { className: "wb-stack", style: { gap: 14 } }, h(Panel, {
+  }))) : null)), h(Panel, {
     title: "项目",
     sub: "仓库目录决定「研发协作」探测哪些 Git 仓库",
     icon: "folder",
@@ -19128,6 +19645,7 @@ function SettingsPage() {
     children: "添加"
   }))), h(Panel, {
     title: "自动化",
+    className: "wb-settings-wide",
     sub: "按配置采集消息、联网发现资讯；开启 AI 后进行识别和摘要",
     icon: "zap",
     badge: automation ? h(Badge, { tone: automation.enabled ? "ok" : "idle" }, automation.enabled ? "已开启" : "已关闭") : null,
@@ -19143,15 +19661,15 @@ function SettingsPage() {
           return WB.actions.reload();
         }).then(function() {
           return WB.actions.automationStatus();
-        }).then(function(status) {
-          setAutomation(status);
+        }).then(function(status2) {
+          setAutomation(status2);
         }).catch(function(error2) {
           WB.toast("自动化失败：" + String(error2?.message || error2), "err");
         }).finally(() => setAutomationRunning(false));
       },
       children: automationRunning ? "正在执行…" : "立即执行"
     })
-  }, h("div", null, h(SettingsRow, {
+  }, h("div", { className: "wb-settings-controls" }, h(SettingsRow, {
     title: "开启后台自动化",
     hint: automation && automation.lastAutomation ? "上次运行 " + WB.fmt.relative(automation.lastAutomation.at) + "（" + automation.lastAutomation.status + "）：" + (automation.lastAutomation.note || "") : "仅在 DSH 进程运行期间生效；退出/休眠后恢复会按到期补跑一次",
     control: h(Toggle, {
@@ -19270,7 +19788,7 @@ function SettingsPage() {
       setMentionDraft("");
     },
     children: "添加"
-  }))), h(Panel, { title: "偏好", sub: "仅影响本工作台的展示", icon: "settings" }, h("div", null, h(SettingsRow, {
+  }))), h(BackgroundModels), h(Panel, { title: "偏好", sub: "仅影响本工作台的展示", icon: "settings" }, h("div", null, h(SettingsRow, {
     title: "显示已完成任务",
     hint: "关闭时任务中心默认只看未完成",
     control: h(Toggle, {
@@ -19306,71 +19824,14 @@ function SettingsPage() {
         patchSettings({ defaultProjectId: event.target.value || null });
       }
     })
-  }))), h(Panel, { title: "数据管理", sub: "状态由 Host 持有；前端不作为权威数据源", icon: "save" }, h("div", { className: "wb-stack", style: { gap: 9 } }, h("div", { className: "wb-row wb-row--wrap" }, h(Btn, { icon: "download", size: "sm", onClick: exportJson, children: "导出 JSON" }), h(Btn, {
-    icon: "save",
-    size: "sm",
-    onClick: function() {
-      WB.actions.backup().then(function(result) {
-        setBackups(result.backups || []);
-        WB.toast("已创建备份", "ok");
-      }).catch(function(error2) {
-        WB.toast(String(error2.message || error2), "err");
-      });
-    },
-    children: "立即备份"
-  }), h(Btn, {
-    icon: "share",
-    size: "sm",
-    onClick: function() {
-      WB.actions.exportMigration().then(function(pack) {
-        WB.util.copy(JSON.stringify(pack, null, 2)).then(function() {
-          WB.toast("迁移包已复制（含校验），粘贴到目标端即可导入", "ok");
-        });
-      }).catch(function() {
-      });
-    },
-    children: "导出迁移包"
-  }), h(Btn, {
-    icon: "sparkles",
-    size: "sm",
-    onClick: function() {
-      WB.actions.seedDemo().catch(function() {
-      });
-    },
-    children: "载入示例数据"
-  })), h("p", { className: "wb-hint", style: { margin: "2px 0 0" } }, "“载入示例数据”会写入若干标注为示例的待办与资讯，用来快速看清布局；随时可重置清空。"), h(MigrationImportPanel, null), backups.length > 0 ? h("div", { className: "wb-stack", style: { gap: 4 } }, h("div", { className: "wb-label" }, "可用备份（每天首次写入自动留一份，保留 5 份）"), backups.slice(0, 5).map(function(item) {
-    return h("div", { key: item.id, className: "wb-row", style: { gap: 8 } }, h("span", { className: "wb-mono wb-tiny wb-ellipsis", style: { flex: "1 1 auto" } }, item.id), h("span", { className: "wb-tiny wb-muted" }, WB.fmt.bytes(item.bytes)), h(Btn, {
-      size: "sm",
-      kind: "subtle",
-      icon: "refresh",
-      onClick: function() {
-        if (!window.confirm("用这份备份覆盖当前数据？当前文件会先自动备份。"))
-          return;
-        WB.actions.restoreBackup(item.id).then(function() {
-          WB.toast("已从备份恢复", "ok");
-          WB.actions.reload().catch(function() {
-          });
-        }).catch(function() {
-        });
-      },
-      children: "恢复"
-    }));
-  })) : null, h(Divider, null), h("div", { className: "wb-row" }, h("div", { className: "wb-item-main" }, h("div", { className: "wb-item-title" }, "重置数据"), h("div", { className: "wb-item-sub" }, "清空任务、执行记录、知识与雷达，保留设置")), h(Btn, {
-    kind: "danger",
-    size: "sm",
-    icon: "trash",
-    onClick: function() {
-      setConfirmReset(true);
-    },
-    children: "重置"
-  })))), h(Panel, { title: "关于", sub: "智能工作台 0.2.1（dsh-dev-workbench）", icon: "info" }, h("div", { className: "wb-stack wb-tiny wb-muted", style: { gap: 5 } }, h("span", null, "Cordis Host + Client 双半插件：Host 持有状态并通过 workbench/* Remote 暴露，Client 通过 main 与 sidebar.panellist 插槽渲染页面。"), h("span", null, "工具箱中的计算全部在浏览器内完成；企业消息摘录保存在宿主本地，凭据由 CLI / 宿主管理。"), h("span", null, "数据文件位于 ", h("code", { className: "wb-mono" }, diag ? diag.dataPath : "~/.dsh/storages/dev-workbench/state.json")))))), h(Modal, {
+  }))), h(DataManagement, { onExportJson: exportJson, onReset: () => setConfirmReset(true) }), h(Panel, { title: "关于", sub: "智能工作台 0.2.1（dsh-dev-workbench）", icon: "info" }, h("div", { className: "wb-stack wb-tiny wb-muted", style: { gap: 5 } }, h("span", null, "Cordis Host + Client 双半插件：Host 持有状态并通过 workbench/* Remote 暴露，Client 通过 main 与 sidebar.panellist 插槽渲染页面。"), h("span", null, "工具箱中的计算全部在浏览器内完成；企业消息摘录保存在宿主本地，凭据由 CLI / 宿主管理。"), h("span", null, "数据文件位于 ", h("code", { className: "wb-mono" }, diag ? diag.dataPath : "~/.dsh/storages/dev-workbench/state.json")))), h("div", { className: "wb-settings-operations" }, h(OperationsPanel, { revision: data?.revision }), h(ArchiveBrowser), h("div", { className: "wb-settings-history" }, h(BackgroundHistoryPanel)))), h(Modal, {
     open: !!projectEdit,
     title: "编辑项目",
     sub: projectEdit ? projectEdit.name : "",
     onClose: function() {
       setProjectEdit(null);
     },
-    footer: h(React68.Fragment, null, h(Btn, {
+    footer: h(React73.Fragment, null, h(Btn, {
       onClick: function() {
         setProjectEdit(null);
       },
@@ -19410,7 +19871,7 @@ function SettingsPage() {
     onClose: function() {
       setConfirmReset(null);
     },
-    footer: h(React68.Fragment, null, h(Btn, {
+    footer: h(React73.Fragment, null, h(Btn, {
       onClick: function() {
         setConfirmReset(null);
       },
@@ -19430,7 +19891,7 @@ function SettingsPage() {
 WB.pages.settings = SettingsPage;
 
 // src/client/assistant/chat-actions.ts
-var React69 = __toESM(require("react"), 1);
+var React74 = __toESM(require("react"), 1);
 var CHAT_EMBED_ACTIONS = [
   {
     id: "workbench-task",
@@ -19506,13 +19967,13 @@ var WB_CHAT_ACTIONS_CSS = `
 }
 `;
 function ChatAssistantActions(props) {
-  const [busy, setBusy] = React69.useState(false);
-  const [error2, setError] = React69.useState(null);
-  const [open, setOpen] = React69.useState(false);
-  const rootRef = React69.useRef(null);
-  const menuRef = React69.useRef(null);
-  const triggerRef = React69.useRef(null);
-  const returnFocusRef = React69.useRef(false);
+  const [busy, setBusy] = React74.useState(false);
+  const [error2, setError] = React74.useState(null);
+  const [open, setOpen] = React74.useState(false);
+  const rootRef = React74.useRef(null);
+  const menuRef = React74.useRef(null);
+  const triggerRef = React74.useRef(null);
+  const returnFocusRef = React74.useRef(false);
   const messageId = props && props.messageId ? String(props.messageId) : "";
   const sessionId = props && props.sessionId ? String(props.sessionId) : null;
   function closeMenu() {
@@ -19520,13 +19981,13 @@ function ChatAssistantActions(props) {
     setOpen(false);
     triggerRef.current?.focus();
   }
-  React69.useEffect(() => {
+  React74.useEffect(() => {
     if (!open && !busy && returnFocusRef.current) {
       returnFocusRef.current = false;
       triggerRef.current?.focus();
     }
   }, [open, busy]);
-  React69.useEffect(() => {
+  React74.useEffect(() => {
     if (!open) return;
     menuRef.current?.querySelector("button:not(:disabled)")?.focus();
     const outside = (event) => {
@@ -19684,7 +20145,7 @@ WB.registerChatEmbed = function(ctx) {
 };
 
 // src/client/features/search/GlobalSearch.tsx
-var React70 = __toESM(require("react"), 1);
+var React75 = __toESM(require("react"), 1);
 
 // src/client/shell/palette-commands.ts
 function paletteCommands(context) {
@@ -19813,9 +20274,9 @@ function paletteMatch(command, query) {
 var types = [["all", "全部"], ["task", "待办"], ["knowledge", "知识"], ["radar", "资讯"], ["source", "消息"]];
 var icons = { task: "tasks", knowledge: "book", radar: "radar", source: "messages" };
 function GlobalSearch({ open, onClose, initialQuery: initialQuery2 = "" }) {
-  const [query, setQuery] = React70.useState(""), [kind, setKind] = React70.useState("all"), [active, setActive] = React70.useState(0), [result, setResult] = React70.useState(null), [busy, setBusy] = React70.useState(false), [error2, setError] = React70.useState("");
-  const input = React70.useRef(null), root = React70.useRef(null), version = React70.useRef(0), text2 = query.trim(), listId = React70.useId();
-  React70.useEffect(() => {
+  const [query, setQuery] = React75.useState(""), [kind, setKind] = React75.useState("all"), [active, setActive] = React75.useState(0), [result, setResult] = React75.useState(null), [busy, setBusy] = React75.useState(false), [error2, setError] = React75.useState("");
+  const input = React75.useRef(null), root = React75.useRef(null), version = React75.useRef(0), text2 = query.trim(), listId = React75.useId();
+  React75.useEffect(() => {
     if (!open) return;
     const previous = document.activeElement;
     setQuery(initialQuery2);
@@ -19829,7 +20290,7 @@ function GlobalSearch({ open, onClose, initialQuery: initialQuery2 = "" }) {
       previous?.focus?.({ preventScroll: true });
     };
   }, [open, initialQuery2]);
-  React70.useEffect(() => {
+  React75.useEffect(() => {
     const current = ++version.current;
     setResult(null);
     setError("");
@@ -19850,8 +20311,8 @@ function GlobalSearch({ open, onClose, initialQuery: initialQuery2 = "" }) {
       clearTimeout(timer);
     };
   }, [open, text2]);
-  React70.useEffect(() => setActive(0), [text2, kind]);
-  React70.useEffect(() => {
+  React75.useEffect(() => setActive(0), [text2, kind]);
+  React75.useEffect(() => {
     if (!open) return;
     const trap = (event) => {
       const modal = root.current?.closest(".wb-modal");
@@ -19893,10 +20354,10 @@ function GlobalSearch({ open, onClose, initialQuery: initialQuery2 = "" }) {
     }
   }
   let previousGroup = "";
-  return /* @__PURE__ */ React70.createElement(Modal, { open: true, title: "搜索工作内容", width: 660, onClose, footer: /* @__PURE__ */ React70.createElement("div", { className: "wb-global-search-footer" }, text2 && /* @__PURE__ */ React70.createElement("div", { className: "wb-global-search-footer-actions" }, /* @__PURE__ */ React70.createElement("button", { type: "button", className: "wb-global-search-all", onClick: showAll }, "查看全部搜索结果", hits.length ? "（" + hits.length + "）" : "", /* @__PURE__ */ React70.createElement(Icon, { name: "arrowRight", size: 14 })), /* @__PURE__ */ React70.createElement("button", { type: "button", className: "wb-global-search-all", "aria-label": "在助手中搜索互联网", onClick: () => choose(() => searchInternetWithAssistant(text2)) }, /* @__PURE__ */ React70.createElement(Icon, { name: "sparkles", size: 14 }), "助手联网搜索")), /* @__PURE__ */ React70.createElement("div", { className: "wb-global-search-help" }, /* @__PURE__ */ React70.createElement("span", null, "本地检索 · 不联网"), /* @__PURE__ */ React70.createElement("span", null, /* @__PURE__ */ React70.createElement(Kbd, null, "↑ ↓"), " 选择 · ", /* @__PURE__ */ React70.createElement(Kbd, null, "↵"), " 打开 · ", /* @__PURE__ */ React70.createElement(Kbd, null, "esc"), " 关闭"))) }, /* @__PURE__ */ React70.createElement("style", null, CSS2), /* @__PURE__ */ React70.createElement("div", { ref: root, className: "wb-global-search" }, /* @__PURE__ */ React70.createElement("div", { className: "wb-global-search-input" }, /* @__PURE__ */ React70.createElement(Icon, { name: "search", size: 17 }), /* @__PURE__ */ React70.createElement("input", { ref: input, maxLength: 200, "aria-label": "搜索工作内容关键词", placeholder: "搜索待办、知识、资讯，或输入命令…", value: query, onChange: (event) => setQuery(event.target.value), onKeyDown: keyboard, "aria-controls": listId }), busy && /* @__PURE__ */ React70.createElement(Spinner, { size: 14 })), /* @__PURE__ */ React70.createElement("div", { className: "wb-global-search-types", role: "group", "aria-label": "搜索类型" }, types.map(([id, label]) => /* @__PURE__ */ React70.createElement("button", { key: id, type: "button", "aria-pressed": kind === id, onClick: () => setKind(id) }, label))), error2 && /* @__PURE__ */ React70.createElement("p", { role: "alert", className: "wb-global-search-error" }, "搜索失败：", error2, "，可重试或查看完整结果。"), /* @__PURE__ */ React70.createElement("div", { id: listId, className: "wb-global-search-results", "aria-label": "搜索结果" }, text2 ? shown.map(({ item, group }, index) => {
+  return /* @__PURE__ */ React75.createElement(Modal, { open: true, title: "搜索工作内容", width: 660, onClose, footer: /* @__PURE__ */ React75.createElement("div", { className: "wb-global-search-footer" }, text2 && /* @__PURE__ */ React75.createElement("div", { className: "wb-global-search-footer-actions" }, /* @__PURE__ */ React75.createElement("button", { type: "button", className: "wb-global-search-all", onClick: showAll }, "查看全部搜索结果", hits.length ? "（" + hits.length + "）" : "", /* @__PURE__ */ React75.createElement(Icon, { name: "arrowRight", size: 14 })), /* @__PURE__ */ React75.createElement("button", { type: "button", className: "wb-global-search-all", "aria-label": "在助手中搜索互联网", onClick: () => choose(() => searchInternetWithAssistant(text2)) }, /* @__PURE__ */ React75.createElement(Icon, { name: "sparkles", size: 14 }), "助手联网搜索")), /* @__PURE__ */ React75.createElement("div", { className: "wb-global-search-help" }, /* @__PURE__ */ React75.createElement("span", null, "本地检索 · 不联网"), /* @__PURE__ */ React75.createElement("span", null, /* @__PURE__ */ React75.createElement(Kbd, null, "↑ ↓"), " 选择 · ", /* @__PURE__ */ React75.createElement(Kbd, null, "↵"), " 打开 · ", /* @__PURE__ */ React75.createElement(Kbd, null, "esc"), " 关闭"))) }, /* @__PURE__ */ React75.createElement("style", null, CSS2), /* @__PURE__ */ React75.createElement("div", { ref: root, className: "wb-global-search" }, /* @__PURE__ */ React75.createElement("div", { className: "wb-global-search-input" }, /* @__PURE__ */ React75.createElement(Icon, { name: "search", size: 17 }), /* @__PURE__ */ React75.createElement("input", { ref: input, maxLength: 200, "aria-label": "搜索工作内容关键词", placeholder: "搜索待办、知识、资讯，或输入命令…", value: query, onChange: (event) => setQuery(event.target.value), onKeyDown: keyboard, "aria-controls": listId }), busy && /* @__PURE__ */ React75.createElement(Spinner, { size: 14 })), /* @__PURE__ */ React75.createElement("div", { className: "wb-global-search-types", role: "group", "aria-label": "搜索类型" }, types.map(([id, label]) => /* @__PURE__ */ React75.createElement("button", { key: id, type: "button", "aria-pressed": kind === id, onClick: () => setKind(id) }, label))), error2 && /* @__PURE__ */ React75.createElement("p", { role: "alert", className: "wb-global-search-error" }, "搜索失败：", error2, "，可重试或查看完整结果。"), /* @__PURE__ */ React75.createElement("div", { id: listId, className: "wb-global-search-results", "aria-label": "搜索结果" }, text2 ? shown.map(({ item, group }, index) => {
     const label = group.id !== previousGroup ? (previousGroup = group.id, "搜索 · " + group.label) : "";
-    return /* @__PURE__ */ React70.createElement(React70.Fragment, { key: group.id + ":" + item.kind + ":" + item.id }, label && /* @__PURE__ */ React70.createElement("p", { className: "wb-global-search-group" }, label), /* @__PURE__ */ React70.createElement("div", { className: "wb-global-search-result" + (index === active ? " is-active" : "") }, /* @__PURE__ */ React70.createElement("button", { type: "button", className: "wb-global-search-hit", onMouseEnter: () => setActive(index), onClick: () => choose(() => openSearchResult(item, group.label)) }, /* @__PURE__ */ React70.createElement(Icon, { name: icons[item.kind] || "search", size: 15 }), /* @__PURE__ */ React70.createElement("span", null, /* @__PURE__ */ React70.createElement("strong", null, item.title), item.snippet && /* @__PURE__ */ React70.createElement("small", null, item.snippet))), /* @__PURE__ */ React70.createElement("button", { type: "button", className: "wb-global-search-ai", "aria-label": "交给 AI 继续处理：" + item.title, title: "交给 AI 继续处理", onClick: () => choose(() => continueSearchResult(item, group.label)) }, /* @__PURE__ */ React70.createElement(Icon, { name: "sparkles", size: 14 }), /* @__PURE__ */ React70.createElement("span", null, "AI 处理"))));
-  }) : commands.map((command, index) => /* @__PURE__ */ React70.createElement("button", { key: command.id, type: "button", className: "wb-global-search-command" + (active === index ? " is-active" : ""), onMouseEnter: () => setActive(index), onClick: () => choose(command.run) }, /* @__PURE__ */ React70.createElement(Icon, { name: command.icon, size: 14 }), /* @__PURE__ */ React70.createElement("span", null, command.label), command.keys && /* @__PURE__ */ React70.createElement(Kbd, null, command.keys))), text2 && !busy && !error2 && !shown.length && /* @__PURE__ */ React70.createElement("p", { className: "wb-tiny wb-muted" }, "没有匹配的工作内容，可换个关键词或调整类型。"), text2 && commands.length > 0 && /* @__PURE__ */ React70.createElement("details", null, /* @__PURE__ */ React70.createElement("summary", { className: "wb-tiny wb-muted" }, "相关导航与操作"), commands.map((command) => /* @__PURE__ */ React70.createElement("button", { key: command.id, type: "button", className: "wb-global-search-command", onClick: () => choose(command.run) }, command.label))))));
+    return /* @__PURE__ */ React75.createElement(React75.Fragment, { key: group.id + ":" + item.kind + ":" + item.id }, label && /* @__PURE__ */ React75.createElement("p", { className: "wb-global-search-group" }, label), /* @__PURE__ */ React75.createElement("div", { className: "wb-global-search-result" + (index === active ? " is-active" : "") }, /* @__PURE__ */ React75.createElement("button", { type: "button", className: "wb-global-search-hit", onMouseEnter: () => setActive(index), onClick: () => choose(() => openSearchResult(item, group.label)) }, /* @__PURE__ */ React75.createElement(Icon, { name: icons[item.kind] || "search", size: 15 }), /* @__PURE__ */ React75.createElement("span", null, /* @__PURE__ */ React75.createElement("strong", null, item.title), item.snippet && /* @__PURE__ */ React75.createElement("small", null, item.snippet))), /* @__PURE__ */ React75.createElement("button", { type: "button", className: "wb-global-search-ai", "aria-label": "交给 AI 继续处理：" + item.title, title: "交给 AI 继续处理", onClick: () => choose(() => continueSearchResult(item, group.label)) }, /* @__PURE__ */ React75.createElement(Icon, { name: "sparkles", size: 14 }), /* @__PURE__ */ React75.createElement("span", null, "AI 处理"))));
+  }) : commands.map((command, index) => /* @__PURE__ */ React75.createElement("button", { key: command.id, type: "button", className: "wb-global-search-command" + (active === index ? " is-active" : ""), onMouseEnter: () => setActive(index), onClick: () => choose(command.run) }, /* @__PURE__ */ React75.createElement(Icon, { name: command.icon, size: 14 }), /* @__PURE__ */ React75.createElement("span", null, command.label), command.keys && /* @__PURE__ */ React75.createElement(Kbd, null, command.keys))), text2 && !busy && !error2 && !shown.length && /* @__PURE__ */ React75.createElement("p", { className: "wb-tiny wb-muted" }, "没有匹配的工作内容，可换个关键词或调整类型。"), text2 && commands.length > 0 && /* @__PURE__ */ React75.createElement("details", null, /* @__PURE__ */ React75.createElement("summary", { className: "wb-tiny wb-muted" }, "相关导航与操作"), commands.map((command) => /* @__PURE__ */ React75.createElement("button", { key: command.id, type: "button", className: "wb-global-search-command", onClick: () => choose(command.run) }, command.label))))));
 }
 var CSS2 = `.wb-global-search{min-width:0}.wb-global-search-input{display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:9px;background:var(--dsw-alias-bg-base)}.wb-global-search-input:focus-within{border-color:var(--dsw-alias-label-secondary)}.wb-global-search-input input{min-width:0;flex:1;border:0;outline:0;box-shadow:none;background:transparent;color:var(--dsw-alias-label-primary);font:inherit}.wb-global-search-types{display:flex;gap:5px;flex-wrap:wrap;margin:12px 0}.wb-global-search-types button{border:0;background:transparent;color:var(--dsw-alias-label-secondary);padding:5px 10px;border-radius:6px;cursor:pointer}.wb-global-search-types button[aria-pressed=true]{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}.wb-global-search-results{max-height:min(420px,45vh);overflow:auto;overscroll-behavior:contain}.wb-global-search-group{margin:12px 7px 4px;font-size:11px;color:var(--dsw-alias-label-secondary)}.wb-global-search-result{display:flex;align-items:center;gap:6px;border-radius:8px;padding:3px}.wb-global-search-result:hover,.wb-global-search-result.is-active,.wb-global-search-command:hover,.wb-global-search-command.is-active{background:var(--dsw-alias-bg-layer-2)}.wb-global-search-hit{flex:1;min-width:0;display:flex;align-items:center;gap:9px;padding:8px 6px;text-align:left;border:0;background:none;color:inherit;cursor:pointer}.wb-global-search-hit>svg{flex:none}.wb-global-search-hit>span{min-width:0}.wb-global-search-hit strong,.wb-global-search-hit small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.wb-global-search-hit strong{font-size:13px;font-weight:500}.wb-global-search-hit small{font-size:11px;color:var(--dsw-alias-label-secondary);margin-top:4px}.wb-global-search-ai{flex:none;display:flex;align-items:center;gap:4px;font-size:11px;padding:6px;border:0;border-radius:6px;color:var(--dsw-alias-label-secondary);background:transparent;cursor:pointer}.wb-global-search-ai:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1)}.wb-global-search-command{display:flex;align-items:center;gap:9px;width:100%;padding:8px;border:0;border-radius:6px;background:none;color:inherit;text-align:left;cursor:pointer}.wb-global-search-command>span{flex:1}.wb-global-search-footer{width:100%;min-width:0}.wb-global-search-footer-actions{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px}.wb-global-search-all{display:flex;align-items:center;justify-content:center;gap:6px;flex:1;border:1px solid var(--dsw-alias-border-l1);border-radius:7px;padding:7px;background:none;color:inherit;font:inherit;font-size:11px;white-space:nowrap;cursor:pointer}.wb-global-search-all:hover{background:var(--dsw-alias-bg-layer-2)}.wb-global-search-help{display:flex;justify-content:space-between;gap:5px 12px;flex-wrap:wrap;font-size:11px;color:var(--dsw-alias-label-secondary)}.wb-global-search-error{font-size:12px;color:var(--dsw-alias-state-error-primary);overflow-wrap:anywhere}@media(max-width:420px){.wb-global-search-ai>span{display:none}}`;
 
@@ -19904,7 +20365,7 @@ var CSS2 = `.wb-global-search{min-width:0}.wb-global-search-input{display:flex;a
 WB.Palette = GlobalSearch;
 
 // src/client/features/search/search-page.ts
-var React71 = __toESM(require("react"), 1);
+var React76 = __toESM(require("react"), 1);
 function searchKindMeta(kind) {
   if (kind === "task")
     return { label: "待办", icon: "tasks", tone: "accent" };
@@ -19924,16 +20385,16 @@ function searchKindMeta(kind) {
     return { label: "考勤", icon: "clock", tone: "idle" };
   return { label: kind, icon: "layers", tone: "idle" };
 }
-function searchStatusMeta(status) {
-  if (status === "ok")
+function searchStatusMeta(status2) {
+  if (status2 === "ok")
     return { label: "已返回", tone: "ok" };
-  if (status === "empty")
+  if (status2 === "empty")
     return { label: "无命中", tone: "idle" };
-  if (status === "unavailable")
+  if (status2 === "unavailable")
     return { label: "不可用", tone: "warn" };
-  if (status === "error")
+  if (status2 === "error")
     return { label: "失败", tone: "err" };
-  return { label: status, tone: "idle" };
+  return { label: status2, tone: "idle" };
 }
 function SearchResultRow(props) {
   const item = props.item;
@@ -20015,14 +20476,14 @@ var WORK_TYPES = [
 ];
 function SearchPage() {
   const state = useStore(), data = state.data;
-  const [mode, setMode] = React71.useState("work"), [draft, setDraft] = React71.useState(""), [query, setQuery] = React71.useState("");
-  const [workScope, setWorkScope] = React71.useState("local");
-  const [busy, setBusy] = React71.useState(false), [error2, setError] = React71.useState(""), [result, setResult] = React71.useState(null);
-  const [history, setHistory] = React71.useState({ work: [], web: [] }), [category, setCategory] = React71.useState("all");
-  const [dateFilter, setDateFilter] = React71.useState("all"), [projectFilter, setProjectFilter] = React71.useState("");
-  const [limits, setLimits] = React71.useState({});
-  const version = React71.useRef(0), consumed = React71.useRef(null);
-  React71.useEffect(() => () => {
+  const [mode, setMode] = React76.useState("work"), [draft, setDraft] = React76.useState(""), [query, setQuery] = React76.useState("");
+  const [workScope, setWorkScope] = React76.useState("local");
+  const [busy, setBusy] = React76.useState(false), [error2, setError] = React76.useState(""), [result, setResult] = React76.useState(null);
+  const [history, setHistory] = React76.useState({ work: [], web: [] }), [category, setCategory] = React76.useState("all");
+  const [dateFilter, setDateFilter] = React76.useState("all"), [projectFilter, setProjectFilter] = React76.useState("");
+  const [limits, setLimits] = React76.useState({});
+  const version = React76.useRef(0), consumed = React76.useRef(null);
+  React76.useEffect(() => () => {
     version.current++;
   }, []);
   function changeMode(next) {
@@ -20059,7 +20520,7 @@ function SearchPage() {
     }
   }
   const preset = state.searchPreset;
-  React71.useEffect(() => {
+  React76.useEffect(() => {
     if (!preset || consumed.current === preset) return;
     consumed.current = preset;
     const group = preset.groups?.[0], scope = preset.scope === "web" || group === "web" || preset.category === "web" ? "web" : "work";
@@ -20148,7 +20609,7 @@ function SearchPage() {
 WB.pages.search = SearchPage;
 
 // src/client/features/web-ai/HistoryManager.tsx
-var React72 = __toESM(require("react"), 1);
+var React77 = __toESM(require("react"), 1);
 
 // src/shared/web-ai-attachments.ts
 var WEB_AI_FILE_LIMITS = { count: 5, single: 10 * 1024 * 1024, total: 20 * 1024 * 1024 };
@@ -20229,10 +20690,10 @@ function normalizeWebAI(raw, recover = false) {
   })() } : {}, createdAt: stamp(r.createdAt), answers: WEB_AI_PROVIDERS.flatMap((p) => {
     const a = (Array.isArray(r.answers) ? r.answers : []).find((a2) => a2?.providerId === p.id);
     if (!a) return [];
-    let status = ["queued", "preparing", "prepared", "generating", "completed", "needs_login", "unsupported", "uncertain", "cancelled"].includes(a.status) ? a.status : "uncertain";
-    const draftNeedsReview = recover && status === "prepared", interrupted = recover && WEB_AI_ACTIVE.has(status);
-    if (interrupted || draftNeedsReview) status = "uncertain";
-    return [{ providerId: p.id, status, ...["not_sent", "attempting", "accepted"].includes(a.submission) ? { submission: a.submission } : {}, text: clean(a.text, 6e4), url: webAIConversationUrl(p.id, a.url), ...normalizeWebAICapture(a.capture) ? { capture: normalizeWebAICapture(a.capture) } : {}, note: draftNeedsReview ? "应用已重启，请核对官网草稿和发送状态；不会自动重新填入或发送。" : interrupted ? "运行曾中断，请在官网核对；不会自动重复发送。" : clean(a.note, 300), updatedAt: stamp(a.updatedAt) }];
+    let status2 = ["queued", "preparing", "prepared", "generating", "completed", "needs_login", "unsupported", "uncertain", "cancelled"].includes(a.status) ? a.status : "uncertain";
+    const draftNeedsReview = recover && status2 === "prepared", interrupted = recover && WEB_AI_ACTIVE.has(status2);
+    if (interrupted || draftNeedsReview) status2 = "uncertain";
+    return [{ providerId: p.id, status: status2, ...["not_sent", "attempting", "accepted"].includes(a.submission) ? { submission: a.submission } : {}, text: clean(a.text, 6e4), url: webAIConversationUrl(p.id, a.url), ...normalizeWebAICapture(a.capture) ? { capture: normalizeWebAICapture(a.capture) } : {}, note: draftNeedsReview ? "应用已重启，请核对官网草稿和发送状态；不会自动重新填入或发送。" : interrupted ? "运行曾中断，请在官网核对；不会自动重复发送。" : clean(a.note, 300), updatedAt: stamp(a.updatedAt) }];
   }) }));
   return { topics, rounds, chatgptEnabled: raw?.chatgptEnabled === true };
 }
@@ -20256,9 +20717,9 @@ function searchWebAIHistory(state, query, deleted = false) {
 // src/client/features/web-ai/HistoryManager.tsx
 var SIZE = 10;
 function HistoryManager({ state, selected, disabled, onSelect, onManage, onClose }) {
-  const [query, setQuery] = React72.useState(""), [trash, setTrash] = React72.useState(false), [page, setPage] = React72.useState(0), [action, setAction] = React72.useState(null), [title, setTitle] = React72.useState(""), [pending, setPending] = React72.useState(false), [error2, setError] = React72.useState(""), [checkedIds, setCheckedIds] = React72.useState([]);
-  const submitting = React72.useRef(false);
-  const rows = React72.useMemo(() => searchWebAIHistory(state, query, trash), [state, query, trash]), index = Math.min(page, Math.max(0, Math.ceil(rows.length / SIZE) - 1));
+  const [query, setQuery] = React77.useState(""), [trash, setTrash] = React77.useState(false), [page, setPage] = React77.useState(0), [action, setAction] = React77.useState(null), [title, setTitle] = React77.useState(""), [pending, setPending] = React77.useState(false), [error2, setError] = React77.useState(""), [checkedIds, setCheckedIds] = React77.useState([]);
+  const submitting = React77.useRef(false);
+  const rows = React77.useMemo(() => searchWebAIHistory(state, query, trash), [state, query, trash]), index = Math.min(page, Math.max(0, Math.ceil(rows.length / SIZE) - 1));
   const change = (next) => {
     setTrash(next);
     setPage(0);
@@ -20303,20 +20764,20 @@ function HistoryManager({ state, selected, disabled, onSelect, onManage, onClose
     const request = { action: action.kind, confirm: true };
     void perform(action.topics.length === 1 ? { ...request, topicId: action.topics[0].id, expectedVersion: action.topics[0].version || 0, title } : { ...request, topics: action.topics.map((topic) => ({ topicId: topic.id, expectedVersion: topic.version || 0 })) });
   };
-  return /* @__PURE__ */ React72.createElement("section", { className: "wb-web-history", "aria-label": "本地问答历史" }, /* @__PURE__ */ React72.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React72.createElement("strong", null, "本地问答历史"), /* @__PURE__ */ React72.createElement(Btn, { kind: !trash ? "primary" : "ghost", disabled: pending, onClick: () => change(false) }, "历史（", state.topics.filter((t) => !t.deletedAt).length, "）"), /* @__PURE__ */ React72.createElement(Btn, { kind: trash ? "primary" : "ghost", disabled: pending, onClick: () => change(true) }, "回收站（", state.topics.filter((t) => t.deletedAt).length, "）"), /* @__PURE__ */ React72.createElement(Btn, { onClick: onClose }, "收起历史")), /* @__PURE__ */ React72.createElement(Input, { "aria-label": "搜索历史问答", placeholder: "搜索标题、问题、回答、附件名或厂商", value: query, disabled: pending, onChange: (e) => {
+  return /* @__PURE__ */ React77.createElement("section", { className: "wb-web-history", "aria-label": "本地问答历史" }, /* @__PURE__ */ React77.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React77.createElement("strong", null, "本地问答历史"), /* @__PURE__ */ React77.createElement(Btn, { kind: !trash ? "primary" : "ghost", disabled: pending, onClick: () => change(false) }, "历史（", state.topics.filter((t) => !t.deletedAt).length, "）"), /* @__PURE__ */ React77.createElement(Btn, { kind: trash ? "primary" : "ghost", disabled: pending, onClick: () => change(true) }, "回收站（", state.topics.filter((t) => t.deletedAt).length, "）"), /* @__PURE__ */ React77.createElement(Btn, { onClick: onClose }, "收起历史")), /* @__PURE__ */ React77.createElement(Input, { "aria-label": "搜索历史问答", placeholder: "搜索标题、问题、回答、附件名或厂商", value: query, disabled: pending, onChange: (e) => {
     setQuery(e.target.value);
     setPage(0);
     setCheckedIds([]);
-  } }), /* @__PURE__ */ React72.createElement("p", { className: "wb-tiny wb-muted" }, "共", rows.length, "组 · 本地搜索，不调用模型。", trash ? "永久删除后无法恢复。" : "删除后可从回收站恢复，不影响官网对话。"), /* @__PURE__ */ React72.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 }, "aria-label": "批量历史操作" }, /* @__PURE__ */ React72.createElement("label", { className: "wb-row", style: { gap: 6 } }, /* @__PURE__ */ React72.createElement("input", { type: "checkbox", "aria-label": "全选本页", disabled: disabled || pending || !visible.length, checked: allChecked, onChange: () => setCheckedIds((old) => allChecked ? old.filter((id) => !visible.some((row) => row.topic.id === id)) : [.../* @__PURE__ */ new Set([...old, ...visible.map((row) => row.topic.id)])]) }), "全选本页"), /* @__PURE__ */ React72.createElement("span", { className: "wb-tiny wb-muted" }, "已选", chosen.length, "组"), /* @__PURE__ */ React72.createElement(Btn, { disabled: disabled || pending || !chosen.length, onClick: () => begin(chosen, trash ? "purge" : "trash") }, trash ? "批量永久删除" : "批量删除"), !!chosen.length && /* @__PURE__ */ React72.createElement(Btn, { disabled: pending, onClick: () => setCheckedIds([]) }, "清除选择")), error2 && !action && /* @__PURE__ */ React72.createElement("p", { role: "alert", className: "wb-web-error" }, error2), !rows.length && /* @__PURE__ */ React72.createElement("p", { className: "wb-tiny wb-muted" }, query ? "没有匹配的问答" : trash ? "回收站为空" : "暂无历史问答"), visible.map(({ topic, count: count2, updatedAt, preview }) => /* @__PURE__ */ React72.createElement("article", { key: topic.id, "aria-label": topic.title, className: "wb-web-history-item" + (selected === topic.id ? " is-selected" : "") }, /* @__PURE__ */ React72.createElement("div", { className: "wb-web-history-main" }, /* @__PURE__ */ React72.createElement("input", { type: "checkbox", "aria-label": "选择问答 " + topic.title, disabled: disabled || pending, checked: checkedIds.includes(topic.id), onChange: () => setCheckedIds((old) => old.includes(topic.id) ? old.filter((id) => id !== topic.id) : [...old, topic.id]) }), /* @__PURE__ */ React72.createElement("div", { className: "wb-web-history-content" }, /* @__PURE__ */ React72.createElement("strong", null, topic.title), /* @__PURE__ */ React72.createElement("p", { className: "wb-tiny wb-muted" }, count2, "轮 · ", new Date(updatedAt).toLocaleString()), /* @__PURE__ */ React72.createElement("p", { className: "wb-tiny" }, preview))), /* @__PURE__ */ React72.createElement("div", { className: "wb-row wb-row--wrap wb-web-history-actions" }, trash ? /* @__PURE__ */ React72.createElement(React72.Fragment, null, /* @__PURE__ */ React72.createElement(Btn, { disabled: disabled || pending, onClick: () => void perform({ topicId: topic.id, expectedVersion: topic.version || 0, action: "restore" }) }, "恢复问答"), /* @__PURE__ */ React72.createElement(Btn, { disabled: disabled || pending, onClick: () => begin([topic], "purge") }, "永久删除")) : /* @__PURE__ */ React72.createElement(React72.Fragment, null, /* @__PURE__ */ React72.createElement(Btn, { "aria-label": "打开问答 " + topic.title, disabled: disabled || pending, onClick: () => onSelect(topic.id) }, "打开"), /* @__PURE__ */ React72.createElement(Btn, { "aria-label": "重命名问答 " + topic.title, disabled: disabled || pending, onClick: () => begin([topic], "rename") }, "重命名"), /* @__PURE__ */ React72.createElement(Btn, { "aria-label": "删除问答 " + topic.title, disabled: disabled || pending, onClick: () => begin([topic], "trash") }, "删除"))))), rows.length > SIZE && /* @__PURE__ */ React72.createElement("nav", { className: "wb-row", "aria-label": "历史分页", style: { gap: 8 } }, /* @__PURE__ */ React72.createElement(Btn, { disabled: !index, onClick: () => setPage(index - 1) }, "历史上一页"), /* @__PURE__ */ React72.createElement("span", { className: "wb-tiny" }, index + 1, " / ", Math.ceil(rows.length / SIZE)), /* @__PURE__ */ React72.createElement(Btn, { disabled: (index + 1) * SIZE >= rows.length, onClick: () => setPage(index + 1) }, "历史下一页")), /* @__PURE__ */ React72.createElement(Modal, { open: !!action, title: action?.kind === "rename" ? "重命名本地问答" : action?.kind === "purge" ? "永久删除本地问答" : "删除本地问答", width: 480, onClose: close, footer: /* @__PURE__ */ React72.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, justifyContent: "flex-end", width: "100%" } }, /* @__PURE__ */ React72.createElement(Btn, { disabled: pending, onClick: close }, "取消"), /* @__PURE__ */ React72.createElement(Btn, { kind: "primary", disabled: pending || disabled || action?.kind === "rename" && (!title.trim() || title.trim().length > 120), onClick: confirm }, pending ? "处理中…" : "确认")) }, action?.kind === "rename" ? /* @__PURE__ */ React72.createElement(Field, { label: "问答名称" }, /* @__PURE__ */ React72.createElement(Input, { "aria-label": "问答名称", disabled: pending, value: title, onChange: (e) => setTitle(e.target.value) })) : /* @__PURE__ */ React72.createElement(React72.Fragment, null, /* @__PURE__ */ React72.createElement("p", null, action?.kind === "purge" ? "将永久删除" : "将移入回收站：", action?.topics.length === 1 ? "「" + action.topics[0].title + "」" : "所选" + (action?.topics.length || 0) + "组问答", "及其", count, "轮本地问答。", action?.kind === "purge" ? "此操作无法恢复。" : "可在回收站恢复。", "不会删除厂商官网对话、登录信息或已存为知识的内容。"), action && action.topics.length > 1 && /* @__PURE__ */ React72.createElement("ul", { className: "wb-web-history-confirm-list" }, action.topics.map((topic) => /* @__PURE__ */ React72.createElement("li", { key: topic.id }, topic.title)))), error2 && action && /* @__PURE__ */ React72.createElement("p", { role: "alert", className: "wb-web-error" }, error2)));
+  } }), /* @__PURE__ */ React77.createElement("p", { className: "wb-tiny wb-muted" }, "共", rows.length, "组 · 本地搜索，不调用模型。", trash ? "永久删除后无法恢复。" : "删除后可从回收站恢复，不影响官网对话。"), /* @__PURE__ */ React77.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 }, "aria-label": "批量历史操作" }, /* @__PURE__ */ React77.createElement("label", { className: "wb-row", style: { gap: 6 } }, /* @__PURE__ */ React77.createElement("input", { type: "checkbox", "aria-label": "全选本页", disabled: disabled || pending || !visible.length, checked: allChecked, onChange: () => setCheckedIds((old) => allChecked ? old.filter((id) => !visible.some((row) => row.topic.id === id)) : [.../* @__PURE__ */ new Set([...old, ...visible.map((row) => row.topic.id)])]) }), "全选本页"), /* @__PURE__ */ React77.createElement("span", { className: "wb-tiny wb-muted" }, "已选", chosen.length, "组"), /* @__PURE__ */ React77.createElement(Btn, { disabled: disabled || pending || !chosen.length, onClick: () => begin(chosen, trash ? "purge" : "trash") }, trash ? "批量永久删除" : "批量删除"), !!chosen.length && /* @__PURE__ */ React77.createElement(Btn, { disabled: pending, onClick: () => setCheckedIds([]) }, "清除选择")), error2 && !action && /* @__PURE__ */ React77.createElement("p", { role: "alert", className: "wb-web-error" }, error2), !rows.length && /* @__PURE__ */ React77.createElement("p", { className: "wb-tiny wb-muted" }, query ? "没有匹配的问答" : trash ? "回收站为空" : "暂无历史问答"), visible.map(({ topic, count: count2, updatedAt, preview }) => /* @__PURE__ */ React77.createElement("article", { key: topic.id, "aria-label": topic.title, className: "wb-web-history-item" + (selected === topic.id ? " is-selected" : "") }, /* @__PURE__ */ React77.createElement("div", { className: "wb-web-history-main" }, /* @__PURE__ */ React77.createElement("input", { type: "checkbox", "aria-label": "选择问答 " + topic.title, disabled: disabled || pending, checked: checkedIds.includes(topic.id), onChange: () => setCheckedIds((old) => old.includes(topic.id) ? old.filter((id) => id !== topic.id) : [...old, topic.id]) }), /* @__PURE__ */ React77.createElement("div", { className: "wb-web-history-content" }, /* @__PURE__ */ React77.createElement("strong", null, topic.title), /* @__PURE__ */ React77.createElement("p", { className: "wb-tiny wb-muted" }, count2, "轮 · ", new Date(updatedAt).toLocaleString()), /* @__PURE__ */ React77.createElement("p", { className: "wb-tiny" }, preview))), /* @__PURE__ */ React77.createElement("div", { className: "wb-row wb-row--wrap wb-web-history-actions" }, trash ? /* @__PURE__ */ React77.createElement(React77.Fragment, null, /* @__PURE__ */ React77.createElement(Btn, { disabled: disabled || pending, onClick: () => void perform({ topicId: topic.id, expectedVersion: topic.version || 0, action: "restore" }) }, "恢复问答"), /* @__PURE__ */ React77.createElement(Btn, { disabled: disabled || pending, onClick: () => begin([topic], "purge") }, "永久删除")) : /* @__PURE__ */ React77.createElement(React77.Fragment, null, /* @__PURE__ */ React77.createElement(Btn, { "aria-label": "打开问答 " + topic.title, disabled: disabled || pending, onClick: () => onSelect(topic.id) }, "打开"), /* @__PURE__ */ React77.createElement(Btn, { "aria-label": "重命名问答 " + topic.title, disabled: disabled || pending, onClick: () => begin([topic], "rename") }, "重命名"), /* @__PURE__ */ React77.createElement(Btn, { "aria-label": "删除问答 " + topic.title, disabled: disabled || pending, onClick: () => begin([topic], "trash") }, "删除"))))), rows.length > SIZE && /* @__PURE__ */ React77.createElement("nav", { className: "wb-row", "aria-label": "历史分页", style: { gap: 8 } }, /* @__PURE__ */ React77.createElement(Btn, { disabled: !index, onClick: () => setPage(index - 1) }, "历史上一页"), /* @__PURE__ */ React77.createElement("span", { className: "wb-tiny" }, index + 1, " / ", Math.ceil(rows.length / SIZE)), /* @__PURE__ */ React77.createElement(Btn, { disabled: (index + 1) * SIZE >= rows.length, onClick: () => setPage(index + 1) }, "历史下一页")), /* @__PURE__ */ React77.createElement(Modal, { open: !!action, title: action?.kind === "rename" ? "重命名本地问答" : action?.kind === "purge" ? "永久删除本地问答" : "删除本地问答", width: 480, onClose: close, footer: /* @__PURE__ */ React77.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8, justifyContent: "flex-end", width: "100%" } }, /* @__PURE__ */ React77.createElement(Btn, { disabled: pending, onClick: close }, "取消"), /* @__PURE__ */ React77.createElement(Btn, { kind: "primary", disabled: pending || disabled || action?.kind === "rename" && (!title.trim() || title.trim().length > 120), onClick: confirm }, pending ? "处理中…" : "确认")) }, action?.kind === "rename" ? /* @__PURE__ */ React77.createElement(Field, { label: "问答名称" }, /* @__PURE__ */ React77.createElement(Input, { "aria-label": "问答名称", disabled: pending, value: title, onChange: (e) => setTitle(e.target.value) })) : /* @__PURE__ */ React77.createElement(React77.Fragment, null, /* @__PURE__ */ React77.createElement("p", null, action?.kind === "purge" ? "将永久删除" : "将移入回收站：", action?.topics.length === 1 ? "「" + action.topics[0].title + "」" : "所选" + (action?.topics.length || 0) + "组问答", "及其", count, "轮本地问答。", action?.kind === "purge" ? "此操作无法恢复。" : "可在回收站恢复。", "不会删除厂商官网对话、登录信息或已存为知识的内容。"), action && action.topics.length > 1 && /* @__PURE__ */ React77.createElement("ul", { className: "wb-web-history-confirm-list" }, action.topics.map((topic) => /* @__PURE__ */ React77.createElement("li", { key: topic.id }, topic.title)))), error2 && action && /* @__PURE__ */ React77.createElement("p", { role: "alert", className: "wb-web-error" }, error2)));
 }
 
 // src/client/features/web-ai/QuestionEditor.tsx
-var React73 = __toESM(require("react"), 1);
+var React78 = __toESM(require("react"), 1);
 function QuestionEditor({ round, onSave, onClose }) {
-  const [text2, setText] = React73.useState(localQuestion(round)), [busy, setBusy] = React73.useState(false), [error2, setError] = React73.useState("");
-  return /* @__PURE__ */ React73.createElement(Modal, { open: true, title: "编辑本地问题", width: 600, onClose: () => {
+  const [text2, setText] = React78.useState(localQuestion(round)), [busy, setBusy] = React78.useState(false), [error2, setError] = React78.useState("");
+  return /* @__PURE__ */ React78.createElement(Modal, { open: true, title: "编辑本地问题", width: 600, onClose: () => {
     if (!busy) onClose();
-  } }, /* @__PURE__ */ React73.createElement("p", { className: "wb-tiny wb-muted" }, "只修改本地显示。官网原提问和回答采集依据保留，追问仍使用原官网会话。"), /* @__PURE__ */ React73.createElement(Textarea, { "aria-label": "本地问题正文", rows: 6, value: text2, onChange: (e) => setText(e.target.value) }), error2 && /* @__PURE__ */ React73.createElement("p", { role: "alert", className: "wb-web-error" }, error2), /* @__PURE__ */ React73.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React73.createElement(Btn, { disabled: busy, onClick: () => setText(round.question) }, "恢复原问题"), /* @__PURE__ */ React73.createElement(Btn, { disabled: busy, onClick: onClose }, "取消"), /* @__PURE__ */ React73.createElement(Btn, { kind: "primary", disabled: busy || !text2.trim() || text2.length > 12e3, onClick: async () => {
+  } }, /* @__PURE__ */ React78.createElement("p", { className: "wb-tiny wb-muted" }, "只修改本地显示。官网原提问和回答采集依据保留，追问仍使用原官网会话。"), /* @__PURE__ */ React78.createElement(Textarea, { "aria-label": "本地问题正文", rows: 6, value: text2, onChange: (e) => setText(e.target.value) }), error2 && /* @__PURE__ */ React78.createElement("p", { role: "alert", className: "wb-web-error" }, error2), /* @__PURE__ */ React78.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React78.createElement(Btn, { disabled: busy, onClick: () => setText(round.question) }, "恢复原问题"), /* @__PURE__ */ React78.createElement(Btn, { disabled: busy, onClick: onClose }, "取消"), /* @__PURE__ */ React78.createElement(Btn, { kind: "primary", disabled: busy || !text2.trim() || text2.length > 12e3, onClick: async () => {
     setBusy(true);
     setError("");
     try {
@@ -20331,34 +20792,34 @@ function QuestionEditor({ round, onSave, onClose }) {
 }
 
 // src/client/features/web-ai/WebAIPage.tsx
-var React80 = __toESM(require("react"), 1);
+var React85 = __toESM(require("react"), 1);
 
 // src/client/features/web-ai/ConversationSidebar.tsx
-var React74 = __toESM(require("react"), 1);
+var React79 = __toESM(require("react"), 1);
 function ConversationSidebar({ state, selected, disabled, onSelect, onNew, onManage, compact = false, collapsed: controlled, onCollapse }) {
-  const [query, setQuery] = React74.useState(""), [limit, setLimit] = React74.useState(20), [localCollapsed, setLocalCollapsed] = React74.useState(false);
+  const [query, setQuery] = React79.useState(""), [limit, setLimit] = React79.useState(20), [localCollapsed, setLocalCollapsed] = React79.useState(false);
   const collapsed = controlled ?? localCollapsed, collapse = onCollapse || setLocalCollapsed;
-  const rows = React74.useMemo(() => searchWebAIHistory(state, query), [state, query]);
+  const rows = React79.useMemo(() => searchWebAIHistory(state, query), [state, query]);
   function dismiss() {
     if (compact) collapse(true);
   }
-  return /* @__PURE__ */ React74.createElement(AssistantSidebar, { collapsed, compact, onChange: collapse, onNew: () => {
+  return /* @__PURE__ */ React79.createElement(AssistantSidebar, { collapsed, compact, onChange: collapse, onNew: () => {
     dismiss();
     onNew();
-  }, busy: disabled, label: "会话历史", listId: "wb-web-ai-conversations", newLabel: "新对话", className: "wb-chat-sidebar" }, /* @__PURE__ */ React74.createElement("div", { className: "wb-chat-sidebar-search" }, /* @__PURE__ */ React74.createElement(Input, { "aria-label": "搜索会话", placeholder: "搜索会话或回答", value: query, onChange: (event) => {
+  }, busy: disabled, label: "会话历史", listId: "wb-web-ai-conversations", newLabel: "新对话", className: "wb-chat-sidebar" }, /* @__PURE__ */ React79.createElement("div", { className: "wb-chat-sidebar-search" }, /* @__PURE__ */ React79.createElement(Input, { "aria-label": "搜索会话", placeholder: "搜索会话或回答", value: query, onChange: (event) => {
     setQuery(event.target.value);
     setLimit(20);
-  } })), /* @__PURE__ */ React74.createElement("nav", { className: "wb-chat-session-list wb-assistant-session-items", "aria-label": "历史会话列表" }, !selected && !query && /* @__PURE__ */ React74.createElement("div", { className: "wb-chat-session wb-assistant-session is-selected is-new", "aria-current": "true" }, /* @__PURE__ */ React74.createElement("span", null, /* @__PURE__ */ React74.createElement("strong", null, "新对话"), /* @__PURE__ */ React74.createElement("small", null, "输入问题开始聊天"))), rows.length > 0 && /* @__PURE__ */ React74.createElement("h3", { className: "wb-chat-section-title" }, "最近更新"), rows.slice(0, limit).map(({ topic, count, preview }) => /* @__PURE__ */ React74.createElement("button", { type: "button", key: topic.id, disabled, title: topic.title, "aria-label": "选择会话 " + topic.title, "aria-current": selected === topic.id ? "true" : void 0, className: "wb-chat-session wb-assistant-session" + (selected === topic.id ? " is-selected" : ""), onClick: () => {
+  } })), /* @__PURE__ */ React79.createElement("nav", { className: "wb-chat-session-list wb-assistant-session-items", "aria-label": "历史会话列表" }, !selected && !query && /* @__PURE__ */ React79.createElement("div", { className: "wb-chat-session wb-assistant-session is-selected is-new", "aria-current": "true" }, /* @__PURE__ */ React79.createElement("span", null, /* @__PURE__ */ React79.createElement("strong", null, "新对话"), /* @__PURE__ */ React79.createElement("small", null, "输入问题开始聊天"))), rows.length > 0 && /* @__PURE__ */ React79.createElement("h3", { className: "wb-chat-section-title" }, "最近更新"), rows.slice(0, limit).map(({ topic, count, preview }) => /* @__PURE__ */ React79.createElement("button", { type: "button", key: topic.id, disabled, title: topic.title, "aria-label": "选择会话 " + topic.title, "aria-current": selected === topic.id ? "true" : void 0, className: "wb-chat-session wb-assistant-session" + (selected === topic.id ? " is-selected" : ""), onClick: () => {
     dismiss();
     onSelect(topic.id);
-  } }, /* @__PURE__ */ React74.createElement("span", null, /* @__PURE__ */ React74.createElement("strong", null, topic.title), query && /* @__PURE__ */ React74.createElement("small", null, preview), /* @__PURE__ */ React74.createElement("small", { className: "wb-chat-session-meta" }, count ? count + " 轮对话" : "尚无回答")))), !rows.length && /* @__PURE__ */ React74.createElement("p", { className: "wb-tiny wb-muted" }, query ? "没有匹配的会话" : "历史对话将保存在这里"), rows.length > limit && /* @__PURE__ */ React74.createElement(Btn, { size: "sm", onClick: () => setLimit((value) => value + 20) }, "显示更多会话")), /* @__PURE__ */ React74.createElement(Btn, { className: "wb-chat-manage", size: "sm", onClick: () => {
+  } }, /* @__PURE__ */ React79.createElement("span", null, /* @__PURE__ */ React79.createElement("strong", null, topic.title), query && /* @__PURE__ */ React79.createElement("small", null, preview), /* @__PURE__ */ React79.createElement("small", { className: "wb-chat-session-meta" }, count ? count + " 轮对话" : "尚无回答")))), !rows.length && /* @__PURE__ */ React79.createElement("p", { className: "wb-tiny wb-muted" }, query ? "没有匹配的会话" : "历史对话将保存在这里"), rows.length > limit && /* @__PURE__ */ React79.createElement(Btn, { size: "sm", onClick: () => setLimit((value) => value + 20) }, "显示更多会话")), /* @__PURE__ */ React79.createElement(Btn, { className: "wb-chat-manage", size: "sm", onClick: () => {
     dismiss();
     onManage();
-  }, "aria-label": "管理历史与回收站" }, /* @__PURE__ */ React74.createElement(Icon, { name: "clock", size: 13 }), "历史管理"));
+  }, "aria-label": "管理历史与回收站" }, /* @__PURE__ */ React79.createElement(Icon, { name: "clock", size: 13 }), "历史管理"));
 }
 
 // src/client/features/web-ai/ConversationThread.tsx
-var React77 = __toESM(require("react"), 1);
+var React82 = __toESM(require("react"), 1);
 
 // src/client/features/web-ai/answer-presentation.ts
 var LABEL = { queued: "等待回答", preparing: "准备中", prepared: "已填入官网", generating: "正在回答", completed: "已保存", needs_login: "待继续采集", unsupported: "需官网操作", uncertain: "需要核对", cancelled: "已停止" };
@@ -20372,7 +20833,7 @@ function answerPresentation(answer, auth) {
 }
 
 // src/client/features/web-ai/MessageContent.tsx
-var React75 = __toESM(require("react"), 1);
+var React80 = __toESM(require("react"), 1);
 
 // ../../../node_modules/.pnpm/mdurl@2.1.0/node_modules/mdurl/index.mjs
 var mdurl_exports = {};
@@ -25702,20 +26163,20 @@ function renderTokens(tokens, prefix = "md") {
       const token = tokens[index++], key2 = prefix + "-" + index;
       if (token.nesting === -1) break;
       if (token.type === "inline") {
-        result.push(/* @__PURE__ */ React75.createElement(React75.Fragment, { key: key2 }, renderTokens(token.children || [], key2)));
+        result.push(/* @__PURE__ */ React80.createElement(React80.Fragment, { key: key2 }, renderTokens(token.children || [], key2)));
         continue;
       }
       if (token.nesting === 1) {
         const content = children(), tag = token.tag;
         if (!tags.has(tag)) {
-          result.push(/* @__PURE__ */ React75.createElement(React75.Fragment, { key: key2 }, content));
+          result.push(/* @__PURE__ */ React80.createElement(React80.Fragment, { key: key2 }, content));
           continue;
         }
         const attrs = { key: key2 };
         if (tag === "a") {
           const href = safeLink(String(token.attrGet("href") || ""));
           if (!href) {
-            result.push(/* @__PURE__ */ React75.createElement(React75.Fragment, { key: key2 }, content));
+            result.push(/* @__PURE__ */ React80.createElement(React80.Fragment, { key: key2 }, content));
             continue;
           }
           Object.assign(attrs, { href, target: "_blank", rel: "noopener noreferrer", className: "wb-link" });
@@ -25728,48 +26189,48 @@ function renderTokens(tokens, prefix = "md") {
           const align = String(token.attrGet("style") || "").match(/^text-align:(left|right|center)$/)?.[1];
           if (align) attrs.style = { textAlign: align };
         }
-        const node = React75.createElement(tag, attrs, content);
-        result.push(tag === "table" ? /* @__PURE__ */ React75.createElement("div", { key: key2, className: "wb-chat-table", role: "region", "aria-label": "回答表格", tabIndex: 0 }, node) : node);
+        const node = React80.createElement(tag, attrs, content);
+        result.push(tag === "table" ? /* @__PURE__ */ React80.createElement("div", { key: key2, className: "wb-chat-table", role: "region", "aria-label": "回答表格", tabIndex: 0 }, node) : node);
         continue;
       }
       if (token.type === "fence" || token.type === "code_block") {
         const language = token.info.trim().split(/\s+/)[0];
-        result.push(/* @__PURE__ */ React75.createElement("div", { key: key2, className: "wb-chat-code-block" }, language && /* @__PURE__ */ React75.createElement("div", { className: "wb-chat-code-language" }, language), /* @__PURE__ */ React75.createElement("pre", { className: "wb-chat-code" }, /* @__PURE__ */ React75.createElement("code", null, token.content.replace(/\n$/, "")))));
+        result.push(/* @__PURE__ */ React80.createElement("div", { key: key2, className: "wb-chat-code-block" }, language && /* @__PURE__ */ React80.createElement("div", { className: "wb-chat-code-language" }, language), /* @__PURE__ */ React80.createElement("pre", { className: "wb-chat-code" }, /* @__PURE__ */ React80.createElement("code", null, token.content.replace(/\n$/, "")))));
         continue;
       }
       if (token.type === "code_inline") {
-        result.push(/* @__PURE__ */ React75.createElement("code", { key: key2 }, token.content));
+        result.push(/* @__PURE__ */ React80.createElement("code", { key: key2 }, token.content));
         continue;
       }
       if (token.type === "softbreak" || token.type === "hardbreak") {
-        result.push(/* @__PURE__ */ React75.createElement("br", { key: key2 }));
+        result.push(/* @__PURE__ */ React80.createElement("br", { key: key2 }));
         continue;
       }
       if (token.type === "hr") {
-        result.push(/* @__PURE__ */ React75.createElement("hr", { key: key2 }));
+        result.push(/* @__PURE__ */ React80.createElement("hr", { key: key2 }));
         continue;
       }
-      result.push(/* @__PURE__ */ React75.createElement(React75.Fragment, { key: key2 }, token.type === "image" ? "[图片：" + token.content + "]" : token.content));
+      result.push(/* @__PURE__ */ React80.createElement(React80.Fragment, { key: key2 }, token.type === "image" ? "[图片：" + token.content + "]" : token.content));
     }
     return result;
   };
   return children();
 }
-var MessageContent = React75.memo(function MessageContent2({ text: text2 }) {
+var MessageContent = React80.memo(function MessageContent2({ text: text2 }) {
   let tokens = markdown.parse(text2, {});
   if (text2.includes("`") && /[├└┣┗][─━]/.test(text2)) {
     const repaired = legacyDiagramMarkdown(text2, tokens);
     if (repaired !== text2) tokens = markdown.parse(repaired, {});
   }
-  return /* @__PURE__ */ React75.createElement("div", { className: "wb-chat-markdown" }, renderTokens(tokens));
+  return /* @__PURE__ */ React80.createElement("div", { className: "wb-chat-markdown" }, renderTokens(tokens));
 });
 
 // src/client/features/web-ai/useStreamingText.ts
-var React76 = __toESM(require("react"), 1);
+var React81 = __toESM(require("react"), 1);
 function useStreamingText(identity, text2, streaming, visible = true) {
-  const [shown, setShown] = React76.useState({ identity, text: text2 });
-  const current = React76.useRef(shown), target = React76.useRef(text2), previous = React76.useRef({ identity, streaming });
-  React76.useEffect(() => {
+  const [shown, setShown] = React81.useState({ identity, text: text2 });
+  const current = React81.useRef(shown), target = React81.useRef(text2), previous = React81.useRef({ identity, streaming });
+  React81.useEffect(() => {
     const old = previous.current;
     previous.current = { identity, streaming };
     target.current = text2;
@@ -25810,12 +26271,12 @@ function useStreamingText(identity, text2, streaming, visible = true) {
 // src/client/features/web-ai/ConversationThread.tsx
 function AnswerBody({ identity, text: text2, placeholder, streaming, visible }) {
   const shown = useStreamingText(identity, text2, streaming, visible);
-  return /* @__PURE__ */ React77.createElement("div", { className: "wb-chat-answer-body", "aria-live": "off", "aria-busy": streaming }, text2 ? /* @__PURE__ */ React77.createElement(MessageContent, { text: shown }) : /* @__PURE__ */ React77.createElement("span", { className: "wb-muted", role: "status" }, placeholder), streaming && /* @__PURE__ */ React77.createElement("span", { className: "wb-chat-stream-cursor", "aria-hidden": "true" }));
+  return /* @__PURE__ */ React82.createElement("div", { className: "wb-chat-answer-body", "aria-live": "off", "aria-busy": streaming }, text2 ? /* @__PURE__ */ React82.createElement(MessageContent, { text: shown }) : /* @__PURE__ */ React82.createElement("span", { className: "wb-muted", role: "status" }, placeholder), streaming && /* @__PURE__ */ React82.createElement("span", { className: "wb-chat-stream-cursor", "aria-hidden": "true" }));
 }
 function ConversationThread(props) {
-  const { rounds, topicId } = props, viewport = React77.useRef(null), following = React77.useRef(true), previousTopic = React77.useRef(topicId), restoreHeight = React77.useRef(null), restoreTop = React77.useRef(null);
-  const [localChoices, setLocalChoices] = React77.useState({}), choices = props.answerChoices || localChoices;
-  React77.useLayoutEffect(() => {
+  const { rounds, topicId } = props, viewport = React82.useRef(null), following = React82.useRef(true), previousTopic = React82.useRef(topicId), restoreHeight = React82.useRef(null), restoreTop = React82.useRef(null);
+  const [localChoices, setLocalChoices] = React82.useState({}), choices = props.answerChoices || localChoices;
+  React82.useLayoutEffect(() => {
     const node = viewport.current;
     if (!node || !props.visible) return;
     if (previousTopic.current !== topicId) {
@@ -25832,7 +26293,7 @@ function ConversationThread(props) {
       restoreHeight.current = null;
     } else if (following.current) node.scrollTop = node.scrollHeight;
   }, [topicId, rounds, props.filter, props.visible, choices]);
-  React77.useEffect(() => {
+  React82.useEffect(() => {
     const node = viewport.current;
     if (!node || !props.visible || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
@@ -25849,26 +26310,26 @@ function ConversationThread(props) {
     if (!props.answerChoices) setLocalChoices((old) => ({ ...old, [roundId]: providerId }));
     props.onSelectAnswer?.(roundId, providerId);
   };
-  return /* @__PURE__ */ React77.createElement("div", { ref: viewport, className: "wb-chat-thread", "aria-label": "聊天记录", onScroll: () => {
+  return /* @__PURE__ */ React82.createElement("div", { ref: viewport, className: "wb-chat-thread", "aria-label": "聊天记录", onScroll: () => {
     const node = viewport.current;
     if (node) following.current = node.scrollHeight - node.clientHeight - node.scrollTop < 80;
-  } }, rounds.length < props.total && /* @__PURE__ */ React77.createElement("div", { className: "wb-chat-earlier" }, /* @__PURE__ */ React77.createElement(Btn, { size: "sm", onClick: () => {
+  } }, rounds.length < props.total && /* @__PURE__ */ React82.createElement("div", { className: "wb-chat-earlier" }, /* @__PURE__ */ React82.createElement(Btn, { size: "sm", onClick: () => {
     restoreHeight.current = viewport.current?.scrollHeight ?? null;
     following.current = false;
     props.onEarlier();
-  } }, "加载更早的对话（", props.total - rounds.length, "）")), !rounds.length && /* @__PURE__ */ React77.createElement("div", { className: "wb-web-empty" }, /* @__PURE__ */ React77.createElement("strong", null, "今天想聊点什么？")), /* @__PURE__ */ React77.createElement("section", { "aria-label": "回答对比", className: "wb-chat-messages" }, rounds.map((round) => {
+  } }, "加载更早的对话（", props.total - rounds.length, "）")), !rounds.length && /* @__PURE__ */ React82.createElement("div", { className: "wb-web-empty" }, /* @__PURE__ */ React82.createElement("strong", null, "今天想聊点什么？")), /* @__PURE__ */ React82.createElement("section", { "aria-label": "回答对比", className: "wb-chat-messages" }, rounds.map((round) => {
     const selected = round.answers.find((a) => a.providerId === choices[round.id]) || round.answers[0];
-    return /* @__PURE__ */ React77.createElement("article", { key: round.id, className: "wb-chat-round", "aria-label": "对话轮次 " + localQuestion(round) }, /* @__PURE__ */ React77.createElement(MessageRow, { author: "user", at: round.createdAt, className: "wb-chat-user" }, /* @__PURE__ */ React77.createElement("div", { className: "wb-chat-question wb-assistant-message is-user" }, /* @__PURE__ */ React77.createElement("h3", null, localQuestion(round)), !!round.attachments?.length && /* @__PURE__ */ React77.createElement("div", { className: "wb-chat-file-labels" }, round.attachments.map((file) => /* @__PURE__ */ React77.createElement("span", { key: file.id }, "▤ ", file.name))))), /* @__PURE__ */ React77.createElement(MessageRow, { author: "assistant", label: selected ? webAIProvider(selected.providerId).name : "网页 AI", className: "wb-chat-assistant" }, /* @__PURE__ */ React77.createElement("div", { role: "tablist", "aria-label": "本轮回答厂商", className: "wb-chat-round-tabs" }, round.answers.map((a) => /* @__PURE__ */ React77.createElement("button", { key: a.providerId, type: "button", role: "tab", id: "tab-" + round.id + "-" + a.providerId, "aria-controls": "answer-" + round.id, "aria-selected": selected === a, onClick: () => selectAnswer(round.id, a.providerId) }, webAIProvider(a.providerId).name, props.authentication[a.providerId]?.status === "needs_login" && a.status === "needs_login" && /* @__PURE__ */ React77.createElement("small", null, " · 需登录"), a.status === "generating" && /* @__PURE__ */ React77.createElement("small", null, " · 正在回答")))), selected && (() => {
+    return /* @__PURE__ */ React82.createElement("article", { key: round.id, className: "wb-chat-round", "aria-label": "对话轮次 " + localQuestion(round) }, /* @__PURE__ */ React82.createElement(MessageRow, { author: "user", at: round.createdAt, className: "wb-chat-user" }, /* @__PURE__ */ React82.createElement("div", { className: "wb-chat-question wb-assistant-message is-user" }, /* @__PURE__ */ React82.createElement("h3", null, localQuestion(round)), !!round.attachments?.length && /* @__PURE__ */ React82.createElement("div", { className: "wb-chat-file-labels" }, round.attachments.map((file) => /* @__PURE__ */ React82.createElement("span", { key: file.id }, "▤ ", file.name))))), /* @__PURE__ */ React82.createElement(MessageRow, { author: "assistant", label: selected ? webAIProvider(selected.providerId).name : "网页 AI", className: "wb-chat-assistant" }, /* @__PURE__ */ React82.createElement("div", { role: "tablist", "aria-label": "本轮回答厂商", className: "wb-chat-round-tabs" }, round.answers.map((a) => /* @__PURE__ */ React82.createElement("button", { key: a.providerId, type: "button", role: "tab", id: "tab-" + round.id + "-" + a.providerId, "aria-controls": "answer-" + round.id, "aria-selected": selected === a, onClick: () => selectAnswer(round.id, a.providerId) }, webAIProvider(a.providerId).name, props.authentication[a.providerId]?.status === "needs_login" && a.status === "needs_login" && /* @__PURE__ */ React82.createElement("small", null, " · 需登录"), a.status === "generating" && /* @__PURE__ */ React82.createElement("small", null, " · 正在回答")))), selected && (() => {
       const answer = selected, view = answerPresentation(answer, props.authentication[answer.providerId]), streaming = answer.status === "generating", unsent = answer.submission === "not_sent" && !WEB_AI_ACTIVE.has(answer.status) && answer.status !== "completed";
-      return /* @__PURE__ */ React77.createElement("article", { role: "tabpanel", id: "answer-" + round.id, "aria-labelledby": "tab-" + round.id + "-" + answer.providerId, className: "wb-web-answer wb-assistant-message", "aria-label": webAIProvider(answer.providerId).name + " 回答" }, /* @__PURE__ */ React77.createElement(AnswerBody, { identity: topicId + ":" + round.id + ":" + answer.providerId, text: answer.text, placeholder: view.note || "等待厂商回复…", streaming, visible: props.visible }), unsent && /* @__PURE__ */ React77.createElement("div", { className: "wb-row", style: { gap: 8, marginTop: 12 } }, /* @__PURE__ */ React77.createElement(Btn, { size: "sm", disabled: props.busy, onClick: () => props.onUnsent?.(round, answer) }, props.authentication[answer.providerId]?.status === "authenticated" ? "发送给" + webAIProvider(answer.providerId).name : "查看登录页"), /* @__PURE__ */ React77.createElement("span", { className: "wb-tiny wb-muted" }, "本厂商尚未发送")), /* @__PURE__ */ React77.createElement("div", { className: "wb-row wb-chat-answer-actions" }, /* @__PURE__ */ React77.createElement(Btn, { size: "sm", disabled: !answer.text, onClick: () => {
+      return /* @__PURE__ */ React82.createElement("article", { role: "tabpanel", id: "answer-" + round.id, "aria-labelledby": "tab-" + round.id + "-" + answer.providerId, className: "wb-web-answer wb-assistant-message", "aria-label": webAIProvider(answer.providerId).name + " 回答" }, /* @__PURE__ */ React82.createElement(AnswerBody, { identity: topicId + ":" + round.id + ":" + answer.providerId, text: answer.text, placeholder: view.note || "等待厂商回复…", streaming, visible: props.visible }), unsent && /* @__PURE__ */ React82.createElement("div", { className: "wb-row", style: { gap: 8, marginTop: 12 } }, /* @__PURE__ */ React82.createElement(Btn, { size: "sm", disabled: props.busy, onClick: () => props.onUnsent?.(round, answer) }, props.authentication[answer.providerId]?.status === "authenticated" ? "发送给" + webAIProvider(answer.providerId).name : "查看登录页"), /* @__PURE__ */ React82.createElement("span", { className: "wb-tiny wb-muted" }, "本厂商尚未发送")), /* @__PURE__ */ React82.createElement("div", { className: "wb-row wb-chat-answer-actions" }, /* @__PURE__ */ React82.createElement(Btn, { size: "sm", disabled: !answer.text, onClick: () => {
         void WB.util.copy(answer.text).then(() => WB.toast("已复制", "ok")).catch(() => WB.toast("复制失败，请重试", "error"));
-      } }, "复制"), /* @__PURE__ */ React77.createElement("details", { "data-chat-menu": true }, /* @__PURE__ */ React77.createElement("summary", { "aria-label": "回答更多操作" }, "⋯"), /* @__PURE__ */ React77.createElement("div", { className: "wb-chat-message-menu" }, /* @__PURE__ */ React77.createElement(Btn, { size: "sm", onClick: () => props.onOpen(round, answer) }, "登录 / 查看原对话"), answer.capture && !unsent && /* @__PURE__ */ React77.createElement(Btn, { size: "sm", disabled: props.busy, onClick: () => props.onCapture(round, answer) }, "采集本轮回答"), /* @__PURE__ */ React77.createElement(Btn, { size: "sm", disabled: WEB_AI_ACTIVE.has(answer.status), onClick: () => props.onEditAnswer(round, answer) }, "粘贴 / 编辑回答"), /* @__PURE__ */ React77.createElement(Btn, { size: "sm", disabled: props.busy || !props.canEdit, onClick: () => props.onEditQuestion(round) }, "编辑本地问题"), answer.text && /* @__PURE__ */ React77.createElement(Btn, { size: "sm", onClick: () => props.onKnowledge(round, answer) }, "存为候选知识")))));
+      } }, "复制"), /* @__PURE__ */ React82.createElement("details", { "data-chat-menu": true }, /* @__PURE__ */ React82.createElement("summary", { "aria-label": "回答更多操作" }, "⋯"), /* @__PURE__ */ React82.createElement("div", { className: "wb-chat-message-menu" }, /* @__PURE__ */ React82.createElement(Btn, { size: "sm", onClick: () => props.onOpen(round, answer) }, "登录 / 查看原对话"), answer.capture && !unsent && /* @__PURE__ */ React82.createElement(Btn, { size: "sm", disabled: props.busy, onClick: () => props.onCapture(round, answer) }, "采集本轮回答"), /* @__PURE__ */ React82.createElement(Btn, { size: "sm", disabled: WEB_AI_ACTIVE.has(answer.status), onClick: () => props.onEditAnswer(round, answer) }, "粘贴 / 编辑回答"), /* @__PURE__ */ React82.createElement(Btn, { size: "sm", disabled: props.busy || !props.canEdit, onClick: () => props.onEditQuestion(round) }, "编辑本地问题"), answer.text && /* @__PURE__ */ React82.createElement(Btn, { size: "sm", onClick: () => props.onKnowledge(round, answer) }, "存为候选知识")))));
     })()));
   })));
 }
 
 // src/client/features/web-ai/NativeWebsite.tsx
-var React78 = __toESM(require("react"), 1);
+var React83 = __toESM(require("react"), 1);
 
 // src/shared/web-ai-adapters.ts
 var WEB_AI_ADAPTERS = {
@@ -26306,7 +26767,7 @@ function pageAction(req, observe) {
 
 // src/shared/web-ai-auth.ts
 function observeWebAIAuthentication(req) {
-  const result = (status, note, ...evidence) => ({ status, note, evidence });
+  const result = (status2, note, ...evidence) => ({ status: status2, note, evidence });
   const sites = {
     kimi: { routes: /^\/(?:login|sign[-_]?in)(?:\/|$)/i, accounts: /^(?:账户菜单|账号菜单|个人菜单|个人中心|用户菜单)$/ },
     glm: { routes: /^\/(?:login|auth\/login)(?:\/|$)/i, accounts: /^(?:账户菜单|账号菜单|个人菜单|个人中心|用户菜单)$/ },
@@ -26478,9 +26939,9 @@ var NOTES = {
 };
 function authenticationSummary(value) {
   const candidate = value?.status;
-  const status = typeof candidate === "string" && Object.prototype.hasOwnProperty.call(NOTES, candidate) ? candidate : "unknown";
+  const status2 = typeof candidate === "string" && Object.prototype.hasOwnProperty.call(NOTES, candidate) ? candidate : "unknown";
   const evidence = Array.isArray(value?.evidence) ? value.evidence.filter((item) => typeof item === "string" && /^Kimi检查:(?:导航|历史|头像|升级)=[01]$/.test(item)).slice(0, 4) : [];
-  return { status, note: NOTES[status], evidence };
+  return { status: status2, note: NOTES[status2], evidence };
 }
 var AUTHENTICATION_LABEL = { authenticated: "已识别登录", needs_login: "需要登录", verification: "需要验证", unknown: "登录待确认" };
 
@@ -26516,17 +26977,17 @@ async function acquireWebsiteSession(bridge, scope, providerId) {
 
 // src/client/features/web-ai/NativeWebsite.tsx
 function NativeWebsite({ providerId, scope, url, visible, onController, onNavigate, onAuthentication }) {
-  const bridge = nativeWebAIBridge(), [lease, setLease] = React78.useState(null), [error2, setError] = React78.useState(""), [loading, setLoading] = React78.useState(true), [retry, setRetry] = React78.useState(0);
-  const guest = React78.useRef(null), ready = React78.useRef(false), documentVersion = React78.useRef(0), mounted = React78.useRef(true), target = React78.useRef(url);
-  const ownedAttachmentSignature = React78.useRef("");
-  const navigation = React78.useRef(onNavigate);
+  const bridge = nativeWebAIBridge(), [lease, setLease] = React83.useState(null), [error2, setError] = React83.useState(""), [loading, setLoading] = React83.useState(true), [retry, setRetry] = React83.useState(0);
+  const guest = React83.useRef(null), ready = React83.useRef(false), documentVersion = React83.useRef(0), mounted = React83.useRef(true), target = React83.useRef(url);
+  const ownedAttachmentSignature = React83.useRef("");
+  const navigation = React83.useRef(onNavigate);
   navigation.current = onNavigate;
-  const authentication = React78.useRef(onAuthentication);
+  const authentication = React83.useRef(onAuthentication);
   authentication.current = onAuthentication;
-  const authRevision = React78.useRef(0);
-  const authFlight = React78.useRef(null);
+  const authRevision = React83.useRef(0);
+  const authFlight = React83.useRef(null);
   target.current = url;
-  const checkAuthentication = React78.useCallback(() => {
+  const checkAuthentication = React83.useCallback(() => {
     const node = guest.current, version = documentVersion.current;
     if (!mounted.current || !node || !ready.current) return Promise.resolve(authenticationSummary(null));
     if (authFlight.current?.node === node && authFlight.current.version === version) return authFlight.current.promise;
@@ -26551,7 +27012,7 @@ function NativeWebsite({ providerId, scope, url, visible, onController, onNaviga
     authFlight.current = { node, version, promise };
     return promise;
   }, [providerId]);
-  const controller = React78.useMemo(() => ({
+  const controller = React83.useMemo(() => ({
     authentication: checkAuthentication,
     async execute(action, question = "", requestId = "") {
       const until = Date.now() + 15e3;
@@ -26663,14 +27124,14 @@ function NativeWebsite({ providerId, scope, url, visible, onController, onNaviga
       guest.current?.blur();
     }
   }), [providerId, checkAuthentication]);
-  React78.useEffect(() => {
+  React83.useEffect(() => {
     mounted.current = true;
     return () => {
       mounted.current = false;
       ready.current = false;
     };
   }, []);
-  React78.useEffect(() => {
+  React83.useEffect(() => {
     if (!bridge) return;
     let disposed = false, held = null;
     setError("");
@@ -26698,7 +27159,7 @@ function NativeWebsite({ providerId, scope, url, visible, onController, onNaviga
       });
     };
   }, [scope, providerId, retry]);
-  React78.useEffect(() => {
+  React83.useEffect(() => {
     const node = guest.current;
     if (!node || !lease || !bridge) return;
     let disposed = false, initial = true;
@@ -26786,7 +27247,7 @@ function NativeWebsite({ providerId, scope, url, visible, onController, onNaviga
       off();
     };
   }, [lease, controller]);
-  React78.useEffect(() => {
+  React83.useEffect(() => {
     if (!visible || !lease) return;
     void checkAuthentication();
     const timer = setInterval(() => {
@@ -26794,9 +27255,9 @@ function NativeWebsite({ providerId, scope, url, visible, onController, onNaviga
     }, 5e3);
     return () => clearInterval(timer);
   }, [visible, lease, checkAuthentication]);
-  return /* @__PURE__ */ React78.createElement("div", { className: "wb-website" + (!visible ? " is-background-guest" : ""), "aria-hidden": !visible, ...!visible ? { inert: "" } : {} }, !bridge && /* @__PURE__ */ React78.createElement("div", { className: "wb-web-status", role: "status" }, browserSessionMessage("unavailable")), lease?.mode === "persistent" && /* @__PURE__ */ React78.createElement("div", { className: "wb-tiny wb-muted", role: "status" }, browserSessionMessage("persistent", true)), lease && React78.createElement("webview", { key: lease.lease, ref: (el) => {
+  return /* @__PURE__ */ React83.createElement("div", { className: "wb-website" + (!visible ? " is-background-guest" : ""), "aria-hidden": !visible, ...!visible ? { inert: "" } : {} }, !bridge && /* @__PURE__ */ React83.createElement("div", { className: "wb-web-status", role: "status" }, browserSessionMessage("unavailable")), lease?.mode === "persistent" && /* @__PURE__ */ React83.createElement("div", { className: "wb-tiny wb-muted", role: "status" }, browserSessionMessage("persistent", true)), lease && React83.createElement("webview", { key: lease.lease, ref: (el) => {
     guest.current = el;
-  }, name: lease.lease, partition: lease.partition, src: "about:blank#" + lease.lease, allowpopups: "", "data-sidebar-browser-frame": "webview", "aria-label": webAIProvider(providerId).name + " 官网聊天", style: { flex: 1, width: "100%", minHeight: 300, border: 0 } }), (loading && bridge || error2) && /* @__PURE__ */ React78.createElement("div", { className: "wb-web-status", role: error2 ? "alert" : "status" }, error2 || "正在加载官网…", " ", error2 && /* @__PURE__ */ React78.createElement(Btn, { size: "sm", onClick: () => setRetry((n) => n + 1) }, "重试网页")));
+  }, name: lease.lease, partition: lease.partition, src: "about:blank#" + lease.lease, allowpopups: "", "data-sidebar-browser-frame": "webview", "aria-label": webAIProvider(providerId).name + " 官网聊天", style: { flex: 1, width: "100%", minHeight: 300, border: 0 } }), (loading && bridge || error2) && /* @__PURE__ */ React83.createElement("div", { className: "wb-web-status", role: error2 ? "alert" : "status" }, error2 || "正在加载官网…", " ", error2 && /* @__PURE__ */ React83.createElement(Btn, { size: "sm", onClick: () => setRetry((n) => n + 1) }, "重试网页")));
 }
 
 // src/client/features/web-ai/capture.ts
@@ -27225,7 +27686,7 @@ async function checkWebsiteLogin(getController, options = {}) {
 }
 
 // src/client/features/web-ai/attachments.tsx
-var React79 = __toESM(require("react"), 1);
+var React84 = __toESM(require("react"), 1);
 function selectWebAIFiles(existing, files, clipboard = false) {
   const names = new Set(existing.map((item) => item.name));
   const next = [...existing, ...files.map((original, i) => {
@@ -27252,40 +27713,40 @@ async function readWebAIFiles(files) {
   }) })));
 }
 function FilePreview({ item }) {
-  const [url, setUrl] = React79.useState("");
-  React79.useEffect(() => {
+  const [url, setUrl] = React84.useState("");
+  React84.useEffect(() => {
     if (!/^image\/(png|jpeg|webp|gif)$/.test(item.type) || !URL.createObjectURL) return;
     const value = URL.createObjectURL(item.file);
     setUrl(value);
     return () => URL.revokeObjectURL(value);
   }, [item]);
-  return /* @__PURE__ */ React79.createElement(React79.Fragment, null, url && /* @__PURE__ */ React79.createElement("img", { src: url, alt: item.name, style: { width: 48, height: 48, objectFit: "contain", borderRadius: 6 } }), /* @__PURE__ */ React79.createElement("span", { style: { minWidth: 0, overflowWrap: "anywhere" } }, item.name, /* @__PURE__ */ React79.createElement("small", { className: "wb-muted", style: { display: "block" } }, Math.ceil(item.size / 1024), " KB")));
+  return /* @__PURE__ */ React84.createElement(React84.Fragment, null, url && /* @__PURE__ */ React84.createElement("img", { src: url, alt: item.name, style: { width: 48, height: 48, objectFit: "contain", borderRadius: 6 } }), /* @__PURE__ */ React84.createElement("span", { style: { minWidth: 0, overflowWrap: "anywhere" } }, item.name, /* @__PURE__ */ React84.createElement("small", { className: "wb-muted", style: { display: "block" } }, Math.ceil(item.size / 1024), " KB")));
 }
 function WebAIAttachments({ files, disabled, onAdd, onRemove, compact = false }) {
-  const chooser = React79.useRef(null);
-  return /* @__PURE__ */ React79.createElement("div", { className: "wb-stack", "aria-label": "问题附件" }, /* @__PURE__ */ React79.createElement("input", { ref: chooser, "aria-label": "选择问题附件", type: "file", multiple: true, accept: WEB_AI_FILE_ACCEPT, disabled, style: { display: "none" }, onChange: (event) => {
+  const chooser = React84.useRef(null);
+  return /* @__PURE__ */ React84.createElement("div", { className: "wb-stack", "aria-label": "问题附件" }, /* @__PURE__ */ React84.createElement("input", { ref: chooser, "aria-label": "选择问题附件", type: "file", multiple: true, accept: WEB_AI_FILE_ACCEPT, disabled, style: { display: "none" }, onChange: (event) => {
     onAdd(Array.from(event.target.files || []));
     event.target.value = "";
-  } }), /* @__PURE__ */ React79.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React79.createElement(Btn, { icon: compact ? "plus" : void 0, "aria-label": "添加附件", disabled, onClick: () => chooser.current?.click() }, compact ? null : "添加图片 / 文件"), !compact && /* @__PURE__ */ React79.createElement("span", { className: "wb-tiny wb-muted" }, "可粘贴截图或拖入文件；最多5个，单个10MB，总计20MB。格式以官网为准。")), !!files.length && /* @__PURE__ */ React79.createElement(React79.Fragment, null, /* @__PURE__ */ React79.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, files.map((item) => /* @__PURE__ */ React79.createElement("div", { key: item.id, className: "wb-row", style: { gap: 8, maxWidth: "100%", padding: 8, border: "1px solid var(--dsw-alias-border-l1)", borderRadius: 8 } }, /* @__PURE__ */ React79.createElement(FilePreview, { item }), /* @__PURE__ */ React79.createElement(Btn, { size: "sm", disabled, "aria-label": "移除附件 " + item.name, onClick: () => onRemove(item.id) }, "移除")))), !compact && /* @__PURE__ */ React79.createElement("p", { className: "wb-tiny wb-muted" }, "附件将发送至勾选官网；批量仅附在第一问，后续复用会话。内容临时保留，历史仅保存附件信息；刷新后需重新选择。")));
+  } }), /* @__PURE__ */ React84.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React84.createElement(Btn, { icon: compact ? "plus" : void 0, "aria-label": "添加附件", disabled, onClick: () => chooser.current?.click() }, compact ? null : "添加图片 / 文件"), !compact && /* @__PURE__ */ React84.createElement("span", { className: "wb-tiny wb-muted" }, "可粘贴截图或拖入文件；最多5个，单个10MB，总计20MB。格式以官网为准。")), !!files.length && /* @__PURE__ */ React84.createElement(React84.Fragment, null, /* @__PURE__ */ React84.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, files.map((item) => /* @__PURE__ */ React84.createElement("div", { key: item.id, className: "wb-row", style: { gap: 8, maxWidth: "100%", padding: 8, border: "1px solid var(--dsw-alias-border-l1)", borderRadius: 8 } }, /* @__PURE__ */ React84.createElement(FilePreview, { item }), /* @__PURE__ */ React84.createElement(Btn, { size: "sm", disabled, "aria-label": "移除附件 " + item.name, onClick: () => onRemove(item.id) }, "移除")))), !compact && /* @__PURE__ */ React84.createElement("p", { className: "wb-tiny wb-muted" }, "附件将发送至勾选官网；批量仅附在第一问，后续复用会话。内容临时保留，历史仅保存附件信息；刷新后需重新选择。")));
 }
 
 // src/client/features/web-ai/WebAIPage.tsx
 function WebAIPage() {
-  const surface = React80.useRef(null);
+  const surface = React85.useRef(null);
   const { compact, collapsed, setCollapsed } = useAssistantSidebar(surface);
-  const store = useStore(), [state, setState] = React80.useState(() => normalizeWebAI(store.data?.webAI)), [topicId, setTopicId] = React80.useState(""), [active, setActive] = React80.useState("kimi"), [selected, setSelected] = React80.useState(["kimi", "glm"]), [drafts2, setDrafts] = React80.useState({}), [batch, setBatch] = React80.useState(false), [busy, setBusy] = React80.useState(false), [error2, setError] = React80.useState(""), [caps, setCaps] = React80.useState(null), [showWeb, setShowWeb] = React80.useState(false), [answerFilter, setAnswerFilter] = React80.useState("all"), [page, setPage] = React80.useState(0);
-  const [opened, setOpened] = React80.useState({}), [editing, setEditing] = React80.useState(null);
-  const [showHistory, setShowHistory] = React80.useState(false), [questionEdit, setQuestionEdit] = React80.useState(null);
-  const [fileDrafts, setFileDrafts] = React80.useState({});
-  const [compatibility, setCompatibility] = React80.useState("");
-  const [diagnostics, setDiagnostics] = React80.useState(null);
-  const [answerChoices, setAnswerChoices] = React80.useState({});
-  const [authentication, setAuthentication] = React80.useState({});
-  const [checkingLogin, setCheckingLogin] = React80.useState({}), loginChecks = React80.useRef(/* @__PURE__ */ new Map());
-  const roundFiles = React80.useRef(/* @__PURE__ */ new Map()), [resend, setResend] = React80.useState(null), [retryFiles, setRetryFiles] = React80.useState([]);
-  const ownedRequest = React80.useRef(null), processing = React80.useRef(false);
-  const selection = React80.useRef({ touched: false, id: "" });
-  React80.useEffect(() => {
+  const store = useStore(), [state, setState] = React85.useState(() => normalizeWebAI(store.data?.webAI)), [topicId, setTopicId] = React85.useState(""), [active, setActive] = React85.useState("kimi"), [selected, setSelected] = React85.useState(["kimi", "glm"]), [drafts2, setDrafts] = React85.useState({}), [batch, setBatch] = React85.useState(false), [busy, setBusy] = React85.useState(false), [error2, setError] = React85.useState(""), [caps, setCaps] = React85.useState(null), [showWeb, setShowWeb] = React85.useState(false), [answerFilter, setAnswerFilter] = React85.useState("all"), [page, setPage] = React85.useState(0);
+  const [opened, setOpened] = React85.useState({}), [editing, setEditing] = React85.useState(null);
+  const [showHistory, setShowHistory] = React85.useState(false), [questionEdit, setQuestionEdit] = React85.useState(null);
+  const [fileDrafts, setFileDrafts] = React85.useState({});
+  const [compatibility, setCompatibility] = React85.useState("");
+  const [diagnostics, setDiagnostics] = React85.useState(null);
+  const [answerChoices, setAnswerChoices] = React85.useState({});
+  const [authentication, setAuthentication] = React85.useState({});
+  const [checkingLogin, setCheckingLogin] = React85.useState({}), loginChecks = React85.useRef(/* @__PURE__ */ new Map());
+  const roundFiles = React85.useRef(/* @__PURE__ */ new Map()), [resend, setResend] = React85.useState(null), [retryFiles, setRetryFiles] = React85.useState([]);
+  const ownedRequest = React85.useRef(null), processing = React85.useRef(false);
+  const selection = React85.useRef({ touched: false, id: "" });
+  React85.useEffect(() => {
     const dismiss = (event) => {
       for (const menu of surface.current?.querySelectorAll("details[data-chat-menu][open]") || []) if (event.type === "keydown" ? event.key === "Escape" : !menu.contains(event.target)) menu.open = false;
     };
@@ -27296,7 +27757,7 @@ function WebAIPage() {
       document.removeEventListener("keydown", dismiss, true);
     };
   }, []);
-  React80.useEffect(() => {
+  React85.useEffect(() => {
     if (!showWeb) return;
     const previous = document.activeElement;
     surface.current?.querySelector(".wb-login-close")?.focus();
@@ -27314,7 +27775,7 @@ function WebAIPage() {
     setTopicId(id);
     rememberWebAITopic(caps?.storageScope, id);
   }
-  const openRef = React80.useRef(opened), controllers = React80.useRef(/* @__PURE__ */ new Map()), abort = React80.useRef(null), alive = React80.useRef(true);
+  const openRef = React85.useRef(opened), controllers = React85.useRef(/* @__PURE__ */ new Map()), abort = React85.useRef(null), alive = React85.useRef(true);
   function acceptState(next) {
     setState((old) => Number(next.revision || 0) < Number(old.revision || 0) ? old : next);
   }
@@ -27328,11 +27789,11 @@ function WebAIPage() {
     }).catch(() => {
     });
   }
-  const rpc = React80.useCallback((method, request) => WB.rpc("workbench/" + method, request === void 0 ? {} : { request }), []);
+  const rpc = React85.useCallback((method, request) => WB.rpc("workbench/" + method, request === void 0 ? {} : { request }), []);
   function cancelRequest(request) {
     return persistWebAIState(() => rpc("webAICancel", request));
   }
-  React80.useEffect(() => {
+  React85.useEffect(() => {
     alive.current = true;
     rpc("webAIState").then((r) => {
       if (!alive.current) return;
@@ -27352,10 +27813,10 @@ function WebAIPage() {
       });
     };
   }, [rpc]);
-  React80.useEffect(() => {
+  React85.useEffect(() => {
     if (store.data?.webAI) acceptState({ ...store.data.webAI, revision: store.data.revision });
   }, [store.data?.webAI]);
-  React80.useEffect(() => {
+  React85.useEffect(() => {
     if (topicId && !state.topics.some((t) => t.id === topicId && !t.deletedAt)) {
       chooseTopic("");
       setShowWeb(false);
@@ -27404,10 +27865,10 @@ function WebAIPage() {
     let existing, adoptUrl;
     if (old) {
       existing = await getController(providerId);
-      const status = await existing.execute("observe", question);
-      const adopt = !!id && !old.topicId && !!question && (!status.hasDraft || status.draftMatchesQuestion === true);
-      if (status.busy || status.hasAttachmentDraft && !status.attachmentsOwned || status.hasDraft && !adopt) throw new Error(webAIProvider(providerId).name + " 的另一主题仍有草稿或正在生成，请先在官网处理");
-      if (adopt) adoptUrl = status.url || old.url;
+      const status2 = await existing.execute("observe", question);
+      const adopt = !!id && !old.topicId && !!question && (!status2.hasDraft || status2.draftMatchesQuestion === true);
+      if (status2.busy || status2.hasAttachmentDraft && !status2.attachmentsOwned || status2.hasDraft && !adopt) throw new Error(webAIProvider(providerId).name + " 的另一主题仍有草稿或正在生成，请先在官网处理");
+      if (adopt) adoptUrl = status2.url || old.url;
     }
     const next = { ...openRef.current, [providerId]: { topicId: id, url: adoptUrl || url } };
     openRef.current = next;
@@ -27623,13 +28084,13 @@ function WebAIPage() {
     WB.util.copy(content).then(() => WB.toast("对比内容已复制，可保存为 Markdown", "ok")).catch((e) => setError(e.message));
   }
   const hasActive = state.rounds.some((r) => r.topicId === topicId && r.answers.some((a) => WEB_AI_ACTIVE.has(a.status) || a.status === "prepared"));
-  return /* @__PURE__ */ React80.createElement("div", { ref: surface, className: "wb-web-ai" + (compact ? " is-compact" : "") }, /* @__PURE__ */ React80.createElement("style", null, WEB_AI_CSS + ASSISTANT_SIDEBAR_CSS + MESSAGE_IDENTITY_CSS), /* @__PURE__ */ React80.createElement("div", { className: "wb-chat-layout", ...showWeb ? { inert: "" } : {} }, /* @__PURE__ */ React80.createElement(ConversationSidebar, { compact, collapsed, onCollapse: setCollapsed, state, selected: topicId, disabled: busy, onNew: newConversation, onSelect: (id) => {
+  return /* @__PURE__ */ React85.createElement("div", { ref: surface, className: "wb-web-ai" + (compact ? " is-compact" : "") }, /* @__PURE__ */ React85.createElement("style", null, WEB_AI_CSS + ASSISTANT_SIDEBAR_CSS + MESSAGE_IDENTITY_CSS), /* @__PURE__ */ React85.createElement("div", { className: "wb-chat-layout", ...showWeb ? { inert: "" } : {} }, /* @__PURE__ */ React85.createElement(ConversationSidebar, { compact, collapsed, onCollapse: setCollapsed, state, selected: topicId, disabled: busy, onNew: newConversation, onSelect: (id) => {
     chooseTopic(id);
     setPage(0);
     setShowWeb(false);
     setAnswerFilter("all");
     setShowHistory(false);
-  }, onManage: () => setShowHistory(true) }), /* @__PURE__ */ React80.createElement("main", { className: "wb-chat-main", "aria-label": "聚合聊天", "aria-hidden": compact && !collapsed ? true : void 0, ...compact && !collapsed ? { inert: "" } : {} }, /* @__PURE__ */ React80.createElement("header", { className: "wb-chat-head" }, compact && /* @__PURE__ */ React80.createElement(AssistantSidebarToggle, { collapsed, onClick: () => setCollapsed(!collapsed), trigger: true, controls: "wb-web-ai-conversations" }), /* @__PURE__ */ React80.createElement("h2", { title: topic?.title || "新对话" }, topic?.title || "新对话"), /* @__PURE__ */ React80.createElement(Btn, { size: "sm", onClick: () => safe(() => openProvider(websiteProvider)) }, "登录 / 官网")), showHistory && /* @__PURE__ */ React80.createElement("div", { className: "wb-chat-history-overlay" }, "  ", showHistory && /* @__PURE__ */ React80.createElement(HistoryManager, { state, selected: topicId, disabled: busy || caps?.historyProtocol !== 1, onClose: () => setShowHistory(false), onSelect: (id) => {
+  }, onManage: () => setShowHistory(true) }), /* @__PURE__ */ React85.createElement("main", { className: "wb-chat-main", "aria-label": "聚合聊天", "aria-hidden": compact && !collapsed ? true : void 0, ...compact && !collapsed ? { inert: "" } : {} }, /* @__PURE__ */ React85.createElement("header", { className: "wb-chat-head" }, compact && /* @__PURE__ */ React85.createElement(AssistantSidebarToggle, { collapsed, onClick: () => setCollapsed(!collapsed), trigger: true, controls: "wb-web-ai-conversations" }), /* @__PURE__ */ React85.createElement("h2", { title: topic?.title || "新对话" }, topic?.title || "新对话"), /* @__PURE__ */ React85.createElement(Btn, { size: "sm", onClick: () => safe(() => openProvider(websiteProvider)) }, "登录 / 官网")), showHistory && /* @__PURE__ */ React85.createElement("div", { className: "wb-chat-history-overlay" }, "  ", showHistory && /* @__PURE__ */ React85.createElement(HistoryManager, { state, selected: topicId, disabled: busy || caps?.historyProtocol !== 1, onClose: () => setShowHistory(false), onSelect: (id) => {
     chooseTopic(id);
     setPage(0);
     setShowWeb(false);
@@ -27643,7 +28104,7 @@ function WebAIPage() {
       setEditing(null);
       setQuestionEdit(null);
     }
-  } }), showHistory && caps && caps.historyProtocol !== 1 && /* @__PURE__ */ React80.createElement("p", { className: "wb-web-error", role: "status" }, "历史管理后端尚未加载，请在插件管理中重新启用智能工作台组件。")), error2 && /* @__PURE__ */ React80.createElement("p", { role: "alert", className: "wb-web-error wb-chat-alert" }, error2), /* @__PURE__ */ React80.createElement("div", { className: "wb-chat-thread-shell" }, /* @__PURE__ */ React80.createElement("div", { className: "wb-chat-thread-pane" }, /* @__PURE__ */ React80.createElement(ConversationThread, { topicId, visible: true, rounds: rows.slice(Math.max(0, rows.length - (page + 1) * PAGE_SIZE)), total: rows.length, filter: answerFilter, authentication, busy, canEdit: caps?.historyProtocol === 1, answerChoices, onSelectAnswer: (roundId, providerId) => setAnswerChoices((old) => ({ ...old, [roundId]: providerId })), onUnsent: (round, answer) => safe(() => sendUnsent(round, answer)), onEarlier: () => setPage((value) => value + 1), onOpen: (round, answer) => safe(() => openProvider(answer.providerId, round.topicId)), onCapture: (round, answer) => safe(() => resumeCapture(round, answer)), onEditQuestion: (round) => setQuestionEdit(round), onEditAnswer: (round, answer) => setEditing({ round, answer, text: answer.text, url: answer.url || "" }), onKnowledge: (round, answer) => safe(() => WB.actions.createKnowledge({ title: round.question.slice(0, 160) + " · " + webAIProvider(answer.providerId).name, body: answer.text, url: answer.url, kind: "note", reviewState: "candidate", sourceLabel: "多 AI 对话" })) }))), /* @__PURE__ */ React80.createElement("section", { className: "wb-chat-composer", "aria-label": "聊天输入" }, /* @__PURE__ */ React80.createElement("div", { onDragOver: (e) => {
+  } }), showHistory && caps && caps.historyProtocol !== 1 && /* @__PURE__ */ React85.createElement("p", { className: "wb-web-error", role: "status" }, "历史管理后端尚未加载，请在插件管理中重新启用智能工作台组件。")), error2 && /* @__PURE__ */ React85.createElement("p", { role: "alert", className: "wb-web-error wb-chat-alert" }, error2), /* @__PURE__ */ React85.createElement("div", { className: "wb-chat-thread-shell" }, /* @__PURE__ */ React85.createElement("div", { className: "wb-chat-thread-pane" }, /* @__PURE__ */ React85.createElement(ConversationThread, { topicId, visible: true, rounds: rows.slice(Math.max(0, rows.length - (page + 1) * PAGE_SIZE)), total: rows.length, filter: answerFilter, authentication, busy, canEdit: caps?.historyProtocol === 1, answerChoices, onSelectAnswer: (roundId, providerId) => setAnswerChoices((old) => ({ ...old, [roundId]: providerId })), onUnsent: (round, answer) => safe(() => sendUnsent(round, answer)), onEarlier: () => setPage((value) => value + 1), onOpen: (round, answer) => safe(() => openProvider(answer.providerId, round.topicId)), onCapture: (round, answer) => safe(() => resumeCapture(round, answer)), onEditQuestion: (round) => setQuestionEdit(round), onEditAnswer: (round, answer) => setEditing({ round, answer, text: answer.text, url: answer.url || "" }), onKnowledge: (round, answer) => safe(() => WB.actions.createKnowledge({ title: round.question.slice(0, 160) + " · " + webAIProvider(answer.providerId).name, body: answer.text, url: answer.url, kind: "note", reviewState: "candidate", sourceLabel: "多 AI 对话" })) }))), /* @__PURE__ */ React85.createElement("section", { className: "wb-chat-composer", "aria-label": "聊天输入" }, /* @__PURE__ */ React85.createElement("div", { onDragOver: (e) => {
     if ([...e.dataTransfer.types].includes("Files")) e.preventDefault();
   }, onDrop: (e) => {
     if (e.dataTransfer.files.length) {
@@ -27656,42 +28117,42 @@ function WebAIPage() {
       e.preventDefault();
       addFiles(picked, true);
     }
-  } }, /* @__PURE__ */ React80.createElement(Textarea, { disabled: busy, "aria-label": "多 AI 对话问题", placeholder: "发消息…", value: draft, onChange: (e) => setDrafts((old) => ({ ...old, [topicId]: e.target.value })), rows: 2, onKeyDown: (event) => {
+  } }, /* @__PURE__ */ React85.createElement(Textarea, { disabled: busy, "aria-label": "多 AI 对话问题", placeholder: "发消息…", value: draft, onChange: (e) => setDrafts((old) => ({ ...old, [topicId]: e.target.value })), rows: 2, onKeyDown: (event) => {
     if (event.key === "Enter" && !event.nativeEvent?.isComposing && event.keyCode !== 229 && !event.shiftKey && !busy && (draft.trim() || files.length) && selected.length) {
       event.preventDefault();
       safe(() => start(false));
     }
-  } }), /* @__PURE__ */ React80.createElement("div", { className: "wb-chat-input-bar" }, /* @__PURE__ */ React80.createElement(WebAIAttachments, { compact: true, files, disabled: busy, onAdd: addFiles, onRemove: (id) => setFileDrafts((old) => ({ ...old, [topicId]: files.filter((f) => f.id !== id) })) }), /* @__PURE__ */ React80.createElement("details", { "data-chat-menu": true, className: "wb-chat-provider-picker", onToggle: (event) => {
+  } }), /* @__PURE__ */ React85.createElement("div", { className: "wb-chat-input-bar" }, /* @__PURE__ */ React85.createElement(WebAIAttachments, { compact: true, files, disabled: busy, onAdd: addFiles, onRemove: (id) => setFileDrafts((old) => ({ ...old, [topicId]: files.filter((f) => f.id !== id) })) }), /* @__PURE__ */ React85.createElement("details", { "data-chat-menu": true, className: "wb-chat-provider-picker", onToggle: (event) => {
     if (event.currentTarget.open) void checkProviderLogins();
-  } }, /* @__PURE__ */ React80.createElement("summary", null, selected.map((id) => webAIProvider(id).name).join("、") || "选择厂商", "⌄"), /* @__PURE__ */ React80.createElement("div", { className: "wb-chat-provider-menu", role: "group", "aria-label": "本次发送厂商" }, providers.map((p) => /* @__PURE__ */ React80.createElement("div", { key: p.id, className: "wb-row" }, /* @__PURE__ */ React80.createElement("label", null, /* @__PURE__ */ React80.createElement("input", { type: "checkbox", checked: selected.includes(p.id), disabled: busy, onChange: (e) => setSelected((old) => e.target.checked ? [...old, p.id] : old.filter((id) => id !== p.id)) }), p.name), /* @__PURE__ */ React80.createElement("span", { className: "wb-chat-login-state is-" + (authentication[p.id]?.status || "unknown"), role: "status", "aria-label": p.name + " 登录检查" }, checkingLogin[p.id] ? "检查中…" : authentication[p.id]?.status === "authenticated" ? "已登录" : authentication[p.id]?.status === "needs_login" ? "需要登录" : authentication[p.id]?.status === "verification" ? "需要验证" : "未确认"), /* @__PURE__ */ React80.createElement(Btn, { size: "sm", "aria-label": p.name + " " + (authentication[p.id]?.status === "needs_login" ? "去登录" : "查看官网"), onClick: () => safe(() => openProvider(p.id)) }, authentication[p.id]?.status === "needs_login" ? "去登录" : "官网"))), /* @__PURE__ */ React80.createElement("label", { className: "wb-tiny" }, /* @__PURE__ */ React80.createElement("input", { type: "checkbox", checked: state.chatgptEnabled, disabled: busy, onChange: (event) => safe(async () => {
+  } }, /* @__PURE__ */ React85.createElement("summary", null, selected.map((id) => webAIProvider(id).name).join("、") || "选择厂商", "⌄"), /* @__PURE__ */ React85.createElement("div", { className: "wb-chat-provider-menu", role: "group", "aria-label": "本次发送厂商" }, providers.map((p) => /* @__PURE__ */ React85.createElement("div", { key: p.id, className: "wb-row" }, /* @__PURE__ */ React85.createElement("label", null, /* @__PURE__ */ React85.createElement("input", { type: "checkbox", checked: selected.includes(p.id), disabled: busy, onChange: (e) => setSelected((old) => e.target.checked ? [...old, p.id] : old.filter((id) => id !== p.id)) }), p.name), /* @__PURE__ */ React85.createElement("span", { className: "wb-chat-login-state is-" + (authentication[p.id]?.status || "unknown"), role: "status", "aria-label": p.name + " 登录检查" }, checkingLogin[p.id] ? "检查中…" : authentication[p.id]?.status === "authenticated" ? "已登录" : authentication[p.id]?.status === "needs_login" ? "需要登录" : authentication[p.id]?.status === "verification" ? "需要验证" : "未确认"), /* @__PURE__ */ React85.createElement(Btn, { size: "sm", "aria-label": p.name + " " + (authentication[p.id]?.status === "needs_login" ? "去登录" : "查看官网"), onClick: () => safe(() => openProvider(p.id)) }, authentication[p.id]?.status === "needs_login" ? "去登录" : "官网"))), /* @__PURE__ */ React85.createElement("label", { className: "wb-tiny" }, /* @__PURE__ */ React85.createElement("input", { type: "checkbox", checked: state.chatgptEnabled, disabled: busy, onChange: (event) => safe(async () => {
     const enabled = event.target.checked;
     acceptState(await rpc("webAIConfigure", { chatgptEnabled: enabled }));
     if (!enabled) setSelected((old) => old.filter((id) => id !== "chatgpt"));
-  }) }), "启用 ChatGPT"))), busy || hasActive ? /* @__PURE__ */ React80.createElement(Btn, { "aria-label": "停止采集", onClick: () => safe(async () => {
+  }) }), "启用 ChatGPT"))), busy || hasActive ? /* @__PURE__ */ React85.createElement(Btn, { "aria-label": "停止采集", onClick: () => safe(async () => {
     abort.current?.abort();
     acceptState(await cancelRequest({ topicId }));
-  }) }, "停止") : /* @__PURE__ */ React80.createElement(Btn, { kind: "primary", icon: "arrowRight", "aria-label": "发送消息", disabled: !draft.trim() && !files.length || !selected.length, onClick: () => safe(() => start(false)) }, "发送")))))), showWeb && /* @__PURE__ */ React80.createElement("div", { className: "wb-login-backdrop", onClick: () => setShowWeb(false), "aria-hidden": "true" }), /* @__PURE__ */ React80.createElement("section", { role: "dialog", "aria-modal": showWeb ? true : void 0, "aria-label": "登录与原对话", "aria-hidden": !showWeb, ...!showWeb ? { inert: "" } : {}, className: "wb-web-native-region wb-chat-web-pane wb-login-dialog" + (!showWeb ? " is-background" : "") }, /* @__PURE__ */ React80.createElement("div", { className: "wb-row wb-row--wrap wb-web-notice wb-web-tabs" }, /* @__PURE__ */ React80.createElement("strong", null, webAIProvider(active).name, " 官网"), /* @__PURE__ */ React80.createElement("span", { className: "wb-tiny wb-muted" }, "登录和验证码在官网完成，关闭后继续在工作台看回答。"), /* @__PURE__ */ React80.createElement(Btn, { className: "wb-login-close", size: "sm", onClick: () => setShowWeb(false) }, "返回聊天"), providers.map((p) => /* @__PURE__ */ React80.createElement(Btn, { key: p.id, size: "sm", kind: active === p.id ? "primary" : "ghost", onClick: () => safe(() => openProvider(p.id)) }, p.name))), /* @__PURE__ */ React80.createElement("div", { className: "wb-web-auth wb-row wb-row--wrap" }, /* @__PURE__ */ React80.createElement("span", { role: "status", "aria-label": webAIProvider(active).name + " 登录状态" }, /* @__PURE__ */ React80.createElement("strong", null, AUTHENTICATION_LABEL[(authentication[active] || authenticationSummary(null)).status]), " · ", (authentication[active] || authenticationSummary(null)).note), /* @__PURE__ */ React80.createElement(Btn, { size: "sm", disabled: !opened[active], onClick: () => safe(async () => {
+  }) }, "停止") : /* @__PURE__ */ React85.createElement(Btn, { kind: "primary", icon: "arrowRight", "aria-label": "发送消息", disabled: !draft.trim() && !files.length || !selected.length, onClick: () => safe(() => start(false)) }, "发送")))))), showWeb && /* @__PURE__ */ React85.createElement("div", { className: "wb-login-backdrop", onClick: () => setShowWeb(false), "aria-hidden": "true" }), /* @__PURE__ */ React85.createElement("section", { role: "dialog", "aria-modal": showWeb ? true : void 0, "aria-label": "登录与原对话", "aria-hidden": !showWeb, ...!showWeb ? { inert: "" } : {}, className: "wb-web-native-region wb-chat-web-pane wb-login-dialog" + (!showWeb ? " is-background" : "") }, /* @__PURE__ */ React85.createElement("div", { className: "wb-row wb-row--wrap wb-web-notice wb-web-tabs" }, /* @__PURE__ */ React85.createElement("strong", null, webAIProvider(active).name, " 官网"), /* @__PURE__ */ React85.createElement("span", { className: "wb-tiny wb-muted" }, "登录和验证码在官网完成，关闭后继续在工作台看回答。"), /* @__PURE__ */ React85.createElement(Btn, { className: "wb-login-close", size: "sm", onClick: () => setShowWeb(false) }, "返回聊天"), providers.map((p) => /* @__PURE__ */ React85.createElement(Btn, { key: p.id, size: "sm", kind: active === p.id ? "primary" : "ghost", onClick: () => safe(() => openProvider(p.id)) }, p.name))), /* @__PURE__ */ React85.createElement("div", { className: "wb-web-auth wb-row wb-row--wrap" }, /* @__PURE__ */ React85.createElement("span", { role: "status", "aria-label": webAIProvider(active).name + " 登录状态" }, /* @__PURE__ */ React85.createElement("strong", null, AUTHENTICATION_LABEL[(authentication[active] || authenticationSummary(null)).status]), " · ", (authentication[active] || authenticationSummary(null)).note), /* @__PURE__ */ React85.createElement(Btn, { size: "sm", disabled: !opened[active], onClick: () => safe(async () => {
     const result = await (await getController(active)).authentication?.();
     setAuthentication((old) => ({ ...old, [active]: authenticationSummary(result) }));
-  }) }, "重新检查登录")), /* @__PURE__ */ React80.createElement("details", { className: "wb-web-connection" }, /* @__PURE__ */ React80.createElement("summary", null, "登录保留与兼容性"), /* @__PURE__ */ React80.createElement("p", { className: "wb-tiny wb-muted", role: "status", "aria-label": "登录保留状态" }, browserSessionMessage(browserSessionMode(nativeWebAIBridge()))), !!authentication[active]?.evidence.length && /* @__PURE__ */ React80.createElement("p", { className: "wb-tiny", "aria-label": "登录检查依据" }, authentication[active].evidence.join("；")), /* @__PURE__ */ React80.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React80.createElement(Btn, { size: "sm", disabled: !opened[active], onClick: () => safe(async () => {
+  }) }, "重新检查登录")), /* @__PURE__ */ React85.createElement("details", { className: "wb-web-connection" }, /* @__PURE__ */ React85.createElement("summary", null, "登录保留与兼容性"), /* @__PURE__ */ React85.createElement("p", { className: "wb-tiny wb-muted", role: "status", "aria-label": "登录保留状态" }, browserSessionMessage(browserSessionMode(nativeWebAIBridge()))), !!authentication[active]?.evidence.length && /* @__PURE__ */ React85.createElement("p", { className: "wb-tiny", "aria-label": "登录检查依据" }, authentication[active].evidence.join("；")), /* @__PURE__ */ React85.createElement("div", { className: "wb-row wb-row--wrap", style: { gap: 8 } }, /* @__PURE__ */ React85.createElement(Btn, { size: "sm", disabled: !opened[active], onClick: () => safe(async () => {
     const result = await (await getController(active)).execute("inspect");
     setDiagnostics(result.diagnostics);
     setCompatibility(webAIProvider(active).name + "：" + (result.status === "needs_login" ? "请先登录" : result.status === "ready" ? "输入框已识别" : result.status === "generating" ? "正在生成" : "需官网操作") + (result.note ? " · " + result.note : "") + "；" + (result.answerSupported ? "回答容器已识别" : "暂无可识别的回答"));
-  }) }, "检查网页兼容")), compatibility && /* @__PURE__ */ React80.createElement("p", { className: "wb-tiny", role: "status" }, compatibility), diagnostics && /* @__PURE__ */ React80.createElement("details", null, /* @__PURE__ */ React80.createElement("summary", null, "兼容性诊断详情"), /* @__PURE__ */ React80.createElement("div", { className: "wb-web-diagnostics" }, diagnostics.authentication && /* @__PURE__ */ React80.createElement("div", { "aria-label": "登录结构诊断" }, (diagnostics.authentication.nodes || []).map((node, i) => /* @__PURE__ */ React80.createElement("p", { key: i }, "账号控件 ", i + 1, "：", JSON.stringify(node))), /* @__PURE__ */ React80.createElement("p", null, "账号资源：", JSON.stringify(diagnostics.authentication.resources || []))), /* @__PURE__ */ React80.createElement("p", null, "输入框数量：", diagnostics.editorCount), /* @__PURE__ */ React80.createElement("p", null, "输入框：", JSON.stringify(diagnostics.editor)), /* @__PURE__ */ React80.createElement("p", null, "附件范围：", JSON.stringify(diagnostics.composer)), (diagnostics.filePreviews || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "preview" + i }, "附件预览 ", i + 1, "：", JSON.stringify(item))), (diagnostics.fileInputs || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "file" + i }, "上传输入 ", i + 1, "：", JSON.stringify(item))), (diagnostics.uploadControls || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "upload" + i }, "上传控件 ", i + 1, "：", JSON.stringify(item))), (diagnostics.uploadMenuItems || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "uploadMenu" + i }, "附件菜单 ", i + 1, "：", JSON.stringify(item))), (diagnostics.attachmentShapes || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "attachmentShape" + i }, "图片结构 ", i + 1, "：", JSON.stringify(item))), (diagnostics.parents || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "parent" + i }, "容器 ", i + 1, "：", JSON.stringify(item))), (diagnostics.controls || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "control" + i }, "控件 ", i + 1, "：", JSON.stringify(item))), (diagnostics.messages || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "message" + i }, "消息结构 ", i + 1, "：", JSON.stringify(item))), (diagnostics.userStructure || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "user" + i }, "提问结构 ", i + 1, "：", JSON.stringify(item))), (diagnostics.inputVariants || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "input" + i }, "编辑器候选 ", i + 1, "：", JSON.stringify(item))), (diagnostics.finalControls || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "final" + i }, "完成控件 ", i + 1, "：", JSON.stringify(item))), (diagnostics.turnSummary || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "turn" + i }, "轮次 ", i + 1, "：", JSON.stringify(item))), (diagnostics.answerWidgets || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "widget" + i }, "回答控件 ", i + 1, "：", JSON.stringify(item))), (diagnostics.contentFrames || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "frame" + i }, "正文结构 ", i + 1, "：", JSON.stringify(item))), (diagnostics.endAncestors || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "end" + i }, "结束容器 ", i + 1, "：", JSON.stringify(item))), (diagnostics.bodyParts || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "part" + i }, "正文片段 ", i + 1, "：", JSON.stringify(item))), (diagnostics.codeShapes || []).map((item, i) => /* @__PURE__ */ React80.createElement("p", { key: "code" + i }, "代码结构 ", i + 1, "：", JSON.stringify(item)))))), Object.entries(opened).map(([id, tab]) => /* @__PURE__ */ React80.createElement(NativeWebsite, { key: id, providerId: id, scope: caps?.storageScope || "workbench-web-ai", url: tab.url, visible: showWeb && active === id, onNavigate: (url) => saveNavigation(id, url), onAuthentication: (result) => setAuthentication((old) => ({ ...old, [id]: result })), onController: (c) => {
+  }) }, "检查网页兼容")), compatibility && /* @__PURE__ */ React85.createElement("p", { className: "wb-tiny", role: "status" }, compatibility), diagnostics && /* @__PURE__ */ React85.createElement("details", null, /* @__PURE__ */ React85.createElement("summary", null, "兼容性诊断详情"), /* @__PURE__ */ React85.createElement("div", { className: "wb-web-diagnostics" }, diagnostics.authentication && /* @__PURE__ */ React85.createElement("div", { "aria-label": "登录结构诊断" }, (diagnostics.authentication.nodes || []).map((node, i) => /* @__PURE__ */ React85.createElement("p", { key: i }, "账号控件 ", i + 1, "：", JSON.stringify(node))), /* @__PURE__ */ React85.createElement("p", null, "账号资源：", JSON.stringify(diagnostics.authentication.resources || []))), /* @__PURE__ */ React85.createElement("p", null, "输入框数量：", diagnostics.editorCount), /* @__PURE__ */ React85.createElement("p", null, "输入框：", JSON.stringify(diagnostics.editor)), /* @__PURE__ */ React85.createElement("p", null, "附件范围：", JSON.stringify(diagnostics.composer)), (diagnostics.filePreviews || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "preview" + i }, "附件预览 ", i + 1, "：", JSON.stringify(item))), (diagnostics.fileInputs || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "file" + i }, "上传输入 ", i + 1, "：", JSON.stringify(item))), (diagnostics.uploadControls || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "upload" + i }, "上传控件 ", i + 1, "：", JSON.stringify(item))), (diagnostics.uploadMenuItems || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "uploadMenu" + i }, "附件菜单 ", i + 1, "：", JSON.stringify(item))), (diagnostics.attachmentShapes || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "attachmentShape" + i }, "图片结构 ", i + 1, "：", JSON.stringify(item))), (diagnostics.parents || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "parent" + i }, "容器 ", i + 1, "：", JSON.stringify(item))), (diagnostics.controls || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "control" + i }, "控件 ", i + 1, "：", JSON.stringify(item))), (diagnostics.messages || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "message" + i }, "消息结构 ", i + 1, "：", JSON.stringify(item))), (diagnostics.userStructure || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "user" + i }, "提问结构 ", i + 1, "：", JSON.stringify(item))), (diagnostics.inputVariants || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "input" + i }, "编辑器候选 ", i + 1, "：", JSON.stringify(item))), (diagnostics.finalControls || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "final" + i }, "完成控件 ", i + 1, "：", JSON.stringify(item))), (diagnostics.turnSummary || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "turn" + i }, "轮次 ", i + 1, "：", JSON.stringify(item))), (diagnostics.answerWidgets || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "widget" + i }, "回答控件 ", i + 1, "：", JSON.stringify(item))), (diagnostics.contentFrames || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "frame" + i }, "正文结构 ", i + 1, "：", JSON.stringify(item))), (diagnostics.endAncestors || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "end" + i }, "结束容器 ", i + 1, "：", JSON.stringify(item))), (diagnostics.bodyParts || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "part" + i }, "正文片段 ", i + 1, "：", JSON.stringify(item))), (diagnostics.codeShapes || []).map((item, i) => /* @__PURE__ */ React85.createElement("p", { key: "code" + i }, "代码结构 ", i + 1, "：", JSON.stringify(item)))))), Object.entries(opened).map(([id, tab]) => /* @__PURE__ */ React85.createElement(NativeWebsite, { key: id, providerId: id, scope: caps?.storageScope || "workbench-web-ai", url: tab.url, visible: showWeb && active === id, onNavigate: (url) => saveNavigation(id, url), onAuthentication: (result) => setAuthentication((old) => ({ ...old, [id]: result })), onController: (c) => {
     if (c) controllers.current.set(id, c);
     else controllers.current.delete(id);
-  } })), opened[active] && opened[active].topicId !== topicId && /* @__PURE__ */ React80.createElement("p", { className: "wb-web-error" }, "原页面有草稿或正在生成时会保留，请先在官网处理后再切换问答。")), resend && /* @__PURE__ */ React80.createElement(Modal, { open: true, title: "重新选择本轮附件", onClose: () => setResend(null) }, /* @__PURE__ */ React80.createElement("p", null, "本轮需要：", resend.round.attachments?.map((f) => f.name).join("、"), "。请选择原文件后，仅发送给", webAIProvider(resend.answer.providerId).name, "。"), /* @__PURE__ */ React80.createElement(WebAIAttachments, { files: retryFiles, disabled: busy, onAdd: (picked) => {
+  } })), opened[active] && opened[active].topicId !== topicId && /* @__PURE__ */ React85.createElement("p", { className: "wb-web-error" }, "原页面有草稿或正在生成时会保留，请先在官网处理后再切换问答。")), resend && /* @__PURE__ */ React85.createElement(Modal, { open: true, title: "重新选择本轮附件", onClose: () => setResend(null) }, /* @__PURE__ */ React85.createElement("p", null, "本轮需要：", resend.round.attachments?.map((f) => f.name).join("、"), "。请选择原文件后，仅发送给", webAIProvider(resend.answer.providerId).name, "。"), /* @__PURE__ */ React85.createElement(WebAIAttachments, { files: retryFiles, disabled: busy, onAdd: (picked) => {
     try {
       setRetryFiles(selectWebAIFiles(retryFiles, picked));
     } catch (e) {
       setError(String(e));
     }
-  }, onRemove: (id) => setRetryFiles((old) => old.filter((f) => f.id !== id)) }), /* @__PURE__ */ React80.createElement(Btn, { disabled: busy || !retryFiles.length, onClick: () => safe(() => sendUnsent(resend.round, resend.answer, retryFiles)) }, "发送本厂商")), questionEdit && topic && /* @__PURE__ */ React80.createElement(QuestionEditor, { key: questionEdit.id, round: questionEdit, onClose: () => setQuestionEdit(null), onSave: async (text2) => {
+  }, onRemove: (id) => setRetryFiles((old) => old.filter((f) => f.id !== id)) }), /* @__PURE__ */ React85.createElement(Btn, { disabled: busy || !retryFiles.length, onClick: () => safe(() => sendUnsent(resend.round, resend.answer, retryFiles)) }, "发送本厂商")), questionEdit && topic && /* @__PURE__ */ React85.createElement(QuestionEditor, { key: questionEdit.id, round: questionEdit, onClose: () => setQuestionEdit(null), onSave: async (text2) => {
     acceptState(await rpc("webAIEditQuestion", { topicId: topic.id, roundId: questionEdit.id, text: text2, expectedVersion: topic.version || 0 }));
-  } }), editing && /* @__PURE__ */ React80.createElement(Modal, { open: true, title: "保存 " + webAIProvider(editing.answer.providerId).name + " 官网回答", width: 680, onClose: () => setEditing(null) }, /* @__PURE__ */ React80.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React80.createElement(Field, { label: "回答正文" }, /* @__PURE__ */ React80.createElement(Textarea, { "aria-label": "粘贴官网回答", rows: 8, value: editing.text, onChange: (e) => setEditing({ ...editing, text: e.target.value }) })), /* @__PURE__ */ React80.createElement(Field, { label: "官网会话链接（可选）" }, /* @__PURE__ */ React80.createElement(Input, { "aria-label": "官网回答来源链接", value: editing.url, onChange: (e) => setEditing({ ...editing, url: e.target.value }) })), /* @__PURE__ */ React80.createElement("div", { className: "wb-row", style: { gap: 8 } }, /* @__PURE__ */ React80.createElement(Btn, { kind: "primary", disabled: !editing.text.trim(), onClick: () => safe(async () => {
+  } }), editing && /* @__PURE__ */ React85.createElement(Modal, { open: true, title: "保存 " + webAIProvider(editing.answer.providerId).name + " 官网回答", width: 680, onClose: () => setEditing(null) }, /* @__PURE__ */ React85.createElement("div", { className: "wb-stack" }, /* @__PURE__ */ React85.createElement(Field, { label: "回答正文" }, /* @__PURE__ */ React85.createElement(Textarea, { "aria-label": "粘贴官网回答", rows: 8, value: editing.text, onChange: (e) => setEditing({ ...editing, text: e.target.value }) })), /* @__PURE__ */ React85.createElement(Field, { label: "官网会话链接（可选）" }, /* @__PURE__ */ React85.createElement(Input, { "aria-label": "官网回答来源链接", value: editing.url, onChange: (e) => setEditing({ ...editing, url: e.target.value }) })), /* @__PURE__ */ React85.createElement("div", { className: "wb-row", style: { gap: 8 } }, /* @__PURE__ */ React85.createElement(Btn, { kind: "primary", disabled: !editing.text.trim(), onClick: () => safe(async () => {
     acceptState(await rpc("webAIRecord", { roundId: editing.round.id, providerId: editing.answer.providerId, text: editing.text, url: editing.url, expectedUpdatedAt: editing.answer.updatedAt }));
     setEditing(null);
-  }) }, "保存"), /* @__PURE__ */ React80.createElement(Btn, { onClick: () => setEditing(null) }, "取消")))));
+  }) }, "保存"), /* @__PURE__ */ React85.createElement(Btn, { onClick: () => setEditing(null) }, "取消")))));
 }
 WB.pages["web-ai"] = WebAIPage;
 

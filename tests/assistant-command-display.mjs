@@ -52,6 +52,23 @@ try{
  let guard,guardRemoved=false;const definitions=[]
  const ctx={provide(){},get(){},inject(deps,fn){if(deps.includes('tools'))fn({tools:{guard(fn){guard=fn;return()=>{guardRemoved=true}},register(def){definitions.push(def);return()=>{}}}})},effect(fn){const dispose=fn();if(typeof dispose==='function')disposers.push(dispose)},logger:{info(){}}};h.apply(ctx,{})
  check('仅在实际注册全工具guard后启用重新识别能力',()=>{assert.equal(h.hubReinterpretSupported(ctx),true);assert.equal(h.hubReinterpretSupported({}),false)})
+ const plainSession={id:'plain-policy-session',snapshotEvents:()=>[]},plainExecution={agent:{session:plainSession}}
+ h.rememberHubSession('chat:plain-policy',plainSession.id,'普通对话')
+ for(const text of ['生成日报','开启忙碌自动回复','关闭忙碌自动回复','确认','取消','标记完成','继续识别消息']){
+  const result=await h.maybeAssistantCommand(ctx,{conversationId:'chat:plain-policy',text,onRecognized(){throw Error('普通对话不应规则识别')},onUnrecognized(){throw Error('普通对话不应进入识别兜底')}})
+  assert.equal(result,null);assert.equal(h.recognizeAssistantCommand({conversationId:'chat:plain-policy',text}),null)
+ }
+ check('普通对话跳过规则与识别兜底，业务措辞也不执行为指令',()=>assert.equal(h.loadWorkbenchState().tasks[0].status,'running'))
+ const plainBefore=JSON.stringify(h.loadWorkbenchState())
+ for(const [name,args] of [['workbench_create_task',{title:'不应创建'}],['workbench_update_task',{id:task.id,status:'completed'}],['workbench_analyze_messages',{}],['workbench_manage_knowledge',{action:'create',title:'不应保存',body:'禁止内容'}],['workbench_assistant_action',{operation:'busyReply.configure',enabled:true,conversationId:'system:analysis'}]]){
+  assert.match(guard({...plainExecution,name,arguments:args}),/普通对话/)
+  await assert.rejects(definitions.find(row=>row.name===name).execute(args,plainExecution),/普通对话/)
+ }
+ check('普通对话业务工具在全局guard和execute双重拒绝，伪造会话也不能写入',()=>assert.equal(JSON.stringify(h.loadWorkbenchState()),plainBefore))
+ for(const name of ['bash','read_file','workbench_knowledge_retrieve','workbench_knowledge_read','workbench_list_tasks'])assert.equal(guard({...plainExecution,name,arguments:{}}),undefined)
+ check('普通对话仍能原生查目录及只读知识检索，不禁用正常回答工具',()=>assert.equal(guard({...plainExecution,name:'workbench_assistant_action',arguments:{operation:'knowledge.search'}}),undefined))
+ const plainOperation=await h.runAssistantOperation(ctx,{conversationId:'chat:plain-policy',operation:'knowledge.update',id:knowledge.id,patch:{body:'不应修改'}})
+ check('直接业务接口也拒绝普通会话修改和创建确认卡',()=>{assert.equal(plainOperation.status,'error');assert.match(plainOperation.note,/普通对话/);assert.equal(h.assistantConfirmations('chat:plain-policy').length,0);assert.equal(h.loadWorkbenchState().knowledge.find(row=>row.id===knowledge.id).body,'正文')})
  const events=[],session={id:'native-reinterpret-session',get seq(){return events.length},snapshotEvents(){return events}},execution={agent:{session}};
  h.rememberHubSession(conversationId,session.id,'测试事项会话')
  const reinterpreted=h.beginHubTurn({conversationId,text:'重新理解前面标记进行中的含义',source:'ai',mode:'reinterpret',sessionId:session.id,requestId:'native-reinterpret',fromSeq:0});

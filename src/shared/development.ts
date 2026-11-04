@@ -6,6 +6,7 @@ export const DEVELOPMENT_STAGES = [
     {id:'human',label:'人工审查'}, {id:'delivery',label:'结果回写'},
 ] as const
 export type DevelopmentStage = typeof DEVELOPMENT_STAGES[number]['id']
+export const DEVELOPMENT_STATUS_LABELS:Record<string,string>={preparing:'准备中',ready:'待启动',running:'执行中',paused:'已暂停',waiting_review:'待人工审查',approved:'待回写',rejected:'已退回',delivered:'已回写',completed:'已结束',failed:'失败',interrupted:'已中断'}
 export interface DevelopmentConfig {
     cliPath:string; profile:string; workspaceId:string; defaultWorkspaceId?:string; worktreeRoot:string;
     harnessCommand:string[]; model:string; adapterRoots:string[];

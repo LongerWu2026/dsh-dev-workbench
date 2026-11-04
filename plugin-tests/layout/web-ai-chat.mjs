@@ -22,6 +22,11 @@ try{
  await page.getByRole('heading',{name:'接口性能方案讨论',level:2}).waitFor()
  for(const width of [1440,900,560,360])for(const theme of ['light','dark']){
   await page.setViewportSize({width,height:900});await page.evaluate(theme=>document.documentElement.className=theme,theme);await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))
+  if(await page.getByRole('navigation',{name:'会话历史',exact:true}).isVisible()){
+   await page.getByRole('button',{name:'选择会话 发布排期',exact:true}).hover()
+   const selection=await page.evaluate(()=>{const active=document.querySelector('.wb-chat-session[aria-current=true]'),hovered=document.querySelector('.wb-chat-session[aria-label="选择会话 发布排期"]'),bar=getComputedStyle(active,'::before');return {selected:getComputedStyle(active).backgroundColor,hovered:getComputedStyle(hovered).backgroundColor,barWidth:parseFloat(bar.width),barContent:bar.content}})
+   assert.notEqual(selection.selected,selection.hovered);assert.ok(selection.barWidth>=2&&selection.barContent!=='none')
+  }
   const metrics=await page.evaluate(()=>{
    const layout=document.querySelector('.wb-chat-layout'),main=document.querySelector('.wb-chat-main'),sidebar=document.querySelector('.wb-chat-sidebar'),composer=document.querySelector('.wb-chat-composer'),thread=document.querySelector('.wb-chat-thread'),r=main.getBoundingClientRect(),c=composer.getBoundingClientRect()
    return {roots:document.querySelectorAll('.wb-root').length,heads:document.querySelectorAll('.wb-head').length,outerOverflow:document.querySelector('.wb-scroll').scrollHeight-document.querySelector('.wb-scroll').clientHeight,viewportBottom:c.bottom<=innerHeight,overflow:layout.scrollWidth-layout.clientWidth,composerInsideMain:c.left>=r.left-1&&c.right<=r.right+1&&c.bottom<=r.bottom+1,threadHeight:thread.clientHeight,sidebarLeft:!sidebar||sidebar.getBoundingClientRect().right<=r.left+1}
@@ -50,6 +55,7 @@ try{
  assert.ok(Math.abs(await page.locator('.wb-chat-thread').evaluate(node=>node.scrollTop)-before)<3,'streaming changed the reader position')
  await page.getByRole('textbox',{name:'多 AI 对话问题'}).fill('会话 A 的未发送草稿')
  await page.getByRole('button',{name:'选择会话 发布排期',exact:true}).click()
+ assert.equal(await page.getByRole('button',{name:'选择会话 发布排期',exact:true}).getAttribute('aria-current'),'true');assert.equal(await page.getByRole('button',{name:'选择会话 接口性能方案讨论',exact:true}).getAttribute('aria-current'),null)
  await page.getByRole('heading',{name:'发布排期',level:2}).waitFor();assert.equal(await page.getByRole('textbox',{name:'多 AI 对话问题'}).inputValue(),'')
  await page.getByRole('button',{name:'选择会话 接口性能方案讨论',exact:true}).click()
  assert.equal(await page.getByRole('textbox',{name:'多 AI 对话问题'}).inputValue(),'会话 A 的未发送草稿')
@@ -98,7 +104,8 @@ try{
  for(const width of [1440,360])for(const theme of ['light','dark']){
   await page.setViewportSize({width,height:700})
   await page.evaluate(({theme})=>{document.documentElement.className=theme;const row=window.chatFixture.rounds[0];window.chatFixture.rounds=[{...row,id:'scroll-switch-round',answers:[{...row.answers[0],status:'completed',text:'简短方案'},{...row.answers[1],status:'completed',text:'## 详细架构\n\n'+('详细方案内容，保留阅读位置。\n\n'.repeat(120))}]}];window.WB.store.set({data:{...window.WB.store.get().data,revision:60,webAI:structuredClone(window.chatFixture)}})},{theme})
-  const tabs=page.getByRole('tablist',{name:'本轮回答厂商'}),longTab=tabs.getByRole('tab',{name:/智谱清言/})
+  const targetRound=page.locator('.wb-chat-round').filter({has:page.locator('#tab-scroll-switch-round-kimi')});await targetRound.waitFor()
+  const tabs=targetRound.getByRole('tablist',{name:'本轮回答厂商'}),longTab=tabs.getByRole('tab',{name:/智谱清言/})
   await tabs.getByRole('tab',{name:/Kimi/}).click();await page.locator('.wb-chat-thread').evaluate(node=>{node.scrollTop=node.scrollHeight;node.dispatchEvent(new Event('scroll'))})
   const before=await page.locator('.wb-chat-thread').evaluate(node=>node.scrollTop)
   await longTab.click();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))))

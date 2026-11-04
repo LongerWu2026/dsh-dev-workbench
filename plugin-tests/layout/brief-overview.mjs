@@ -37,7 +37,8 @@ try{
   if(actions.labels.join(',')!=='保存,取消'||actions.icons!==0||actions.gap!=='8px'||Math.abs(actions.actualGap-8)>1||!actions.primary)throw Error('保存取消样式或间距不一致 '+JSON.stringify(actions));
   await page.getByRole('dialog').getByRole('button',{name:'保存',exact:true}).scrollIntoViewIfNeeded();if(!await page.getByRole('dialog').getByRole('button',{name:'保存',exact:true}).isVisible())throw Error('保存按钮不可达');await page.keyboard.press('Escape');if(await page.getByRole('dialog').count())throw Error('Escape未关闭编辑弹窗');
   await page.getByRole('button',{name:/AI 资讯 /}).click();await page.waitForFunction(()=>{const box=document.getElementById('wb-brief-news').getBoundingClientRect();return box.top<innerHeight&&box.bottom>0});await page.waitForTimeout(500)
-  await page.getByText('云之家消息 ·',{exact:false}).click();await page.getByText('未读会话（1）',{exact:true}).click();await page.getByText('长会话名称'.repeat(30),{exact:true}).waitFor()
+  await page.getByRole('heading',{name:'云之家消息',exact:true}).click();await page.getByText('长会话名称'.repeat(30),{exact:true}).waitFor()
+  if(height===600)await page.locator('.wb-inbox-summary').screenshot({path:resolve(out,`inbox-${width}-${theme}.png`),animations:'disabled'});
   const expandedOverflow=await page.locator('.wb-scroll').evaluate(el=>el.scrollWidth-el.clientWidth);if(expandedOverflow>2)throw Error('expanded overflow '+expandedOverflow)
   report.push({width,height,theme,...metrics,headers,expandedOverflow})
  }

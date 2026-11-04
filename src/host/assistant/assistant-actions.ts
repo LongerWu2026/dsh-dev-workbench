@@ -1,3 +1,4 @@
+import {getHubTurn} from './hub-turns.js'
 import {knowledgeAllowed} from '../knowledge/retrieval.js'
 import {knowledgeSpaceOf} from '../../shared/knowledge.js'
 import {officeJobOwners,officeJobAllowed,officeArtifacts,busyReplyView} from './office-results.js'
@@ -12,6 +13,7 @@ import {newsService} from '../application/news-service.js'
 import {developmentService} from '../application/development-service.js'
 import {readDevelopmentTask,listDevelopmentTasks} from '../storage/development-store.js'
 import type {DevelopmentIssueUpdateResult,DevelopmentIssueDetailResult} from '../application/development-issues.js'
+import {DEVELOPMENT_STAGES,DEVELOPMENT_STATUS_LABELS} from '../../shared/development.js'
 import {officeService} from '../workflows/office-service.js'
 import {workflowService} from '../application/workflow-service.js'
 import {defaultKnowledgeScope} from '../knowledge/retrieval.js'
@@ -20,6 +22,7 @@ import {hubSessionOwner,hubSessionKnowledgeScope,rememberOfficeJobOwner,hubIndex
 import {taskThreadOwner} from './task-threads.js'
 import {listAnalysisResults,analysisResultTarget} from './analysis-results.js'
 import {officeTopicFor,boundOfficeInput,officeManagementConversation,assertOfficeTopicDate} from './office-topics.js'
+import {isPlainAssistantChat,plainChatReadOperation,PLAIN_CHAT_BUSINESS_NOTE} from './conversation-policy.js'
 
 const fingerprint=(value:any)=>hashText(JSON.stringify(value))
 const clean=(value:any)=>JSON.parse(JSON.stringify(value??null))
@@ -73,7 +76,7 @@ async function confirm(ctx:any,request:any){
    const task=await developmentService.development({action:'writeback',id:item.id});result={status:'ok',note:'结果已回写 Linky 评论，业务状态仍需按 Linky 流程流转。',task}
   }else throw Error('该操作不能确认执行')
   finishAssistantConfirmation(row.id,'completed',result);return {...result,operation:row.operation,before:row.before,after:result.item??result.task??result.busyReply?.config??null,knowledgeScope:row.payload.knowledgeScope}
- }catch(error){const result={status:'error',note:String(error.message||error),operation:row.operation};finishAssistantConfirmation(row.id,'failed',result);throw error}
+ }catch(error){if(error?.code==='ASSISTANT_TURN_STOPPED')throw error;const result={status:'error',note:String(error.message||error),operation:row.operation};finishAssistantConfirmation(row.id,'failed',result);throw error}
 }
 
 /** Only the UI/user-command path calls confirmations. Model tools can prepare previews, never confirm. */
@@ -81,6 +84,8 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
  let conversationId='',operation=String(request.operation||'')
  try{
   conversationId=scope(request).id;let result:any
+  const checkActive=()=>{if(request.assistantTurnId&&getHubTurn(request.assistantTurnId)?.stopRequestedAt)throw Object.assign(Error('用户已停止本轮，未继续启动任务'),{code:'ASSISTANT_TURN_STOPPED'})};checkActive()
+  if(isPlainAssistantChat(conversationId)&&!plainChatReadOperation(operation))throw Error(PLAIN_CHAT_BUSINESS_NOTE)
   if(operation==='confirm')result=await confirm(ctx,request)
   else if(operation==='cancel'){cancelAssistantConfirmation(conversationId,String(request.confirmationId||''));result={status:'ok',note:'已取消，本次没有执行修改。'}}
   else if(operation==='task.update'){
@@ -118,12 +123,12 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
    }
    else if(['analysis.continue','analysis.retry','analysis.fetch'].includes(operation)){
     if(operation==='analysis.fetch')await sourceService.fetchMentions()
-    const job=await analysisService.analysisStart(operation==='analysis.retry'?{retryFailed:true}:{});result={status:'ok',note:job.note||'识别任务已进入后台队列。',job}
+    const job=await analysisService.analysisStart({...(operation==='analysis.retry'?{retryFailed:true}:{}),checkActive});result={status:'ok',note:job.note||'识别任务已进入后台队列。',job}
    }else throw Error('未知的识别操作')
   }else if(operation.startsWith('radar.')){
    const s=scope(request);if(!(s.kind==='radar'||s.kind==='system'&&s.entityId==='radar'))throw Error('请在资讯会话中操作')
    if(operation==='radar.fetch'){await newsService.fetchRadar();result={status:'ok',note:state().settings.aiExtract?.enabled?'资讯已更新，新增重点会在后台归纳。':'资讯已更新，可查看来源与原文摘录。',items:state().radar}}
-   else if(operation==='radar.summary'){const job=await newsService.radarSummaryStart(s.kind==='radar'?{onlyIds:[s.entityId],retryFailed:true}:{});result={status:'ok',note:'已启动资讯摘要。',job}}
+   else if(operation==='radar.summary'){const job=await newsService.radarSummaryStart({...(s.kind==='radar'?{onlyIds:[s.entityId],retryFailed:true}:{}),checkActive});result={status:'ok',note:'已启动资讯摘要。',job}}
    else if(operation==='radar.toTask'){const row=target(request,'radar','radar'),snapshot=await newsService.createTaskFromRadar(row.id);result={status:'ok',note:'已根据资讯建立待办，保留原文来源。',items:snapshot.tasks}}
    else if(operation==='radar.toKnowledge'){const row=target(request,'radar','radar');await knowledgeService.createKnowledge({title:row.title,body:[row.excerpt,...Object.values(row.summary||{})].filter(Boolean).join('\n'),url:row.url,reviewState:'candidate'});result={status:'ok',note:'已保存为待审核知识，保留资讯来源。'}}
    else throw Error('未知的资讯操作')
@@ -142,7 +147,8 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
     if(operation==='development.issue.get'){
      const detail=await developmentService.development({action:'issueDetail',id:s.entityId}) as DevelopmentIssueDetailResult
      const statusChoices={current:detail.issue.status,targets:detail.targets.filter((target:any)=>target.allowed===true),pending:detail.reconciliation==='pending'}
-     result={status:'ok',note:(request.requestedStatus?'当前 Linky 业务状态为「'+detail.issue.status+'」。请从下方选择具体流程状态；本次尚未修改。':'已读取 Linky 工作项「'+detail.issue.code+'」。\n标题：'+detail.issue.title+'\n业务状态：'+detail.issue.status+'\n可流转至：'+(statusChoices.targets.map((target:any)=>target.name).join('、')||'暂无可用状态')+'\n描述：'+String(detail.issue.description||'暂无描述').slice(0,1200))+'\n本地研发执行状态单独保留，业务状态不代表测试或审查已通过。'+(detail.reconciliation==='pending'?'\n上次修改仍待核实，当前回读与目标不一致，请核对 Linky 操作历史，勿重复提交。':detail.reconciliation==='confirmed'?'\n上次修改已回读核实，无需重复提交。':''),...detail,statusChoices}
+     const executionNote='\n研发执行：'+(DEVELOPMENT_STATUS_LABELS[detail.execution.status]||detail.execution.status)+' · '+(DEVELOPMENT_STAGES.find(stage=>stage.id===detail.execution.stage)?.label||detail.execution.stage)+(detail.execution.pauseReason?'\n暂停原因：'+detail.execution.pauseReason:'')
+     result={status:'ok',note:(request.requestedStatus?'当前 Linky 业务状态为「'+detail.issue.status+'」。请从下方选择具体流程状态；本次尚未修改。':'已读取 Linky 工作项「'+detail.issue.code+'」。\n标题：'+detail.issue.title+'\n业务状态：'+detail.issue.status+'\n可流转至：'+(statusChoices.targets.map((target:any)=>target.name).join('、')||'暂无可用状态')+'\n描述：'+String(detail.issue.description||'暂无描述').slice(0,1200))+executionNote+'\n本地研发执行状态单独保留，业务状态不代表测试或审查已通过。'+(detail.reconciliation==='pending'?'\n上次修改仍待核实，当前回读与目标不一致，请核对 Linky 操作历史，勿重复提交。':detail.reconciliation==='confirmed'?'\n上次修改已回读核实，无需重复提交。':''),...detail,statusChoices}
     }else{
      const changed=await developmentService.development({action:'issueUpdate',id:s.entityId,patch:request.patch,fields:request.fields,comment:request.comment}) as DevelopmentIssueUpdateResult;result={status:'ok',note:(changed.changed?'已修改并回读 Linky 工作项「':'Linky 工作项已经是目标内容「')+changed.after.code+'」：'+Object.keys(request.patch||{}).map(key=>key==='status'?'业务状态「'+changed.after.status+'」':key==='title'?'标题「'+changed.after.title+'」':'描述').join('、')+'已核实；本地测试与审查记录保持真实状态。',...changed}
     }
@@ -176,7 +182,7 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
     }else if(request.kind==='work_report'){if(!general)throw Error('日报和周报请在日常工作会话中生成')}
     else throw Error('请选择回复草稿、工作报告或待办处理方案')
     const priorOwners=officeJobOwners(state().jobs||[]);let selectedId='',owner=''
-    const snapshot=await service.officeWorkflowStart(request.kind,input,id=>{selectedId=id;owner=rememberOfficeJobOwner(id,priorOwners.get(id)||s.id)},s.kind==='office'?(now:number)=>assertOfficeTopicDate(s.id,now):undefined),job=snapshot.jobs.find((job:any)=>job.id===selectedId)
+    const snapshot=await service.officeWorkflowStart(request.kind,input,id=>{selectedId=id;owner=rememberOfficeJobOwner(id,priorOwners.get(id)||s.id)},(now:number)=>{checkActive();if(s.kind==='office')assertOfficeTopicDate(s.id,now)}),job=snapshot.jobs.find((job:any)=>job.id===selectedId)
     if(owner!==s.id)result={status:'ok',note:'相同内容已有处理记录，请打开原会话继续；本次没有重复执行。',conversationId:owner,existing:true,jobs:[],after:{jobIds:[]}}
     else result={status:'ok',note:job?.status==='completed'?'已找到同一输入的完成结果，没有重复执行。':'已开始处理，成果会直接显示在本会话中。',jobs:job?[job]:[],after:{jobIds:job?[job.id]:[]}}
    }else if(operation==='office.status'){
@@ -206,7 +212,7 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
   if(output.existing&&output.conversationId)savedResult.relatedConversationId=output.conversationId;
   appendAssistantActionEvent(conversationId,{turnId:request.assistantTurnId,kind:'operation',text:output.note,operation:output.operation,status:output.status,before:output.before,after:output.after,confirmation:output.confirmation,...(Object.keys(savedResult).length?{result:savedResult}:{}),...(conversationId==='system:knowledge'?{knowledgeScope:output.knowledgeScope||knowledgeScope(request)}:{})})
   return output
- }catch(error){const result={status:'error',note:String(error.message||error),operation,failurePhase:'execution',...(error.code==='office_topic_expired'?{code:error.code,officeTopicRequest:error.officeTopicRequest}:{})};let scoped:any={};if(conversationId==='system:knowledge')try{scoped={knowledgeScope:knowledgeScope(request)}}catch{}if(conversationId)appendAssistantActionEvent(conversationId,{turnId:request.assistantTurnId,kind:'operation',text:result.note,operation,status:'error',...(result.code?{result:{code:result.code,officeTopicRequest:result.officeTopicRequest}}:{}),...scoped});return result}
+ }catch(error){if(error?.code==='ASSISTANT_TURN_STOPPED')throw error;const result={status:'error',note:String(error.message||error),operation,failurePhase:'execution',...(error.code==='office_topic_expired'?{code:error.code,officeTopicRequest:error.officeTopicRequest}:{})};let scoped:any={};if(conversationId==='system:knowledge')try{scoped={knowledgeScope:knowledgeScope(request)}}catch{}if(conversationId)appendAssistantActionEvent(conversationId,{turnId:request.assistantTurnId,kind:'operation',text:result.note,operation,status:'error',...(result.code?{result:{code:result.code,officeTopicRequest:result.officeTopicRequest}}:{}),...scoped});return result}
 }
 
 /** Questions and hypothetical/negative instructions are discussion, not permission to mutate. */
@@ -223,6 +229,7 @@ function clarificationReason(text:string,matchedWrite=false):string|undefined {
 /** Intentionally narrow commands; ambiguous natural language is delegated to the model for clarification. */
 export function recognizeAssistantCommand(request:any,onClarification?:(reason:string)=>void):any|null{
  const {id,kind,entityId}=scope(request),text=String(request.text||'').trim(),plain=text.replace(/[。！!？?]+$/,'').replace(/^(?:请帮我|麻烦帮我|麻烦你|帮忙|请你|麻烦)\s*/,'');let action:any=null
+ if(kind==='chat')return null
  const currentKnowledgeScope=id==='system:knowledge'?knowledgeScope(request):null
  const pending=assistantConfirmations(id).filter(c=>c.state==='pending'&&Date.parse(c.expiresAt)>Date.now()&&(!currentKnowledgeScope||!c.operation.startsWith('knowledge.')||['projectId','accountId','spaceId'].every(key=>(c.payload.knowledgeScope?.[key]||null)===(currentKnowledgeScope[key as keyof typeof currentKnowledgeScope]||null))))
  if(/^(确认|确认修改|确认删除|确认发送|确认回写|同意执行)$/.test(plain)){
@@ -269,7 +276,7 @@ export function recognizeAssistantCommand(request:any,onClarification?:(reason:s
   const mark=plain.match(/^(?:请|帮我)?(?:把|将)?(?:当前|这条|这个|该)?(?:研发需求|研发任务|需求|缺陷|用户故事|工作项|任务)?(?:的)?(?:业务状态|状态)?(?:标记为|标记成|标记|设置为)\s*(.+)$/)
   if(change)action={operation:'development.issue.update',patch:{[/状态/.test(change[1])?'status':change[1]==='标题'?'title':'description']:/状态/.test(change[1])?change[2].replace(/[。！!？?]+$/,''):change[2]}}
   else if(mark)action={operation:'development.issue.update',patch:{status:mark[1]}}
-  else if(/^(?:请|帮我)?(?:查看|查询|刷新)(?:当前|这条|这个)?(?:研发需求|需求|缺陷|用户故事|工作项)?(?:详情|内容|业务状态|可用状态|可用流转|可修改状态)$/.test(plain))action={operation:'development.issue.get'}
+  else if(/^(?:(?:请|帮我)?(?:查看|查询|刷新|看看))?(?:当前|这条|这个)?(?:研发需求|研发任务|需求|缺陷|用户故事|工作项|任务)?(?:的)?(?:详情|内容|业务状态|状态|可用状态|可用流转|可修改状态)$/.test(plain))action={operation:'development.issue.get'}
   else if(/^(?:请|帮我)?(?:继续|(?:继续|开始|恢复)(?:开发|修复)(?:任务)?|继续研发(?:任务)?)$/.test(plain))action={operation:'development.continue'}
   else if(/^(?:请|帮我)?暂停(?:开发|研发|执行|修复)?(?:任务)?$/.test(plain))action={operation:'development.pause'}
   else if(/^(?:请)?回写(?:Linky|linky)?(?:结果|评论)?$/.test(plain))action={operation:'development.writeback'}
@@ -285,6 +292,7 @@ export function recognizeAssistantCommand(request:any,onClarification?:(reason:s
 
 /** Existing callers keep execution behavior; hub callers can persist the recognized turn first. */
 export async function maybeAssistantCommand(ctx:any,request:any):Promise<any|null>{
+ if(isPlainAssistantChat(scope(request).id))return null
  let action:any,fallback:any,clarification:string|undefined
  // Do not catch callbacks or execution here: once execution begins it must never be retried by AI.
  try{action=recognizeAssistantCommand(request,reason=>{clarification=reason})}catch(error){if(!request.onUnrecognized)throw error;fallback={outcome:'error',reason:'规则暂时无法判断这条消息，需要先理解并澄清。',clarificationOnly:true}}

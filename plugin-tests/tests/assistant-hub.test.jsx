@@ -3,7 +3,7 @@ import {afterEach,describe,expect,it,vi} from 'vitest'
 import {act,cleanup,render,screen,waitFor,within,fireEvent} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {loadClientBundle} from './load-plugin.mjs'
-afterEach(()=>{cleanup();globalThis.localStorage?.removeItem?.('workbench.assistant.sidebarCollapsed.v1');vi.unstubAllGlobals()})
+afterEach(()=>{cleanup();vi.useRealTimers();globalThis.localStorage?.removeItem?.('workbench.assistant.sidebarCollapsed.v1');vi.unstubAllGlobals()})
 async function leaveAssistant(user){await user.click(screen.getByRole('navigation',{name:'工作台导航'}).querySelector('[data-page="dashboard"]'))}
 async function ready(){await waitFor(()=>expect(screen.getByRole('textbox',{name:'助手消息'}).disabled).toBe(false))}
 async function openReport(user,label){await user.click(screen.getByRole('button',{name:'＋工具'}));await user.click(within(screen.getByRole('dialog')).getByRole('button',{name:new RegExp('^'+label+' ')}))}
@@ -40,6 +40,86 @@ function setup(options={}){
  render(<App/>);return {WB,calls,fixture,entries,events,confirmations,settingsPatches}
 }
 describe('统一助手真实业务入口',()=>{
+ it.each([['conversation_backfill','rate_limit','等待云之家限流恢复'],['conversation_backfill',null,'等待历史消息补齐'],['lease_wait',null,'等待其他识别结束'],['retry_wait',null,'等待重试时间']])('识别等待按真实原因展示且不重复正文：%s %s',async(waitReason,waitDetail,heading)=>{
+  const reason='15 条消息等待历史补齐，补采完成后自动继续'
+  setup({hub:(request,{value})=>request.action==='detail'?{...value,runs:[{id:'waiting-run',kind:'analysis',status:'queued',nextRetryAt:'2026-11-04T11:15:00Z',progress:{processed:0,remaining:15,failed:0,pauseReason:reason},result:{waitReason,waitDetail,note:reason}}]}:undefined})
+  await screen.findByText(heading);const card=screen.getByRole('article',{name:'执行结果：消息识别'});expect(within(card).getAllByText(reason)).toHaveLength(1);expect(card.textContent).toContain('累计处理 0 条 · 剩余 15 条 · 失败 0 条');expect(card.textContent).toContain(waitReason==='conversation_backfill'?'下次补采检查：':'下次重试：');expect(card.textContent).not.toContain('识别完成')
+ })
+ it('列表一直未返回也先显示完整助手，当前内容独立加载且系统目录可切换',async()=>{
+  const {calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='list'?new Promise(()=>{}):request.action==='detail'?{...value,messages:[{role:'assistant',text:'独立显示的当前内容'}]}:undefined})
+  expect(screen.getByRole('navigation',{name:'助手会话列表'})).toBeTruthy()
+  expect(screen.getByRole('navigation',{name:'系统能力'})).toBeTruthy()
+  await screen.findByText('独立显示的当前内容');await ready()
+  expect(screen.queryByText('正在读取最近会话…')).toBeNull()
+  fireEvent.click(screen.getByRole('button',{name:'系统能力：AI资讯'}))
+  await waitFor(()=>expect(calls.some(row=>row.action==='detail'&&row.conversationId==='system:radar')).toBe(true))
+  expect(calls.every(row=>['list','detail'].includes(row.action))).toBe(true)
+ })
+ it('一个会话读取未结束仍能切到其他会话，旧会话迟到结果不覆盖当前内容',async()=>{
+  let release
+  const {calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?request.conversationId==='task:a'?new Promise(resolve=>{release=()=>resolve({...value,messages:[{role:'assistant',text:'旧会话迟到消息'}]})}):{...value,messages:[{role:'assistant',text:'其他会话正常显示'}]}:undefined})
+  await screen.findByRole('button',{name:'会话：乙的工作'})
+  fireEvent.click(screen.getByRole('button',{name:'会话：乙的工作'}))
+  await screen.findByText('其他会话正常显示');await ready()
+  await act(async()=>release())
+  expect(screen.queryByText('旧会话迟到消息')).toBeNull()
+  expect(calls.every(row=>['list','detail'].includes(row.action))).toBe(true)
+ })
+ it('目录读取失败仅在左侧重试，保留当前内容和草稿，不误切旧助手',async()=>{
+  let failed=true
+  setup({id:'task:a',hub:(request,{value})=>request.action==='list'&&failed?Promise.reject(Error('某条 session not found')):request.action==='detail'?{...value,messages:[{role:'assistant',text:'当前内容保留'}]}:undefined})
+  await screen.findByText('当前内容保留');await ready()
+  const draft=screen.getByRole('textbox',{name:'助手消息'});fireEvent.change(draft,{target:{value:'尚未发送的草稿'}})
+  await screen.findByText('某条 session not found')
+  expect(screen.getByRole('navigation',{name:'助手会话列表'}).contains(screen.getByText('某条 session not found'))).toBe(true)
+  failed=false;fireEvent.click(screen.getByRole('button',{name:'重试列表'}))
+  await screen.findByRole('button',{name:'会话：乙的工作'})
+  expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('尚未发送的草稿')
+  expect(screen.getByText('当前内容保留')).toBeTruthy()
+ })
+ it('内容请求悬空时目录仍定时更新，内容超时有局部重试且不重发任务',async()=>{
+  vi.useFakeTimers();let latest=false
+  const {calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?new Promise(()=>{}):request.action==='list'&&latest?{...value,conversations:[...value.conversations,{id:'chat:newest',kind:'chat',title:'另一个会话的新进度'}]}:undefined})
+  await act(async()=>vi.advanceTimersByTimeAsync(0))
+  expect(screen.getByRole('button',{name:'会话：乙的工作'})).toBeTruthy()
+  latest=true;await act(async()=>vi.advanceTimersByTimeAsync(10000))
+  expect(screen.getByRole('button',{name:'会话：另一个会话的新进度'})).toBeTruthy()
+  expect(screen.getByRole('button',{name:'重试读取'})).toBeTruthy()
+  expect(calls.filter(row=>row.action==='list')).toHaveLength(2)
+  expect(calls.every(row=>['list','detail'].includes(row.action))).toBe(true)
+ })
+ it('局部刷新失败保留已有消息、输入和查阅位置',async()=>{
+  let fail=false
+  setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?fail?Promise.reject(Error('单个会话暂不可读')):{...value,messages:[{role:'assistant',text:'已读到的内容不会清空'}]}:undefined})
+  await screen.findByText('已读到的内容不会清空');await ready()
+  fireEvent.change(screen.getByRole('textbox',{name:'助手消息'}),{target:{value:'草稿保持'}})
+  const body=document.querySelector('.wb-hub-body');Object.defineProperties(body,{scrollHeight:{configurable:true,value:2000},clientHeight:{configurable:true,value:400}});body.scrollTop=150;fireEvent.scroll(body)
+  fail=true;fireEvent.click(screen.getByRole('button',{name:'刷新进度'}));await screen.findByText('单个会话暂不可读')
+  expect(screen.getByText('已读到的内容不会清空')).toBeTruthy()
+  expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('草稿保持')
+  expect(body.scrollTop).toBe(150)
+ })
+ it('原历史暂未恢复的局部响应也保留已显示的消息和进度',async()=>{
+  let pending=false
+  setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,sessionId:'original',messages:pending?[]:[{role:'assistant',text:'已完成步骤的原历史'}],historyError:pending?'原历史仍在恢复':undefined,nativeBinding:{sessionId:'original',canSend:!pending},runs:[{id:'completed-step',kind:'analysis',status:'completed'}]}:undefined})
+  await screen.findByText('已完成步骤的原历史');await ready()
+  pending=true;fireEvent.click(screen.getByRole('button',{name:'刷新进度'}))
+  await screen.findByText('历史记录暂不可读：原历史仍在恢复')
+  expect(screen.getByText('已完成步骤的原历史')).toBeTruthy()
+  expect(screen.getByLabelText('执行结果：消息识别')).toBeTruthy()
+ })
+ it('普通聊天按需模式尚未查询知识时不展示未命中或知识卡片',async()=>{
+  const turn={id:'deferred-answer',text:'当前目录有多少技能',source:'ai',status:'completed',reply:'当前目录有 36 个技能。',commands:[]},retrieval={id:'not-searched',turnId:turn.id,mode:'auto',status:'deferred',strategy:'agent-on-demand',scope:{},hits:[]}
+  const {calls}=setup({id:'chat:on-demand',hub:(request,{value})=>request.action==='detail'?{...value,turns:[turn],messages:[],retrievals:[retrieval]}:undefined});await screen.findByText(turn.reply);expect(screen.queryByRole('region',{name:'知识检索依据'})).toBeNull();expect(screen.queryByText('本轮未命中知识库资料')).toBeNull();expect(screen.queryByLabelText('工具执行记录')).toBeNull();expect(calls.every(row=>['list','detail'].includes(row.action))).toBe(true)
+ })
+ it('普通聊天实际调用知识工具后通过增量显示本轮依据，未检索占位不覆盖结果',async()=>{
+  let phase=0,release;const turn={id:'on-demand-turn',requestId:'tracked-demand',sessionId:'native-demand',fromSeq:0,text:'根据发布规范说明验收要求',source:'ai',status:'executing',commands:[]},deferred={id:'demand-retrieval',turnId:turn.id,sessionId:turn.sessionId,fromSeq:0,status:'deferred',mode:'auto',scope:{},hits:[]},found={...deferred,status:'ok',hits:[{id:'demand-chunk',documentId:'doc',title:'发布验收规范',lineStart:1,lineEnd:2}]},completed={...turn,status:'completed',reply:'发布前需要灰度验收 [知识:demand-chunk]'}
+  setup({id:'chat:demand',hub:(request,{value})=>{
+   if(request.action==='detail')return {...value,messages:[],turns:phase?[phase===2?completed:turn]:[],retrievals:phase?[phase===2?found:deferred]:[]}
+   if(request.action==='send'){phase=1;return {status:'ok',turn:{...turn,requestId:request.requestId},turnId:turn.id,sessionId:turn.sessionId,fromSeq:0,retrieval:deferred}}
+   if(request.action==='delta')return new Promise(resolve=>{release=()=>{phase=2;resolve({status:'ok',entries:[],nextSeq:4,turnEnded:true,turns:[completed],retrievals:[found],citationAudit:{cited:['demand-chunk'],invalid:[],stale:[],missing:false}})}})
+  }});await ready();const user=userEvent.setup();await user.type(screen.getByRole('textbox',{name:'助手消息'}),turn.text);await user.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(release).toBeTypeOf('function'));expect(screen.queryByRole('region',{name:'知识检索依据'})).toBeNull();await act(async()=>release());await screen.findByText(/发布前需要灰度验收/);const card=screen.getByRole('article',{name:'处理回复'});expect(within(card).getByRole('region',{name:'知识检索依据'})).toBeTruthy();await user.click(within(card).getByText('知识依据 · 1 个片段 · 已提供给模型'));expect(within(card).getByRole('button',{name:'发布验收规范 · 行1–2'})).toBeTruthy();expect(screen.queryByText('本轮未命中知识库资料')).toBeNull()
+ })
  it('知识提示分别放在对应 AI 回复卡片内，不串到规则或系统结果',async()=>{
   const at=new Date().toISOString(),trace=(id,fromSeq,status='empty')=>({id,sessionId:'native-a',fromSeq,status,hits:status==='ok'?[{id:'chunk-one',title:'部署说明',lineStart:1,lineEnd:2}]:[],note:'当前范围没有匹配的已确认有效知识'}),empty=trace('empty',0),hit=trace('hit',5,'ok'),orphan=trace('orphan',99)
   setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,sessionId:'native-a',retrieval:orphan,retrievals:[empty,hit,orphan,{...trace('other-session',10),sessionId:'native-b'}],turns:[{id:'turn-empty',text:'普通问题',reply:'第一轮回答',at,source:'ai',status:'completed',sessionId:'native-a',fromSeq:0},{id:'turn-hit',text:'部署问题',reply:'第二轮回答',at,source:'ai',status:'completed',sessionId:'native-a',fromSeq:5},{id:'turn-rule',text:'刷新进度',reply:'规则处理结果',at,source:'rule',status:'completed',sessionId:'native-a',fromSeq:99},{id:'turn-other',text:'其他问题',reply:'没有本轮检索记录',at,source:'ai',status:'completed',sessionId:'native-a',fromSeq:10}]}:undefined})
@@ -67,12 +147,38 @@ describe('统一助手真实业务入口',()=>{
   const at=new Date().toISOString(),{calls}=setup({hub:(request,{value})=>request.action==='detail'?{...value,messages:[{id:'latest',role:'assistant',text:'当前会话最新结果',at}]}:undefined})
   await screen.findByText('当前会话最新结果');const body=document.querySelector('.wb-hub-body');Object.defineProperties(body,{scrollHeight:{configurable:true,value:2000},clientHeight:{configurable:true,value:400}});body.scrollTop=150;fireEvent.scroll(body);fireEvent.click(screen.getByRole('button',{name:'系统能力：消息识别'}));expect(body.scrollTop).toBe(2000);expect(calls.every(request=>['list','detail'].includes(request.action))).toBe(true)
  })
- it('固定系统会话直接查看真实进度与本轮记录，打开和刷新均不启动业务',async()=>{
+ it('固定系统会话展示实际进度，原始记录通过更多菜单打开且不启动业务',async()=>{
   const {calls}=setup({hub:(request,{value})=>request.action==='detail'?{...value,runs:[{id:'run-one',kind:'analysis',status:'running',progress:{processed:50,remaining:30,failed:1}}]}:undefined}),user=userEvent.setup()
   await screen.findByLabelText('执行结果：消息识别');expect(screen.getByText('累计处理 50 条 · 剩余 30 条 · 失败 1 条')).toBeTruthy();expect(screen.getByRole('navigation',{name:'系统能力'})).toBeTruthy()
-  await user.click(screen.getByRole('button',{name:'刷新进度'}));await user.click(screen.getByRole('button',{name:'查看本轮记录'}));await screen.findByText('本轮真实模型结果')
+  await user.click(screen.getByRole('button',{name:'刷新进度'}));expect(screen.queryByRole('button',{name:'查看本轮记录'})).toBeNull();await user.click(screen.getByLabelText('更多助手操作'));await user.click(screen.getByRole('button',{name:'后台历史',exact:true}));await screen.findByText('本轮真实模型结果');expect(screen.getByRole('dialog',{name:'后台历史'})).toBeTruthy()
   expect(calls.every(c=>['list','detail','history'].includes(c.action))).toBe(true)
   expect(screen.getByRole('navigation',{name:'工作台导航'}).querySelector('[data-page="tasks"]')).toBeTruthy()
+ })
+ it('自动识别回执使用单层消息气泡，保留实际反馈和关联事项而不显示日志按钮',async()=>{
+  const at=new Date().toISOString(),job={id:'receipt-job',kind:'analysis',status:'completed',createdAt:at,result:{processed:2,failures:0},items:[{id:'a',kind:'task',title:'关联的实际待办',conversationId:'task:a'}]}
+  const {calls}=setup({hub:(request,{value})=>request.action==='detail'&&request.conversationId==='system:analysis'?{...value,runs:[job],background:{messages:[{id:'input',role:'user',sessionId:'backend',seq:1,at,text:'实际提交的两条消息'},{id:'answer',role:'assistant',sessionId:'backend',seq:2,at,text:'实际逐条反馈，只有一条需要跟进。'}]}}:undefined}),user=userEvent.setup()
+  const receipt=await screen.findByLabelText('执行结果：消息识别');expect(receipt.classList.contains('wb-assistant-message')).toBe(true);expect(receipt.closest('.wb-hub-event')).toBeNull();expect(within(receipt).getByText('识别完成')).toBeTruthy();expect(within(receipt).getByText('已处理 2 条消息 · 失败 0 条')).toBeTruthy();expect(screen.queryByRole('button',{name:'查看本轮记录'})).toBeNull();expect(screen.getByText('实际逐条反馈，只有一条需要跟进。')).toBeTruthy()
+  await user.click(within(receipt).getByRole('button',{name:'关联的实际待办'}));await waitFor(()=>expect(calls.some(request=>request.action==='detail'&&request.conversationId==='task:a')).toBe(true));expect(calls.every(request=>['list','detail'].includes(request.action))).toBe(true)
+ })
+ it('关闭后台历史时忽略迟到回包，不重开弹窗且保留会话草稿',async()=>{
+  let release
+  const {calls}=setup({hub:request=>request.action==='history'?new Promise(resolve=>{release=()=>resolve({status:'ok',messages:[{role:'assistant',text:'关闭后迟到的后台记录'}]})}):undefined}),user=userEvent.setup();await ready();await user.type(screen.getByRole('textbox',{name:'助手消息'}),'未发送的草稿');await user.click(screen.getByLabelText('更多助手操作'));await user.click(screen.getByRole('button',{name:'后台历史',exact:true}));const dialog=screen.getByRole('dialog',{name:'后台历史'});expect(within(dialog).getByRole('status').textContent).toContain('正在读取处理记录');await user.click(within(dialog).getByRole('button',{name:'关闭',exact:true}));await act(async()=>release());expect(screen.queryByRole('dialog')).toBeNull();expect(screen.queryByText('关闭后迟到的后台记录')).toBeNull();expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('未发送的草稿');expect(calls.every(request=>['list','detail','history'].includes(request.action))).toBe(true)
+ })
+ it('后台历史读取失败在弹窗中显示原因，重试只读取不重新执行任务',async()=>{
+  let fail=true
+  const {calls}=setup({hub:request=>{if(request.action==='history'){if(fail)throw Error('历史存储暂不可读');return {status:'ok',messages:[{role:'assistant',text:'原来的真实处理记录'}]}}}}),user=userEvent.setup();await ready();await user.click(screen.getByLabelText('更多助手操作'));await user.click(screen.getByRole('button',{name:'后台历史',exact:true}));const dialog=await screen.findByRole('dialog',{name:'后台历史'});await within(dialog).findByText('历史存储暂不可读');fail=false;await user.click(within(dialog).getByRole('button',{name:'重试读取'}));await within(dialog).findByText('原来的真实处理记录');expect(calls.filter(request=>request.action==='history')).toHaveLength(2);expect(calls.every(request=>['list','detail','history'].includes(request.action))).toBe(true)
+ })
+ it('切换事项只读取当前内容，不重复请求整个目录，原会话草稿仍可恢复',async()=>{
+  const {calls}=setup({id:'task:a'}),user=userEvent.setup();await ready();await user.type(screen.getByRole('textbox',{name:'助手消息'}),'留在甲的草稿');const before=calls.filter(request=>request.action==='list').length
+  await user.click(screen.getByRole('button',{name:'会话：乙的工作'}));await ready();await user.click(screen.getByRole('button',{name:'会话：甲的工作'}));await ready();expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('留在甲的草稿');expect(calls.filter(request=>request.action==='list')).toHaveLength(before);expect(calls.every(request=>['list','detail'].includes(request.action))).toBe(true)
+ })
+ it('已显示的目录超时后自动恢复，保留会话、输入和已读内容且不要求手动重试',async()=>{
+  vi.useFakeTimers();let lists=0
+  const {calls}=setup({id:'task:a',hub:(request,{value})=>{
+   if(request.action==='list'){lists++;if(lists===2)return new Promise(()=>{});if(lists===3)return {...value,conversations:[...value.conversations,{id:'chat:late-index',kind:'chat',title:'自动刷新恢复的会话'}]}}
+   if(request.action==='detail')return {...value,messages:[{role:'assistant',text:'已经显示的会话正文'}]}
+  }})
+  await act(async()=>vi.advanceTimersByTimeAsync(0));fireEvent.change(screen.getByRole('textbox',{name:'助手消息'}),{target:{value:'目录慢时仍保留的草稿'}});await act(async()=>vi.advanceTimersByTimeAsync(10000));expect(lists).toBe(2);await act(async()=>vi.advanceTimersByTimeAsync(10000));expect(screen.getByText('列表正在后台更新，已显示的会话仍可使用。')).toBeTruthy();expect(screen.getByRole('button',{name:'会话：乙的工作'})).toBeTruthy();expect(screen.queryByRole('button',{name:'重试列表'})).toBeNull();expect(screen.getByText('已经显示的会话正文')).toBeTruthy();await act(async()=>vi.advanceTimersByTimeAsync(2000));expect(screen.getByRole('button',{name:'会话：自动刷新恢复的会话'})).toBeTruthy();expect(screen.queryByText('列表正在后台更新，已显示的会话仍可使用。')).toBeNull();expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('目录慢时仍保留的草稿');expect(lists).toBe(3);expect(calls.every(request=>['list','detail'].includes(request.action))).toBe(true)
  })
  it('未创建原生会话也可以发指令，重开时读取持久结果',async()=>{
   const {WB,calls}=setup({id:'task:a'}),user=userEvent.setup();await waitFor(()=>expect(screen.getByRole('textbox',{name:'助手消息'}).disabled).toBe(false))
@@ -138,6 +244,11 @@ describe('统一助手真实业务入口',()=>{
   await screen.findByText('系统任务正在处理，结果会自动更新');expect(screen.queryByLabelText('系统结果')).toBeNull();phase=1;await user.click(screen.getByRole('button',{name:'刷新进度'}));await screen.findByText('尚未最终确认的结果');phase=2;await user.click(screen.getByRole('button',{name:'刷新进度'}));await screen.findByText('已确认的最终结果');expect(screen.queryByText('尚未最终确认的结果')).toBeNull();expect(screen.getAllByLabelText('系统结果')).toHaveLength(1);expect(screen.queryByText('系统任务正在处理，结果会自动更新')).toBeNull()
  })
 
+ it('后台中间输出不展示思考或识别卡，只有完成后的最终正文显示结果',async()=>{
+  let finished=false;setup({hub:(request,{value})=>request.action==='detail'?{...value,background:{messages:[{id:'background:draft:1',sessionId:'draft',seq:1,role:'assistant',at:1000,text:'中间草稿不应该识别',finalOutput:false,recognition:{items:[{sourceId:'draft-only',summary:'不应展示的识别建议',instructions:['需待办：中间任务'],status:'recognized'}]}},...(finished?[{id:'background:draft:2',sessionId:'draft',seq:2,role:'assistant',at:2000,text:'最终识别输出',finalOutput:true,recognition:{purpose:'analysis',items:[{sourceId:'final-only',summary:'最终确认无需处理',instructions:['无需处理'],status:'recognized'}]}}]:[])],turnActive:!finished,hasMore:false,errors:[]}}:undefined})
+  await screen.findByText('系统任务正在处理，结果会自动更新');expect(screen.queryByText('中间草稿不应该识别')).toBeNull();expect(screen.queryByText(/逐条识别结果/)).toBeNull();finished=true;await userEvent.setup().click(screen.getByRole('button',{name:'刷新进度'}));await screen.findByText('最终识别输出');expect(screen.queryByText('中间草稿不应该识别')).toBeNull();const summary=screen.getByText('逐条识别结果 · 1 条');await userEvent.setup().click(summary);expect(screen.getByText('最终确认无需处理')).toBeTruthy();expect(screen.queryByText('需待办：中间任务')).toBeNull()
+ })
+
  it('系统原文截取时清楚标明节选，纯文本和摘要折叠均提供完整历史入口说明',async()=>{
   setup({hub:(request,{value})=>request.action==='detail'?{...value,background:{messages:[{id:'background:native:1',sessionId:'native',seq:1,role:'user',at:1000,text:'结构化原文节选',displayText:'系统提交的简明说明',rawTruncated:true},{id:'background:native:2',sessionId:'native',seq:2,role:'assistant',at:2000,text:'没有摘要的原文节选',rawTruncated:true}],hasMore:false,before:null,turnActive:false,errors:[]}}:undefined})
   await screen.findByText('系统提交的简明说明');const notices=screen.getAllByText('原始内容（节选，完整内容见后台历史）');expect(notices).toHaveLength(2);expect(notices.some(node=>node.tagName==='SUMMARY'&&!node.closest('details').open)).toBe(true);expect(notices.some(node=>node.tagName==='P')).toBe(true);expect(screen.getByText('后台历史')).toBeTruthy()
@@ -171,6 +282,32 @@ describe('统一助手真实业务入口',()=>{
   await screen.findByText('已更新提取项');const summary=screen.getByText('查看修改前后');await user.click(summary);const detail=summary.closest('details');expect(within(detail).getByText('之前的摘要')).toBeTruthy();expect(within(detail).getByText('修改后的摘要')).toBeTruthy();expect(within(detail).getByText('待处理')).toBeTruthy();expect(within(detail).getByText('进行中')).toBeTruthy();expect(within(detail).getByText('普通')).toBeTruthy();expect(within(detail).getByText('高')).toBeTruthy();expect(within(detail).getByText('新负责人')).toBeTruthy()
  })
 
+ it('普通聊天不显示工具执行记录，保留回答并隐藏目录输出',async()=>{
+  const stdout='total 40\nRAW_DIRECTORY_OUTPUT\n-rw-r--r-- SKILL.md',turn={id:'plain-tool',text:'当前目录有多少技能',at:1000,source:'ai',status:'completed',reply:'当前目录共有 36 个技能。',commands:[{id:'ls-call',operation:'execute_command',label:'execute_command',status:'completed',resultText:stdout}]}
+  const{calls}=setup({id:'chat:plain',hub:(request,{value})=>request.action==='detail'?{...value,turns:[turn],messages:[]}:undefined});await screen.findByText(turn.reply)
+  const reply=screen.getByRole('article',{name:'处理回复'})
+  expect(within(reply).queryByLabelText('工具执行记录')).toBeNull();expect(within(reply).queryByLabelText('识别的命令')).toBeNull();expect(within(reply).queryByText('已识别的操作')).toBeNull();expect(within(reply).queryByText('指令',{exact:true})).toBeNull();expect(within(reply).getByLabelText('回复来源：AI')).toBeTruthy();expect(within(reply).queryByRole('status')).toBeNull();expect(within(reply).getByLabelText('消息标记').textContent).toBe('AI');expect(reply.querySelector('.wb-hub-office-artifacts')).toBeNull();expect(within(reply).queryByText(/RAW_DIRECTORY_OUTPUT/)).toBeNull();expect(calls.every(request=>['list','detail'].includes(request.action))).toBe(true)
+ })
+ it('普通聊天隐藏工具记录后仍保留失败原因和未完成状态',async()=>{
+  const turn={id:'failed-native',text:'查看目录',source:'ai',status:'failed',reply:'目录查询失败，请核对访问权限。',commands:[{id:'read',kind:'tool',operation:'task.update',label:'内部工具',status:'failed',resultText:'<img src=x onerror=alert(1)> permission denied'}]}
+  setup({id:'chat:failed',hub:(request,{value})=>request.action==='detail'?{...value,turns:[turn],messages:[]}:undefined});await screen.findByText(turn.reply);const reply=screen.getByRole('article',{name:'处理回复'});expect(within(reply).queryByLabelText('工具执行记录')).toBeNull();expect(reply.querySelector('img')).toBeNull();expect(within(reply).getByRole('status').textContent).toContain('未完成');expect(within(reply).queryByLabelText('识别的命令')).toBeNull()
+ })
+ it('旧普通会话的真实业务操作保留确认卡，但不再显示工具执行记录',async()=>{
+  const turn={id:'mixed-tools',text:'检查目录并登记待办',source:'ai',status:'needs_confirmation',reply:'已查询目录，请确认后再修改知识。',commands:[{id:'read',kind:'tool',operation:'read_file',label:'read_file',status:'completed',resultText:'INTERNAL_FILE_CONTENT'},{id:'business',kind:'business',operation:'knowledge.update',label:'预览修改知识',status:'needs_confirmation'}]}
+  setup({id:'chat:mixed',hub:(request,{value})=>request.action==='detail'?{...value,turns:[turn],messages:[],confirmations:[{id:'confirmation',turnId:turn.id,state:'pending',title:'确认修改知识'}]}:undefined});await screen.findByText(turn.reply);const reply=screen.getByRole('article',{name:'处理回复'});expect(within(reply).getByLabelText('识别的命令').textContent).toContain('预览修改知识');expect(within(reply).queryByLabelText('工具执行记录')).toBeNull();expect(within(reply).getByRole('region',{name:'待确认操作'})).toBeTruthy();expect(within(reply).getByRole('button',{name:'确认执行'})).toBeTruthy()
+ })
+ it('普通对话生成中显示回复状态，不展示消息识别文案',async()=>{
+  const turn={id:'chat-working',text:'解释一下这个目录',source:'ai',status:'recognizing',commands:[],recognition:{outcome:'unmatched'}}
+  setup({id:'chat:working',hub:(request,{value})=>request.action==='detail'?{...value,turns:[turn],messages:[]}:undefined});await screen.findByText('正在处理你的问题…');const reply=screen.getByRole('article',{name:'处理回复'});expect(within(reply).getByRole('status').textContent).toContain('正在回复');expect(reply.textContent).not.toContain('识别');expect(reply.textContent).not.toContain('已转 AI')
+ })
+ it('只有工具结果而未返回文字答复时，不把工具执行结束说成已回复',async()=>{
+  const turn={id:'tool-only',text:'查看目录',source:'ai',status:'completed',replySource:'tools',reply:'本轮未返回文字答复，可展开工具执行记录核对执行状态。',commands:[{id:'tool',kind:'tool',operation:'execute_command',status:'completed',resultText:'RAW_OUTPUT'}]}
+  setup({id:'chat:tools-only',hub:(request,{value})=>request.action==='detail'?{...value,turns:[turn],messages:[]}:undefined});await screen.findByText('本轮未返回文字答复，请在原会话查看执行状态。');const reply=screen.getByRole('article',{name:'处理回复'});expect(within(reply).getByRole('status').textContent).toContain('已结束');expect(reply.textContent).not.toContain('已回复');expect(within(reply).queryByLabelText('工具执行记录')).toBeNull();expect(reply.textContent).not.toContain('可展开')
+ })
+ it('专用事项会话仍提供默认折叠的工具记录',async()=>{
+  const turn={id:'task-tool-log',text:'查询事项资料',source:'ai',status:'completed',reply:'已查到对应资料。',commands:[{id:'tool',kind:'tool',operation:'read_file',status:'completed',resultText:'任务资料原文'}]}
+  setup({hub:(request,{value})=>request.action==='detail'?{...value,turns:[turn],messages:[]}:undefined});await screen.findByText(turn.reply);const details=screen.getByLabelText('工具执行记录');expect(details.open).toBe(false);await userEvent.setup().click(details.querySelector('summary'));expect(details.open).toBe(true);expect(within(details).getByText('任务资料原文')).toBeTruthy()
+ })
  it('持久提交把原话、规则命令和真实回执放在一起，原生重复消息不再重现',async()=>{
   const turn={id:'turn-rule',requestId:'request-rule',text:'把这个待办标记完成',at:1000,source:'rule',mode:'execute',status:'completed',reply:'已把这条待办标记为已完成。',commands:[{id:'command-rule',label:'标记待办完成',operation:'task.update',parameters:{patch:{status:'completed'}},status:'completed',resultText:'状态已保存'}]}
   const {WB,calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,reinterpretSupported:false,turns:[turn],messages:[{role:'assistant',text:'之前未关联的历史仍然可读',at:100},{role:'user',text:turn.text,at:1000,turnId:turn.id},{role:'assistant',text:turn.reply,at:2000,turnId:turn.id}],events:[{id:'receipt',turnId:turn.id,at:2000,operation:'analysis.updateResult',text:turn.reply,before:{status:'ready'},after:{status:'completed'}}]}:undefined}),user=userEvent.setup()
@@ -243,8 +380,8 @@ describe('统一助手真实业务入口',()=>{
  it('未关联turn的旧原生失败仍直接显示在聊天时间线',async()=>{
   setup({id:'system:radar',hub:(request,{value})=>request.action==='detail'?{...value,messages:[{role:'user',text:'以前的资讯查询',at:1000},{role:'error',text:'旧查询失败：数据源返回无效格式',at:2000}]}:undefined});const failure=await screen.findByText('旧查询失败：数据源返回无效格式');expect(failure.closest('details')).toBeNull();expect(failure.closest('[data-chat-author]').getAttribute('data-chat-author')).toBe('system');expect(failure.closest('[data-chat-author]').textContent).toContain('处理异常');expect(screen.queryByText('执行诊断')).toBeNull()
  })
- it('AI只回答问题显示已回复，重新理解显示已重新识别，并展示后台实际说明',async()=>{
-  setup({id:'system:radar',hub:(request,{value})=>request.action==='detail'?{...value,turns:[{id:'answer-only',text:'解释这个资讯的意义',at:1000,source:'ai',mode:'execute',status:'completed',reply:'这条资讯对当前项目的意义如下。',commands:[],executionNote:'当前没有触发后台处理作业。'},{id:'reinterpret-done',text:'重新理解原指令',at:2000,source:'ai',mode:'reinterpret',status:'completed',reply:'原指令可能是在查询已有结果。',commands:[]}]}:undefined});await screen.findByText('这条资讯对当前项目的意义如下。');const groups=screen.getAllByRole('region',{name:'提交与处理结果'});expect(within(groups[0]).getByText('已回复')).toBeTruthy();expect(within(groups[0]).getByText('当前没有触发后台处理作业。')).toBeTruthy();expect(within(groups[1]).getByText('已重新识别')).toBeTruthy();expect(groups.every(group=>!group.textContent.includes('已完成'))).toBe(true)
+ it('纯AI回答只保留AI标记，重新理解及后台实际说明仍准确显示',async()=>{
+  setup({id:'system:radar',hub:(request,{value})=>request.action==='detail'?{...value,turns:[{id:'answer-only',text:'解释这个资讯的意义',at:1000,source:'ai',mode:'execute',status:'completed',reply:'这条资讯对当前项目的意义如下。',commands:[],executionNote:'当前没有触发后台处理作业。'},{id:'reinterpret-done',text:'重新理解原指令',at:2000,source:'ai',mode:'reinterpret',status:'completed',reply:'原指令可能是在查询已有结果。',commands:[]}]}:undefined});await screen.findByText('这条资讯对当前项目的意义如下。');const groups=screen.getAllByRole('region',{name:'提交与处理结果'});expect(within(groups[0]).getByLabelText('消息标记').textContent).toBe('AI');expect(within(groups[0]).queryByText('已回复')).toBeNull();expect(within(groups[0]).getByText('当前没有触发后台处理作业。')).toBeTruthy();expect(within(groups[1]).getByText('已重新识别')).toBeTruthy();expect(groups.every(group=>!group.textContent.includes('已完成'))).toBe(true)
  })
 
  it('加载更早的旧原生turn后刷新仍保留指令与回复，切换会话时清空',async()=>{
@@ -390,7 +527,7 @@ describe('统一助手真实业务入口',()=>{
 
  it('工作会话来源与真实工作区同时可见，默认cwd不会冒充已绑定工作区',async()=>{
   const rows=[{id:'task:a',kind:'task',title:'甲的工作',nativeBinding:{sessionId:'native-a',workspaceState:'bound',workspaceId:'workspace-a',workspaceTitle:'项目甲',cwd:'/synthetic/projects/项目甲'}},{id:'reply:r',kind:'reply',title:'客户答复',nativeBinding:{workspaceState:'unbound',cwd:'/synthetic/default'}},{id:'development:d',kind:'development',title:'缺陷修复',nativeBinding:{workspaceState:'pending',workspaceTitle:'研发工程',cwd:'/work/dev'}},{id:'radar:r',kind:'radar',title:'资讯研读',nativeBinding:{workspaceState:'unbound'}},{id:'knowledge:k',kind:'knowledge',title:'知识调整',nativeBinding:{workspaceState:'unbound'}},{id:'office:report',kind:'office',title:'工作日报',topic:{kind:'work_report'},nativeBinding:{workspaceState:'unbound'}},{id:'chat:plain',kind:'chat',title:'普通工作问答',nativeBinding:{workspaceState:'unbound'}}]
-  setup({id:'task:a',hub:(request,{value})=>request.action==='list'?{...value,conversations:[...fixed,...rows]}:request.action==='detail'?{...value,nativeBinding:rows[0].nativeBinding,sessionId:'native-a',threads:[{id:'native-a',title:'甲的原会话',role:'primary'}]}:undefined});await ready();expect(screen.getByLabelText('会话来源').textContent).toBe('待办');const sidebar=screen.getByRole('navigation',{name:'助手会话列表'});for(const [title,kind] of [['甲的工作','待办'],['客户答复','待回复'],['缺陷修复','研发'],['资讯研读','资讯'],['知识调整','知识'],['工作日报','报告'],['普通工作问答','普通对话']])expect(within(sidebar).getByRole('button',{name:'会话：'+title}).textContent).toContain(kind);expect(within(sidebar).getByRole('button',{name:'会话：客户答复'}).textContent).toContain('无工作区');expect(within(sidebar).getByLabelText('工作区：项目甲').title).toContain('/synthetic/projects/项目甲');expect(screen.queryByRole('region',{name:'会话与工作区'})).toBeNull();expect(screen.queryByText('当前 Harness 会话')).toBeNull()
+  setup({id:'task:a',hub:(request,{value})=>request.action==='list'?{...value,conversations:[...fixed,...rows]}:request.action==='detail'?{...value,nativeBinding:rows[0].nativeBinding,sessionId:'native-a',threads:[{id:'native-a',title:'甲的原会话',role:'primary'}]}:undefined});await ready();expect(screen.getByLabelText('会话来源').textContent).toBe('待办');const sidebar=screen.getByRole('navigation',{name:'助手会话列表'});for(const [title,kind] of [['甲的工作','待办'],['客户答复','待回复'],['缺陷修复','研发'],['资讯研读','资讯'],['知识调整','知识'],['工作日报','报告'],['普通工作问答','普通对话']]){const row=within(sidebar).getByRole('button',{name:'会话：'+title}),badge=within(row).getByRole('img',{name:'会话类型：'+kind});expect(badge.title).toBe(kind);expect(badge.querySelector('svg')).toBeTruthy();expect(badge.textContent).toBe('')};expect(within(sidebar).getByRole('button',{name:'会话：客户答复'}).textContent).toContain('无工作区');expect(within(sidebar).getByLabelText('工作区：项目甲').title).toContain('/synthetic/projects/项目甲');expect(screen.queryByRole('region',{name:'会话与工作区'})).toBeNull();expect(screen.queryByText('当前 Harness 会话')).toBeNull()
  })
  it.each([{workspaceState:'unbound',cwd:'/default/path',label:'无工作区',tooltip:'未绑定'},{workspaceState:'pending',workspaceTitle:'准备中的工程',cwd:'/work/pending',label:'待绑定 · 准备中的工程',tooltip:'/work/pending'},{workspaceState:'unavailable',workspaceError:'工程目录已经移动',label:'工作区不可用',tooltip:'工程目录已经移动'}])('工作区状态$workspaceState准确展示，不自动修复或新建',async(binding)=>{
   const {calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,nativeBinding:binding}:request.action==='list'?{...value,conversations:value.conversations.map(row=>row.id==='task:a'?{...row,nativeBinding:binding}:row)}:undefined});await ready();const sidebar=screen.getByRole('navigation',{name:'助手会话列表'}),badge=within(sidebar).getByLabelText('工作区：'+binding.label);expect(badge.title).toContain(binding.tooltip);expect(screen.queryByRole('region',{name:'会话与工作区'})).toBeNull();expect(calls.every(request=>['list','detail'].includes(request.action))).toBe(true)
@@ -575,5 +712,79 @@ describe('只有临时会话支持确认后删除',()=>{
   await user.click(screen.getByRole('button',{name:'删除临时会话：临时讨论'}));await user.click(within(screen.getByRole('dialog',{name:'删除临时会话'})).getByRole('button',{name:'确认删除'}))
   await waitFor(()=>expect(screen.queryByRole('button',{name:'会话：临时讨论'})).toBeNull());await act(async()=>release())
   expect(screen.queryByRole('button',{name:'会话：临时讨论'})).toBeNull();expect(WB.store.get().assistantConversationId).toBe('task:a');expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('事项草稿不丢')
+ })
+})
+
+describe('停止当前会话',()=>{
+ it('上一轮发送完成后，新建会话的加载过程不显示停止',async()=>{
+  let release
+  setup({id:'task:a',hub:request=>request.action==='reset'?new Promise(resolve=>release=resolve):undefined});await ready()
+  fireEvent.change(screen.getByRole('textbox',{name:'助手消息'}),{target:{value:'已完成的问题'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await screen.findByText('继续处理已登记');await waitFor(()=>expect(screen.getByRole('button',{name:'发送'}).disabled).toBe(true));expect(screen.queryByRole('button',{name:'停止当前会话'})).toBeNull()
+  fireEvent.click(screen.getByRole('button',{name:'新建对话'}));await waitFor(()=>expect(release).toBeTypeOf('function'));expect(screen.queryByRole('button',{name:'停止当前会话'})).toBeNull();await act(async()=>release({status:'ok',conversationId:'chat:new',sessionId:'native-new'}))
+ })
+
+ it.each(['idle','queued','paused','completed','failed'])('状态为 %s 时不显示停止，即使存在旧待处理记录',async status=>{
+  setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,stop:{available:true,running:false,supported:true,token:'old-pending'},runs:status==='idle'?[]:[{id:'old-job',kind:'analysis',status}],turns:[{id:'old-turn',source:'ai',text:'历史提交',status:'recognizing',commands:[]}]}:undefined})
+  await ready();expect(screen.queryByRole('button',{name:'停止当前会话'})).toBeNull()
+ })
+ it('关联作业真正运行才显示停止，结束后立即隐藏',async()=>{
+  let running=false
+  setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,stop:{available:true,running,supported:true,token:'job-state'},runs:[{id:'job-running',kind:'analysis',status:running?'running':'queued'}]}:undefined})
+  await ready();expect(screen.queryByRole('button',{name:'停止当前会话'})).toBeNull();running=true;fireEvent.click(screen.getByRole('button',{name:'刷新进度'}));await screen.findByRole('button',{name:'停止当前会话'});running=false;fireEvent.click(screen.getByRole('button',{name:'刷新进度'}));await waitFor(()=>expect(screen.queryByRole('button',{name:'停止当前会话'})).toBeNull())
+ })
+
+ it('原生Harness运行显示停止，取消回执后继续核对真实状态并保留草稿历史',async()=>{
+  let running=true
+  const {calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,sessionId:'native-a',messages:[{role:'assistant',text:'已经生成的回答'}],stop:{available:running,running,supported:true,token:'native-turn-1'}}:request.action==='stop'?{status:'ok',stopping:true,note:'已请求停止，正在等待原生会话结束'}:undefined})
+  await ready();fireEvent.change(screen.getByRole('textbox',{name:'助手消息'}),{target:{value:'未发送草稿'}})
+  fireEvent.click(screen.getByRole('button',{name:'停止当前会话'}));await screen.findByText('已请求停止，正在等待原生会话结束')
+  expect(screen.getByRole('button',{name:'停止当前会话'}).disabled).toBe(true);expect(screen.queryByText('已停止，历史与已完成进度保留')).toBeNull()
+  running=false;fireEvent.click(screen.getByRole('button',{name:'刷新进度'}));await screen.findByText('已停止，历史与已完成进度保留')
+  expect(screen.queryByRole('button',{name:'停止当前会话'})).toBeNull();expect(screen.getByText('已经生成的回答')).toBeTruthy();expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('未发送草稿')
+  expect(calls.filter(r=>r.action==='stop')).toMatchObject([{action:'stop',conversationId:'task:a',sessionId:'native-a',token:'native-turn-1'}]);expect(calls.some(r=>r.action==='send')).toBe(false)
+ })
+ it('准备附件时停止，迟到的准备回包不发送，保留文字和附件',async()=>{
+  let release
+  const {calls}=setup({id:'task:a',hub:request=>request.action==='prepareAttachments'?new Promise(resolve=>release=resolve):undefined}),user=userEvent.setup();await ready()
+  await user.upload(screen.getByLabelText('选择助手附件'),new File(['data'],'待发.png',{type:'image/png'}));fireEvent.change(screen.getByRole('textbox',{name:'助手消息'}),{target:{value:'请分析这个附件'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(release).toBeTypeOf('function'))
+  fireEvent.click(screen.getByRole('button',{name:'停止当前会话'}));await screen.findByText('已停止，历史与已完成进度保留');await act(async()=>release({status:'ok',sessionId:'prepared-native'}))
+  expect(calls.some(r=>['send','stop'].includes(r.action))).toBe(false);expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('请分析这个附件');expect(screen.getByRole('region',{name:'本轮附件'}).textContent).toContain('待发.png');expect(screen.queryByRole('button',{name:'继续本轮'})).toBeNull()
+ })
+ it('提交回执尚未返回也能用本轮请求ID停止，不重复提交',async()=>{
+  let releaseSend;let ended=false
+  const {calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,sessionId:'native-a',stop:{available:!ended,running:!ended,supported:true,token:'turn-one'}}:request.action==='send'?new Promise(resolve=>releaseSend=resolve):request.action==='stop'?(ended=true,{status:'ok',stopping:false}):undefined})
+  await ready();fireEvent.change(screen.getByRole('textbox',{name:'助手消息'}),{target:{value:'一个正在发送的问题'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(releaseSend).toBeTypeOf('function'))
+  fireEvent.click(screen.getByRole('button',{name:'停止当前会话'}));await screen.findByText('已停止，历史与已完成进度保留');const sent=calls.find(r=>r.action==='send'),stop=calls.find(r=>r.action==='stop');expect(stop.requestId).toBe(sent.requestId)
+  await act(async()=>releaseSend({status:'stopped',sessionId:'native-a',requestId:sent.requestId}));expect(calls.filter(r=>r.action==='send')).toHaveLength(1);expect(calls.filter(r=>r.action==='stop')).toHaveLength(1);expect(screen.queryByRole('button',{name:'继续本轮'})).toBeNull()
+ })
+ it('停止后新一轮已经开始时，上一轮迟到回执不能释放新一轮的发送锁',async()=>{
+  let oldReceipt,newReceipt;let stopped=false
+  const {calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,sessionId:'native-a',stop:{available:false,supported:true,token:'turn'}}:request.action==='send'?new Promise(resolve=>{if(!oldReceipt)oldReceipt=resolve;else newReceipt=resolve}):request.action==='stop'?(stopped=true,{status:'ok',stopping:false}):undefined})
+  await ready();const input=screen.getByRole('textbox',{name:'助手消息'});fireEvent.change(input,{target:{value:'第一轮'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(oldReceipt).toBeTypeOf('function'));fireEvent.click(screen.getByRole('button',{name:'停止当前会话'}));await screen.findByText('已停止，历史与已完成进度保留');expect(stopped).toBe(true)
+  fireEvent.change(input,{target:{value:'第二轮'}});fireEvent.click(screen.getByRole('button',{name:'发送'}));await waitFor(()=>expect(newReceipt).toBeTypeOf('function'));await act(async()=>oldReceipt({status:'stopped',note:'旧回包'}));expect(screen.getByRole('button',{name:'处理中'}).disabled).toBe(true);expect(screen.getByRole('button',{name:'停止当前会话'}).disabled).toBe(false);expect(calls.filter(r=>r.action==='send')).toHaveLength(2);await act(async()=>newReceipt({status:'ok',handled:true}))
+ })
+ it('停止回包迟到不能改变新会话的输入和状态',async()=>{
+  let release
+  setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,sessionId:request.conversationId==='task:a'?'native-a':'native-b',stop:{available:request.conversationId==='task:a',running:request.conversationId==='task:a',supported:true,token:'a'}}:request.action==='stop'?new Promise(resolve=>release=resolve):undefined})
+  await ready();fireEvent.click(screen.getByRole('button',{name:'停止当前会话'}));await waitFor(()=>expect(release).toBeTypeOf('function'));fireEvent.click(screen.getByRole('button',{name:'会话：乙的工作'}));await ready();fireEvent.change(screen.getByRole('textbox',{name:'助手消息'}),{target:{value:'乙的独立草稿'}})
+  await act(async()=>release({status:'ok',stopping:false}));expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('乙的独立草稿');expect(screen.queryByText('已停止，历史与已完成进度保留')).toBeNull();expect(screen.queryByRole('button',{name:'停止当前会话'})).toBeNull()
+ })
+ it('原生取消失败允许重试，不伪造已停止',async()=>{
+  let failed=true
+  const {calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,stop:{available:true,running:true,supported:true,token:'fixture'}}:request.action==='stop'?failed?{status:'error',note:'原生取消失败'}:{status:'ok',stopping:true}:undefined})
+  await ready();fireEvent.click(screen.getByRole('button',{name:'停止当前会话'}));await screen.findByText('原生取消失败');expect(screen.getByRole('button',{name:'停止当前会话'}).disabled).toBe(false);expect(screen.queryByText('已停止，历史与已完成进度保留')).toBeNull();failed=false;fireEvent.click(screen.getByRole('button',{name:'停止当前会话'}));await waitFor(()=>expect(calls.filter(r=>r.action==='stop')).toHaveLength(2))
+ })
+ it('已暂停办公作业提供继续未完成内容，沿用原作业ID',async()=>{
+  const {calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,runs:[{id:'office-kept',kind:'task_assist',status:'paused',steps:[{id:'done',status:'completed',artifact:{text:'已完成产物'}}]}]}:request.action==='operate'?{status:'ok',handled:true}:undefined})
+  await ready();fireEvent.click(screen.getByRole('button',{name:'继续未完成内容'}));await waitFor(()=>expect(calls.find(r=>r.operation==='office.retry')).toMatchObject({id:'office-kept'}))
+ })
+})
+
+describe('从研发任务打开对应原会话',()=>{
+ it('精确读取传入的审查或历史会话，普通打开仍沿用默认会话，不触发重跑',async()=>{
+  const {WB,calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'&&request.conversationId==='development:dev-route'?{...value,conversation:{id:'development:dev-route',kind:'development',title:'研发原记录'},sessionId:request.sessionId||'main-session',nativeBinding:{sessionId:request.sessionId||'main-session',canSend:true},messages:[{role:'assistant',text:request.sessionId==='review-session'?'审查原会话记录':request.sessionId==='original-session'?'兼容前原历史记录':'当前主会话记录'}]}:undefined})
+  await ready();act(()=>WB.assistant.openHub('development','dev-route','review-session'));await screen.findByText('审查原会话记录');expect(calls.some(r=>r.action==='detail'&&r.conversationId==='development:dev-route'&&r.sessionId==='review-session')).toBe(true)
+  act(()=>WB.assistant.openHub('development:dev-route',undefined,'original-session'));await screen.findByText('兼容前原历史记录');expect(WB.store.get().assistantHubThreadId).toBe('original-session')
+  act(()=>WB.assistant.openHub('development','dev-route'));await screen.findByText('当前主会话记录');expect(WB.store.get().assistantHubThreadId).toBeNull();expect(calls.some(r=>['send','reset','prepareAttachments','operate'].includes(r.action))).toBe(false)
  })
 })

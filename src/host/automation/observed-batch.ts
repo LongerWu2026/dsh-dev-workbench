@@ -27,7 +27,7 @@ export async function observeBackgroundBatch(ctx:any,kind:'analysis'|'summary',i
         try{await mutateWorkbenchState((state:any)=>{
             assertCurrent()
             const row=state.jobs.find((item:any)=>item.id===job.id)
-            if(row){
+            if(row&&!row.pausedByUser&&row.status==='running'){
                 Object.assign(row,{status:!error&&['ok','partial'].includes(result?.status)?'completed':'failed',result,updatedAt:hostNowIso(),nextRetryAt:null,error:error?String(error.message||error):!['ok','partial'].includes(result?.status)?result?.note:undefined})
                 if(historyError)row.historyError=historyError
             }

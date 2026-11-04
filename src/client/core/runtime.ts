@@ -224,9 +224,9 @@ WB.WORKBENCH_TOOL_NAMES = [
  * 插件内不嵌模型；这里只负责组装上下文与跳转（TODO 04 的备选路径）。
  */
 const assistant: any = {
-    openHub(kind='system',id='analysis'): any {
+    openHub(kind='system',id='analysis',sessionId?:string): any {
         if(kind.includes(':')){const separator=kind.indexOf(':');id=kind.slice(separator+1);kind=kind.slice(0,separator)}
-        wbStore.set((state:any)=>({page:'assistant',assistantOpen:true,contextHidden:true,assistantConversationId:kind+':'+id,assistantHubThreadId:null,assistantTaskId:kind==='task'?id:null,assistantSessionTarget:null,assistantRefs:[],assistantOpenSeq:(state.assistantOpenSeq||0)+1}));
+        wbStore.set((state:any)=>({page:'assistant',assistantOpen:true,contextHidden:true,assistantConversationId:kind+':'+id,assistantHubThreadId:sessionId||null,assistantTaskId:kind==='task'?id:null,assistantSessionTarget:null,assistantRefs:[],assistantOpenSeq:(state.assistantOpenSeq||0)+1}));
     },
     open(): any {
         wbStore.set({ assistantOpen: true });
@@ -327,6 +327,8 @@ function settle(promise?: any, okText?: any): any {
 }
 
 const wbActions: any = {
+    backgroundModelCatalog(){return wbRpc('workbench/backgroundModels',{request:{action:'catalog'}})},
+    backgroundModelConfigure(purpose:string,model:any){return settle(wbRpc('workbench/backgroundModels',{request:{action:'configure',purpose,model}}),'模型设置已保存，下一轮生效')},
     knowledgeEngine(request:any){return wbRpc('workbench/knowledgeEngine',{request})},
     knowledgeSpace(request:any){return wbRpc('workbench/knowledgeSpace',{request})},
     knowledgeRetrieve(request:any){return wbRpc('workbench/knowledgeRetrieve',{request})},
@@ -518,7 +520,7 @@ const wbActions: any = {
         return wbSyncInFlight;
     },
     /** 侧栏助手：向原生会话提交一次问答，返回 {status, reply, toolCalls, note}。 */
-    assistantHub(request:any):any { return wbRpc('workbench/assistantHub',{request}); },
+    assistantHub(request:any,signal?:AbortSignal):any { return wbRpc('workbench/assistantHub',{request},signal); },
     assistantAsk(text?: any, refs?: any, sessionId?: any): any {
         return wbRpc('workbench/assistantAsk', {
             request: { text: text, refs: refs || [], sessionId: sessionId || null },

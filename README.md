@@ -22,7 +22,7 @@ DeepSeek Harness 原生插件，把 AI 助手、消息跟进、研发任务、�
 通过 npm 安装下列版本；若 registry 或镜像暂未同步，可使用下一节的 GitHub 预构建包。
 
 ```sh
-dsh plugin --profile desktop add dsh-dev-workbench@0.4.2
+dsh plugin --profile desktop add dsh-dev-workbench@0.4.3
 ```
 
 将 `desktop` 替换为实际宿主使用的 profile。使用指定版本便于核对安装结果；桌面端也可使用应用自己的插件管理入口。
@@ -32,7 +32,7 @@ dsh plugin --profile desktop add dsh-dev-workbench@0.4.2
 从 [Releases](https://github.com/LongerWu2026/dsh-dev-workbench/releases) 下载 `dsh-dev-workbench-<版本>.tgz`，或直接安装：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.2/dsh-dev-workbench-0.4.2.tgz
+dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.3/dsh-dev-workbench-0.4.3.tgz
 ```
 
 升级后按宿主机制重载插件组件或重启 Harness，再打开侧栏「智能工作台」。只刷新页面不会重新注册新增 Host 接口；遇到 `/api/workbench/...` 返回 404，先重载插件组件。升级前建议备份工作台数据，位置见下文。
@@ -52,7 +52,7 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 | 模块 | 可以做什么 |
 | --- | --- |
 | 今日简报 | 聚合待办、待回复与日程，查看本轮资讯概览；全局或局部刷新并查看分步进度 |
-| AI 助手 | 侧栏管理系统及事项会话，支持历史、附件、引用事项、规则/AI 指令卡片及真实执行回执 |
+| AI 助手 | 侧栏管理系统及事项会话，独立加载目录和正文，支持停止、工具进度、附件、引用及真实执行回执 |
 | 研发任务 | 读取 Linky 本人需求、用户故事和缺陷，关联工程、原生工作区和开发会话，组织分析、开发、测试、独立审查与人工确认 |
 | 办公工具（AI 助手内） | 生成日报周报、批量回复草稿和待办方案，恢复既有产物，在聊天中查看自动回复设置 |
 | 任务中心与待回复 | 独立管理交付与回复责任，支持搜索、筛选、状态切换、来源回查和确认后回复 |
@@ -75,6 +75,12 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 
 原生会话、附件和身份能力依赖宿主实际提供的服务；不可用时显示原因。升级后须重载插件 Host 和客户端，才能使用新增接口。详见[AI 助手介绍](docs/ASSISTANT-HUB-2026-11-01.md)、[附件与引用](docs/ASSISTANT-ATTACHMENTS-IDENTITY-2026-11-01.md)、[事项与原生会话绑定](docs/ASSISTANT-NATIVE-BINDING-2026-11-01.md)和[办公主题](docs/ASSISTANT-COMPACT-WORKSPACE-2026-11-01.md)。
 
+### 会话运行与后台模型
+
+助手目录与会话内容分别加载，单个请求失败可局部重试；切换会话保留草稿和阅读位置。用户原话与事项引用分别呈现，工具调用进度与最终回答分开展示。运行中的会话提供「停止」，收到取消确认后继续核对真实终态；连续作业暂停会跨重启保留，明确继续后才处理未完成项。已完成操作和历史结果继续保留。
+
+在「连接与设置 → 后台任务模型」可分别选择消息识别与资讯摘要模型，或沿用会话模型。保存设置不启动任务，新选择从下一轮生效；目录来自宿主已配置的服务商，不另行保存模型凭据，也不修改宿主默认模型。能力依赖当前宿主公开接口，不可用时显示具体提示。详见[停止与暂停](docs/ASSISTANT-STOP-2026-11-04.md)、[后台模型](docs/BACKGROUND-MODELS-2026-11-04.md)和[局部加载](docs/ASSISTANT-PARTIAL-LOADING-2026-11-04.md)。
+
 ### 消息提取、待办与回复
 
 消息按组织、账号、会话和原消息去重，保留来源及北京时间。聚焦未读消息、@本人、@全员及明确关联已有事项的跟进，普通已读聊天不会全量交给 AI。只采集和处理插件安装日期（北京时间）起的消息；升级、恢复与导入保留本机安装日期。
@@ -96,7 +102,7 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 - 人工审查展示差异、测试退出码及审查意见。批准绑定当前代码内容，后续变化会使批准失效。批准与向 Linky 回写评论分别确认，评论回写不会代替代码提交、合并或发布。
 - npm 包包含 `harness-linky` CLI，可将 Linky 的 Codex 协议入口适配到官方 Harness ACP；配置及权限边界见[实施说明](docs/LINKY-DEVELOPMENT-IMPLEMENTATION-2026-10-31.md)。
 
-页面使用方式及工程选择见[研发任务说明](docs/DEVELOPMENT-UX-2026-10-31.md)。完整真实业务修复与回写仍需用户在实际工作项中验证，隔离测试不代表业务已完成。
+研发目录支持列表与详情分栏，保留所选工作项、筛选及会话上下文，窄屏按可用空间展开。页面使用方式及工程选择见[研发任务说明](docs/DEVELOPMENT-UX-2026-10-31.md)。完整真实业务修复与回写仍需用户在实际工作项中验证，隔离测试不代表业务已完成。
 
 ### 全局搜索
 
@@ -117,6 +123,8 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 默认使用关键词检索；可在「知识空间 → 本地语义检索」中按需下载并启用本地模型。固定版本的 BGE-small-zh-v1.5 INT8 与 WASM 运行时合计约 47 MB，逐文件校验大小与 SHA-256，模型不捆绑进插件包。无需安装 Python 或 Ollama，下载完成后向量计算在本地 Worker 中执行，空闲时自动释放；模型未就绪或索引过多时回退关键词检索。
 
 当前项目检索同项目与同空间公共资料，其他空间、其他项目不会自动纳入；个人通用知识需明确允许跨空间复用。已确认且有效的资料可自动增量索引，原文回读校验资料版本和引用范围。这里的范围隔离用于个人本地工作台，不提供多人服务的成员权限认证。PDF、Word 和图片未解析时不会被当作已入库正文。详见[本地 RAG 与知识空间](docs/LOCAL-KNOWLEDGE-RAG-2026-11-02.md)。
+
+普通聊天的自动知识模式由模型按需查询已保存资料，不在每次发送前固定检索；实际查询后才显示知识依据。仅知识库模式仍先检索，未命中时不调用模型；关闭模式不自动查询。知识工具沿用当前会话的空间、项目和本轮引用范围，模型不能自行扩大范围。详见[按需检索](docs/KNOWLEDGE-ON-DEMAND-2026-11-04.md)。
 
 ### 开发工具与数据查询
 
@@ -143,6 +151,7 @@ AI 助手的办公工具将工作记录组织为回复草稿、日报周报和�
 | 数据连接非密码配置 | `data-connections.json` |
 | 研发配置、任务和适配器记录 | `development/` |
 | 助手会话索引、事项绑定、操作与轮次回执 | `assistant-*.json` |
+| 与原生请求配对的独立事项上下文 | `assistant-native-contexts/` |
 | 托管云之家 CLI | `tools/yunzhijia/` |
 | 本地语义模型、运行时与派生向量索引 | `knowledge-engine/` |
 

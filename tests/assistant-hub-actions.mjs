@@ -85,8 +85,11 @@ try{
  try{
   let dayId='',weekId='';await h.enqueueOfficeWorkflow('work_report',{period:'day'},id=>{dayId=id});await h.mutateWorkbenchState(s=>{s.jobs.find(j=>j.id===dayId).status='completed';return s})
   await h.enqueueOfficeWorkflow('work_report',{period:'week'},id=>{weekId=id});await h.mutateWorkbenchState(s=>{s.jobs.find(j=>j.id===weekId).status='completed';return s})
-  h.rememberOfficeJobOwner(dayId,'chat:synthetic-report-session')
+  h.rememberOfficeJobOwner(dayId,'system:office')
+  const jobCount=h.loadWorkbenchState().jobs.length
   result=await op('chat:synthetic-report-session','office.start',{kind:'work_report',input:{period:'day'}})
+  check('普通聊天不能启动办公作业，报告明确归专用会话执行',()=>{assert.equal(result.status,'error');assert.match(result.note,/普通对话/);assert.equal(h.loadWorkbenchState().jobs.length,jobCount)})
+  result=await op('system:office','office.start',{kind:'work_report',input:{period:'day'}})
   check('报告会话只关联本次实际复用的作业，不混入其它历史报告',()=>{assert.equal(result.status,'ok');assert.equal(result.jobs.length,1);assert.equal(result.jobs[0].id,dayId);assert.notEqual(dayId,weekId);assert.deepEqual(result.after.jobIds,[dayId]);assert.match(result.note,/完成结果/)})
  }finally{Date.now=originalNow}
  const resultNow=new Date().toISOString()

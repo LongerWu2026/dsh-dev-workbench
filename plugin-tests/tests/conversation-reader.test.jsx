@@ -66,3 +66,42 @@ it('服务端消息不足时展示说明并保留未读，不因unreadComplete�
  const {panel,acknowledge}=setup(async()=>result([row('u1','唯一可见消息')],{unreadLoaded:1,unreadTotal:2,note:'可见消息少于未读快照',hasMoreHistory:false}))
  fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}));await screen.findByText('可见消息少于未读快照');expect(acknowledge).not.toHaveBeenCalled();expect(within(panel).getByRole('button',{name:'查看会话：第一会话'})).toBeTruthy()
 })
+
+it('未读跨页全部加载后默认定位末尾，标读回包不打断向上阅读',async()=>{
+ let releaseFirst,releaseLast
+ const {panel,reader}=setup(()=>new Promise(resolve=>{if(!releaseFirst)releaseFirst=resolve;else releaseLast=resolve}))
+ fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}));const dialog=await screen.findByRole('dialog'),body=dialog.querySelector('.wb-modal-body')
+ Object.defineProperty(body,'scrollHeight',{value:1800,configurable:true});Object.defineProperty(body,'clientHeight',{value:300,configurable:true})
+ await act(async()=>releaseFirst(result([row('u2','最新一条')],{unreadComplete:false,unreadLoaded:1})))
+ expect(reader).toHaveBeenCalledTimes(2);expect(body.scrollTop).toBe(0)
+ await act(async()=>releaseLast(result([row('u1','较早一条')],{nextCursor:2})))
+ expect(body.scrollTop).toBe(1800)
+ body.scrollTop=500;fireEvent.scroll(body)
+ await within(dialog).findByText('工作台已读');expect(body.scrollTop).toBe(500)
+ expect(reader.mock.calls.every(([request])=>request.mode==='unread')).toBe(true)
+})
+it('在顶部读取历史时保留原消息锚点，不跳回末尾',async()=>{
+ let releaseUnread,releaseHistory
+ const {panel}=setup(request=>new Promise(resolve=>{if(request.mode==='unread')releaseUnread=resolve;else releaseHistory=resolve}))
+ fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}));const dialog=await screen.findByRole('dialog'),body=dialog.querySelector('.wb-modal-body');let height=1000
+ Object.defineProperty(body,'scrollHeight',{get:()=>height,configurable:true});Object.defineProperty(body,'clientHeight',{value:300,configurable:true})
+ await act(async()=>releaseUnread(result([row('u1','保留的阅读锚点')],{unreadTotal:1,unreadLoaded:1})))
+ expect(body.scrollTop).toBe(1000);body.scrollTop=0
+ const node=within(dialog).getByRole('article')
+ vi.spyOn(body,'getBoundingClientRect').mockImplementation(()=>({top:0,bottom:300}))
+ vi.spyOn(node,'getBoundingClientRect').mockImplementation(()=>{const top=40+(within(dialog).getAllByRole('article').length-1)*400-body.scrollTop;return {top,bottom:top+100}})
+ fireEvent.wheel(body,{deltaY:-20})
+ await act(async()=>{height=1400;releaseHistory(result([row('h1','插入的历史',false)],{unreadTotal:1,unreadLoaded:1,contextLoaded:1,nextCursor:2}))})
+ expect(body.scrollTop).toBe(400);expect(node.getBoundingClientRect().top).toBe(40)
+ expect(body.scrollTop).not.toBe(body.scrollHeight)
+})
+it('关闭后打开另一未读会话也定位到其自己的最新消息',async()=>{
+ let release
+ const {panel}=setup(()=>new Promise(resolve=>{release=resolve}))
+ for(const [name,height] of [['第一会话',1200],['第二会话',2400]]){
+  fireEvent.click(within(panel).getByRole('button',{name:'查看会话：'+name}));const dialog=await screen.findByRole('dialog',{name}),body=dialog.querySelector('.wb-modal-body')
+  Object.defineProperty(body,'scrollHeight',{value:height,configurable:true})
+  await act(async()=>release(result([row(name,'当前会话末条消息')],{viewId:name,groupId:name,unreadTotal:1,unreadLoaded:1})))
+  expect(body.scrollTop).toBe(height);fireEvent.click(within(dialog).getByRole('button',{name:'关闭',exact:true}))
+ }
+})

@@ -1,3 +1,5 @@
+import {activateNativeContexts,disposeNativeContexts} from './assistant/native-context.js'
+import {disposeHubStreams} from './assistant/hub-stream.js'
 import {activateLocalEmbedding} from './knowledge/local-embedding.js'
 import {activateDeveloperServices} from './application/developer-service.js'
 import { knowledgeToolGuard } from './knowledge/guards.js'
@@ -9,8 +11,10 @@ import { claimWorkbenchOwnership, loadWorkbenchState } from './storage/state-sto
 import { workbenchStatePath } from './platform/runtime.js'
 import { ensureArray } from './domain/model.js'
 import { isWorkbenchBackgroundSession } from './assistant/sessions.js'
-import {identifyActiveHubTurn,setHubReinterpretGuardAvailable} from './assistant/hub-turns.js'
+import {identifyActiveHubTurn,activeHubTurns,setHubReinterpretGuardAvailable} from './assistant/hub-turns.js'
 import {attachmentOnlyToolGuard} from './assistant/hub-attachments.js'
+import {plainChatToolGuard} from './assistant/conversation-policy.js'
+import {assistantKnowledgeToolGuard} from './knowledge/assistant-tools.js'
 /* ============================================================================
  * dev-workbench host — plugin entry
  *
@@ -29,6 +33,7 @@ export function apply(ctx?: any, config?: any): any {
     const disposeDeveloper=activateDeveloperServices();
     const disposeEmbedding=activateLocalEmbedding();
     setShared_workbenchCtx(ctx);
+    activateNativeContexts(ctx);
     const settings = config && typeof config === 'object' ? config : {};
     ctx.provide('workbench', workbenchApi);
     ctx.inject(['typert'], function (host?: any): any {
@@ -39,6 +44,11 @@ export function apply(ctx?: any, config?: any): any {
             const guard = typeof host.tools.guard === 'function' ? host.tools.guard((execution: any) => {
                 const id = execution.agent && execution.agent.session && execution.agent.session.id
                 const turn=id?identifyActiveHubTurn(execution.agent.session):undefined
+                if(id&&activeHubTurns(execution.agent.session).some(row=>row.stopRequestedAt))return '用户已停止本轮，禁止继续调用工具；历史与已完成结果保留。'
+                const ordinaryDenied=plainChatToolGuard(execution,String(execution.name||''),execution.arguments)
+                if(ordinaryDenied)return ordinaryDenied
+                const knowledgeDenied=assistantKnowledgeToolGuard(execution,String(execution.name||''),execution.arguments)
+                if(knowledgeDenied)return knowledgeDenied
                 if(turn?.mode==='reinterpret')return '本轮仅重新识别指令，禁止调用任何工具或重复执行操作；请只说明建议和识别结果。'
                 if(turn?.clarificationOnly)return '本轮操作意图或确认对象尚未明确，禁止调用任何工具；请先解释或澄清，等待用户给出明确操作。'
                 if(turn?.attachmentOnly){const blocked=attachmentOnlyToolGuard(execution);if(blocked)return blocked}
@@ -84,6 +94,8 @@ export function apply(ctx?: any, config?: any): any {
                 (settings.verbose === true ? ' · verbose' : ''));
         }
         return function (): any {
+            disposeNativeContexts(ctx);
+            disposeHubStreams(ctx);
             disposeDeveloper();
             disposeEmbedding();
             workbenchApi.disposeWebAI();

@@ -155,6 +155,7 @@ async function runAutomationTick(ctx?: any, request?: {backlogOnly?:boolean;resu
         auditEntry(current, 'automation.tick', '自动执行：资讯 +' + radarAdded + '，@我 +' + mentionsAdded + '，AI 识别 ' + analysisDone);
         return current;
     });
+    void drainWorkflowJobs(ctx).catch(()=>{});
     return {
         ran: true,
         status: status,

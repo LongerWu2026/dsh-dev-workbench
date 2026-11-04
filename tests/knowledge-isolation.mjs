@@ -1,13 +1,14 @@
+import {installNativeContextFixture,modelText} from './native-context-fixture.mjs'
 import assert from 'node:assert/strict'
 import {mkdtempSync,rmSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {join,resolve} from 'node:path'
 import {build} from 'esbuild'
 const home=mkdtempSync(join(tmpdir(),'workbench-knowledge-isolation-'));process.env.DSH_HOME=home
-await build({stdin:{contents:`export {apply} from './src/host/plugin.ts';export * from './src/host/knowledge/retrieval.ts';export * from './src/host/knowledge/scope.ts';export * from './src/host/knowledge/context.ts';export * from './src/shared/knowledge.ts';export {normalizeState} from './src/host/domain/model.ts';export {loadWorkbenchState,mutateWorkbenchState} from './src/host/storage/state-store.ts'`,resolveDir:resolve('.'),loader:'ts'},outfile:join(home,'host.mjs'),bundle:true,platform:'node',format:'esm',logLevel:'silent'})
+await build({stdin:{contents:`export {apply} from './src/host/plugin.ts';export * from './src/host/knowledge/retrieval.ts';export * from './src/host/knowledge/scope.ts';export * from './src/host/knowledge/context.ts';export * from './src/host/assistant/hub-store.ts';export * from './src/shared/knowledge.ts';export {normalizeState} from './src/host/domain/model.ts';export {loadWorkbenchState,mutateWorkbenchState} from './src/host/storage/state-store.ts'`,resolveDir:resolve('.'),loader:'ts'},outfile:join(home,'host.mjs'),bundle:true,platform:'node',format:'esm',logLevel:'silent'})
 const h=await import(join(home,'host.mjs')),disposers=[],sessions=new Map();let api,checks=0,lastPrompt='',prompts=0
-const controller={create:async()=>{const id='isolation-session-'+(sessions.size+1),events=[],session={id,events,get seq(){return events.length},snapshotEvents(from=0){return events.filter(event=>event.seq>from)}};sessions.set(id,session);return {sessionId:id}},rename:async()=>{},state:async()=>({running:false}),prompt:async request=>{lastPrompt=request.content[0].text;prompts++;const session=sessions.get(request.sessionId);session.events.push({type:'user/message',seq:session.seq+1,data:{content:request.content}},{type:'assistant/message',seq:session.seq+2,data:{message:{content:[{type:'text',text:'合成项目回答'}]}}},{type:'turn/end',seq:session.seq+3,data:{}});return {accepted:true}}}
-h.apply({get:key=>key==='sessionController'?controller:key==='sessions'?{get:id=>sessions.get(id),list:()=>[...sessions.values()]}:undefined,provide:(key,value)=>{if(key==='workbench')api=value},inject(){},effect(fn){const dispose=fn();if(typeof dispose==='function')disposers.push(dispose)},logger:{info(){}}},{})
+const controller={create:async()=>{const id='isolation-session-'+(sessions.size+1),events=[],session={id,events,get seq(){return events.length},snapshotEvents(from=0){return events.filter(event=>event.seq>from)}};sessions.set(id,session);return {sessionId:id}},rename:async()=>{},state:async()=>({running:false}),prompt:async request=>{lastPrompt=modelText(request);prompts++;const session=sessions.get(request.sessionId);session.events.push({type:'user/message',seq:session.seq+1,data:{content:request.content}},{type:'assistant/message',seq:session.seq+2,data:{message:{content:[{type:'text',text:'合成项目回答'}]}}},{type:'turn/end',seq:session.seq+3,data:{}});return {accepted:true}}}
+const ctx={get:key=>key==='sessionController'?controller:key==='sessions'?{get:id=>sessions.get(id),list:()=>[...sessions.values()]}:undefined,provide:(key,value)=>{if(key==='workbench')api=value},inject(){},effect(fn){const dispose=fn();if(typeof dispose==='function')disposers.push(dispose)},logger:{info(){}}};installNativeContextFixture(ctx);h.apply(ctx,{})
 const check=(label,fn)=>{fn();checks++;console.log('✓ '+label)}
 try{
  await h.mutateWorkbenchState(state=>({...state,settings:{...state.settings,defaultProjectId:'A'},knowledgeSpaces:[{id:'company',name:'公司资料'},{id:'client',name:'客户资料'}],projects:[{id:'A',name:'公司项目A',knowledgeSpaceId:'company'},{id:'B',name:'公司项目B',knowledgeSpaceId:'company'},{id:'C',name:'客户项目',knowledgeSpaceId:'client'}],tasks:[{id:'task-a',projectId:'A',title:'发布验收'},{id:'task-c',projectId:'C',title:'客户发布'}],replies:[{id:'reply-a',taskIds:['task-a']}],sources:[{id:'fake-account-source',locator:{accountId:'aw-test-account'}}],knowledge:[]}))
@@ -47,6 +48,30 @@ try{
  await h.recordRetrieval(found,'same-session',0)
  await assert.rejects(()=>h.retrieveAssistantKnowledge(h.loadWorkbenchState(),'继续说明',{sessionId:'same-session',projectId:'C'}),/历史不同/);checks++
  await assert.rejects(()=>h.retrieveAssistantKnowledge(h.loadWorkbenchState(),'继续说明',{sessionId:'same-session',projectId:'C',knowledgeMode:'off'}),/历史不同/);checks++
+ // Legacy development chats recorded neither project nor space, even with a bound code directory.
+ const oldScope={projectId:null,accountId:null},newScope={projectId:'P',accountId:null,spaceId:'personal'}
+ await h.mutateWorkbenchState(s=>{s.projects.push({id:'P',name:'个人空间工程',knowledgeSpaceId:'personal'});s.tasks.push({id:'legacy-task',projectId:'P',title:'旧工程事项'});return s})
+ const legacySession=(await controller.create()).sessionId
+ h.rememberHubSession('task:legacy-task',legacySession,'旧工程事项');h.setHubSessionKnowledgeScope(legacySession,oldScope)
+ const emptyTrace={id:'old-empty',scope:oldScope,status:'empty',hits:[],query:'旧讨论',mode:'auto',strategy:'legacy',elapsedMs:0}
+ await h.recordRetrieval(emptyTrace,legacySession,0)
+ check('有绑定目录的研发事项从自身项目继承知识范围',()=>assert.equal(h.assistantKnowledgeScope(h.loadWorkbenchState(),{conversationId:'development:legacy'},{issue:{id:'issue'},projectId:'P',cwd:home}).projectId,'P'))
+ check('旧版空范围、空检索仅允许继承同一空间中的有效项目',()=>assert.equal(h.canInheritLegacyKnowledgeScope(h.loadWorkbenchState(),legacySession,oldScope,newScope),true))
+ const incompatible=[
+  ['换项目',{projectId:'A',accountId:null},newScope],
+  ['换账号',oldScope,{...newScope,accountId:'another'}],
+  ['换知识空间',oldScope,{projectId:'A',accountId:null,spaceId:'company'}],
+  ['不存在的项目',oldScope,{...newScope,projectId:'missing'}],
+  ['新版明确的空范围',{...oldScope,spaceId:'personal'},newScope],
+ ]
+ for(const [label,from,to] of incompatible)check('旧版兼容不放开'+label,()=>assert.equal(h.canInheritLegacyKnowledgeScope(h.loadWorkbenchState(),legacySession,from,to),false))
+ const evidenceState=h.loadWorkbenchState(),otherTrace={...emptyTrace,sessionId:legacySession,status:'ok',hits:[{id:'old-hit'}]}
+ check('较早轮次已带入知识时不能仅看最后一次空结果放行',()=>assert.equal(h.canInheritLegacyKnowledgeScope({...evidenceState,retrievalTraces:[otherTrace,...evidenceState.retrievalTraces]},legacySession,oldScope,newScope),false))
+ check('没有历史检索证据时不自动修改旧会话范围',()=>assert.equal(h.canInheritLegacyKnowledgeScope({...evidenceState,retrievalTraces:[]},legacySession,oldScope,newScope),false))
+ const sessionCount=sessions.size,continued=await api.assistantHub({action:'send',conversationId:'task:legacy-task',sessionId:legacySession,text:'解释接下来的处理方案'})
+ check('真实Host发送链路兼容旧范围并继续原会话，不创建替代会话',()=>{assert.equal(continued.status,'ok',continued.note);assert.equal(continued.sessionId,legacySession);assert.equal(sessions.size,sessionCount);assert.equal(continued.retrieval.scope.projectId,'P');assert.equal(h.hubSessionKnowledgeScope(legacySession).projectId,'P')})
+ const next=await api.assistantHub({action:'send',conversationId:'task:legacy-task',sessionId:legacySession,text:'继续解释下一步'})
+ check('兼容后再次发送仍用原会话，范围记录持久一致',()=>{assert.equal(next.status,'ok',next.note);assert.equal(next.sessionId,legacySession);assert.equal(sessions.size,sessionCount);assert.equal(h.loadWorkbenchState().retrievalTraces.filter(row=>row.sessionId===legacySession).at(-1).scope.projectId,'P')})
  const before=h.loadWorkbenchState().knowledge.length
  await api.createKnowledge({title:'同名知识',body:'同名有效知识',spaceId:'company',reviewState:'confirmed'});await api.createKnowledge({title:'同名知识',body:'同名有效知识',spaceId:'client',reviewState:'confirmed'})
  check('跨空间同名资料不会被错误去重',()=>assert.equal(h.loadWorkbenchState().knowledge.length,before+2))

@@ -210,7 +210,7 @@ describe('办公流程与布局入口',()=>{
   await waitFor(()=>expect(screen.getByRole('checkbox',{name:'选择后台会话 current-'}).disabled).toBe(true));
   expect(calls.some(call=>call.endpoint==='workbench/archiveBackgroundHistory')).toBe(false);
   await user.click(screen.getByRole('button',{name:'选择本页旧会话'}));await user.click(screen.getByRole('button',{name:'归档选中会话（1）'}));
-  await waitFor(()=>expect(calls.find(call=>call.endpoint==='workbench/archiveBackgroundHistory')?.args.ids).toEqual(['old-session']));expect(screen.getByRole('status').textContent).toContain('已归档 1');
+  await waitFor(()=>expect(calls.find(call=>call.endpoint==='workbench/archiveBackgroundHistory')?.args.ids).toEqual(['old-session']));expect(screen.getByText(/^已归档 1，跳过 0，失败 0$/).getAttribute('role')).toBe('status');
  })
  it('回复草稿生成和保存不发送企业消息、不自动标记已回复',async()=>{
   fixture.replies=[{id:'reply-draft-test',sourceId:'source-draft-test',snippet:'请确认一下进度',stage:'待回复',contact:'测试联系人',taskIds:[]}];fixture.sources=[{id:'source-draft-test',excerpt:'请确认一下进度'}];WB.store.set({page:'replies',data:fixture});const user=userEvent.setup();render(<App/>);
@@ -319,6 +319,6 @@ describe('知识库自动检索界面',()=>{
  })
  it('助手可切换知识模式、空间和项目范围',async()=>{
   fixture.projects=[{id:'p-A',name:'项目A',knowledgeSpaceId:'company'}];fixture.knowledgeSpaces=[{id:'company',name:'公司资料'}];fixture.sources=[{id:'source-A',locator:{accountId:'account-A'}}];WB.store.set({data:fixture,assistantOpen:true});render(<App/>);const user=userEvent.setup();
-  await user.click(await screen.findByRole('button',{name:'知识设置'}));await user.selectOptions(screen.getByRole('combobox',{name:'知识模式'}),'only');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识空间'}),'company');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识项目'}),'p-A');expect(screen.getByRole('combobox',{name:'知识模式'}).value).toBe('only');expect(screen.getByRole('combobox',{name:'聊天知识项目'}).value).toBe('p-A')
+  await screen.findByPlaceholderText('输入指令，或让我帮你整理待办…');await user.click(await screen.findByRole('button',{name:'知识设置'}));await user.selectOptions(screen.getByRole('combobox',{name:'知识模式'}),'only');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识空间'}),'company');await user.selectOptions(screen.getByRole('combobox',{name:'聊天知识项目'}),'p-A');expect(screen.getByRole('combobox',{name:'知识模式'}).value).toBe('only');expect(screen.getByRole('combobox',{name:'聊天知识项目'}).value).toBe('p-A')
  })
 })

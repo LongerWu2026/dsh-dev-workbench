@@ -11,6 +11,16 @@ export async function fetchFocusedMessages(ctx:any,probe:any,cursors:any,install
     const pending = cursors?.[pendingKey];
     if (pending?.retryAt && Date.parse(pending.retryAt)>Date.now()) return {mentions:[],cursors,scannedGroups:0,scannedMessages:0,pageFailures:[],sessionPageErrors:[{status:pending.reason==='budget'?'deferred':'rate_limited',note:(pending.reason==='budget'?'分批采集等待下一轮':'限流冷却中')+'，保留补采位；下次重试 '+pending.retryAt}],rateLimited:pending.reason!=='budget',deferred:pending.reason==='budget'};
     const groups: any = ensureArray(pending?.intakePolicy===MESSAGE_INTAKE_POLICY?pending.pendingGroups:[]).slice();
+    // Older releases could drop a partially paged group from pendingGroups.
+    // Recover only this account's focused-intake cursors; never revive legacy
+    // full-history collection or treat a persisted unread count as fresh.
+    const accountPrefix=(probe.accountId||probe.openId)+':';
+    for(const [key,value] of Object.entries(cursors||{})){
+        const cursor:any=value;
+        if(!key.startsWith(accountPrefix)||cursor?.intakePolicy!==MESSAGE_INTAKE_POLICY||!cursor.resumeBefore)continue;
+        const groupId=key.slice(accountPrefix.length);
+        if(groupId&&!groups.some((group:any)=>group.groupId===groupId))groups.push({groupId,groupName:cursor.groupName,groupType:cursor.groupType,lastMsgId:cursor.pendingNewest||cursor.lastMsgId,unreadCount:cursor.unreadCount});
+    }
     const replyObservations:any[]=[];
     const freshGroups=new Set<string>();
     const pageErrors: any = [];
@@ -61,7 +71,7 @@ export async function fetchFocusedMessages(ctx:any,probe:any,cursors:any,install
         mentions.push({msgId:asString(m.msgId,80),groupId:asString(group.groupId,120),groupName:asString(group.groupName,120)||'未知会话',accountId:probe.accountId||probe.openId,content:asString(m.content,4000),fromOpenId:m.fromOpenId,sendTime:sentAt,direction:'inbound',intake:true,groupType:1,replyToMsgId:messageReplyId(m),selection:{policy:MESSAGE_INTAKE_POLICY,reasons:['unread'],unreadCount:group.unreadCount,observedAt:hostNowIso()}});
     }
     const failures: any = [];
-    let scannedMessages = 0;
+    let scannedMessages = 0;const incomplete:any[]=[];
     for (const [groupIndex, group] of groups.entries()) {
         if (rateLimited) break;
         const groupId = asString(group.groupId, 120);
@@ -142,13 +152,15 @@ export async function fetchFocusedMessages(ctx:any,probe:any,cursors:any,install
         nextCursors[key] = complete && !failed
             ? { intakePolicy:MESSAGE_INTAKE_POLICY,lastMsgId: newest || cursor.lastMsgId || '', unreadHeadId, unreadMsgIds:[...unreadIds].slice(-2000), accountId:probe.accountId || probe.openId, groupType:group.groupType, unreadCount, lastSendTime: null, groupName: group.groupName, at: hostNowIso() }
             : Object.assign({}, cursor, { intakePolicy:MESSAGE_INTAKE_POLICY,resumeBefore: anchor, pendingNewest: newest, unreadRemaining, unreadHeadId, unreadMsgIds:[...unreadIds].slice(-2000), accountId:probe.accountId || probe.openId, groupType:group.groupType, unreadCount, groupName: group.groupName, at: hostNowIso() });
+        if(!complete||failed)incomplete.push(group);
         // Legacy key remains readable for existing profiles and is kept synchronized during upgrade.
         nextCursors[groupId] = nextCursors[key];
         if (rateLimited||deferred) {
-            nextCursors[pendingKey]={accountId:probe.accountId || probe.openId,intakePolicy:MESSAGE_INTAKE_POLICY,pendingGroups:groups.slice(groupIndex),reason:rateLimited?'rate_limit':'budget',retryAt:new Date(Date.now()+(rateLimited?120000:30000)).toISOString()};
+            nextCursors[pendingKey]={accountId:probe.accountId || probe.openId,intakePolicy:MESSAGE_INTAKE_POLICY,pendingGroups:[...new Map([...groups.slice(groupIndex),...incomplete].map(row=>[row.groupId,row])).values()],reason:rateLimited?'rate_limit':'budget',retryAt:new Date(Date.now()+(rateLimited?120000:30000)).toISOString()};
             break;
         }
     }
+    if(!rateLimited&&!deferred&&incomplete.length){deferred=true;nextCursors[pendingKey]={accountId:probe.accountId||probe.openId,intakePolicy:MESSAGE_INTAKE_POLICY,pendingGroups:incomplete,reason:'budget',retryAt:new Date(Date.now()+30000).toISOString()}}
     if (!rateLimited&&!deferred) nextCursors[pendingKey]={accountId:probe.accountId || probe.openId,intakePolicy:MESSAGE_INTAKE_POLICY,discoveryPage:1,pendingGroups:[],retryAt:null};
     const distinct=[...new Map(mentions.map((m:any)=>[JSON.stringify([m.groupId,m.msgId]),m])).values()];
     distinct.sort((a:any,b:any)=>new Date(a.sendTime || 0).getTime()-new Date(b.sendTime || 0).getTime());

@@ -7,6 +7,7 @@ import { applyCreateTask, applyRecordRun, applyUpdateTask, workbenchCtx } from '
 import { runRadarFetch } from '../news/discovery.js'
 import { syncYunzhijiaMessages } from '../integrations/yunzhijia.js'
 import { runUnifiedSearch } from '../search/unified-search.js'
+import {withPlainChatToolGuard} from '../assistant/conversation-policy.js'
 
 function taskLine(task?: any): any {
     const due = task.dueAt ? ' · 截止 ' + task.dueAt.slice(0, 16).replace('T', ' ') : '';
@@ -436,7 +437,7 @@ function workbenchToolDefinitions(): any {
                 return { text: taskBrief(task, source) };
             },
         },
-    ];
+    ].map(withPlainChatToolGuard);
 }
 
 

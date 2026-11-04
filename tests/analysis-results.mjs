@@ -1,3 +1,4 @@
+import {installNativeContextFixture,modelText} from './native-context-fixture.mjs'
 /** Synthetic extraction relationships and native-session fixtures only. */
 import assert from 'node:assert/strict'
 import {mkdtempSync,rmSync} from 'node:fs'
@@ -37,7 +38,7 @@ try{
  const sessions=new Map(),prompts=[]
  function native(id){const events=[],row={id,get seq(){return events.length},header:{createdAt:Date.now()},snapshotEvents:(from=0)=>events.filter(event=>event.seq>from),append(type,data){events.push({seq:events.length+1,time:Date.now(),type,data})}};sessions.set(id,row);return row}
  const controller={create(){return {session:native('session-extraction-'+(++created))}},async rename(){},async prompt(request){prompts.push(request);const session=sessions.get(request.sessionId);session.append('user/message',{content:request.content});session.append('assistant/message',{message:{content:[{type:'text',text:'仅测试模型回包'}]}});session.append('turn/end',{reason:{kind:'completed'}})}}
- const ctx={get:key=>({sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]},sessionController:controller})[key]};h.setShared_workbenchCtx(ctx)
+ const ctx={get:key=>({sessions:{get:id=>sessions.get(id),list:()=>[...sessions.values()]},sessionController:controller})[key]};installNativeContextFixture(ctx);h.setShared_workbenchCtx(ctx)
  await h.mutate(state=>{Object.assign(state,structuredClone(fixture));return state})
  const detail=await h.hub(ctx,{action:'detail',conversationId:'system:analysis',extractionLimit:7})
  check('真实assistantHub detail返回分页extraction，查看本身不新建会话或调用模型',()=>{assert.equal(detail.status,'ok');assert.equal(detail.extraction.total,130);assert.equal(detail.extraction.items.length,7);assert.equal(detail.extraction.counts.tasks,3);assert.equal(detail.extraction.counts.pendingReview,1);assert.equal(created,0);assert.equal(prompts.length,0)})
@@ -53,7 +54,7 @@ try{
  check('无关、归档、来源失效和未登记refs在原生创建与prompt之前拒绝',()=>{assert.equal(created,0);assert.equal(prompts.length,0);assert.equal(h.hubIndex().conversations.find(row=>row.id==='system:analysis')?.threads.length,0)})
  await h.mutate(state=>{state.tasks.find(row=>row.id==='t-direct').status='running';state.tasks.find(row=>row.id==='t-direct').assignee='最新实际负责人';state.replies.find(row=>row.id==='r-two').snippet='页面已修改的最新回复摘要';return state})
  const sent=await h.hub(ctx,{action:'send',conversationId:'system:analysis',text:'结合所选待办和待回复解释如何继续处理',refs:[{kind:'task',id:'t-direct',title:'伪造浏览器标题',body:'伪造旧上下文内容'},{kind:'reply',id:'r-two',body:'已过期的回复内容'}]})
- const actualPrompt=prompts.at(-1)?.content.map(block=>block.text||'').join('\n')||'',contextLine=actualPrompt.split('\n')[1],context=JSON.parse(contextLine)
+ const actualPrompt=modelText(prompts.at(-1)),contextLine=actualPrompt.split('\n')[1],context=JSON.parse(contextLine)
  check('明确refs使用当前完整业务记录，忽略浏览器旧标题和正文',()=>{assert.equal(sent.status,'ok');assert.equal(created,1);assert.equal(context.selectedExtractionResults.length,2);const selected=context.selectedExtractionResults.find(row=>row.kind==='task');assert.equal(selected.id,'t-direct');assert.equal(selected.record.description,fullDescription);assert.equal(selected.record.status,'running');assert.equal(selected.record.assignee,'最新实际负责人');assert.equal(context.selectedExtractionResults.find(row=>row.kind==='reply').record.snippet,'页面已修改的最新回复摘要');assert.ok(actualPrompt.includes('完整正文末尾标记'));assert.ok(!actualPrompt.includes('伪造浏览器标题'));assert.ok(!actualPrompt.includes('伪造旧上下文内容'));assert.ok(!actualPrompt.includes('已过期的回复内容'))})
  check('结果修改提示使用真实查询和updateResult合同，不把再识别当成修改',()=>{assert.match(actualPrompt,/analysis\.results/);assert.match(actualPrompt,/analysis\.updateResult/);assert.match(actualPrompt,/未登记建议不能冒充已保存结果/)})
  const beforeInvalid={created,prompts:prompts.length},invalidExisting=await h.hub(ctx,{action:'send',conversationId:'system:analysis',sessionId:sent.sessionId,text:'继续处理这条',refs:[{kind:'task',id:'t-manual'}]})
