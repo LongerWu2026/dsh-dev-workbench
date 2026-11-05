@@ -5,7 +5,7 @@ export async function developmentCall(request:any){
     try{return await WB.rpc('workbench/development',{request})}
     catch(error:any){
         const message=String(error.message||error),missingRoute=/transport failure for \/api\/workbench\/development:\s*HTTP 404\b/i.test(message)
-        if(missingRoute||(['detect','projectSetup','workItems','pinWorkspace'].includes(request.action)&&message==='任务标识无效'))throw new Error('当前宿主尚未加载研发接口'+(missingRoute?'（HTTP 404）':'的最新能力')+'。请在“插件”中关闭再启用“智能工作台”，然后重新连接；若仍失败，请完整退出并重新打开 Harness。仅刷新页面无法更新宿主接口。')
+        if(missingRoute||(['detect','detectInstallation','projectSetup','workItems','pinWorkspace'].includes(request.action)&&message==='任务标识无效'))throw new Error('当前宿主尚未加载研发接口'+(missingRoute?'（HTTP 404）':'的最新能力')+'。请在“插件”中关闭再启用“智能工作台”，然后重新连接；若仍失败，请完整退出并重新打开 Harness。仅刷新页面无法更新宿主接口。')
         throw error
     }
 }

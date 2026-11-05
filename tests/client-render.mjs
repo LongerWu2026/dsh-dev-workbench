@@ -930,10 +930,10 @@ for (const [title, id, expected] of pageSpecs) {
   const nav = findNavButtons(navTree, [])
   if (nav[0]) nav[0].props.onClick()
   const tree = await renderTree('助手·首页')
-  const openBtn = findButtons(tree, []).find((button) => button.label.indexOf('工作台助手') >= 0)
-  if (!openBtn) problems.push('工具栏找不到「工作台助手」按钮')
+  const oldShortcut = findButtons(tree, []).find((button) => button.label.startsWith('工作台助手（'))
+  if (oldShortcut) problems.push('工具栏仍展示旧的工作台助手快捷按钮')
   else {
-    openBtn.onClick()
+    WB.assistant.open()
     const drawer = await renderTree('助手·抽屉')
     const text = treeText(drawer).replace(/\s+/g, ' ')
     // 新设计：头部不再有标题与说明文字，只留会话切换与操作

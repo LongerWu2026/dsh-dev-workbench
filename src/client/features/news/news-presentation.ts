@@ -1,3 +1,5 @@
+import {useKnowledgeCapture} from '../../components/KnowledgeCapture.js'
+import {ArticleReader} from './ArticleReader.js'
 import * as React from 'react'
 import { Badge, Btn, Divider, Field, Icon, IconBtn, Input, Modal, T, Textarea, WB, h } from '../../core/runtime.js'
 import { dashTagPill } from '../dashboard/selectors.js'
@@ -42,7 +44,8 @@ function DashRadarRow(props?: any): any {
     const needsDigest = rawParts.length === 0 && !!item.excerpt;
     const published = item.dateKind !== 'unknown' ? item.publishedAt : null;
     const topics = Array.isArray(item.topics) ? item.topics : [];
-    const [saving, setSaving] = React.useState<any>(false);
+    const capture=useKnowledgeCapture(),saving=capture.loading;
+    const [reading,setReading]=React.useState(false);
     const [makingTask, setMakingTask] = React.useState<any>(false);
     const [confirmTask,setConfirmTask]=React.useState(false);
     function makePracticeTask(): any {
@@ -59,41 +62,19 @@ function DashRadarRow(props?: any): any {
             setMakingTask(false);
         });
     }
-    function saveToKnowledge(): any {
-        if (saving)
-            return;
-        setSaving(true);
-        const body = summaryParts
-            .map(function (part?: any): any {
-            return part.label + '：' + part.text;
-        })
-            .join('\n');
-        WB.actions
-            .createKnowledge({
-            kind: 'bookmark',
-            title: item.title,
-            url: item.url || null,
-            body: body || item.title,
-            tags: topics.slice(0, 8),
-        })
-            .then(function (): any {
-            setSaving(false);
-        })
-            .catch(function (): any {
-            setSaving(false);
-        });
-    }
+    function saveToKnowledge(): any {return capture.open({kind:'radar',id:item.id})}
     return h('div', {
         className: 'wb-item',
         style: { flexDirection: 'column', alignItems: 'stretch', gap: 2, padding: '10px 4px' },
-    }, h(Modal,{open:confirmTask,title:'将资讯添加为我的待办',onClose:()=>{if(!makingTask)setConfirmTask(false)},footer:h('div',{className:'wb-row',style:{gap:8}},h(Btn,{disabled:makingTask,onClick:()=>setConfirmTask(false),children:'取消'}),h(Btn,{kind:'primary',disabled:makingTask,onClick:makePracticeTask,children:makingTask?'正在添加…':'确认添加待办'}))},h('p',null,'将创建「实践：'+item.title+'」并保留原文来源。'),h('p',{className:'wb-tiny wb-muted'},'仅在你计划实际处理时添加。抓取资讯和生成摘要不会自动创建待办。')), h('div', { className: 'wb-row', style: { alignItems: 'flex-start', gap: 8 } }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title', style: { display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' } }, item.url
+    }, capture.dialog,reading?h(ArticleReader,{item,onClose:()=>setReading(false)}):null,h(Modal,{open:confirmTask,title:'将资讯添加为我的待办',onClose:()=>{if(!makingTask)setConfirmTask(false)},footer:h('div',{className:'wb-row',style:{gap:8}},h(Btn,{disabled:makingTask,onClick:()=>setConfirmTask(false),children:'取消'}),h(Btn,{kind:'primary',disabled:makingTask,onClick:makePracticeTask,children:makingTask?'正在添加…':'确认添加待办'}))},h('p',null,'将创建「实践：'+item.title+'」并保留原文来源。'),h('p',{className:'wb-tiny wb-muted'},'仅在你计划实际处理时添加。抓取资讯和生成摘要不会自动创建待办。')), h('div', { className: 'wb-row', style: { alignItems: 'flex-start', gap: 8 } }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title', style: { display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' } }, item.url
         ? h('a', {
             className: 'wb-link',
             href: item.url,
+            onClick:(event:any)=>{event.preventDefault();setReading(true)},
             target: '_blank',
             rel: 'noreferrer noopener',
             style: { fontSize: 12.5, fontWeight: 500 },
-            title: '打开原文',
+            title: '在工作台阅读原文',
         }, item.title, h(Icon, { name: 'external', size: 10 }))
         : h('span', null, item.title), item.saved ? h(Badge, { tone: 'ok' }, '已收藏') : null, item.github ? h('span',{className:'wb-tiny wb-muted'},item.github.status==='verified'?'GitHub 已核验 · ★ '+item.github.stars+' · 最近提交 '+WB.fmt.date(item.github.pushedAt)+(item.github.starGrowth==null?' · 增长待观察':' · 观察期增长 '+item.github.starGrowth)+(item.github.archived?' · 已归档':'')+(item.github.release?' · '+item.github.release:''): 'GitHub 热度未核验') : null), h('div', { className: 'wb-item-sub', style: { gap: 5 } }, h('span', { className: 'wb-muted' }, item.source || '未知来源'), h('span', { className: 'wb-muted' }, '·'), published
         ? h('span', { className: 'wb-muted' }, WB.fmt.date(published))
@@ -104,6 +85,7 @@ function DashRadarRow(props?: any): any {
         saving: saving,
         makingTask: makingTask,
         onSave: saveToKnowledge,
+        onRead:()=>setReading(true),
         onMakeTask: ()=>setConfirmTask(true),
         onEdit: props.onEdit,
     }), summaryParts.length > 0
@@ -136,6 +118,7 @@ function DashRadarMenu(props?: any): any {
     const item = props.item;
     const [open, setOpen] = React.useState<any>(false);
     const entries: any = [
+        {key:'read',icon:'book',label:'阅读原文',run:props.onRead},
         {
             key: 'save',
             icon: 'book',

@@ -1,4 +1,5 @@
 import * as React from 'react'
+import {useKnowledgeCapture} from '../../components/KnowledgeCapture.js'
 import {Badge,Btn,Modal,Spinner,WB} from '../../core/runtime.js'
 import {messageSentTime} from '../../../shared/message-display.js'
 
@@ -6,6 +7,7 @@ import {messageSentTime} from '../../../shared/message-display.js'
 export function ConversationReader({conversation,accountId,onClose}:{conversation:any;accountId:string;onClose:()=>void}){
  const [messages,setMessages]=React.useState<any[]>([]),[result,setResult]=React.useState<any>(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[bottomSpace,setBottomSpace]=React.useState(0)
  const [readStatus,setReadStatus]=React.useState(''),[readError,setReadError]=React.useState(''),ackView=React.useRef('')
+ const pinnedToBottom=React.useRef(true)
  const generation=React.useRef(0),loading=React.useRef(false),cursor=React.useRef<any>(null),phase=React.useRef<'unread'|'history'>('unread'),positioned=React.useRef(false),root=React.useRef<HTMLDivElement|null>(null),scrollBody=React.useRef<HTMLElement|null>(null),anchor=React.useRef<{id:string;offset:number}|null>(null),loadRef=React.useRef<(mode:'unread'|'history')=>void>(()=>{})
  function captureAnchor(){
   const body=scrollBody.current;if(!body)return
@@ -14,6 +16,7 @@ export function ConversationReader({conversation,accountId,onClose}:{conversatio
  }
  async function load(mode:'unread'|'history'){
   if(loading.current||mode==='history'&&(!cursor.current?.unreadComplete||!cursor.current?.hasMoreHistory))return
+  if(mode==='history')pinnedToBottom.current=false
   const g=generation.current;loading.current=true;phase.current=mode;setBusy(true);setError('')
   try{
    for(;;){
@@ -43,13 +46,18 @@ export function ConversationReader({conversation,accountId,onClose}:{conversatio
  React.useEffect(()=>{if(!busy&&result?.status==='ok'&&result.unreadComplete&&result.unreadTotal>0&&result.unreadLoaded===result.unreadTotal&&!ackView.current)void markRead()},[busy,result])
  React.useEffect(()=>{
   const body=root.current?.closest<HTMLElement>('.wb-modal-body');if(!body)return
-  scrollBody.current=body;let lastWheel=0,consumed=false,touchY=0,touchConsumed=false
+  scrollBody.current=body;let lastWheel=0,consumed=false,touchY=0,touchConsumed=false,lastHeight=body.clientHeight
+  pinnedToBottom.current=true
+  const trackBottom=()=>{if(body.clientHeight===lastHeight)pinnedToBottom.current=body.scrollHeight-body.clientHeight-body.scrollTop<=2}
+  const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(()=>{if(pinnedToBottom.current&&positioned.current&&!anchor.current)body.scrollTop=body.scrollHeight;lastHeight=body.clientHeight})
+  observer?.observe(body);if(root.current)observer?.observe(root.current)
+  body.addEventListener('scroll',trackBottom,{passive:true})
   const canLoad=()=>body.scrollTop<=1&&!loading.current&&cursor.current?.unreadComplete&&cursor.current?.hasMoreHistory
   const wheel=(event:WheelEvent)=>{if(event.deltaY>=0){consumed=false;return}const now=Date.now();if(now-lastWheel>250)consumed=false;lastWheel=now;if(!consumed&&canLoad()){event.preventDefault();consumed=true;loadRef.current('history')}}
   const touchStart=(event:TouchEvent)=>{touchY=event.touches[0]?.clientY||0;touchConsumed=false}
   const touchMove=(event:TouchEvent)=>{if(!touchConsumed&&event.touches[0]&&event.touches[0].clientY-touchY>8&&canLoad()){touchConsumed=true;loadRef.current('history')}}
   body.addEventListener('wheel',wheel,{passive:false});body.addEventListener('touchstart',touchStart,{passive:true});body.addEventListener('touchmove',touchMove,{passive:true})
-  return()=>{body.removeEventListener('wheel',wheel);body.removeEventListener('touchstart',touchStart);body.removeEventListener('touchmove',touchMove);scrollBody.current=null}
+  return()=>{observer?.disconnect();body.removeEventListener('scroll',trackBottom);body.removeEventListener('wheel',wheel);body.removeEventListener('touchstart',touchStart);body.removeEventListener('touchmove',touchMove);scrollBody.current=null}
  },[accountId,conversation.groupId])
  React.useLayoutEffect(()=>{
   const body=scrollBody.current;if(!body)return
@@ -59,9 +67,13 @@ export function ConversationReader({conversation,accountId,onClose}:{conversatio
    anchor.current=null
   }else if(!busy&&cursor.current?.unreadComplete&&!positioned.current){body.scrollTop=body.scrollHeight;positioned.current=true}
  },[messages,busy,bottomSpace])
+ const [selecting,setSelecting]=React.useState(false),[selectedIds,setSelectedIds]=React.useState<string[]>([]),capture=useKnowledgeCapture()
+ React.useEffect(()=>{setSelecting(false);setSelectedIds([])},[accountId,conversation.groupId])
  const firstUnreadIndex=messages.findIndex(row=>row.unread),contextCount=messages.filter(row=>!row.unread).length
- return <Modal open title={conversation.name||'会话消息'} sub="默认显示最新消息 · 向上滚动查看历史" width={760} onClose={onClose} footer={<>
+ return <><Modal open title={conversation.name||'会话消息'} sub="默认显示最新消息 · 向上滚动查看历史" width={760} onClose={onClose} footer={<>
   <span className="wb-tiny wb-muted" style={{flex:1}}>{result?`未读 ${result.unreadLoaded}/${result.unreadTotal} 条 · 已查看历史 ${result.contextLoaded} 条`:'正在读取未读消息…'}</span>
+  {messages.length>0&&<Btn size="sm" onClick={()=>{setSelecting(!selecting);setSelectedIds([])}}>{selecting?'取消选择':'选择消息'}</Btn>}
+  {selecting&&<><span className="wb-tiny">已选 {selectedIds.length} 条</span><Btn size="sm" disabled={!selectedIds.length} onClick={()=>WB.util.copy(messages.filter(row=>selectedIds.includes(row.id)).map(row=>row.sender+' · '+row.at+'\n'+row.text).join('\n\n')).then(()=>WB.toast('已复制所选消息','ok')).catch(()=>WB.toast('复制失败','warn'))}>复制所选消息</Btn><Btn size="sm" disabled={!selectedIds.length||capture.loading} onClick={()=>capture.open({kind:'messages',accountId,groupId:conversation.groupId,viewId:cursor.current?.viewId,messageIds:selectedIds})}>保存笔记</Btn></>}
   {!busy&&error&&<Btn size="sm" onClick={()=>load(phase.current)}>重试读取</Btn>}
   {readStatus==='saved'&&<span className="wb-tiny wb-muted" title="仅记录工作台已读；云之家客户端未读红点暂不同步。待回复仍保留。">工作台已读</span>}
   {readStatus==='failed'&&<Btn size="sm" title={readError} onClick={()=>{ackView.current='';void markRead()}}>重试保存已读</Btn>}
@@ -75,7 +87,7 @@ export function ConversationReader({conversation,accountId,onClose}:{conversatio
    {messages.map((message,index)=><React.Fragment key={message.id}>
     {index===firstUnreadIndex&&<div className="wb-conversation-divider is-unread" role="separator">以下为打开时的未读消息</div>}
     <article className={'wb-conversation-message'+(message.own?' is-own':'')} data-message-id={message.id} aria-label={(message.unread?'未读消息：':'之前的消息：')+message.sender}>
-     <header><strong>{message.sender}</strong><time>{messageSentTime({locator:{sentAt:message.at}})}</time>{message.own&&<Badge tone="idle">本人</Badge>}</header>
+     <header>{selecting&&<input type="checkbox" aria-label={"选择消息："+message.id} checked={selectedIds.includes(message.id)} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,message.id]:ids.filter(id=>id!==message.id))}/>}<strong>{message.sender}</strong><time>{messageSentTime({locator:{sentAt:message.at}})}</time>{message.own&&<Badge tone="idle">本人</Badge>}</header>
      <p>{message.text||'[非文本消息]'}</p>
     </article>
    </React.Fragment>)}
@@ -84,7 +96,7 @@ export function ConversationReader({conversation,accountId,onClose}:{conversatio
    {!busy&&result?.unreadComplete&&!messages.length&&!error&&!result.note&&<p className="wb-muted">当前没有未读消息，可向上滚动查看历史。</p>}
    <div aria-hidden="true" style={{height:bottomSpace,flex:"none",marginTop:-12}}/>
   </div>
- </Modal>
+ </Modal>{capture.dialog}</>
 }
 const READER_CSS=`
 .wb-modal:has(.wb-conversation-reader) .wb-modal-head h2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.wb-modal:has(.wb-conversation-reader){height:76vh}.wb-modal:has(.wb-conversation-reader) .wb-modal-body{overflow-anchor:none;flex:1}.wb-conversation-history-control{min-height:26px;display:flex;align-items:center;justify-content:center;font-size:11px}.wb-conversation-history-control button{appearance:none;border:0;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);padding:3px 6px;font:inherit;cursor:pointer}.wb-conversation-history-control button:hover{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}.wb-conversation-history-control button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}.wb-conversation-reader{display:flex;flex-direction:column;gap:12px;min-width:0}.wb-conversation-reader>p{margin:0;overflow-wrap:anywhere}.wb-conversation-divider{display:flex;align-items:center;justify-content:center;gap:8px;min-height:24px;font-size:11px;color:var(--dsw-alias-label-secondary);scroll-margin-top:12px}.wb-conversation-divider:before,.wb-conversation-divider:after{content:'';height:1px;background:var(--dsw-alias-border-l1);flex:1}.wb-conversation-divider.is-unread{color:var(--dsw-alias-brand-primary)}.wb-conversation-message{align-self:flex-start;max-width:94%;min-width:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l1);border-radius:3px 12px 12px 12px;background:var(--dsw-alias-bg-layer-1)}.wb-conversation-message.is-own{align-self:flex-end;background:var(--dsw-alias-bg-layer-2);border-radius:12px 3px 12px 12px}.wb-conversation-message header{display:flex;align-items:center;gap:6px 10px;flex-wrap:wrap;font-size:12px}.wb-conversation-message header time{font-size:10px;color:var(--dsw-alias-label-secondary)}.wb-conversation-message p{margin:6px 0 0;white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.7}.wb-conversation-message strong{overflow-wrap:anywhere}@media(max-width:640px){.wb-conversation-message{max-width:100%}}

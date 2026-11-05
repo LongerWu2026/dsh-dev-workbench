@@ -40,6 +40,29 @@ function setup(options={}){
  render(<App/>);return {WB,calls,fixture,entries,events,confirmations,settingsPatches}
 }
 describe('统一助手真实业务入口',()=>{
+ it('研发运行时从其他页面返回立即显示上次列表，慢刷新只替换目录且仍可切换会话',async()=>{
+  let slow=false,release
+  const {WB,calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='list'&&slow?new Promise(resolve=>{release=()=>resolve({...value,conversations:[...value.conversations,{id:'chat:late',kind:'chat',title:'局部刷新新增会话'}]})}):request.action==='detail'?{...value,turnActive:true,messages:[{role:'assistant',text:'运行中的原有进度'}]}:undefined})
+  await screen.findByRole('button',{name:'会话：乙的工作'});await screen.findByText('运行中的原有进度')
+  slow=true
+  await act(async()=>WB.store.set({page:'dashboard',assistantOpen:false}))
+  await act(async()=>WB.assistant.openHub('task','a'))
+  // Cached directory is available before the new list RPC resolves.
+  expect(screen.getByRole('button',{name:'会话：乙的工作'})).toBeTruthy()
+  expect(screen.queryByText('正在读取最近会话…')).toBeNull()
+  fireEvent.click(screen.getByRole('button',{name:'会话：乙的工作'}))
+  await waitFor(()=>expect(calls.some(row=>row.action==='detail'&&row.conversationId==='task:b')).toBe(true))
+  await act(async()=>release());await screen.findByRole('button',{name:'会话：局部刷新新增会话'})
+  expect(WB.store.get().assistantConversationId).toBe('task:b')
+  expect(calls.every(row=>['list','detail'].includes(row.action))).toBe(true)
+ })
+ it('首次打开优先读取目录，消息识别不重复提交相同的初始化详情请求',async()=>{
+  const {calls}=setup()
+  await screen.findByRole('button',{name:'会话：乙的工作'});await ready()
+  expect(calls[0].action).toBe('list')
+  await new Promise(resolve=>setTimeout(resolve,250))
+  expect(calls.filter(row=>row.action==='detail')).toHaveLength(1)
+ })
  it.each([['conversation_backfill','rate_limit','等待云之家限流恢复'],['conversation_backfill',null,'等待历史消息补齐'],['lease_wait',null,'等待其他识别结束'],['retry_wait',null,'等待重试时间']])('识别等待按真实原因展示且不重复正文：%s %s',async(waitReason,waitDetail,heading)=>{
   const reason='15 条消息等待历史补齐，补采完成后自动继续'
   setup({hub:(request,{value})=>request.action==='detail'?{...value,runs:[{id:'waiting-run',kind:'analysis',status:'queued',nextRetryAt:'2026-11-04T11:15:00Z',progress:{processed:0,remaining:15,failed:0,pauseReason:reason},result:{waitReason,waitDetail,note:reason}}]}:undefined})

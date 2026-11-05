@@ -1,8 +1,8 @@
 import {homedir} from 'node:os'
 import {workbenchContext} from '../application/service-context.js'
 import {readDevelopmentConfig} from '../storage/development-store.js'
-import {issueFromLinky,DEVELOPMENT_ISSUE_TYPES} from '../../shared/development.js'
-import {discoverLinky,executable} from '../storage/development-environment.js'
+import {issueFromLinky,DEVELOPMENT_ISSUE_TYPES,LINKY_INSTALL_URL} from '../../shared/development.js'
+import {discoverLinky,executable,linkyDesktopInstalled} from '../storage/development-environment.js'
 
 class LinkyError extends Error{constructor(message:string,public kind:string){super(message)}}
 
@@ -29,10 +29,13 @@ export async function linkyRead(args:string[],workspaceId?:string,profile?:strin
     return value
 }
 export async function detectLinky(){
-    const c=readDevelopmentConfig(),found=discoverLinky(),base={cliPath:c.cliPath,profile:c.profile,profiles:[...new Set([c.profile,...found.profiles])],cliPaths:found.cliPaths,installUrl:'https://linky.kingdee.com/home/'}
+    const c=readDevelopmentConfig(),found=discoverLinky(),base={cliPath:c.cliPath,profile:c.profile,profiles:[...new Set([c.profile,...found.profiles])],cliPaths:found.cliPaths,installUrl:LINKY_INSTALL_URL}
     if(!executable(c.cliPath))return {...base,status:'missing_cli',message:found.cliPaths.length?'已发现其他 Linky 安装，请在高级设置中选择，保留当前账号配置。':'未检测到 Linky。安装并登录客户端后，工作台会自动识别。'}
     try{return {...base,...await linkyConnection(12000),status:'ready',message:''}}
     catch(error){return {...base,status:error instanceof LinkyError?error.kind:'unavailable',message:String(error.message||error)}}
+}
+export function detectLinkyInstallation(){
+    return {installed:linkyDesktopInstalled()||discoverLinky().cliPaths.length>0||executable(readDevelopmentConfig().cliPath)}
 }
 export function linkyRows(value:any,key:string){const rows=Array.isArray(value)?value:value?.[key]||value?.items||value?.data;if(!Array.isArray(rows))throw new Error('Linky 列表结构不兼容，请检查 CLI 版本');return rows}
 export async function linkyConnection(timeoutMs=45000){

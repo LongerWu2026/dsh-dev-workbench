@@ -3,7 +3,7 @@ import {messageSentAt} from './reply-reconciliation.js'
 import {conversationReadMark,isConversationRead,type ConversationReadMark} from '../../shared/conversation-read.js'
 
 type Dependencies={state:()=>any;probe:(ctx:any)=>Promise<any>;run:(ctx:any,args:string[])=>Promise<any>;markRead?:(mark:ConversationReadMark)=>Promise<{readMark:ConversationReadMark;snapshot:any}>}
-type View={ctx:any;id:string;accountId:string;groupId:string;name:string;head:string;headSentAt:string|null;openedAt:string;readBoundary:string|null;ack?:Promise<any>;unread:number;at:string;expires:number;before:string|null;found:boolean;loaded:number;scanned:number;exhausted:boolean;historyTarget:number|null;buffer:any[];next:number;seen:Set<string>;replies:Map<number,{mode:string;promise:Promise<any>}>;names:Map<string,string>}
+type View={ctx:any;id:string;accountId:string;groupId:string;name:string;head:string;headSentAt:string|null;openedAt:string;readBoundary:string|null;ack?:Promise<any>;unread:number;at:string;expires:number;before:string|null;found:boolean;loaded:number;scanned:number;exhausted:boolean;historyTarget:number|null;buffer:any[];next:number;seen:Set<string>;replies:Map<number,{mode:string;promise:Promise<any>}>;names:Map<string,string>;displayed:Map<string,any>}
 const TTL=15*60*1000
 /** Explicit UI reader. Local acknowledgement is separate from provider receipts and reply obligations. */
 export function createConversationReader(deps:Dependencies){
@@ -31,7 +31,7 @@ export function createConversationReader(deps:Dependencies){
    if(views.size>=20)views.delete(views.keys().next().value!)
    const names=new Map<string,string>()
    for(const source of state.sources||[])if(source.provider==='yunzhijia'&&source.locator?.accountId===account&&source.locator?.senderId&&source.sender)names.set(source.locator.senderId,source.sender)
-   view={ctx,id:randomUUID(),accountId:account,groupId:c.groupId,name:c.name||'原会话',head:c.latestMsgId,headSentAt:c.latestSentAt||null,openedAt:new Date().toISOString(),readBoundary:conversationReadMark(state,c)?.headMsgId||null,unread:isConversationRead(state,c)?0:c.unreadCount,at:state.messageInbox.at||new Date().toISOString(),expires:Date.now()+TTL,before:null,found:false,loaded:0,scanned:0,exhausted:false,historyTarget:null,buffer:[],next:0,seen:new Set(),replies:new Map(),names}
+   view={ctx,id:randomUUID(),accountId:account,groupId:c.groupId,name:c.name||'原会话',head:c.latestMsgId,headSentAt:c.latestSentAt||null,openedAt:new Date().toISOString(),readBoundary:conversationReadMark(state,c)?.headMsgId||null,unread:isConversationRead(state,c)?0:c.unreadCount,at:state.messageInbox.at||new Date().toISOString(),expires:Date.now()+TTL,before:null,found:false,loaded:0,scanned:0,exhausted:false,historyTarget:null,buffer:[],next:0,seen:new Set(),replies:new Map(),names,displayed:new Map()}
    views.set(view.id,view)
   }
   const cursor=request.viewId?request.cursor:0
@@ -50,7 +50,7 @@ export function createConversationReader(deps:Dependencies){
     while(current.loaded<target()){
      if(current.buffer.length){
       const needed=target()-current.loaded,taken=current.buffer.splice(-Math.min(needed,current.buffer.length)),previous=current.loaded
-      chunk.unshift(...taken.map((row:any,index:number)=>({id:row.msgId,senderId:typeof row.fromOpenId==='string'?row.fromOpenId:null,text:typeof row.content==='string'?row.content.slice(0,12000):'[非文本消息]',at:messageSentAt(row.sendTime),own:row.fromOpenId===probe.openId,unread:previous+taken.length-1-index<current.unread,replyToMsgId:row.param?.replyMsgId||row.replyMsgId||null})))
+      chunk.unshift(...taken.map((row:any,index:number)=>({id:row.msgId,senderId:typeof row.fromOpenId==='string'?row.fromOpenId:null,text:typeof row.content==='string'?row.content:'[非文本消息]',at:messageSentAt(row.sendTime),own:row.fromOpenId===probe.openId,unread:previous+taken.length-1-index<current.unread,replyToMsgId:row.param?.replyMsgId||row.replyMsgId||null})))
       current.loaded+=taken.length
       continue
      }
@@ -84,6 +84,7 @@ export function createConversationReader(deps:Dependencies){
    }catch(error:any){assertAccount();status='partial';note=String(error.message||error).slice(0,300)}
    current.next++;current.expires=Date.now()+TTL
    const messages=chunk.map(({senderId,...row})=>({...row,sender:row.own?'我':current.names.get(senderId)||'未知发件人'}))
+   for(const message of messages)current.displayed.set(message.id,message)
    const exhausted=current.exhausted&&!current.buffer.length,unreadComplete=current.loaded>=current.unread||exhausted,batchComplete=current.loaded>=target()||exhausted
    if(mode==='history'&&batchComplete)current.historyTarget=null
    return {status,viewId:current.id,accountId:account,groupId:current.groupId,name:current.name,snapshotAt:current.at,unreadTotal:current.unread,unreadLoaded:Math.min(current.unread,current.loaded),contextLoaded:Math.max(0,current.loaded-current.unread),messages,unreadComplete,hasMoreHistory:!exhausted,batchComplete,complete:unreadComplete,nextCursor:current.next,note}
@@ -110,5 +111,14 @@ export function createConversationReader(deps:Dependencies){
   })()
   try{return await view.ack}catch(error){view.ack=undefined;throw error}
  }
- return Object.assign(conversationMessages,{markRead})
+ async function selectedMessages(ctx:any,request:any){
+  const view=views.get(request?.viewId),account=deps.state().messageInbox?.accountId
+  if(!view||view.ctx!==ctx||view.expires<Date.now()||view.accountId!==account||request.accountId!==account||request.groupId!==view.groupId)throw Error('会话查看已过期或账号已变化，请重新打开')
+  const ids=request.messageIds
+  if(!Array.isArray(ids)||!ids.length||ids.length>100||new Set(ids).size!==ids.length||ids.some(id=>!view.displayed.has(id)))throw Error('请选择本次已经读取的1–100条消息')
+  const probe=await deps.probe(ctx)
+  if(probe.state!=='ok'||![probe.accountId,probe.openId].includes(account)||deps.state().messageInbox?.accountId!==account)throw Error('消息账号已变化，请重新打开会话')
+  return {accountId:account,groupId:view.groupId,name:view.name,messages:ids.map(id=>view.displayed.get(id)).sort((a,b)=>String(a.at).localeCompare(String(b.at)))}
+ }
+ return Object.assign(conversationMessages,{markRead,selectedMessages})
 }

@@ -24,7 +24,8 @@ try{
    'ai-recognizing':{source:'ai',status:'recognizing',reply:'正在由 AI 理解消息。',commands:[],recognition:{outcome:'error',reason:'规则暂时无法解析，已转 AI'}},
    'confirmation':{source:'rule',status:'needs_confirmation',reply:'已准备修改预览，请核对内容后确认。确认之前不会修改知识。',commands:[{...command,label:'预览修改知识',operation:'knowledge.update',status:'needs_confirmation'}],recognition:{outcome:'matched'}}
   }
-  const rows=[{id:'system:analysis',kind:'system',fixed:true,title:'消息识别'},{id:'system:radar',kind:'system',fixed:true,title:'AI资讯'},{id:'system:knowledge',kind:'system',fixed:true,title:'知识助手'},...Object.keys(window.cardScenarios).map(key=>({id:'chat:'+key,kind:'chat',title:'合成消息 · '+key}))]
+  window.cardConversationId=key=>(key==='rule-success'?'task:':'chat:')+key
+  const rows=[{id:'system:analysis',kind:'system',fixed:true,title:'消息识别'},{id:'system:radar',kind:'system',fixed:true,title:'AI资讯'},{id:'system:knowledge',kind:'system',fixed:true,title:'知识助手'},...Object.keys(window.cardScenarios).map(key=>({id:window.cardConversationId(key),kind:key==='rule-success'?'task':'chat',title:'合成消息 · '+key}))]
   window.cardCalls=[]
   WB.actions.assistantHub=async request=>{
    window.cardCalls.push(request)
@@ -32,21 +33,35 @@ try{
    if(request.action==='delta')return {status:'ok',entries:[],nextSeq:0,turnActive:false,turnEnded:false}
    if(request.action==='detail'){
     const key=request.conversationId.slice(5),conversation=rows.find(row=>row.id===request.conversationId),scenario=window.cardScenarios[key]
-    return {status:'ok',conversation,nativeBinding:{sessionId:null,workspaceState:'unbound',canSend:true},sessionId:null,turns:[{id:'card-'+key,requestId:'layout-'+key,text:key==='execution-blocked'?'继续开发':'请帮我处理当前事项',at,mode:'execute',...scenario}],messages:[],events:[],runs:[],items:[],threads:[],confirmations:[],reinterpretSupported:true,busyReply:{config:{enabled:false}}}
+    const events=key==='rule-success'?[{id:'legacy-update',operation:'task.update',at,text:'已保存待办状态。'}]:[]
+    const runs=key==='rule-success'?[{id:'legacy-plan',kind:'task_assist',status:'paused',createdAt:at,steps:[{id:'plan',status:'completed',label:'待办处理方案',artifact:{text:'先核对已有材料，再补充验收结果。'}}]}]:[]
+    return {status:'ok',conversation,nativeBinding:{sessionId:null,workspaceState:'unbound',canSend:true},sessionId:null,turns:[{id:'card-'+key,requestId:'layout-'+key,text:key==='execution-blocked'?'继续开发':'请帮我处理当前事项',at,mode:'execute',...scenario}],messages:[],events,runs,items:[],threads:[],confirmations:[],reinterpretSupported:true,busyReply:{config:{enabled:false}}}
    }
    throw Error('布局检查禁止业务调用：'+request.action)
   }
-  WB.assistant.openHub('chat:rule-success')
+  WB.assistant.openHub(window.cardConversationId('rule-success'))
  })
  await page.getByRole('region',{name:'提交与处理结果'}).waitFor()
  for(const [width,height] of [[1280,800],[800,700],[360,700],[360,360]])for(const theme of ['light','dark']){
   await page.setViewportSize({width,height});await page.evaluate(theme=>document.documentElement.className=theme,theme)
-  const collapse=page.getByRole('button',{name:'收起会话列表'});if(width<640&&await collapse.count())await collapse.click()
+  if(width<640){
+   await page.locator('.wb-hub.is-compact').waitFor()
+   const collapse=page.locator('.wb-hub-context-head').getByRole('button',{name:'收起会话列表'})
+   if(await collapse.count())await collapse.click()
+  }
   for(const scenario of ['rule-success','execution-blocked','ai-fallback','rule-clarification','ai-command','plain-reply','ai-recognizing','confirmation']){
-   await page.evaluate(key=>window.WB.assistant.openHub('chat:'+key),scenario)
+   await page.evaluate(key=>window.WB.assistant.openHub(window.cardConversationId(key)),scenario)
    const turn=page.locator('[data-turn-id="card-'+scenario+'"]');await turn.waitFor()
    const card=turn.locator('.wb-hub-turn-response');await card.waitFor()
    const footer=card.locator('.wb-hub-turn-footer');await footer.waitFor()
+   if(scenario==='rule-success'){
+    const event=page.getByRole('article',{name:'状态更新',exact:true}),run=page.getByRole('article',{name:'办公处理结果',exact:true})
+    await run.getByRole('region',{name:'办公成果：待办处理方案'}).waitFor()
+    await run.getByRole('button',{name:'继续未完成内容'}).waitFor()
+    const cardStyle=locator=>locator.evaluate(el=>{const css=getComputedStyle(el),rect=el.getBoundingClientRect();return [rect.x,rect.width,css.border,css.borderTopLeftRadius,css.padding,css.backgroundColor]})
+    const expected=JSON.stringify(await cardStyle(card))
+    for(const other of [event,run])if(JSON.stringify(await cardStyle(other))!==expected)throw Error('待办助手消息卡片未对齐：'+await other.getAttribute('aria-label'))
+   }
    const tags=card.getByLabel('消息标记',{exact:true});await tags.waitFor()
    const commandScenario=['rule-success','execution-blocked','ai-command','confirmation'].includes(scenario)
    if(commandScenario)await tags.getByText('指令',{exact:true}).waitFor()

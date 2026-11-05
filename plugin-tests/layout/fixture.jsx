@@ -14,6 +14,10 @@ window.mountWorkbench=()=>{
    const action=args.request?.action
    if(action==='detail')value={task:dev.tasks.find(t=>t.id===args.request.id),messages:[]}
    else if(action==='detect')value=window.fixtureDevelopmentConnection||{status:'ready',user:{name:'合成开发者'},workspaces:[{id:'synthetic-workspace',name:'合成 ERP 项目组'}]}
+   else if(action==='detectInstallation'){
+    if(window.fixtureLinkyProbeError)throw new Error('合成检测失败')
+    value={installed:window.fixtureLinkyInstalled===true}
+   }
    else if(action==='configure'){dev.config={...dev.config,...args.request.config};value=dev.config}
    else if(action==='workItems')value={items:window.fixtureWorkItems||[{id:'fixture-issue',code:'BUG-2026-046131',title:'合成 ERP 缺陷工作项',type:'bug',workspaceId:'synthetic-workspace',status:'处理中'}],hasMore:false,statuses:[],cursors:{bug:null,requirement:null}}
    else if(action==='issue'){const code=args.request?.code,row=(window.fixtureWorkItems||[]).find(r=>r.id===code||r.code===code)||dev.tasks.map(t=>t.issue).find(r=>r.id===code||r.code===code);value={id:'fixture-issue',code:'BUG-2026-046131',title:'合成 ERP 缺陷工作项',description:'合成验收需求',...row}}
@@ -23,6 +27,13 @@ window.mountWorkbench=()=>{
   }
   const retrieval={id:'synthetic-retrieval',status:'ok',query:'接口发布验收',scope:{},strategy:'local-bm25-chinese',elapsedMs:1,hits:[{id:'synthetic-knowledge@v1:1',documentId:'synthetic-knowledge',title:'合成知识验收规范',text:'发布前完成灰度验收。',version:'v1',lineStart:1,lineEnd:1}]};
   if(endpoint==='workbench/knowledgeRetrieve')value=retrieval
+  if(endpoint==='workbench/knowledgeEngine'){
+   window.fixtureKnowledgeEngineRequests?.push(args.request)
+   const engine=window.fixtureKnowledgeEngine||{enabled:false,installed:false,phase:'idle',model:'BGE 中文小模型 · INT8'}
+   if(['enable','prepare'].includes(args.request?.action))window.fixtureKnowledgeEngine={...engine,enabled:true,phase:'downloading',downloaded:25,totalBytes:100}
+   if(args.request?.action==='disable')window.fixtureKnowledgeEngine={...engine,enabled:false,phase:'idle'}
+   value=window.fixtureKnowledgeEngine||engine
+  }
   if(endpoint==='workbench/knowledgeRead')value={hits:retrieval.hits}
   if(endpoint==='workbench/knowledgeTraces')value={items:[]}
   if(endpoint==='workbench/projectRuntime')value={cwd:'/synthetic/developer-project',commands:[{id:'dev',name:'pnpm run dev',argv:['pnpm','run','dev']}],runs:[{id:'synthetic-run',name:'合成服务运行',argv:['pnpm','run','dev'],status:'failed',exitCode:1,startedAt:new Date().toISOString(),stdout:'synthetic-output-'.repeat(100),stderr:'synthetic-error-'.repeat(50)}]}

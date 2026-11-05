@@ -1,3 +1,4 @@
+import {searchYunzhijia} from './enterprise-search.js'
 import { knowledgeAllowed, defaultKnowledgeScope } from '../knowledge/retrieval.js'
 import { asString, asTags, hostNowIso } from '../platform/runtime.js'
 import { ensureArray } from '../domain/model.js'
@@ -177,6 +178,7 @@ async function searchWebGroup(ctx?: any, query?: any): Promise<any> {
 }
 
 async function runUnifiedSearch(ctx?: any, request?: any): Promise<any> {
+    if(request?.scope==='enterprise')return searchYunzhijia(ctx,request)
     const query = asString(request && request.query, 200);
     if (!query)
         throw new Error('搜索关键词不能为空');

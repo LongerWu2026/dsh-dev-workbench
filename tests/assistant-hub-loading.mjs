@@ -35,5 +35,21 @@ try{
  held.get('primary')(native('primary','原主会话的历史'));await new Promise(resolve=>setTimeout(resolve,0))
  const recovered=await hub({action:'detail',conversationId:'chat:primary'})
  check('主会话恢复后仍是原生id，读取期间无新任务或业务进度改变',()=>{assert.equal(recovered.sessionId,'primary');assert.equal(recovered.historyError,undefined);assert.equal(recovered.messages.at(-1).text,'原主会话的历史');assert.deepEqual(host.state().jobs,JSON.parse(before).jobs);assert.deepEqual(host.state().analysisQueue,JSON.parse(before).analysisQueue)})
+ const heavyThreads={}
+ for(let i=0;i<40;i++){
+  const session=native('long-background-'+i,'原有后台结果 '+i),snapshot=session.snapshotEvents
+  session.snapshotEvents=(from=0)=>{const until=performance.now()+12;while(performance.now()<until){};return snapshot(from)}
+  sessions.set(session.id,session);heavyThreads[i]={purpose:'summary',sessionId:session.id}
+ }
+ await host.mutate(state=>{state.backgroundThreads=heavyThreads;state.settings.summarySessionId=null;return state})
+ const busyStart=performance.now(),projecting=hub({action:'detail',conversationId:'system:radar',limit:200})
+ // This must run from another event-loop turn, like a later incoming RPC.
+ // Racing two already-constructed promises misses synchronous Host starvation.
+ await new Promise(resolve=>setTimeout(resolve,0))
+ const responsive=await hub({action:'list'}),directoryMs=performance.now()-busyStart
+ check('大量已加载历史正在同步投影时，新到达的目录请求也能及时返回',()=>{assert.equal(responsive.status,'ok');assert.ok(directoryMs<250,'directory blocked '+directoryMs+'ms')})
+ const complete=await projecting
+ check('分批处理后仍返回全部原有后台记录，不丢历史或重跑任务',()=>{assert.ok(complete.background.messages.filter(row=>row.role==='assistant'&&row.sessionId.startsWith('long-background-')).length===40);assert.equal(new Set(complete.background.messages.map(row=>row.id)).size,complete.background.messages.length);assert.deepEqual(host.state().jobs,JSON.parse(before).jobs)})
+ console.log('busy-history directory latency: '+Math.round(directoryMs)+'ms')
  console.log('assistant-hub-loading: '+count+' scenarios passed')
 }finally{rmSync(home,{recursive:true,force:true})}

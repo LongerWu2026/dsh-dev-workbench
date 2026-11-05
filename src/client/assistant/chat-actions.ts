@@ -1,4 +1,4 @@
-import { Icon, WB, h } from '../core/runtime.js'
+import { Icon, WB, h, wbLayout } from '../core/runtime.js'
 import * as React from 'react'
 /* ============================================================================
  * dev-workbench client — 把工作台嵌进 DSH 原生聊天
@@ -36,16 +36,7 @@ const CHAT_EMBED_ACTIONS: any = [
         id: 'workbench-knowledge',
         label: '存为知识',
         icon: 'book',
-        run: function (text?: any): any {
-            return WB.actions.createKnowledge({
-                title: chatEmbedTitle(text),
-                body: text.slice(0, 4000),
-                tags: ['来自会话'],
-                url: null,
-            }).then(function (): any {
-                WB.toast('已存入知识库', 'ok');
-            });
-        },
+
     },
     {
         id: 'workbench-run',
@@ -127,6 +118,7 @@ function ChatAssistantActions(props?: any): any {
     if (!messageId) return null;
     function trigger(action?: any): void {
         if (busy) return;
+        if(action.id==='workbench-knowledge'){setOpen(false);WB.store.set({page:'knowledge',assistantOpen:false,knowledgeCaptureRequest:{kind:'native',sessionId,messageId}});wbLayout?.selectPanel?.(WB.PANEL_KEY);return;}
         setBusy(true);
         setError(null);
         WB.actions.assistantMessage(sessionId, messageId)

@@ -1,20 +1,19 @@
-import { BackgroundHistoryPanel } from '../operations/BackgroundHistoryPanel.js'
 import {YunzhijiaConnection} from './YunzhijiaConnection.js'
-import { OperationsPanel } from '../operations/OperationsPanel.js'
-import { ArchiveBrowser } from '../operations/ArchiveBrowser.js'
+import {LinkyConnection} from './LinkyConnection.js'
+import {KnowledgeEnginePanel} from '../knowledge/KnowledgeEnginePanel.js'
+import {NewsFeedDialog,NewsSources} from './NewsSources.js'
 import {DataManagement} from './DataManagement.js'
 import {BackgroundModels} from './BackgroundModels.js'
 import {SETTINGS_CSS} from './styles.js'
-import { Badge, Btn, Chip, Divider, Empty, Field, Icon, IconBtn, Input, Modal, PageHead, Panel, Select, Spinner, T, Toggle, WB, h, useStore } from '../../core/runtime.js'
+import { Badge, Btn, Chip, Empty, Field, Icon, IconBtn, Input, Modal, PageHead, Panel, Select, Toggle, WB, h, useStore } from '../../core/runtime.js'
 import * as React from 'react'
+
+declare const __WORKBENCH_VERSION__: string
 /* ============================================================================
  * dev-workbench settings & connections
  *
- * The design report keeps configuration (Connector, model, permission, sync
- * policy, theme, layout) in one first-level module. Here it is concrete:
- * connector health as the Host actually observes it, the radar's topic list,
- * persistence guidance, and the L0–L3 permission ladder that explains why a
- * tool either runs locally or needs approval.
+ * Shows connector health from the Host, automation and news settings,
+ * display preferences, and local data management.
  * ========================================================================== */
 function SettingsRow(props?: any): any {
     return h('div', {
@@ -25,9 +24,6 @@ function SettingsRow(props?: any): any {
 function SettingsPage(): any {
     const state = useStore();
     const data = state.data;
-    const [diag, setDiag] = React.useState<any>(null);
-    const [diagError, setDiagError] = React.useState<any>(null);
-    const [diagBusy, setDiagBusy] = React.useState<any>(false);
     const [topicDraft, setTopicDraft] = React.useState<any>('');
     const [confirmReset, setConfirmReset] = React.useState<any>(null);
     const [projectName, setProjectName] = React.useState<any>('');
@@ -39,29 +35,32 @@ function SettingsPage(): any {
     const [automation, setAutomation] = React.useState<any>(null);
     const [automationRunning, setAutomationRunning] = React.useState(false);
     const [mentionDraft, setMentionDraft] = React.useState<any>('');
-    const [feedLabel, setFeedLabel] = React.useState<any>('');
-    const [feedUrl, setFeedUrl] = React.useState<any>('');
-    const [feedTopics, setFeedTopics] = React.useState<any>('');
+    const [addFeedOpen, setAddFeedOpen] = React.useState(false);
+    const addFeedTrigger = React.useRef<HTMLButtonElement|null>(null);
+    const connectorList = React.useRef<HTMLDivElement|null>(null);
     const settings = (data && data.settings) || { topics: [], staleHours: 24, showCompleted: false, defaultProjectId: null };
     const connectors = (data && data.connectors) || [];
     const projects = (data && data.projects) || [];
     const feeds = (settings && settings.feeds) || [];
-    function runDiagnostics(): any {
-        setDiagBusy(true);
-        setDiagError(null);
-        WB.actions
-            .diagnostics()
-            .then(function (value?: any): any {
-            setDiag(value);
-            setDiagBusy(false);
-        })
-            .catch(function (e?: any): any {
-            setDiagError(String((e && e.message) || e));
-            setDiagBusy(false);
-        });
-    }
+    React.useLayoutEffect(()=>{
+        const list=connectorList.current;
+        if(!list)return;
+        const items=list.querySelectorAll<HTMLElement>(':scope > .wb-item');
+        if(items.length<=3){
+            list.style.removeProperty('--wb-connector-preview-height');
+            return;
+        }
+        const rows=Array.from(items).slice(0,3);
+        const measure=()=>{
+            const height=rows.reduce((total,row)=>total+parseFloat(getComputedStyle(row).height),0);
+            if(height>0)list.style.setProperty('--wb-connector-preview-height',`${height}px`);
+        };
+        measure();
+        const observer=typeof ResizeObserver==='function'?new ResizeObserver(measure):null;
+        rows.forEach(row=>observer?.observe(row,{box:'border-box'}));
+        return ()=>observer?.disconnect();
+    },[connectors]);
     React.useEffect(function (): any {
-        runDiagnostics();
         WB.actions.automationStatus()
             .then(function (status?: any): any {
             setAutomation(status);
@@ -124,27 +123,6 @@ function SettingsPage(): any {
             /* settle() already toasted */
         });
     }
-    function addFeed(): any {
-        WB.actions
-            .addFeed({
-            label: feedLabel,
-            url: feedUrl,
-            topics: feedTopics
-                .split(/[,，\s]+/)
-                .map(function (topic?: any): any {
-                return topic.trim();
-            })
-                .filter(Boolean),
-        })
-            .then(function (): any {
-            setFeedLabel('');
-            setFeedUrl('');
-            setFeedTopics('');
-        })
-            .catch(function (): any {
-            /* addFeed already toasted the reason */
-        });
-    }
     function exportJson(): any {
         try {
             const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -171,21 +149,16 @@ function SettingsPage(): any {
             size: 'sm',
             onClick: function (): any {
                 WB.actions.reload().catch(function (): any { });
-                runDiagnostics();
             },
             children: '重新读取',
         }),
-    }), h('div', {className:'wb-settings-grid'}, h(Panel, {
+    }), h('div', {className:'wb-settings-flow'}, h(Panel, {
         title: '连接器',
         sub: '一个 Provider 一种能力；未接入的能力保持“未配置”而不是假装可用',
         icon: 'plug',
-    }, h(YunzhijiaConnection, {initial:connectors.find((row:any)=>row.id === 'yunzhijia')}), connectors.length === 0
-        ? h(Empty, {
-            icon: 'plug',
-            title: '还没有连接器',
-            hint: '首版只登记真实存在的能力：本地数据、Host 运行时与命令探测。企业系统（云之家、Git、Docker）需要先完成能力发现再显示为“已连接”。',
-        })
-        : h('div', null, connectors.filter((row:any)=>row.id !== 'yunzhijia').map(function (connector?: any): any {
+    }, h('div', {ref:connectorList, className:'wb-settings-connector-list', role:'region', 'aria-label':'连接器列表', tabIndex:0},
+    h(YunzhijiaConnection, {initial:connectors.find((row:any)=>row.id === 'yunzhijia')}), h(LinkyConnection), h(KnowledgeEnginePanel,{connector:true}),
+        connectors.filter((row:any)=>!['yunzhijia','linky'].includes(row.id)).map(function (connector?: any): any {
             const meta = WB.connectorState(connector.authState);
             return h('div', { key: connector.id, className: 'wb-item', style: { alignItems: 'flex-start' } }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title' }, connector.label || connector.type, h(Badge, { tone: meta.tone }, meta.label)), h('div', { className: 'wb-item-sub' }, (connector.capabilities || []).length > 0
                 ? connector.capabilities.map(function (capability?: any): any {
@@ -193,59 +166,6 @@ function SettingsPage(): any {
                 })
                 : h('span', null, '无已声明能力')), connector.note ? h('div', { className: 'wb-item-sub' }, connector.note) : null), h('div', { className: 'wb-tiny wb-muted', style: { flex: 'none' } }, connector.updatedAt ? WB.fmt.relative(connector.updatedAt) : '—'));
         }))), h(Panel, {
-        title: '权限分级',
-        sub: '插件按 L0–L3 决定一个动作在本地执行、只读、还是要人工审批',
-        icon: 'lock',
-    }, h('table', { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '等级'), h('th', null, '操作'), h('th', null, '策略'))), h('tbody', null, [
-        ['L0 本地计算', 'JSON/正则/Cron/编解码', '浏览器内完成，不发模型、不出网'],
-        ['L1 授权只读', '读文件、查消息、看仓库', '连接器授权 + 最小作用域'],
-        ['L2 受控修改', '建待办、写本地文件、跑测试', '展示具体操作，必要时审批'],
-        ['L3 高风险', '推送代码、发消息、写数据库', '逐次审批 + 命令绑定 + 审计'],
-    ].map(function (row?: any): any {
-        return h('tr', { key: row[0] }, h('td', { style: { whiteSpace: 'nowrap', fontWeight: 600 } }, row[0]), h('td', null, row[1]), h('td', { className: 'wb-muted' }, row[2]));
-    })))), h(Panel, {
-        title: '运行时诊断',
-        sub: '来自 Host 的真实读数，不是前端估算',
-        icon: 'database',
-        actions: h(Btn, {
-            size: 'sm',
-            icon: 'refresh',
-            disabled: diagBusy,
-            onClick: runDiagnostics,
-            children: diagBusy ? '读取中…' : '刷新',
-        }),
-    }, diagError
-        ? h('div', { role: 'alert', style: { color: T.err, fontSize: 12 } }, diagError)
-        : !diag
-            ? h('div', { className: 'wb-row', style: { padding: '10px 0' } }, h(Spinner, null), h('span', { className: 'wb-tiny wb-muted' }, '读取中…'))
-            : h('div', { className: 'wb-stack', style: { gap: 6 } }, [
-                ['数据文件', diag.dataPath],
-                ['文件大小', WB.fmt.bytes(diag.dataBytes)],
-                ['平台 / Node', diag.platform + ' / ' + diag.nodeVersion],
-                [
-                    '记录数',
-                    '待办 ' +
-                        diag.counts.tasks +
-                        ' · 执行 ' +
-                        diag.counts.runs +
-                        ' · 知识 ' +
-                        diag.counts.knowledge +
-                        ' · 雷达 ' +
-                        diag.counts.radar +
-                        ' · 来源 ' +
-                        diag.counts.sources,
-                ],
-                ['Host 时间', WB.fmt.datetime(diag.hostTime)],
-            ].map(function (row?: any): any {
-                return h('div', { key: row[0], className: 'wb-row', style: { alignItems: 'flex-start', gap: 10 } }, h('span', { className: 'wb-tiny wb-muted', style: { width: 86, flex: 'none' } }, row[0]), h('span', {
-                    className: 'wb-mono',
-                    style: { overflowWrap: 'anywhere', minWidth: 0 },
-                }, String(row[1])));
-            }), diag.toolNames && diag.toolNames.length > 0
-                ? h('div', { style: { marginTop: 6 } }, h('div', { className: 'wb-label', style: { marginBottom: 4 } }, '已注册的 Agent 工具'), h('div', { className: 'wb-row wb-row--wrap' }, diag.toolNames.map(function (name?: any): any {
-                    return h(Chip, { key: name, icon: 'command', children: name });
-                })))
-                : null)), h(Panel, {
         title: '项目',
         sub: '仓库目录决定「研发协作」探测哪些 Git 仓库',
         icon: 'folder',
@@ -300,55 +220,10 @@ function SettingsPage(): any {
         disabled: !projectPath.trim(),
         onClick: addProject,
         children: '添加项目',
-    })))), h(Panel, {
-        title: '资讯源',
-        sub: '可选 RSS / Atom 来源；留空时使用宿主联网搜索按主题发现资讯',
-        icon: 'radar',
-        badge: feeds.length ? h(Badge, { tone: 'idle' }, feeds.length + ' 个') : null,
-    }, feeds.length === 0
-        ? h(Empty, {
-            icon: 'radar',
-            title: '还没有配置资讯源',
-        hint: '无需填写地址。在关注主题中设置内容，点「抓取资讯」或让助手获取资讯即可；RSS / Atom 可按需添加。',
-        })
-        : h('div', null, feeds.map(function (feed?: any): any {
-            return h('div', { key: feed.id, className: 'wb-item', style: { alignItems: 'flex-start' } }, h(Icon, { name: 'radar', size: 14 }), h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title' }, feed.label), h('div', { className: 'wb-item-sub wb-mono wb-ellipsis' }, feed.url), feed.topics && feed.topics.length
-                ? h('div', { className: 'wb-item-sub' }, feed.topics.map(function (topic?: any): any {
-                    return h(Chip, { key: topic, children: topic });
-                }))
-                : null), h(IconBtn, {
-                name: 'trash',
-                label: '移除资讯源',
-                onClick: function (): any {
-                    WB.actions.deleteFeed(feed.id).catch(function (): any { });
-                },
-            }));
-        })), h('div', { className: 'wb-stack', style: { gap: 8, marginTop: feeds.length ? 10 : 0 } }, h(Input, {
-        value: feedLabel,
-        placeholder: '名称，如 Hacker News · LLM（可留空，默认取域名）',
-        onChange: function (event?: any): any {
-            setFeedLabel(event.target.value);
-        },
-    }), h(Input, {
-        value: feedUrl,
-        placeholder: 'RSS/Atom 地址，如 https://hnrss.org/newest?q=LLM',
-        onChange: function (event?: any): any {
-            setFeedUrl(event.target.value);
-        },
-    }), h(Input, {
-        value: feedTopics,
-        placeholder: '归入主题，逗号分隔，如 LLM, Agent',
-        onChange: function (event?: any): any {
-            setFeedTopics(event.target.value);
-        },
-    }), h('div', { className: 'wb-row' }, h('div', { className: 'wb-spacer' }), h(Btn, {
-        size: 'sm',
-        kind: 'primary',
-        icon: 'plus',
-        disabled: !feedUrl.trim(),
-        onClick: addFeed,
-        children: '添加资讯源',
-    })))), h(Panel, { title: '关注主题', sub: '技术雷达按这些主题过滤与推荐', icon: 'radar' }, h('div', { className: 'wb-row wb-row--wrap', style: { marginBottom: 10 } }, settings.topics.length === 0
+    })))), h(NewsSources, {feeds,onAdd:(event:React.MouseEvent<HTMLButtonElement>)=>{
+        addFeedTrigger.current=event.currentTarget;
+        setAddFeedOpen(true);
+    }}), h(Panel, { title: '关注主题', sub: '技术雷达按这些主题过滤与推荐', icon: 'radar' }, h('div', { className: 'wb-row wb-row--wrap', style: { marginBottom: 10 } }, settings.topics.length === 0
         ? h('span', { className: 'wb-tiny wb-muted' }, '还没有关注主题')
         : settings.topics.map(function (topic?: any): any {
             return h(Chip, {
@@ -439,7 +314,7 @@ function SettingsPage(): any {
         }),
     }), h(SettingsRow, {
         title: '资讯采集',
-        hint: '未配置 RSS 时按关注主题联网发现',
+        hint: '采集内置来源和 RSS 订阅，并按关注主题联网发现',
         control: h(Toggle, {
             checked: !(automation && automation.radar === false),
             onChange: function (next?: any): any {
@@ -566,7 +441,12 @@ function SettingsPage(): any {
                 patchSettings({ defaultProjectId: event.target.value || null });
             },
         }),
-    }))), h(DataManagement,{onExportJson:exportJson,onReset:()=>setConfirmReset(true)}), h(Panel, { title: '关于', sub: '智能工作台 0.2.1（dsh-dev-workbench）', icon: 'info' }, h('div', { className: 'wb-stack wb-tiny wb-muted', style: { gap: 5 } }, h('span', null, 'Cordis Host + Client 双半插件：Host 持有状态并通过 workbench/* Remote 暴露，Client 通过 main 与 sidebar.panellist 插槽渲染页面。'), h('span', null, '工具箱中的计算全部在浏览器内完成；企业消息摘录保存在宿主本地，凭据由 CLI / 宿主管理。'), h('span', null, '数据文件位于 ', h('code', { className: 'wb-mono' }, diag ? diag.dataPath : '~/.dsh/storages/dev-workbench/state.json')))), h('div',{className:'wb-settings-operations'},h(OperationsPanel,{revision:data?.revision}),h(ArchiveBrowser),h('div',{className:'wb-settings-history'},h(BackgroundHistoryPanel)))), h(Modal, {
+    }))), h(DataManagement,{onExportJson:exportJson,onReset:()=>setConfirmReset(true)})),
+    h('footer',{className:'wb-settings-version'},'版本 v'+__WORKBENCH_VERSION__),
+    addFeedOpen ? h(NewsFeedDialog,{feeds,onClose:()=>{
+        setAddFeedOpen(false);
+        addFeedTrigger.current?.focus();
+    }}) : null, h(Modal, {
         open: !!projectEdit,
         title: '编辑项目',
         sub: projectEdit ? projectEdit.name : '',

@@ -1,3 +1,4 @@
+import {ENTERPRISE_SEARCH_TYPES} from '../../shared/enterprise-search.js'
 import { officeToolDefinitions } from './office-tools.js'
 import { RUN_STATUSES, TASK_PRIORITIES, TASK_STATUSES, auditEntry, ensureArray, normalizeRadarItem, taskBrief } from '../domain/model.js'
 import { renderToolText, toolOutputSchema, toolText } from './tool-output.js'
@@ -382,7 +383,10 @@ function workbenchToolDefinitions(): any {
                 properties: {
                     query: { type: 'string', description: '检索词。' },
                     includeWeb: { type: 'boolean', description: '是否查互联网（默认 true）。' },
-                    scope: {type:'string',enum:['local','work','web'],description:'local 仅检索已保存的工作内容，不联网；work 检索工作与企业来源；web 仅检索互联网。查找已有待办、知识、资讯或消息时优先使用 local。'},
+                    scope: {type:'string',enum:['local','work','web','enterprise'],description:'local 仅检索已保存的工作内容，不联网；work 检索工作与企业来源；web 仅检索互联网；enterprise 仅查询云之家，按 enterpriseType 选择联系人、消息、文档等。查找已有待办、知识、资讯或消息时优先使用 local。'},
+                    enterpriseType:{type:'string',enum:ENTERPRISE_SEARCH_TYPES.map(row=>row.id),description:'仅 enterprise 范围生效；文档仅查标题/文件名，考勤仅本人流水。'},
+                    start:{type:'string',description:'云之家日程/考勤的北京时间日期 YYYY-MM-DD；会议室为 YYYY-MM-DDTHH:mm。'},
+                    end:{type:'string',description:'查询结束日期/时间，格式与 start 相同。'},
                 },
                 required: ['query'],
                 additionalProperties: false,
@@ -393,7 +397,8 @@ function workbenchToolDefinitions(): any {
                 const result = await runUnifiedSearch(workbenchCtx, {
                     query: input.query,
                     includeWeb: input.includeWeb !== false,
-                    ...(['local','work','web'].includes(input.scope)?{scope:input.scope}:{}),
+                    ...(['local','work','web','enterprise'].includes(input.scope)?{scope:input.scope}:{}),
+                    ...(input.scope==='enterprise'?{enterpriseType:input.enterpriseType,start:input.start,end:input.end}:{}),
                 });
                 const lines: any = [];
                 for (const group of result.groups) {

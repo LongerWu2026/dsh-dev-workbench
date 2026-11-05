@@ -1,5 +1,6 @@
 import {transcriptDelta} from './transcript.js'
 import {assistantOutputText} from './final-output.js'
+import {deferHubRead} from './hub-read.js'
 
 interface BackgroundSnapshot {session:any;seq:number;entries:any[];turnActive:boolean;openTurn?:{turn?:number;hasOutput:boolean;candidateSeq?:number;emptyEntry?:any}|null}
 interface BackgroundReader {snapshots:Map<string,BackgroundSnapshot>;pending:Map<string,Promise<any>>;failures:Map<string,{at:number;error:any}>}
@@ -13,37 +14,39 @@ export async function readBackgroundSnapshot(ctx:object,id:string,restore:()=>Pr
     const failure=reader.failures.get(id)
     if(failure&&Date.now()-failure.at<15000)throw failure.error
     const read=(async()=>{
-        const session=await restore(),prior=reader!.snapshots.get(id),seq=Number(session.seq)||0
+        const session=await deferHubRead(restore),prior=reader!.snapshots.get(id),seq=Number(session.seq)||0
         if(prior&&prior.session===session&&prior.seq===seq)return prior
-        const reused=prior&&prior.session===session&&prior.seq<seq?prior:null
-        const native=session.snapshotEvents(reused?.seq||0)
-        const delta=transcriptDelta({seq,snapshotEvents:()=>native},reused?.seq||0)
-        const entries=[...(reused?.entries||[]).map(row=>({...row})),...delta.entries.filter((row:any)=>['user','assistant','error'].includes(row.role))]
-        const bySeq=new Map<number,any>(entries.map(row=>[row.seq,row]))
-        let openTurn:BackgroundSnapshot['openTurn']=reused?.openTurn?{...reused.openTurn}:null
-        for(const event of native){
-            if(event.type==='turn/start')openTurn={turn:event.data?.turn,hasOutput:false}
-            else if(event.type==='assistant/message'){
-                const text=assistantOutputText(event.data?.message)
-                if(openTurn){
-                    const entry=bySeq.get(event.seq);if(entry)entry.finalOutput=false
-                    openTurn.candidateSeq=text?event.seq:undefined
-                    if(text)delete openTurn.emptyEntry;else openTurn.emptyEntry={role:'assistant',text:'',at:event.time,seq:event.seq,emptyOutput:true}
+        return deferHubRead(()=>{
+            const reused=prior&&prior.session===session&&prior.seq<seq?prior:null
+            const native=session.snapshotEvents(reused?.seq||0)
+            const delta=transcriptDelta({seq,snapshotEvents:()=>native},reused?.seq||0,{includeTools:false})
+            const entries=[...(reused?.entries||[]).map(row=>({...row})),...delta.entries.filter((row:any)=>['user','assistant','error'].includes(row.role))]
+            const bySeq=new Map<number,any>(entries.map(row=>[row.seq,row]))
+            let openTurn:BackgroundSnapshot['openTurn']=reused?.openTurn?{...reused.openTurn}:null
+            for(const event of native){
+                if(event.type==='turn/start')openTurn={turn:event.data?.turn,hasOutput:false}
+                else if(event.type==='assistant/message'){
+                    const text=assistantOutputText(event.data?.message)
+                    if(openTurn){
+                        const entry=bySeq.get(event.seq);if(entry)entry.finalOutput=false
+                        openTurn.candidateSeq=text?event.seq:undefined
+                        if(text)delete openTurn.emptyEntry;else openTurn.emptyEntry={role:'assistant',text:'',at:event.time,seq:event.seq,emptyOutput:true}
+                    }
+                }else if(event.type==='tool/call'||event.type==='tool/result'){
+                    if(openTurn){openTurn.candidateSeq=undefined;delete openTurn.emptyEntry}
+                }else if(event.type==='turn/error'){if(openTurn)openTurn.hasOutput=true}
+                else if(event.type==='turn/end'){
+                    const completed=!event.data?.reason?.kind||event.data.reason.kind==='completed'
+                    const candidate=openTurn?.candidateSeq&&completed?bySeq.get(openTurn.candidateSeq):null
+                    if(candidate)candidate.finalOutput=true
+                    else if(openTurn&&!openTurn.hasOutput&&event.data?.reason?.kind!=='error')entries.push({...openTurn.emptyEntry||{role:'assistant',text:'',at:event.time,seq:event.seq,emptyOutput:true},finalOutput:true,terminalReason:event.data?.reason?.kind})
+                    openTurn=null
                 }
-            }else if(event.type==='tool/call'||event.type==='tool/result'){
-                if(openTurn){openTurn.candidateSeq=undefined;delete openTurn.emptyEntry}
-            }else if(event.type==='turn/error'){if(openTurn)openTurn.hasOutput=true}
-            else if(event.type==='turn/end'){
-                const completed=!event.data?.reason?.kind||event.data.reason.kind==='completed'
-                const candidate=openTurn?.candidateSeq&&completed?bySeq.get(openTurn.candidateSeq):null
-                if(candidate)candidate.finalOutput=true
-                else if(openTurn&&!openTurn.hasOutput&&event.data?.reason?.kind!=='error')entries.push({...openTurn.emptyEntry||{role:'assistant',text:'',at:event.time,seq:event.seq,emptyOutput:true},finalOutput:true,terminalReason:event.data?.reason?.kind})
-                openTurn=null
             }
-        }
-        const snapshot={session,seq,entries:entries.sort((a:any,b:any)=>(new Date(a.at).getTime()||0)-(new Date(b.at).getTime()||0)||a.seq-b.seq),turnActive:delta.turnActive||(!delta.turnEnded&&!!reused?.turnActive),openTurn}
-        reader!.snapshots.set(id,snapshot);reader!.failures.delete(id)
-        return snapshot
+            const snapshot={session,seq,entries:entries.sort((a:any,b:any)=>(new Date(a.at).getTime()||0)-(new Date(b.at).getTime()||0)||a.seq-b.seq),turnActive:delta.turnActive||(!delta.turnEnded&&!!reused?.turnActive),openTurn}
+            reader!.snapshots.set(id,snapshot);reader!.failures.delete(id)
+            return snapshot
+        })
     })()
     reader.pending.set(id,read)
     try{return await read}catch(error){reader.failures.set(id,{at:Date.now(),error});throw error}finally{reader.pending.delete(id)}

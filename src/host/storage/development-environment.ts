@@ -16,4 +16,16 @@ export function discoverLinky(options:{home?:string;platform?:string;arch?:strin
     const profile=profiles.includes('desktop-linky.kingdee.com')?'desktop-linky.kingdee.com':profiles.length===1?profiles[0]:'default'
     return {cliPaths,profiles,profile}
 }
+export function linkyDesktopInstalled(options:{home?:string;platform?:string;applications?:string[]}={}){
+    const home=options.home??homedir(),platform=options.platform??process.platform
+    if(platform==='darwin'){
+        const apps=options.applications??['/Applications',join(home,'Applications')]
+        return apps.some(dir=>executable(join(dir,'Linky.app','Contents','MacOS','Linky')))
+    }
+    if(platform==='win32'){
+        const local=join(home,'AppData','Local')
+        return [local,join(local,'Programs')].some(dir=>executable(join(dir,'Linky','Linky.exe')))
+    }
+    return false
+}
 export function executable(path:string){try{accessSync(path,constants.X_OK);return statSync(path).isFile()}catch{return false}}

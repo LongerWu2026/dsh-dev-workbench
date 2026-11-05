@@ -47,7 +47,7 @@ export function GlobalSearch({open,onClose,initialQuery=''}:{open:boolean;onClos
  }
  let previousGroup=''
  return <Modal open title="搜索工作内容" width={660} onClose={onClose} footer={<div className="wb-global-search-footer">
-  {text&&<div className="wb-global-search-footer-actions"><button type="button" className="wb-global-search-all" onClick={showAll}>查看全部搜索结果{hits.length?'（'+hits.length+'）':''}<Icon name="arrowRight" size={14}/></button><button type="button" className="wb-global-search-all" aria-label="在助手中搜索互联网" onClick={()=>choose(()=>searchInternetWithAssistant(text))}><Icon name="sparkles" size={14}/>助手联网搜索</button></div>}
+  {text&&<div className="wb-global-search-footer-actions"><button type="button" className="wb-global-search-all" onClick={showAll}>查看全部搜索结果{hits.length?'（'+hits.length+'）':''}<Icon name="arrowRight" size={14}/></button><button type="button" className="wb-global-search-all" onClick={()=>choose(()=>fullSearchResults(text,'contacts','enterprise'))}>查询云之家<Icon name="arrowRight" size={14}/></button><button type="button" className="wb-global-search-all" aria-label="在助手中搜索互联网" onClick={()=>choose(()=>searchInternetWithAssistant(text))}><Icon name="sparkles" size={14}/>助手联网搜索</button></div>}
   <div className="wb-global-search-help"><span>本地检索 · 不联网</span><span><Kbd>↑ ↓</Kbd> 选择 · <Kbd>↵</Kbd> 打开 · <Kbd>esc</Kbd> 关闭</span></div>
  </div>}>
   <style>{CSS}</style><div ref={root} className="wb-global-search">

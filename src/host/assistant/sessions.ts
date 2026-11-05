@@ -387,7 +387,7 @@ function userFacingAssistantError(failure?: any): any {
  * `resume failed for session "…": SessionPersistenceNotFoundError`。
  * 只有后台调用捕获此类错误后重建并重试，交互问答不暗中更换会话或重发。
  */
-async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: any, steer?: any, purpose?: string, options?: {backgroundKey?:string;recoveryText?:string;taskId?:string;checkActive?:()=>void;contextText?:string}): Promise<any> {
+async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: any, steer?: any, purpose?: string, options?: {backgroundKey?:string;recoveryText?:string;taskId?:string;checkActive?:()=>void;contextText?:string;recoverSession?:boolean}): Promise<any> {
     const build = function (sessionId?: any): any {
         return {
             requestId: 'wb-assistant-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8),
@@ -418,7 +418,7 @@ async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: a
     }
     catch (error) {
         const message = String((error && error.message) || error);
-        if (options?.contextText || !/resume failed|SessionPersistenceNotFound/i.test(message))
+        if (options?.contextText || options?.recoverSession===false || !/resume failed|SessionPersistenceNotFound/i.test(message))
             throw error;
         assertCurrent();
         const fresh = await createPersistedSession(ctx);

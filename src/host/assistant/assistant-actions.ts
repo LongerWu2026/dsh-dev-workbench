@@ -1,3 +1,4 @@
+import {knowledgeCaptureService} from '../application/knowledge-capture-service.js'
 import {getHubTurn} from './hub-turns.js'
 import {knowledgeAllowed} from '../knowledge/retrieval.js'
 import {knowledgeSpaceOf} from '../../shared/knowledge.js'
@@ -130,7 +131,7 @@ export async function runAssistantOperation(ctx:any,request:any):Promise<any>{
    if(operation==='radar.fetch'){await newsService.fetchRadar();result={status:'ok',note:state().settings.aiExtract?.enabled?'资讯已更新，新增重点会在后台归纳。':'资讯已更新，可查看来源与原文摘录。',items:state().radar}}
    else if(operation==='radar.summary'){const job=await newsService.radarSummaryStart({...(s.kind==='radar'?{onlyIds:[s.entityId],retryFailed:true}:{}),checkActive});result={status:'ok',note:'已启动资讯摘要。',job}}
    else if(operation==='radar.toTask'){const row=target(request,'radar','radar'),snapshot=await newsService.createTaskFromRadar(row.id);result={status:'ok',note:'已根据资讯建立待办，保留原文来源。',items:snapshot.tasks}}
-   else if(operation==='radar.toKnowledge'){const row=target(request,'radar','radar');await knowledgeService.createKnowledge({title:row.title,body:[row.excerpt,...Object.values(row.summary||{})].filter(Boolean).join('\n'),url:row.url,reviewState:'candidate'});result={status:'ok',note:'已保存为待审核知识，保留资讯来源。'}}
+   else if(operation==='radar.toKnowledge'){const row=target(request,'radar','radar'),draft=await knowledgeCaptureService.knowledgeCapture({action:'prepare',kind:'radar',id:row.id,scope:knowledgeScope(request)});checkActive();const saved=await knowledgeCaptureService.knowledgeCapture({action:'save',draftId:draft.draftId,title:draft.title,body:draft.body,useForAnswers:false});result={status:'ok',note:saved.duplicate?'这份资讯原文已保存，未重复添加。':'已保存资讯原文笔记，保留来源与离线快照。',knowledgeId:saved.itemId}}
    else throw Error('未知的资讯操作')
   }else if(operation==='knowledge.search'){
    const s=scope(request);if(!(s.kind==='chat'||s.kind==='knowledge'||s.kind==='system'&&s.entityId==='knowledge'))throw Error('请在知识会话中查询')

@@ -11,7 +11,7 @@ import {ConversationThread} from './ConversationThread.js'
 import {answerPresentation} from './answer-presentation.js'
 import {WEB_AI_PROVIDERS,WEB_AI_ACTIVE,normalizeWebAI,webAIProvider,type WebAIState,type WebAIRound,type WebAIAnswer} from '../../../shared/web-ai.js'
 import {NativeWebsite,nativeWebAIBridge,type WebsiteController} from './NativeWebsite.js'
-import {collectWebsiteAnswer,runWebsiteQuestion} from './runner.js'
+import {runWebsiteQuestion} from './runner.js'
 import {runWebsiteBatch,persistWebAIState} from './batch.js'
 import {restoreWebAITopic,rememberWebAITopic} from './preferences.js'
 import {WEB_AI_CSS} from './styles.js'
@@ -126,18 +126,6 @@ export function WebAIPage(){
    const first=latestState.rounds.find(r=>r.id===rounds[0]?.id);if(files.length&&first?.answers.every(a=>a.status==='completed'))setFileDrafts(old=>({...old,[effectiveTopic]:[]}))
   }catch(e){await cancelRequest({requestId}).catch(()=>{});throw e}finally{if(alive.current)setBusy(false);abort.current=null;ownedRequest.current=null;processing.current=false}
  }
- async function resumeCapture(round:WebAIRound,answer:WebAIAnswer){
-  if(processing.current)return
-  processing.current=true;setBusy(true);setError('');const controller=new AbortController();abort.current=controller;ownedRequest.current=round.requestId
-  let executionId:string|null=null
-  try{
-   const claim=await rpc('webAIResumeCapture',{roundId:round.id,providerId:answer.providerId});executionId=claim.executionId
-   if(controller.signal.aborted||!alive.current){await cancelRequest({requestId:round.requestId});return}
-   const update=async(patch:Partial<WebAIAnswer>)=>{const next=await persistWebAIState<WebAIState>(()=>rpc('webAIUpdate',{roundId:round.id,providerId:answer.providerId,executionId,...patch}),controller.signal);if(alive.current)acceptState(next)}
-   try{const website=await openProvider(answer.providerId,round.topicId,state,false);await collectWebsiteAnswer(website,round.question,{...answer.capture},update,controller.signal)}
-   catch(e){if(!controller.signal.aborted)await update({status:'uncertain',note:e instanceof Error?e.message:'采集未成功，请核对官网'})}
-  }finally{if(alive.current)setBusy(false);abort.current=null;ownedRequest.current=null;processing.current=false}
- }
  async function sendUnsent(round:WebAIRound,answer:WebAIAnswer,picked?:SelectedWebAIFile[]){
   if(busy||processing.current)return
   if(authentication[answer.providerId]?.status!=='authenticated'){await openProvider(answer.providerId,round.topicId);return}
@@ -174,7 +162,7 @@ export function WebAIPage(){
 </div>}
     {error&&<p role="alert" className="wb-web-error wb-chat-alert">{error}</p>}
     <div className="wb-chat-thread-shell">
-     <div className="wb-chat-thread-pane"><ConversationThread topicId={topicId} visible={true} rounds={rows.slice(Math.max(0,rows.length-(page+1)*PAGE_SIZE))} total={rows.length} filter={answerFilter} authentication={authentication} busy={busy} canEdit={caps?.historyProtocol===1} answerChoices={answerChoices} onSelectAnswer={(roundId,providerId)=>setAnswerChoices(old=>({...old,[roundId]:providerId}))} onUnsent={(round,answer)=>safe(()=>sendUnsent(round,answer))} onEarlier={()=>setPage(value=>value+1)} onOpen={(round,answer)=>safe(()=>openProvider(answer.providerId,round.topicId))} onCapture={(round,answer)=>safe(()=>resumeCapture(round,answer))} onEditQuestion={round=>setQuestionEdit(round)} onEditAnswer={(round,answer)=>setEditing({round,answer,text:answer.text,url:answer.url||''})} onKnowledge={(round,answer)=>safe(()=>WB.actions.createKnowledge({title:round.question.slice(0,160)+' · '+webAIProvider(answer.providerId).name,body:answer.text,url:answer.url,kind:'note',reviewState:'candidate',sourceLabel:'多 AI 对话'}))}/></div>
+     <div className="wb-chat-thread-pane"><ConversationThread topicId={topicId} visible={true} rounds={rows.slice(Math.max(0,rows.length-(page+1)*PAGE_SIZE))} total={rows.length} filter={answerFilter} authentication={authentication} busy={busy} canEdit={caps?.historyProtocol===1} answerChoices={answerChoices} onSelectAnswer={(roundId,providerId)=>setAnswerChoices(old=>({...old,[roundId]:providerId}))} onUnsent={(round,answer)=>safe(()=>sendUnsent(round,answer))} onEarlier={()=>setPage(value=>value+1)} onOpen={(round,answer)=>safe(()=>openProvider(answer.providerId,round.topicId))} onEditQuestion={round=>setQuestionEdit(round)} onEditAnswer={(round,answer)=>setEditing({round,answer,text:answer.text,url:answer.url||''})} onKnowledge={(round,answer)=>safe(()=>WB.actions.createKnowledge({title:localQuestion(round).slice(0,140)+' · '+webAIProvider(answer.providerId).name,body:answer.text,url:answer.url,kind:'note',reviewState:'candidate',sourceLabel:'多 AI 对话'}))}/></div>
 
     </div>
   <section className="wb-chat-composer" aria-label="聊天输入">

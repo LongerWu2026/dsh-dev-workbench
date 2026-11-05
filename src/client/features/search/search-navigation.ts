@@ -1,6 +1,25 @@
 import {WB} from '../../core/runtime.js'
 
 const collections:Record<string,string>={task:'tasks',reply:'replies',source:'sources',knowledge:'knowledge',radar:'radar'}
+const enterpriseChats=new Map<string,Promise<any>>()
+let continuationVersion=0
+async function continueEnterpriseResult(ref:any,accountId:string){
+ const token=++continuationVersion,state=WB.store.get(),page=state.page,opened=state.assistantOpenSeq
+ try{
+  let conversationId=state.enterpriseSearchConversationId===state.assistantConversationId&&state.enterpriseSearchAccountId===accountId&&state.assistantConversationId?.startsWith('chat:')?state.assistantConversationId:null
+  if(!conversationId){
+   let pending=enterpriseChats.get(accountId)
+   if(!pending){const created=Promise.resolve(WB.actions.assistantHub({action:'reset'}));pending=created;enterpriseChats.set(accountId,created);void created.finally(()=>{if(enterpriseChats.get(accountId)===created)enterpriseChats.delete(accountId)}).catch(()=>{})}
+   const result=await pending
+   if(result?.status!=='ok'||!result.conversationId?.startsWith('chat:'))throw Error(result?.note||'无法打开云之家查询对话')
+   conversationId=result.conversationId
+  }
+  const current=WB.store.get()
+  if(token!==continuationVersion||current.page!==page||current.assistantOpenSeq!==opened)return
+  WB.assistant.openHub(conversationId)
+  WB.store.set({assistantRefs:[ref],enterpriseSearchConversationId:conversationId,enterpriseSearchAccountId:accountId})
+ }catch(error){if(token===continuationVersion)WB.toast(String(error.message||error),'err')}
+}
 export function searchRecord(item:any){return (WB.store.get().data?.[collections[item.kind]]||[]).find((row:any)=>row.id===item.id)}
 export function searchResultBody(item:any):string {
  const row=searchRecord(item)
@@ -14,6 +33,7 @@ export function continueSearchResult(item:any,groupLabel=''){
  const local=!!record||item.kind==='task'||item.kind==='reply'
  const ref={kind:local?item.kind:'search',id:String(item.id),title:item.title,url:item.url||undefined,body:item.snippet||'',meta:'搜索来源：'+groupLabel}
  if(local&&['task','reply','knowledge','radar'].includes(item.kind)){WB.assistant.openFor(ref);return}
+ if(!record&&item.extra?.provider==='yunzhijia'){void continueEnterpriseResult({...ref,meta:'搜索来源：云之家 · '+groupLabel},String(item.extra.accountId||''));return}
  if(record&&item.kind==='source'){
   const reply=(data.replies||[]).find((row:any)=>!row.archivedAt&&row.sourceId===item.id)
   const task=(data.tasks||[]).find((row:any)=>!row.archivedAt&&(row.sourceRefId===item.id||row.sourceRefs?.some((source:any)=>source.sourceId===item.id)))

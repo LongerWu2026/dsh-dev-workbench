@@ -69,14 +69,14 @@ test.describe('工作台 GUI 走查', () => {
     })
   }
 
-  test('助手抽屉打开/关闭并把消息区截屏', async () => {
+  test('从工作台导航打开 AI 助手并截屏', async () => {
     await ensureWorkbenchOpen()
-    const openBtn = page.locator('button[aria-label*="工作台助手"], button[title*="工作台助手"]').first()
-    await openBtn.click()
-    await page.waitForTimeout(400)
-    await expect(page.getByPlaceholder('输入指令，或让我帮你整理待办…')).toBeVisible()
-    await page.screenshot({ path: path.join(ARTIFACTS, 'assistant-drawer.png') })
-    await page.locator('button[aria-label="关闭助手"]').click()
+    const nav = page.getByRole('navigation', { name: '工作台导航' })
+    const assistant = nav.getByRole('button', { name: 'AI 助手', exact: true })
+    if (!await assistant.isVisible()) await nav.locator('details summary').click()
+    await assistant.click()
+    await expect(page.getByRole('textbox', { name: '助手消息' })).toBeVisible()
+    await page.screenshot({ path: path.join(ARTIFACTS, 'assistant-page.png') })
   })
 
   test('搜索页输入关键词并走一次本地检索（不联网）', async () => {

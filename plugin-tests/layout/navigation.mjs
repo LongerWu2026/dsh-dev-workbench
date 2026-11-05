@@ -11,7 +11,32 @@ try{
  for(const theme of ['light','dark'])for(const width of [1600,1280,1000,800,560,360,280,800,1600]){
   await page.evaluate(t=>document.documentElement.className=t,theme);await resize(width);
   const m=await page.locator('.wb-topnav').evaluate(nav=>{const buttons=[...nav.querySelectorAll(':scope > button')],more=nav.querySelector(':scope > details'),rect=nav.getBoundingClientRect();return {width:rect.width,overflow:nav.scrollWidth-nav.clientWidth,visible:buttons.map(el=>el.dataset.page),hidden:more?[...more.querySelectorAll('button')].map(el=>el.dataset.page):[],more:!!more,lines:[...new Set([...buttons,...(more?[more]:[])].map(el=>Math.round(el.getBoundingClientRect().top)))].length}});
-  if(m.overflow>1||m.lines!==1)throw Error('导航溢出或换行 '+JSON.stringify(m));if(new Set([...m.visible,...m.hidden]).size!==await page.evaluate(()=>window.WB.ORDER.length))throw Error('入口丢失或重复');if(width===1600&&m.more)throw Error('宽窗口不应保留更多');if(width===360&&!m.more)throw Error('窄插件应收纳溢出目录');report.push({theme,requestedWidth:width,...m});await page.screenshot({path:resolve(out,`${theme}-${width}.png`)});
+  if(m.overflow>1||m.lines!==1)throw Error('导航溢出或换行 '+JSON.stringify(m));
+  const expected=await page.evaluate(()=>window.WB.ORDER.filter(id=>id!=='search').sort());
+  if(JSON.stringify([...m.visible,...m.hidden].sort())!==JSON.stringify(expected))throw Error('入口丢失或重复');
+  if(width===1600&&m.more)throw Error('宽窗口不应保留更多');if(width===360&&!m.more)throw Error('窄插件应收纳溢出目录');report.push({theme,requestedWidth:width,...m});await page.screenshot({path:resolve(out,`${theme}-${width}.png`)});
+ }
+ for(const width of [1600,360]){
+  await resize(width);
+  const actions=page.locator('.wb-toolbar-action');
+  const labels=['搜索','刷新','设置','新建待办'];
+  for(const [index,label] of labels.entries()){
+   await actions.nth(index).hover();
+   const hint=actions.nth(index).locator('.wb-toolbar-hint');
+   await hint.waitFor({state:'visible'});
+   if(await hint.textContent()!==label)throw Error('工具栏悬停提示错误');
+   const visible=await hint.evaluate(node=>{
+    const rect=node.getBoundingClientRect();
+    node.style.pointerEvents='auto';
+    const hit=document.elementFromPoint(rect.left+rect.width/2,rect.top+rect.height/2);
+    node.style.removeProperty('pointer-events');
+    return hit===node&&rect.left>=0&&rect.right<=innerWidth;
+   });
+   if(!visible)throw Error('工具栏提示被遮挡 '+label);
+  }
+  await page.mouse.move(1,1);
+  await page.locator('.wb-toolbar-hint:visible').waitFor({state:'hidden'});
+  report.push({case:'toolbar-hints',width,labels});
  }
  // Hit-test the real popup against page content, including menus with their own z-index.
  for(const theme of ['light','dark'])for(const width of [1280,800,560,360])for(const height of [700,320]){

@@ -77,6 +77,18 @@ export const WB_LAYOUT_CSS = `
 .wb-head { position:relative; flex:none; z-index:50; border-bottom:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-base); }
 .wb-toolbar { min-height:48px; padding:8px 20px; border:0; }
 .wb-toolbar-brand { display:flex; align-items:center; gap:8px; font-weight:600; }
+.wb-toolbar-actions { display:flex; align-items:center; gap:inherit; margin-inline-start:auto; }
+.wb-toolbar-action { position:relative; display:flex; flex:none; }
+.wb-toolbar-action > button { width:32px; height:32px; padding:0; border-radius:9px; }
+.wb-toolbar-action > button > svg { width:18px; height:18px; }
+.wb-toolbar-hint {
+  position:absolute; z-index:11; top:calc(100% + 4px); inset-inline-end:0;
+  visibility:hidden; pointer-events:none; white-space:nowrap;
+  padding:4px 8px; border-radius:6px; font-size:11px; line-height:16px;
+  background:var(--dsw-alias-label-primary); color:var(--dsw-alias-bg-base);
+}
+.wb-toolbar-action:hover > .wb-toolbar-hint,
+.wb-toolbar-action > button:focus-visible + .wb-toolbar-hint { visibility:visible; }
 .wb-workarea { display:flex; flex:1; min-height:0; min-width:0; }
 .wb-main { flex:1; min-width:0; }
 .wb-context-pane { display:flex; flex-direction:column; width:400px; flex:0 0 400px; max-width:40%; min-width:300px; min-height:0; border-left:1px solid var(--dsw-alias-border-l1); background:var(--dsw-alias-bg-layer-1); container-type:inline-size; container-name:contextpane; }
@@ -161,7 +173,7 @@ export const WB_LAYOUT_CSS = `
  .wb-workarea.is-context-open > .wb-context-pane, .wb-workarea.is-context-open > .wb-assistant { flex:1!important; width:100%!important; max-width:100%!important; min-width:0!important; border-left:0!important; }
 }
 @container content (max-width:780px) {
- .wb-split, .wb-settings-grid, .wb-toolbox-layout { grid-template-columns:minmax(0,1fr)!important; }
+ .wb-split, .wb-toolbox-layout { grid-template-columns:minmax(0,1fr)!important; }
  .wb-toolbox-layout .wb-toolgrid { max-height:220px; overflow:auto; grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important; }
 }
 @container workbench (max-width:560px) {

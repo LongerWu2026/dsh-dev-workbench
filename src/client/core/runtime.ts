@@ -329,6 +329,8 @@ function settle(promise?: any, okText?: any): any {
 const wbActions: any = {
     backgroundModelCatalog(){return wbRpc('workbench/backgroundModels',{request:{action:'catalog'}})},
     backgroundModelConfigure(purpose:string,model:any){return settle(wbRpc('workbench/backgroundModels',{request:{action:'configure',purpose,model}}),'模型设置已保存，下一轮生效')},
+    radarArticle(request:any){return wbRpc('workbench/radarArticle',{request})},
+    async knowledgeCapture(request:any){const result=await wbRpc('workbench/knowledgeCapture',{request});if(result.snapshot)wbStore.set({data:result.snapshot});return result},
     knowledgeEngine(request:any){return wbRpc('workbench/knowledgeEngine',{request})},
     knowledgeSpace(request:any){return wbRpc('workbench/knowledgeSpace',{request})},
     knowledgeRetrieve(request:any){return wbRpc('workbench/knowledgeRetrieve',{request})},
@@ -481,7 +483,7 @@ const wbActions: any = {
     /** Unified search. Returns {query, at, total, groups[]} — NOT a snapshot. */
     search(query?: any, options?: any): any {
         return wbRpc('workbench/search', {
-            request: { query: query, includeWeb: !options || options.includeWeb !== false, ...(['local','work','web'].includes(options?.scope)?{scope:options.scope}:{}),...(options?.includeEnterprise===false?{includeEnterprise:false}:{}) },
+            request: { query: query, includeWeb: !options || options.includeWeb !== false, ...(['local','work','web','enterprise'].includes(options?.scope)?{scope:options.scope}:{}),...(options?.includeEnterprise===false?{includeEnterprise:false}:{}),...(options?.scope==='enterprise'?{enterpriseType:options.enterpriseType||'all',...(options.start!==undefined?{start:options.start}:{}),...(options.end!==undefined?{end:options.end}:{})}:{}) },
         });
     },
     /** Read-only engineering environment: git status per project + docker ps. */

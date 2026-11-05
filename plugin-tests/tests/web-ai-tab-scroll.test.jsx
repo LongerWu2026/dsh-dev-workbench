@@ -5,7 +5,7 @@ import {ConversationThread} from '../../src/client/features/web-ai/ConversationT
 afterEach(()=>{cleanup();vi.unstubAllGlobals()})
 function fixture(extra={}){
  const rounds=[{id:'r',topicId:'t',question:'架构方案',createdAt:'2026-11-03T10:00:00Z',answers:[{providerId:'kimi',status:'completed',text:'简短回答'},{providerId:'chatgpt',status:'completed',text:'较长的架构回答\n'.repeat(100)}]}]
- return {topicId:'t',visible:true,rounds,total:1,filter:'all',authentication:{},busy:false,canEdit:true,onEarlier:vi.fn(),onOpen:vi.fn(),onCapture:vi.fn(),onEditQuestion:vi.fn(),onEditAnswer:vi.fn(),onKnowledge:vi.fn(),...extra}
+ return {topicId:'t',visible:true,rounds,total:1,filter:'all',authentication:{},busy:false,canEdit:true,onEarlier:vi.fn(),onOpen:vi.fn(),onEditQuestion:vi.fn(),onEditAnswer:vi.fn(),onKnowledge:vi.fn(),...extra}
 }
 function geometry(node,initial=1000){let height=initial;Object.defineProperty(node,'scrollHeight',{get:()=>height,configurable:true});Object.defineProperty(node,'clientHeight',{value:200,configurable:true});return value=>height=value}
 it('原来位于底部时切换更长回答保留阅读位置，后续尺寸变化也不跳到底',()=>{

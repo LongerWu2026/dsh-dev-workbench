@@ -1,6 +1,6 @@
 import * as React from 'react'
 import {Btn,WB} from '../../core/runtime.js'
-import type {DevelopmentTask} from '../../../shared/development.js'
+import {LINKY_INSTALL_URL,type DevelopmentTask} from '../../../shared/development.js'
 import {WorkItemsBrowser} from './WorkItemsBrowser.js'
 import {DevelopmentSettings} from './DevelopmentSettings.js'
 import {DevelopmentTaskDetail} from './DevelopmentTaskDetail.js'
@@ -45,7 +45,7 @@ export function DevelopmentPage(){
     return <div ref={root} className="wb-page wb-dev"><style>{developmentCSS+workItemsCSS}</style>
         <header className="wb-dev-header"><div><h1>研发任务</h1></div><div className="wb-dev-actions"><Btn size="sm" disabled={!!busy} onClick={()=>void perform('刷新',async()=>{await load();if(!connected)await detect();setRefreshKey(value=>value+1)})}>刷新任务</Btn><Btn disabled={disabled||detecting} onClick={()=>setSettings(true)} icon="settings">研发设置</Btn></div></header>
         <div className="wb-dev-notices">{error&&<div role="alert" className="wb-dev-banner" data-kind="error"><p>{error}</p><Btn disabled={!!busy} onClick={()=>void perform('重新连接',async()=>{await load();await detect()})}>重新连接研发服务</Btn></div>}
-        {detecting?<div className="wb-dev-banner"><p>正在检测本机 Linky 与登录状态…</p></div>:connection&&!connected?<div className="wb-dev-banner"><div><strong>{connection.status==='missing_cli'?'连接 Linky，开始处理需求与缺陷':connection.status==='needs_login'?'请先登录 Linky':'Linky 暂时无法连接'}</strong><p>{connection.message}</p>{connection.status==='needs_login'&&<p>在 Linky 客户端完成登录，然后点击重新检测。</p>}{connection.status==='missing_cli'&&<p>安装客户端并登录；若已安装，可在“个人设置 → 命令行工具”完成 CLI 安装。</p>}</div><div className="wb-dev-actions">{connection.status==='missing_cli'&&<a className="wb-link" href="https://linky.kingdee.com/home/" target="_blank" rel="noreferrer">打开 Linky 安装入口 ↗</a>}<Btn disabled={disabled} onClick={()=>void perform('检测连接',detect)}>重新检测</Btn></div></div>:null}
+        {detecting?<div className="wb-dev-banner"><p>正在检测本机 Linky 与登录状态…</p></div>:connection&&!connected?<div className="wb-dev-banner"><div><strong>{connection.status==='missing_cli'?'连接 Linky，开始处理需求与缺陷':connection.status==='needs_login'?'请先登录 Linky':'Linky 暂时无法连接'}</strong><p>{connection.message}</p>{connection.status==='needs_login'&&<p>在 Linky 客户端完成登录，然后点击重新检测。</p>}{connection.status==='missing_cli'&&<p>安装客户端并登录；若已安装，可在“个人设置 → 命令行工具”完成 CLI 安装。</p>}</div><div className="wb-dev-actions">{connection.status==='missing_cli'&&<a className="wb-link" href={LINKY_INSTALL_URL} target="_blank" rel="noreferrer">打开 Linky 安装入口 ↗</a>}<Btn disabled={disabled} onClick={()=>void perform('检测连接',detect)}>重新检测</Btn></div></div>:null}
 
         {!snapshot&&!error&&<div className="wb-dev-empty"><p>正在读取研发任务…</p></div>}
         </div>

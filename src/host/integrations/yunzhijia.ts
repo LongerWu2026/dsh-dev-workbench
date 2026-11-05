@@ -601,8 +601,8 @@ async function fetchYunzhijiaMentionsInto(ctx?: any, state?: any): Promise<any> 
 }
 /* ------------------------------------------------------- enterprise search */
 /** The 企业（云之家） search group — real results when yzj-cli is usable. */
-async function searchEnterpriseGroup(ctx?: any, query?: any): Promise<any> {
-    const probe = await probeYunzhijia(ctx);
+async function searchEnterpriseGroup(ctx?: any, query?: any, type:'all'|'messages'|'documents'='all',knownProbe?:any): Promise<any> {
+    const probe = knownProbe||await probeYunzhijia(ctx);
     if (probe.state !== 'ok') {
         return {
             id: 'enterprise',
@@ -613,8 +613,8 @@ async function searchEnterpriseGroup(ctx?: any, query?: any): Promise<any> {
         };
     }
     const items: any = [];
-    const messageResult = await runYzj(ctx, ['im', 'message', 'search', '--keyword', query]);
-    if (messageResult.status === 'ok') {
+    const messageResult = type==='documents'?null:await runYzj(ctx, ['im', 'message', 'search', '--keyword', query]);
+    if (messageResult?.status === 'ok') {
         const groups = messageResult.json && messageResult.json.data && messageResult.json.data.list;
         if (Array.isArray(groups)) {
             for (const group of groups) {
@@ -630,14 +630,14 @@ async function searchEnterpriseGroup(ctx?: any, query?: any): Promise<any> {
                         snippet: asString(message.content, 400),
                         url: null,
                         kind: 'source',
-                        extra: { provider: 'yunzhijia', at: yzjMessageTime(message.sendTime), group: groupName },
+                        extra: { provider: 'yunzhijia', at: yzjMessageTime(message.sendTime), group: groupName,groupId:asString(group.group?.groupId||group.groupId,120),msgId:asString(message.msgId,120) },
                     });
                 }
             }
         }
     }
-    const docResult = await runYzj(ctx, ['doc', 'search', '--keyword', query]);
-    if (docResult.status === 'ok') {
+    const docResult = type==='messages'?null:await runYzj(ctx, ['doc', 'search', '--keyword', query]);
+    if (docResult?.status === 'ok') {
         const docs = docResult.json && docResult.json.data && docResult.json.data.list;
         if (Array.isArray(docs)) {
             for (const doc of docs.slice(0, 5)) {
@@ -656,9 +656,9 @@ async function searchEnterpriseGroup(ctx?: any, query?: any): Promise<any> {
             }
         }
     }
-    const imFailed = messageResult.status !== 'ok';
-    const docFailed = docResult.status !== 'ok';
-    const status = items.length > 0 ? 'ok' : imFailed && docFailed ? 'error' : 'empty';
+    const imFailed = !!messageResult&&messageResult.status !== 'ok';
+    const docFailed = !!docResult&&docResult.status !== 'ok';
+    const status = imFailed||docFailed ? (items.length?'partial':'error') : items.length?'ok':'empty';
     const notes: any = [];
     if (imFailed)
         notes.push('消息一路失败：' + (messageResult.note || messageResult.status));
@@ -666,10 +666,10 @@ async function searchEnterpriseGroup(ctx?: any, query?: any): Promise<any> {
         notes.push('文档一路失败：' + (docResult.note || docResult.status));
     return {
         id: 'enterprise',
-        label: '企业（云之家）',
+        label: type==='messages'?'云之家消息':type==='documents'?'云之家文档':'云之家消息与文档',
         status: status,
         items: items.slice(0, SEARCH_GROUP_LIMIT),
-        note: notes.length > 0 ? notes.join('；') : '来自云之家消息与知识库；文档链接以 openWebUrl 为准，为空时不构造地址。',
+        note: notes.length > 0 ? notes.join('；') : '消息按关键词检索；文档仅匹配标题和文件名，链接以返回值为准。',
     };
 }
 /* --------------------------------------------------- §3.3 其余企业 Provider */
@@ -677,10 +677,10 @@ async function searchEnterpriseGroup(ctx?: any, query?: any): Promise<any> {
  * 联系人：只在「像人名的查询」或明确的找人意图下触发，避免每次搜索都多打
  * 一次企业通讯录（也对隐私更克制）。
  */
-async function searchContactsGroup(ctx?: any, query?: any): Promise<any> {
+async function searchContactsGroup(ctx?: any, query?: any,options:any={}): Promise<any> {
     const looksLikeName = /^[\u4e00-\u9fa5]{2,4}$/.test(query);
     const explicitIntent = /找人|联系|同事|部门|谁是|联系人|通讯录/.test(query);
-    if (!looksLikeName && !explicitIntent)
+    if (!options.force && !looksLikeName && !explicitIntent)
         return null;
     const result = await runYzj(ctx, ['contact', 'user', 'search', '--keyword', query]);
     if (result.status !== 'ok') {
@@ -700,36 +700,36 @@ async function searchContactsGroup(ctx?: any, query?: any): Promise<any> {
         if (!name)
             return null;
         return {
-            id: 'yzj-user-' + (asString(user.openId, 80) || name),
+            id: 'yzj-user-' + (asString(user.openId||user.oId, 80) || name),
             title: name,
             snippet: [asString(user.department || user.orgName, 80), asString(user.jobTitle, 60)]
                 .filter(Boolean)
                 .join(' · '),
             url: null,
             kind: 'contact',
-            extra: { openId: asString(user.openId, 80), department: asString(user.department || user.orgName, 80) },
+            extra: { provider:'yunzhijia',openId: asString(user.openId||user.oId, 80), department: asString(user.fullDepartment||user.fulldepartment||user.department||user.orgName, 160),jobTitle:asString(user.jobTitle,80) },
         };
     }).filter(Boolean);
-    if (items.length === 0)
+    if (items.length === 0&&!options.force)
         return null;
     return {
         id: 'contacts',
         label: '企业联系人',
-        status: 'ok',
+        status: items.length?'ok':'empty',
         items: items,
         note: '按姓名/关键词匹配企业通讯录，仅返回展示所需字段（姓名、部门、职位）。',
     };
 }
 /** 会议室：只在会议/场地类查询下触发，按当天可用会议室过滤名称。 */
-async function searchRoomsGroup(ctx?: any, query?: any): Promise<any> {
-    if (!/会议室|会议|场地|room|预定|有空/.test(query))
+async function searchRoomsGroup(ctx?: any, query?: any,options:any={}): Promise<any> {
+    if (!options.force && !/会议室|会议|场地|room|预定|有空/.test(query))
         return null;
     const today = new Date();
     const pad = function (value?: any): any {
         return value < 10 ? '0' + value : String(value);
     };
     const day = today.getFullYear() + '-' + pad(today.getMonth() + 1) + '-' + pad(today.getDate());
-    const result = await runYzj(ctx, ['calendar', 'room', 'find', '--start', day, '--end', day]);
+    const result = await runYzj(ctx, ['calendar', 'room', 'find', '--start', options.start||day, '--end', options.end||day]);
     if (result.status !== 'ok') {
         return {
             id: 'rooms',
@@ -757,24 +757,24 @@ async function searchRoomsGroup(ctx?: any, query?: any): Promise<any> {
                 .join(' · '),
             url: null,
             kind: 'room',
-            extra: { roomId: asString(room.roomId, 80), at: null },
+            extra: { provider:'yunzhijia',roomId: asString(room.roomId, 80), at: null },
         };
     });
-    if (items.length === 0)
+    if (items.length === 0&&!options.force)
         return null;
     return {
         id: 'rooms',
         label: '会议室',
-        status: 'ok',
+        status: items.length?'ok':'empty',
         items: items,
-        note: '查的是今天可预约的会议室（calendar room find）；会议室预订属于写操作，不在插件内。',
+        note: '按所选时段查询空闲会议室；没有结果不代表会议室不存在。',
     };
 }
 /** 考勤：只在考勤意图下触发，只返回本人打卡流水。 */
-async function searchAttendanceGroup(ctx?: any, query?: any): Promise<any> {
-    if (!/打卡|考勤|出勤|clock|迟到|早退/.test(query))
+async function searchAttendanceGroup(ctx?: any, query?: any,options:any={}): Promise<any> {
+    if (!options.force && !/打卡|考勤|出勤|clock|迟到|早退/.test(query))
         return null;
-    const result = await runYzj(ctx, ['attendance', 'record', 'list']);
+    const result = await runYzj(ctx, ['attendance', 'record', 'list',...(options.start?['--start',options.start,'--end',options.end]:[])]);
     if (result.status !== 'ok') {
         return {
             id: 'attendance',
@@ -798,22 +798,22 @@ async function searchAttendanceGroup(ctx?: any, query?: any): Promise<any> {
                 .join(' · '),
             url: null,
             kind: 'attendance',
-            extra: { at: at },
+            extra: { provider:'yunzhijia',at: at },
         };
     }).filter(Boolean);
-    if (items.length === 0)
+    if (items.length === 0&&!options.force)
         return null;
     return {
         id: 'attendance',
         label: '考勤',
-        status: 'ok',
+        status: items.length?'ok':'empty',
         items: items,
-        note: '只查询本人当日打卡流水（attendance record list 的能力边界）。',
+        note: '只查询本人所选日期的打卡流水；没有记录不代表缺卡或迟到。',
     };
 }
 /** 日程与会议（§3.5）：只在日程类意图下触发，查今天到未来 3 天。 */
-async function searchEventsGroup(ctx?: any, query?: any): Promise<any> {
-    if (!/日程|会议|开会|calendar|安排|纪要/.test(query))
+async function searchEventsGroup(ctx?: any, query?: any,options:any={}): Promise<any> {
+    if (!options.force && !/日程|会议|开会|calendar|安排|纪要/.test(query))
         return null;
     const pad = function (value?: any): any {
         return value < 10 ? '0' + value : String(value);
@@ -823,7 +823,7 @@ async function searchEventsGroup(ctx?: any, query?: any): Promise<any> {
         date.setDate(date.getDate() + offset);
         return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate());
     };
-    const result = await runYzj(ctx, ['calendar', 'event', 'list', '--start', day(0), '--end', day(3)]);
+    const result = await runYzj(ctx, ['calendar', 'event', 'list', '--start', options.start||day(0), '--end', options.end||day(3)]);
     if (result.status !== 'ok') {
         return { id: 'events', label: '日程与会议', status: 'error', items: [], note: '日程查询失败：' + (result.note || result.status) };
     }
@@ -852,17 +852,17 @@ async function searchEventsGroup(ctx?: any, query?: any): Promise<any> {
                 .join(' · '),
             url: null,
             kind: 'event',
-            extra: { at: at },
+            extra: { provider:'yunzhijia',at: at },
         };
     });
-    if (items.length === 0)
+    if (items.length === 0&&!options.force)
         return null;
     return {
         id: 'events',
         label: '日程与会议',
-        status: 'ok',
+        status: items.length?'ok':'empty',
         items: items,
-        note: '查的是今天起 3 天内的日程（calendar event list）；创建/取消日程属于写操作，不在插件内。',
+        note: '按所选日期查询日程与会议；只展示当前账号有权查看的结果。',
     };
 }
 let mentionsSyncPromise: any = null;

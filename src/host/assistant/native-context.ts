@@ -5,17 +5,20 @@ import {hashText,workbenchDir} from '../platform/runtime.js'
 import {getHubTurn} from './hub-turns.js'
 import {WORKBENCH_CONTEXT_SOURCE} from '../../shared/assistant-context.js'
 
-interface ContextRecord {version:1;sessionId:string;requestId:string;turnId?:string;messageId:string;userText:string;text:string;digest:string}
+interface ContextRecord {version:1;sessionId:string;requestId:string;turnId?:string;messageId:string;userText:string;text:string;digest:string;purpose?:'development'}
+// Development includes the bounded role snapshot, real diff and test evidence.
+// Keep the existing assistant limit unchanged and never silently truncate either.
+const contextLimit=(purpose?:string)=>purpose==='development'?2*1024*1024:64000
 const installed=new WeakMap<object,()=>void>()
 const path=(sessionId:string,requestId:string)=>join(workbenchDir(),'assistant-native-contexts',hashText(JSON.stringify([sessionId,requestId]))+'.json')
 function read(sessionId:string,requestId:string):ContextRecord|undefined{
  const file=path(sessionId,requestId);if(!existsSync(file))return
  const value=JSON.parse(readFileSync(file,'utf8'))
- if(value.version!==1||value.sessionId!==sessionId||value.requestId!==requestId||typeof value.messageId!=='string'||typeof value.text!=='string'||typeof value.userText!=='string'||value.text.length>64000||value.digest!==hashText(JSON.stringify([value.userText,value.text])))throw Error('本轮上下文记录无法核对，未向模型提交，请保留原会话后重试')
+ if(value.version!==1||value.sessionId!==sessionId||value.requestId!==requestId||value.purpose!==undefined&&value.purpose!=='development'||typeof value.messageId!=='string'||typeof value.text!=='string'||typeof value.userText!=='string'||value.text.length>contextLimit(value.purpose)||value.digest!==hashText(JSON.stringify([value.userText,value.text])))throw Error('本轮上下文记录无法核对，未向模型提交，请保留原会话后重试')
  return value
 }
 function contextMessage(record:ContextRecord){
- const section=Object.freeze({name:'智能工作台',text:record.text})
+ const section=Object.freeze({name:record.purpose==='development'?'研发上下文':'智能工作台',text:record.text})
  return Object.freeze({id:record.messageId,role:'user',content:Object.freeze([Object.freeze({type:'text',text:record.text})]),source:Object.freeze({kind:WORKBENCH_CONTEXT_SOURCE,form:'snapshot',sections:Object.freeze([section]),requestId:record.requestId,sessionId:record.sessionId,...(record.turnId?{turnId:record.turnId}:{})})})
 }
 /** Join at native pre-step admission, not an earlier inject() which could be
@@ -50,11 +53,11 @@ export function activateNativeContexts(ctx:any):boolean{
 export function disposeNativeContexts(ctx:object){const dispose=installed.get(ctx);installed.delete(ctx);dispose?.()}
 /** Durable before prompt admission, so a queued request keeps its exact snapshot
  * through plugin reloads. A retry cannot replace its payload or its native ID. */
-export function prepareNativeContext(ctx:any,input:{sessionId:string;requestId:string;userText:string;text:string;turnId?:string;reuseSnapshot?:boolean}){
+export function prepareNativeContext(ctx:any,input:{sessionId:string;requestId:string;userText:string;text:string;turnId?:string;reuseSnapshot?:boolean;purpose?:'development'}){
  if(!activateNativeContexts(ctx))throw Error('当前宿主未提供原生上下文注入能力，请更新或重连 Harness；本条消息尚未发送')
- if(!input.sessionId||!input.requestId||!input.text||input.text.length>64000)throw Error('本轮上下文为空或过长，未发送消息')
+ if(!input.sessionId||!input.requestId||!input.text||input.purpose!==undefined&&input.purpose!=='development'||input.text.length>contextLimit(input.purpose))throw Error('本轮上下文为空或过长，未发送消息')
  const prior=read(input.sessionId,input.requestId),digest=hashText(JSON.stringify([input.userText,input.text]))
- if(prior){if(prior.turnId!==input.turnId||prior.userText!==input.userText||prior.digest!==digest&&!input.reuseSnapshot)throw Error('相同请求的上下文已变化，请以新消息继续；原会话与上下文保留');return prior.messageId}
+ if(prior){if(prior.purpose!==input.purpose||prior.turnId!==input.turnId||prior.userText!==input.userText||prior.digest!==digest&&!input.reuseSnapshot)throw Error('相同请求的上下文已变化，请以新消息继续；原会话与上下文保留');return prior.messageId}
  const file=path(input.sessionId,input.requestId),dir=join(workbenchDir(),'assistant-native-contexts');mkdirSync(dir,{recursive:true,mode:0o700})
  const {reuseSnapshot,...snapshot}=input
  const record:ContextRecord={version:1,...snapshot,messageId:randomUUID(),digest},temp=file+'.'+randomUUID()+'.tmp'

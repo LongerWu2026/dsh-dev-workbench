@@ -1,4 +1,5 @@
 import { hashText, newId } from '../platform/runtime.js'
+import {knowledgeBody} from './content-store.js'
 import { knowledgeMode, knowledgeSpaceOf, knowledgeSpaces, legacyKnowledgeSpace, PERSONAL_KNOWLEDGE_SPACE, type KnowledgeScope, type KnowledgeHit, type RetrievalResult } from '../../shared/knowledge.js'
 
 /** Derived index only; every lookup rechecks document hash and scope against current records. */
@@ -12,7 +13,7 @@ export function knowledgeTokens(text:string):string[]{
 export function expandKnowledgeQuery(query:string):string{
  return query+' '+SYNONYMS.filter(group=>group.some(term=>query.toLowerCase().includes(term))).flat().join(' ')
 }
-export function knowledgeVersion(doc:any):string{return hashText(JSON.stringify(['chunks-v2',doc.title,doc.body,doc.tags,doc.url,doc.projectId||null,doc.accountId||null,knowledgeSpaceOf(doc),!!doc.sharedAcrossSpaces,doc.reviewState||'candidate',doc.validUntil||null]))}
+export function knowledgeVersion(doc:any):string{return hashText(JSON.stringify(['chunks-v3',doc.title,doc.body,doc.contentRef,doc.tags,doc.url,doc.projectId||null,doc.accountId||null,knowledgeSpaceOf(doc),!!doc.sharedAcrossSpaces,doc.reviewState||'candidate',doc.validUntil||null]))}
 export function knowledgeAllowed(doc:any,scope:KnowledgeScope,includeCandidates=false):boolean{
  const space=scope.spaceId||(scope.accountId?legacyKnowledgeSpace(scope.accountId):PERSONAL_KNOWLEDGE_SPACE),own=knowledgeSpaceOf(doc)
  const shared=own===PERSONAL_KNOWLEDGE_SPACE&&!doc.projectId&&doc.sharedAcrossSpaces===true
@@ -31,7 +32,7 @@ export function defaultKnowledgeScope(state:any,request:KnowledgeScope={}):Knowl
 export function chunkKnowledge(doc:any):KnowledgeHit[]{
  const version=knowledgeVersion(doc),prior=cache.get(doc.id)
  if(prior?.version===version)return prior.chunks
- const lines=String(doc.body||'').split('\n'),chunks:KnowledgeHit[]=[];let start=0,buffer=''
+ const lines=knowledgeBody(doc).split('\n'),chunks:KnowledgeHit[]=[];let start=0,buffer=''
  const flush=(end:number)=>{if(buffer.trim())chunks.push({id:doc.id+'@'+version.slice(0,16)+':'+(start+1)+':'+(chunks.length+1),documentId:doc.id,version,title:doc.title,text:buffer.trim(),lineStart:start+1,lineEnd:Math.max(start+1,end),score:0,url:doc.url||null});buffer='';start=end}
  // Bounded Chinese-sized fragments fit the 512-token embedding model even for
  // long single-line paragraphs/code. Fragment ordinal disambiguates one line.

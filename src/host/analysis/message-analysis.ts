@@ -267,7 +267,8 @@ export function isReasoningHistoryFailure(error:any):boolean {
     const message=String(error?.message || error);
     return /reasoning_content/i.test(message) && /Missing required|must.*(?:pass|send)|needs? the reasoning|reasoning_content.*(?:required|missing)/i.test(message);
 }
-async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any,timeout:any,purpose?:string,options?:{hubRunId?:string;backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void;checkActive?:()=>void}):Promise<any> {
+type StructuredReplyOptions={hubRunId?:string;backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void;checkActive?:()=>void;recoverSession?:boolean}
+async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any,timeout:any,purpose?:string,options?:StructuredReplyOptions):Promise<any> {
     options={...options,checkActive:options?.checkActive||workflowGuard(options?.hubRunId)};options.checkActive?.();
     const key=options?.backgroundKey || session?.workbenchThreadKey || (purpose ? backgroundSessionKey(purpose) : null);
     const current=key && loadWorkbenchState().backgroundThreads?.[key];
@@ -286,7 +287,7 @@ async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any
         }
     }
 }
-async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: any, prompt?: any, timeout?: any, purpose?: string, options?: {hubRunId?:string;backgroundKey?:string;recoveryText?:string;onSubmitted?:(session:any,recovered?:boolean)=>void;checkActive?:()=>void}): Promise<any> {
+async function waitStructuredReplyOnce(ctx?: any, controller?: any, session?: any, prompt?: any, timeout?: any, purpose?: string, options?: StructuredReplyOptions): Promise<any> {
     const assertCurrent=workbenchGenerationGuard();
     const target = session || (purpose ? await ensureBackgroundSession(ctx,purpose) : null);
     options?.checkActive?.();const submitted = await submitPrompt(ctx, controller, target, prompt, false, purpose,options);

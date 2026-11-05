@@ -1,4 +1,5 @@
 import {dataService} from './data-service.js'
+import {knowledgeCaptureService} from './knowledge-capture-service.js'
 import {developerService} from './developer-service.js'
 import {developmentService} from './development-service.js'
 import {connectorService} from './connector-service.js'
@@ -17,6 +18,7 @@ import { systemService } from './system-service.js'
 import {backgroundModelService} from './background-model-service.js'
 import { refreshService } from './refresh-service.js'
 const workbenchApi: any = {
+ ...knowledgeCaptureService,
  ...developmentService,
  ...connectorService,
  ...developerService,

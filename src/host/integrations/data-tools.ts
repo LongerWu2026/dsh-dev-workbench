@@ -2,10 +2,14 @@ import {randomUUID,createHash} from 'node:crypto'
 import {readFileSync,mkdirSync,writeFileSync,renameSync} from 'node:fs'
 import {join} from 'node:path'
 import {workbenchDir} from '../platform/runtime.js'
+import {canRememberDataPasswords,openDataPassword,sealDataPassword,type PasswordSeal} from './data-passwords.js'
 
 export type DataConfig={id:string;name:string;kind:'mysql'|'postgres'|'es'|'redis';host:string;port:number;database:string;username:string;tls:boolean;ca:string;url:string}
 type Entry={config:DataConfig;password:string;client?:any;busy:boolean;timer?:ReturnType<typeof setTimeout>;abort?:AbortController;cancelled:boolean;epoch:number}
-const entries=new Map<string,Entry>();let epoch=0
+const entries=new Map<string,Entry>();const probes=new Set<Entry>();let epoch=0
+const restoring=new Map<string,Promise<Entry>>()
+const saving=new Set<string>()
+type SavedConnection=DataConfig&{passwordSeal?:PasswordSeal}
 const ROWS=200,BYTES=1024*1024
 const configPath=()=>join(workbenchDir(),'data-connections.json')
 function text(v:any,max=200){return String(v??'').trim().slice(0,max)}
@@ -19,22 +23,74 @@ function configOf(input:any):DataConfig{
     let url='';if(kind==='es'){const u=new URL(text(input.url||'http://127.0.0.1:9200',2000));if(!['http:','https:'].includes(u.protocol)||u.username||u.password||u.search||u.hash)throw Error('ES 地址仅支持不含凭据和参数的 HTTP/HTTPS 地址');url=u.href.replace(/\/$/,'')}
     return {id:/^[\w-]{1,80}$/.test(input.id||'')?input.id:randomUUID(),name:text(input.name)||kind,kind,host,port,database,username:text(input.username),tls:input.tls===true,ca:text(input.ca,20000),url};
 }
-export function dataConnections(){
+function savedConnections():SavedConnection[]{
     let saved:any[]=[];try{saved=JSON.parse(readFileSync(configPath(),'utf8'));if(!Array.isArray(saved))saved=[]}catch(e:any){if(e.code!=='ENOENT')throw Error('连接配置读取失败，请检查本地配置文件')}
-    return saved.slice(0,30).map(c=>({...configOf(c),connected:!!entries.get(c.id)?.client,unlocked:entries.has(c.id)}));
+    return saved.slice(0,30).map(c=>({...configOf(c),...(c.passwordSeal?{passwordSeal:c.passwordSeal}:{})}));
+}
+export function dataConnections(){
+    return savedConnections().map(({passwordSeal,...config})=>({
+        ...config,rememberPassword:!!passwordSeal,connected:!!entries.get(config.id)?.client,
+        unlocked:entries.has(config.id)||(canRememberDataPasswords()&&!!passwordSeal),
+    }));
+}
+function passwordTarget(config:DataConfig){
+    return JSON.stringify([config.id,config.kind,config.host,config.port,config.url,config.username,config.tls,config.ca]);
+}
+async function connectionPassword(input:any,config:DataConfig,remembered?:SavedConnection){
+    let password=input.password;
+    if(typeof password!=='string'){
+        const previous=entries.get(config.id),target=passwordTarget(config);
+        if(previous&&passwordTarget(previous.config)===target)password=previous.password;
+        else if(remembered?.passwordSeal&&passwordTarget(remembered)===target)password=await openDataPassword(remembered.passwordSeal,target);
+        else password='';
+    }
+    if(password.length>4000)throw Error('密码过长');
+    return password;
 }
 export async function saveDataConnection(input:any){
-    const config=configOf(input),old=entries.get(config.id);if(old?.busy)throw Error('连接正忙，请先停止操作');
-    const password=typeof input.password==='string'?input.password:old?.password||'';if(password.length>4000)throw Error('密码过长');
-    if(old)await closeEntry(old);const configs=dataConnections().filter(c=>c.id!==config.id).map(({connected,unlocked,...c})=>c);
-    if(configs.length>=30)throw Error('最多保存30个连接');configs.push(config);
-    mkdirSync(workbenchDir(),{recursive:true});const temp=configPath()+'.tmp';writeFileSync(temp,JSON.stringify(configs,null,2),{mode:0o600});renameSync(temp,configPath());
-    entries.set(config.id,{config,password,busy:false,cancelled:false,epoch});return {config,unlocked:true};
+    const config=configOf(input),id=config.id,generation=epoch;
+    if(saving.has(id)||entries.get(id)?.busy)throw Error('连接正忙，请先停止操作');
+    saving.add(id);
+    restoring.delete(id);
+    try{
+        const saved=savedConnections().find(row=>row.id===id);
+        const remember=input.rememberPassword===true||(input.rememberPassword===undefined&&!!saved?.passwordSeal);
+        const password=await connectionPassword(input,config,canRememberDataPasswords()?saved:undefined);
+        if(remember&&!password)throw Error('请输入要记住的连接密码');
+        const passwordSeal=remember?await sealDataPassword(password,passwordTarget(config)):undefined;
+        if(generation!==epoch)throw Error('连接服务已重载，请重新保存');
+        const configs=savedConnections().filter(row=>row.id!==id);
+        if(configs.length>=30)throw Error('最多保存30个连接');
+        configs.push({...config,...(passwordSeal?{passwordSeal}:{})});
+        mkdirSync(workbenchDir(),{recursive:true});const temp=configPath()+'.tmp';writeFileSync(temp,JSON.stringify(configs,null,2),{mode:0o600});renameSync(temp,configPath());
+        const previous=entries.get(id);
+        entries.set(id,{config,password,busy:false,cancelled:false,epoch});
+        if(previous)await closeEntry(previous);
+        return {config:{...config,rememberPassword:remember},unlocked:true};
+    }finally{saving.delete(id)}
 }
-function entry(id:any){const e=entries.get(String(id));if(!e)throw Error('连接尚未解锁，请填写密码并保存连接');return e}
+async function entry(value:any):Promise<Entry>{
+    const id=String(value);
+    if(saving.has(id))throw Error('连接配置正在保存，请稍后重试');
+    const current=entries.get(id);
+    if(current)return current;
+    const pending=restoring.get(id);
+    if(pending)return pending;
+    const saved=savedConnections().find(row=>row.id===id);
+    if(!saved?.passwordSeal)throw Error('连接尚未解锁，请填写密码并保存连接');
+    const {passwordSeal,...config}=saved;
+    const restore=openDataPassword(passwordSeal,passwordTarget(config)).then(password=>{
+        if(restoring.get(id)!==restore)throw Error('连接已变更，请重试');
+        const restored={config,password,busy:false,cancelled:false,epoch};
+        entries.set(id,restored);
+        return restored;
+    }).finally(()=>{if(restoring.get(id)===restore)restoring.delete(id)});
+    restoring.set(id,restore);
+    return restore;
+}
 async function closeEntry(e:Entry){clearTimeout(e.timer);e.abort?.abort();const client=e.client;e.client=undefined;if(client){try{if(e.config.kind==='redis')client.disconnect();else if(e.config.kind==='mysql')client.destroy();else await client.end()}catch{}}}
-export async function disconnectData(id:any){const e=entries.get(String(id));if(e){e.cancelled=true;await closeEntry(e);entries.delete(String(id))}return {status:'disconnected',note:'已关闭本地连接；正在执行的服务端操作是否结束需以数据库结果为准'};}
-export function disposeDataTools(){epoch++;for(const e of entries.values()){e.cancelled=true;void closeEntry(e)}entries.clear()}
+export async function disconnectData(id:any){restoring.delete(String(id));const e=entries.get(String(id));if(e){e.cancelled=true;await closeEntry(e);if(entries.get(String(id))===e)entries.delete(String(id))}return {status:'disconnected',note:'已关闭本地连接；正在执行的服务端操作是否结束需以数据库结果为准'};}
+export function disposeDataTools(){epoch++;restoring.clear();for(const e of [...entries.values(),...probes]){e.cancelled=true;void closeEntry(e)}entries.clear();probes.clear()}
 async function connect(e:Entry){
     if(e.cancelled||e.epoch!==epoch)throw Error('操作已停止');
     if(e.client)return e.client;const c=e.config,ssl=c.tls?{rejectUnauthorized:true,...(c.ca?{ca:c.ca}:{})}:undefined;
@@ -47,8 +103,11 @@ async function connect(e:Entry){
     if(e.cancelled||e.epoch!==epoch){if(c.kind==='mysql')client.destroy();else if(c.kind==='redis')client.disconnect();else await client.end();throw Error('操作已停止')}
     e.client=client;return client;
 }
-async function operation(id:any,fn:(e:Entry)=>Promise<any>){
-    const e=entry(id);if(e.busy)throw Error('该连接已有操作执行中');if([...entries.values()].filter(x=>x.busy).length>=4)throw Error('同时最多执行4个数据操作');
+async function operation(id:any,fn:(e:Entry)=>Promise<any>){return runOperation(await entry(id),fn)}
+async function runOperation(e:Entry,fn:(e:Entry)=>Promise<any>){
+    if(entries.get(e.config.id)===e&&saving.has(e.config.id))throw Error('连接配置正在保存，请稍后重试');
+    if(e.busy)throw Error('该连接已有操作执行中');
+    if([...entries.values(),...probes].filter(x=>x.busy).length>=4)throw Error('同时最多执行4个数据操作');
     e.busy=true;e.cancelled=false;clearTimeout(e.timer);e.abort=new AbortController();let timeout:any;
     try{return await Promise.race([fn(e),new Promise((_,reject)=>{timeout=setTimeout(()=>{e.cancelled=true;void closeEntry(e);reject(Error('操作超时；未自动重试，请核对服务端状态'))},35000)})])}
     catch(err:any){await closeEntry(e);const message=String(err.message||err);throw Error(e.password?message.split(e.password).join('[凭据已隐藏]').slice(0,700):message.slice(0,700))}
@@ -60,12 +119,50 @@ async function esRequest(e:Entry,path:string,body?:any){
     const reader=response.body?.getReader();let result='',size=0;const decoder=new TextDecoder();try{while(reader){const part=await reader.read();if(part.done)break;size+=part.value.length;if(size>BYTES)throw Error('ES响应超过1MB，请缩小查询范围');result+=decoder.decode(part.value,{stream:true})}}finally{await reader?.cancel().catch(()=>{})}
     result+=decoder.decode();if(!response.ok)throw Error('ES HTTP '+response.status+'：'+result.slice(0,400));return JSON.parse(result);
 }
-export async function testDataConnection(id:any){return operation(id,async e=>{const client=await connect(e);if(e.config.kind==='es')await esRequest(e,'/');else if(e.config.kind==='redis')await client.ping();else await client.query('SELECT 1');return {status:'ok',note:'连接成功'}})}
+export async function testDataConnection(id:any,draft?:any){
+    const probe=async(e:Entry)=>{
+        const client=await connect(e);
+        if(e.config.kind==='es')await esRequest(e,'/');
+        else if(e.config.kind==='redis')await client.ping();
+        else await client.query('SELECT 1');
+        return {status:'ok',note:'连接成功'};
+    };
+    if(draft===undefined)return operation(id,probe);
+
+    const config=configOf(draft);
+    const saved=savedConnections().find(row=>row.id===config.id);
+    const temporary:Entry={config,password:await connectionPassword(draft,config,saved),busy:false,cancelled:false,epoch};
+    probes.add(temporary);
+    try{return await runOperation(temporary,probe)}
+    finally{
+        temporary.cancelled=true;
+        await closeEntry(temporary);
+        probes.delete(temporary);
+    }
+}
 function identifier(s:string,kind:string){return kind==='mysql'?'`'+s.replace(/`/g,'``')+'`':'"'+s.replace(/"/g,'""')+'"'}
+type SqlTable = {schemaName:string;name:string;comment?:string}
+async function listSqlTables(e:Entry, terms:string[]=[]):Promise<{objects:SqlTable[];truncated:boolean}>{
+    const client=await connect(e);
+    let rows:SqlTable[];
+    if(e.config.kind==='mysql'){
+        const match=terms.map(()=>"LOCATE(?, LOWER(CONCAT_WS(' ', TABLE_NAME, TABLE_COMMENT))) > 0").join(' OR ');
+        [rows]=await client.query('SELECT TABLE_SCHEMA AS schemaName,TABLE_NAME AS name,TABLE_COMMENT AS comment FROM information_schema.TABLES WHERE TABLE_SCHEMA=?'+(match?' AND ('+match+')':'')+' ORDER BY TABLE_NAME LIMIT 501',[e.config.database,...terms]);
+    }else{
+        const match=terms.map((_,index)=>`strpos(lower(concat_ws(' ', t.table_name, obj_description(c.oid, 'pg_class'))), $${index+2}) > 0`).join(' OR ');
+        ({rows}=await client.query(`SELECT t.table_schema AS "schemaName", t.table_name AS name, obj_description(c.oid, 'pg_class') AS comment
+            FROM information_schema.tables t
+            JOIN pg_namespace n ON n.nspname=t.table_schema
+            JOIN pg_class c ON c.relnamespace=n.oid AND c.relname=t.table_name
+            WHERE t.table_catalog=$1 AND t.table_schema NOT IN ('pg_catalog','information_schema')${match?' AND ('+match+')':''}
+            ORDER BY t.table_schema,t.table_name LIMIT 501`,[e.config.database,...terms]));
+    }
+    return {objects:rows.slice(0,500),truncated:rows.length>500};
+}
 export async function dataObjects(request:any){return operation(request.id,async e=>{
-    const c=await connect(e),kind=e.config.kind;
-    if(kind==='mysql'){const [rows]=await c.query('SELECT TABLE_SCHEMA AS schemaName,TABLE_NAME AS name,TABLE_COMMENT AS comment FROM information_schema.TABLES WHERE TABLE_SCHEMA=? ORDER BY TABLE_NAME LIMIT 501',[e.config.database]);return {objects:rows.slice(0,500),truncated:rows.length>500}}
-    if(kind==='postgres'){const {rows}=await c.query("SELECT table_schema AS \"schemaName\",table_name AS name FROM information_schema.tables WHERE table_catalog=$1 AND table_schema NOT IN ('pg_catalog','information_schema') ORDER BY table_schema,table_name LIMIT 501",[e.config.database]);return {objects:rows.slice(0,500),truncated:rows.length>500}}
+    const kind=e.config.kind;
+    if(kind==='mysql'||kind==='postgres')return listSqlTables(e);
+    const c=await connect(e);
     if(kind==='es'){const rows=await esRequest(e,'/_cat/indices?format=json&h=index,docs.count,health');return {objects:rows.slice(0,500).map((r:any)=>({name:r.index,comment:r['docs.count']+' 文档 · '+r.health})),truncated:rows.length>500}}
     const cursor=text(request.cursor||'0',30);if(!/^\d+$/.test(cursor))throw Error('游标无效');const [next,keys]=await c.scan(cursor,'MATCH',text(request.pattern||'*',500),'COUNT',100);return {objects:keys.slice(0,500).map((name:string)=>({name})),cursor:next,truncated:keys.length>500};
 })}
@@ -123,4 +220,37 @@ export async function executeDataQuery(request:any){return operation(request.id,
     }
     if(e.cancelled)throw Error('操作已停止');return rowResult(rows,columns,{kind,durationMs:Date.now()-start});
 })}
-export async function withDataStructure(request:any,callback:(data:any)=>Promise<any>){const data=await operation(request.id,async e=>{const structure=await readStructure(e,request.selected);return {kind:e.config.kind,database:e.config.database,...structure}});return callback(data)}
+export async function readDataGenerationContext(
+    request:any,
+    chooseTables:(catalog:SqlTable[])=>Promise<SqlTable[]>,
+){
+    const connection=await entry(request.id);
+    let selected=request.selected;
+    if(selected===undefined||(Array.isArray(selected)&&selected.length===0)){
+        if(!['mysql','postgres'].includes(connection.config.kind))throw Error('请先选择索引或 Key');
+        const catalog=await operation(request.id,async e=>{
+            const initial=await listSqlTables(e);
+            const compact=(rows:SqlTable[])=>rows.map(({schemaName,name,comment})=>({schemaName,name,comment:comment?.slice(0,160)}));
+            let rows=compact(initial.objects);
+            if(initial.truncated||JSON.stringify(rows).length>24000){
+                const generic=new Set(['查询','统计','生成','脚本','最近','每天','表','select','from','sql','query']);
+                const words=new Intl.Segmenter('zh',{granularity:'word'}).segment(String(request.instruction).toLowerCase());
+                const terms=[...new Set([...words].filter(word=>word.isWordLike&&word.segment.length>=2&&!generic.has(word.segment)).map(word=>word.segment))].slice(0,12);
+                if(!terms.length)throw Error('表较多，请补充具体业务关键词或表名，也可以手动选表');
+                const matched=await listSqlTables(e,terms);
+                rows=compact(matched.objects);
+                if(matched.truncated||JSON.stringify(rows).length>24000)throw Error('匹配到的表较多，请补充更具体的业务关键词或表名');
+            }
+            if(!rows.length)throw Error('当前连接未找到匹配的表，请核对库名或补充表名');
+            return rows;
+        });
+        selected=await chooseTables(catalog);
+    }
+    return operation(request.id,async e=>{
+        if(e!==connection)throw Error('连接配置已变化，请重新生成');
+        if(request.mode==='script'&&!['mysql','postgres'].includes(e.config.kind))throw Error('变更脚本生成仅用于 SQL 数据库');
+        const structure=await readStructure(e,selected);
+        const resolved=structure.tables.map(({name,schemaName})=>({name,...(schemaName?{schemaName}:{})}));
+        return {context:{kind:e.config.kind,database:e.config.database,...structure},selected:resolved};
+    });
+}

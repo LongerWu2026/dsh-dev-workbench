@@ -38,7 +38,7 @@ it('进入页面、定时等待和返回窗口不自动检测，只有按钮触�
     expect(calls.filter(c=>c.method==='workbench/yunzhijiaStatus')).toHaveLength(0)
     const section=screen.getByLabelText('云之家连接')
     expect(section.querySelectorAll('.wb-item-sub')).toHaveLength(1);expect(section.textContent).toContain('同步云之家消息与文档，安装时获取最新版 CLI。');expect(section.textContent).not.toContain('未找到 CLI')
-    fireEvent.click(screen.getByRole('button',{name:'重新检测'}));await act(async()=>{})
+    fireEvent.click(within(section).getByRole('button',{name:'重新检测'}));await act(async()=>{})
     expect(calls.some(c=>c.args?.request?.force===true)).toBe(true)
     expect(calls.filter(c=>c.method==='workbench/yunzhijiaStatus')).toHaveLength(1)
 })

@@ -1,3 +1,4 @@
+import {KnowledgeDocumentButton} from '../../components/KnowledgeCapture.js'
 import {KnowledgeEnginePanel} from './KnowledgeEnginePanel.js'
 import {KnowledgeScopeFields} from '../../components/KnowledgeScopeFields.js'
 import {RetrievalPanel} from './RetrievalPanel.js'
@@ -88,6 +89,9 @@ function knowPage(): any {
     const [kind, setKind] = React.useState<any>('all');
     const [query, setQuery] = React.useState<any>('');
     const [tag, setTag] = React.useState<any>('');
+    const [fullMatches,setFullMatches]=React.useState<{key:string;ids:string[];error?:string}>({key:'',ids:[]});
+    const fullQueryKey=JSON.stringify([scope.spaceId,scope.projectId,query.trim().toLowerCase()]);
+    React.useEffect(()=>{if(!query.trim()||!items.some((item:any)=>item.contentRef))return;let active=true;const timer=setTimeout(()=>{WB.actions.knowledgeCapture({action:'search',query:query.trim(),scope}).then((result:any)=>{if(active)setFullMatches({key:fullQueryKey,ids:result.ids||[]})}).catch((failure:any)=>{if(active)setFullMatches({key:fullQueryKey,ids:[],error:failure.message||'完整正文搜索失败，请重试'})})},200);return()=>{active=false;clearTimeout(timer)}},[fullQueryKey,data?.revision]);
     React.useEffect(()=>{const target=wbState.knowledgeFocusId;if(!target||!data)return;const item=(data.knowledge||[]).find((row:any)=>row.id===target);if(item){setScope({spaceId:knowledgeSpaceOf(item),projectId:item.projectId||null});setQuery(item.title||'');setKind('all');setTag('')}WB.store.set({knowledgeFocusId:null})},[wbState.knowledgeFocusId,data]);
     React.useEffect(()=>setPage(0),[kind,query,tag,scope.spaceId,scope.projectId]);
     const [createOpen, setCreateOpen] = React.useState<any>(false);
@@ -116,7 +120,7 @@ function knowPage(): any {
             return false;
         if (tag && !(Array.isArray(item.tags) && item.tags.indexOf(tag) >= 0))
             return false;
-        if (needle && knowSearchBlob(item).indexOf(needle) < 0)
+        if (needle && knowSearchBlob(item).indexOf(needle) < 0 && !(fullMatches.key===fullQueryKey&&fullMatches.ids.includes(item.id)))
             return false;
         return true;
     }));
@@ -132,9 +136,10 @@ function knowPage(): any {
         setFormError('');
         setCreateOpen(true);
     }
-    function openEdit(item?: any): any {
+    async function openEdit(item?: any): Promise<any> {
         if (!item)
             return;
+        if(item.contentRef){try{item=(await WB.actions.knowledgeCapture({action:'read',id:item.id,scope:{spaceId:knowledgeSpaceOf(item),projectId:item.projectId||null}})).item}catch(error:any){WB.toast(error.message||'完整笔记读取失败','warn');return}}
         setEditItem(item);
         setForm({
             kind: item.kind || 'note',
@@ -152,7 +157,8 @@ function knowPage(): any {
         setEditItem(null);
         setFormError('');
     }
-    function copyItem(item?: any): any {
+    async function copyItem(item?: any): Promise<any> {
+        if(item.contentRef){try{item=(await WB.actions.knowledgeCapture({action:'read',id:item.id,scope:{spaceId:knowledgeSpaceOf(item),projectId:item.projectId||null}})).item}catch(error:any){WB.toast(error.message||'完整笔记读取失败','warn');return}}
         WB.util.copy(knowCopyText(item))
             .then(function (): any {
             WB.toast('条目内容已复制', 'ok');
@@ -271,14 +277,7 @@ function knowPage(): any {
             onClick: function (): any {
                 setConfirmItem(item);
             },
-        })), h('div', {
-            style: {
-                fontSize: 13,
-                fontWeight: 600,
-                lineHeight: 1.45,
-                overflowWrap: 'anywhere',
-            },
-        }, item.title || '（未命名条目）'),h('div',{className:'wb-row wb-row--wrap',style:{gap:6}},h(Badge,{tone:item.reviewState==='confirmed'?'ok':item.reviewState==='obsolete'?'idle':'warn'},item.reviewState==='confirmed'?'已确认':item.reviewState==='obsolete'?'已失效':'待审核'),h('span',{className:'wb-tiny wb-muted'},item.projectId?(((data&&data.projects)||[]).find((p:any)=>p.id===item.projectId)?.name||item.projectId):'个人通用'),item.validUntil?h('span',{className:'wb-tiny wb-muted'},'有效至 '+WB.fmt.datetime(item.validUntil)):null), item.url
+        })), h(KnowledgeDocumentButton,{item,scope:{spaceId:knowledgeSpaceOf(item),projectId:scope.projectId||null}}),h('div',{className:'wb-row wb-row--wrap',style:{gap:6}},h(Badge,{tone:item.reviewState==='confirmed'?'ok':item.reviewState==='obsolete'?'idle':'warn'},item.reviewState==='confirmed'?'已确认':item.reviewState==='obsolete'?'已失效':'待审核'),h('span',{className:'wb-tiny wb-muted'},item.projectId?(((data&&data.projects)||[]).find((p:any)=>p.id===item.projectId)?.name||item.projectId):'个人通用'),item.validUntil?h('span',{className:'wb-tiny wb-muted'},'有效至 '+WB.fmt.datetime(item.validUntil)):null), item.url
             ? h('a', {
                 className: 'wb-link wb-tiny wb-ellipsis',
                 href: item.url,
@@ -450,7 +449,7 @@ function knowPage(): any {
                 setQuery('');
             },
         })
-        : null)), allTags.length
+        : null)),fullMatches.key===fullQueryKey&&fullMatches.error?h('p',{role:'alert',className:'wb-tiny wb-muted'},fullMatches.error):null, allTags.length
         ? h('div', {
             className: 'wb-row wb-row--wrap',
             style: { gap: 6, marginBottom: 14, alignItems: 'center' },

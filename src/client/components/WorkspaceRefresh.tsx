@@ -52,7 +52,7 @@ export function WorkspaceRefresh({scope='all',iconOnly=false}:{scope?:'all'|'tas
  const title=scope==='all'?'同步消息与日历、识别待处理消息、更新资讯与摘要':'同步最新消息与日历，并识别待处理消息；不更新资讯'
  const start=()=>WB.actions.refreshWorkspace(scope).catch(()=>{})
  return <>
-  {iconOnly?<IconBtn name="refresh" label={name} title={title} disabled={busy} onClick={start}/>:<Btn size="sm" icon="refresh" title={title} aria-label={name} disabled={busy} onClick={start}>{busy?'刷新中…':'刷新'}</Btn>}
+  {iconOnly?<IconBtn name="refresh" label={name} title="" disabled={busy} onClick={start}/>:<Btn size="sm" icon="refresh" title={title} aria-label={name} disabled={busy} onClick={start}>{busy?'刷新中…':'刷新'}</Btn>}
   {scope==='all'&&!iconOnly&&report&&<Btn size="sm" kind="subtle" onClick={()=>setOpen(true)} aria-label="查看刷新进度">{report.status==='running'?<><Spinner size={12}/> 处理中</>:report.status==='completed'?'已更新':'部分未完成'}</Btn>}
   {open&&<Modal title="刷新进度" open={open} onClose={()=>setOpen(false)}>
    <div className="wb-stack" style={{gap:12}}>

@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url)
 // Bundle only the two SQL grammars; the complete parser package stays a devDependency.
 const sqlGrammarPlugin = {name:'sql-grammars',setup(builder){builder.onResolve({filter:/^(node-sql-parser\/build\/(mysql|postgresql)\.js|big-integer)$/},args=>({path:require.resolve(args.path,{paths:[args.resolveDir]}),external:false}))}}
 const host = await build({ ...common, plugins:[sqlGrammarPlugin], entryPoints: ['src/host.ts'], platform: 'node', format: 'esm', packages: 'external' })
-const client = await build({ ...common, define:{__WORKBENCH_VERSION__:JSON.stringify(pkg.version)}, entryPoints: ['src/client.ts'], platform: 'browser', format: 'cjs', external: ['react', 'react/*'], jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment' })
+const client = await build({ ...common, loader:{'.svg':'dataurl'}, define:{__WORKBENCH_VERSION__:JSON.stringify(pkg.version)}, entryPoints: ['src/client.ts'], platform: 'browser', format: 'cjs', external: ['react', 'react/*'], jsx: 'transform', jsxFactory: 'React.createElement', jsxFragment: 'React.Fragment' })
 const cli = await build({ ...common, entryPoints: ['src/cli/harness-linky.ts'], platform: 'node', format: 'esm', packages: 'external' })
 const cliCode=cli.outputFiles[0].text
 const embeddingWorker=await build({ ...common, entryPoints:['src/host/knowledge/embedding-worker.ts'],platform:'node',format:'esm',packages:'external'})

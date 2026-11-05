@@ -1,4 +1,23 @@
-import {WB} from './runtime.js'
+import {WB,wbConnection} from './runtime.js'
+
+// Memory only, scoped to the actual Host connection and knowledge scope. Page
+// navigation must not throw away an already-readable directory. Never reuse it
+// for another connection, and never use a cached binding to authorize a send.
+const directories=new WeakMap<object,Map<string,any[]>>()
+export function cachedAssistantDirectory(scope:any={}):any[]|undefined {
+ return wbConnection&&directories.get(wbConnection)?.get(JSON.stringify(scope))
+}
+export function rememberAssistantDirectory(scope:any,rows:any[],connection:object){
+ if(!connection||connection!==wbConnection)return
+ let cache=directories.get(wbConnection)
+ if(!cache){cache=new Map();directories.set(wbConnection,cache)}
+ const key=JSON.stringify(scope||{});cache.delete(key);cache.set(key,rows)
+ while(cache.size>8)cache.delete(cache.keys().next().value!)
+}
+export function updateAssistantDirectories(update:(rows:any[])=>any[]){
+ const cache=wbConnection&&directories.get(wbConnection)
+ if(cache)for(const [key,rows] of cache)cache.set(key,update(rows))
+}
 
 /** Only read requests may time out/retry. Never resubmit a mutation or prompt. */
 export async function readAssistantHub(request:any,signal?:AbortSignal){

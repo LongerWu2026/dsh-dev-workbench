@@ -1,4 +1,5 @@
 export const DEVELOPMENT_ISSUE_TYPES=[{id:'requirement',label:'需求'},{id:'user_story',label:'用户故事'},{id:'bug',label:'缺陷'}] as const
+export const LINKY_INSTALL_URL='https://linky.kingdee.com/home/'
 /** Linky business state and local execution state are intentionally independent. */
 export const DEVELOPMENT_STAGES = [
     {id:'analysis',label:'需求分析'}, {id:'implementation',label:'开发修复'},

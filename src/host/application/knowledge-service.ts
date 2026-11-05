@@ -9,6 +9,12 @@ import {knowledgeEngine,scheduleKnowledgeIndex} from '../knowledge/engine.js'
 import {knowledgeSpaces,knowledgeSpaceOf,PERSONAL_KNOWLEDGE_SPACE} from '../../shared/knowledge.js'
 import {knowledgeScopeKey} from '../knowledge/scope.js'
 import {randomUUID} from 'node:crypto'
+import {storeKnowledgeContent,MAX_KNOWLEDGE_TEXT,contentDigest} from '../knowledge/content-store.js'
+function fullTextInput(input:any){
+ if(input?.body===undefined)return input
+ if(typeof input.body!=='string'||input.body.length>MAX_KNOWLEDGE_TEXT)throw Error('知识正文须为文本且不超过100万字符')
+ return {...input,body:input.body.slice(0,20000),contentRef:input.body.length>20000?storeKnowledgeContent(input.body):null}
+}
 
 /** knowledge-service: shared Remote and Agent business use cases. */
 export const knowledgeService = {
@@ -35,7 +41,7 @@ export const knowledgeService = {
     async knowledgeTraces(request:any={}){const state=loadWorkbenchState(),scope=defaultKnowledgeScope(state,request.scope||{});return {items:(state.retrievalTraces||[]).filter((t:any)=>(!request.sessionId||t.sessionId===request.sessionId)&&knowledgeScopeKey(t.scope)===knowledgeScopeKey(scope)).slice(-30).reverse()}},
 
     async createKnowledge(input?: any): Promise<any> {
-        if(typeof input?.body==='string'&&input.body.length>20000)throw new Error('知识正文超过20000字符，请按章节拆分');
+        input=fullTextInput(input);
         if(input?.validUntil&&!Number.isFinite(Date.parse(input.validUntil)))throw new Error('知识有效期格式无效');
         const state=loadWorkbenchState(),project=(state.projects||[]).find((row:any)=>row.id===input?.projectId)
         const item = normalizeKnowledge({...input,spaceId:input?.spaceId||project?.knowledgeSpaceId||knowledgeSpaceOf(input)});
@@ -55,7 +61,8 @@ export const knowledgeService = {
     },
 
     async updateKnowledge(id?: any, patch?: any, expectedFingerprint?:string): Promise<any> {
-        if(typeof patch?.body==='string'&&patch.body.length>20000)throw new Error('知识正文超过20000字符，请按章节拆分');
+        const bodyHash=typeof patch?.body==='string'?contentDigest(patch.body):null;
+        patch=fullTextInput(patch);
         if(patch?.validUntil&&!Number.isFinite(Date.parse(patch.validUntil)))throw new Error('知识有效期格式无效');
         const saved=await mutateWorkbenchState(function (state?: any): any {
             const existing = ensureArray(state.knowledge).find(function (item?: any): any {
@@ -65,6 +72,7 @@ export const knowledgeService = {
                 throw new Error('找不到该知识条目：' + String(id));
             if(expectedFingerprint&&hashText(JSON.stringify(existing))!==expectedFingerprint)throw new Error('知识已更新，确认失效，请重新预览');
             const next = normalizeKnowledge(patch || {}, existing);
+            if(bodyHash&&next.capture)next.capture.contentHash=bodyHash;
             if(patch?.projectId&&patch.projectId!==existing.projectId&&!patch.spaceId)next.spaceId=state.projects.find((row:any)=>row.id===patch.projectId)?.knowledgeSpaceId||PERSONAL_KNOWLEDGE_SPACE
             next.id = existing.id;
             validateOwnership(state,next,existing)

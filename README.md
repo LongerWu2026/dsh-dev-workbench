@@ -19,10 +19,10 @@ DeepSeek Harness 原生插件，把 AI 助手、消息跟进、研发任务、�
 
 ### 通过 npm 安装
 
-通过 npm 安装下列版本；若 registry 或镜像暂未同步，可使用下一节的 GitHub 预构建包。
+通过 npm 安装 registry 已发布的版本；版本列表见 [npm 包页面](https://www.npmjs.com/package/dsh-dev-workbench?activeTab=versions)。安装本次 GitHub 版本请使用下一节的预构建包。
 
 ```sh
-dsh plugin --profile desktop add dsh-dev-workbench@0.4.3
+dsh plugin --profile desktop add dsh-dev-workbench
 ```
 
 将 `desktop` 替换为实际宿主使用的 profile。使用指定版本便于核对安装结果；桌面端也可使用应用自己的插件管理入口。
@@ -32,7 +32,7 @@ dsh plugin --profile desktop add dsh-dev-workbench@0.4.3
 从 [Releases](https://github.com/LongerWu2026/dsh-dev-workbench/releases) 下载 `dsh-dev-workbench-<版本>.tgz`，或直接安装：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.3/dsh-dev-workbench-0.4.3.tgz
+dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.5/dsh-dev-workbench-0.4.5.tgz
 ```
 
 升级后按宿主机制重载插件组件或重启 Harness，再打开侧栏「智能工作台」。只刷新页面不会重新注册新增 Host 接口；遇到 `/api/workbench/...` 返回 404，先重载插件组件。升级前建议备份工作台数据，位置见下文。
@@ -58,7 +58,7 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 | 任务中心与待回复 | 独立管理交付与回复责任，支持搜索、筛选、状态切换、来源回查和确认后回复 |
 | AI 资讯 | 联网与 RSS 采集、读取原文、生成摘要和本轮概览，展开同批资讯或查看完整目录 |
 | 知识空间 | 人工审核资料，按空间和项目隔离；关键词与可选本地语义检索，返回原文、版本、行号和引用 |
-| 多 AI 对话 | 同一问题发给选定厂商，逐轮切换查看回答，管理附件和本地历史，将选中回答保存为候选知识 |
+| 多 AI 对话 | 同一问题发给选定厂商，逐轮切换查看回答，管理附件和本地历史，将选中回答收藏为知识笔记 |
 | 全局搜索 | 顶部搜索图标或 Cmd/Ctrl+K 查询已保存的待办、知识、资讯与消息，预览正文并回到原事项；快速查询不联网 |
 | 开发工具箱 | 数据连接、JSON、Diff、HTTP/MCP 调试、日志、SQL、正则、类型生成及常用转换工具 |
 | 研发协作 | 管理本地工程、启动命令，联动 VS Code、IDEA 和终端，查看运行日志 |
@@ -74,6 +74,8 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 - **办公主题**：从助手工具中选择日报、周报、批量回复草稿或待办方案；相同主题可恢复既有成果，查看和采纳草稿不会自动对外发送。原「智能办公」入口转入助手，旧记录保留。
 
 原生会话、附件和身份能力依赖宿主实际提供的服务；不可用时显示原因。升级后须重载插件 Host 和客户端，才能使用新增接口。详见[AI 助手介绍](docs/ASSISTANT-HUB-2026-11-01.md)、[附件与引用](docs/ASSISTANT-ATTACHMENTS-IDENTITY-2026-11-01.md)、[事项与原生会话绑定](docs/ASSISTANT-NATIVE-BINDING-2026-11-01.md)和[办公主题](docs/ASSISTANT-COMPACT-WORKSPACE-2026-11-01.md)。
+
+助手回复、多 AI 回答和助手设置预览使用内置的 Lulu 头像；本人头像沿用宿主配置。
 
 ### 会话运行与后台模型
 
@@ -108,13 +110,15 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 
 点击顶部搜索图标或按 Cmd/Ctrl+K，在同一个弹窗中筛选并查找已保存的待办、知识、资讯和消息。可查看完整正文、打开原事项，或把当前结果交给对应助手会话继续处理。快速搜索只查本地记录，不把输入发送给企业 CLI 或互联网服务；联网搜索入口只预填可编辑指令，明确发送后才执行。详见[全局搜索说明](docs/GLOBAL-WORK-SEARCH-2026-11-03.md)。
 
+快速搜索默认只查本地。明确选择「查询云之家」后，可在完整结果页按联系人、消息、文档、群聊等类型查询；查询使用已授权的云之家账号，类型切换不会自动发起查询。详见[云之家检索](docs/YUNZHIJIA-SEARCH-2026-11-04.md)。
+
 ### 多 AI 对话与历史
 
 内嵌 Kimi、智谱清言、豆包、元宝和千问，ChatGPT 可选。统一输入问题，选择发送厂商，每轮通过厂商标签查看回答；各厂商保持自己的官网会话，新厂商不会自动继承其他厂商的历史上下文。
 
 新增回答支持增量展示和 Markdown 排版，保留表格、代码语言及文件树结构；复制、导出和保存知识使用完整已采集正文。官网更新仍通过 DOM 观察获取，历史中已丢失的格式不会自动复原。各厂商的登录状态可单独检查，遇到登录或验证码由用户在官网完成。
 
-支持选择、粘贴和拖入图片或文档，发送前预览和移除。每次最多 5 个附件，单文件 10 MB、合计 20 MB；历史仅保留附件元数据，刷新后需重选原文件。回答可保存、搜索、重命名、归档或放入本地回收站，选中内容可加入候选知识。恢复采集只读取回答；仅明确未提交的厂商可由用户点击补发，提交结果不确定时不自动重发。
+支持选择、粘贴和拖入图片或文档，发送前预览和移除。每次最多 5 个附件，单文件 10 MB、合计 20 MB；历史仅保留附件元数据，刷新后需重选原文件。回答可保存、搜索、重命名、归档或放入本地回收站，选中回答可收藏到知识库。同步中断时可查看原对话，并粘贴保存未同步的回答。只有明确未提交的厂商才提供手动补发，提交结果不确定时不会自动重发。
 
 登录、验证码、站点繁忙及附件格式受各厂商规则约束。**跨 Harness 重启的网页登录持久化需要另行适配宿主扩展，安装本插件不会自动修改桌面应用**；普通原版宿主不保证这一能力。详见[聊天与补发](docs/WEB-AI-CHAT-REDESIGN-2026-10-30.md)、[历史管理](docs/WEB-AI-LOCAL-HISTORY-2026-10-29.md)、[真实站点验证](docs/WEB-AI-LIVE-ACCEPTANCE-2026-10-30.md)及[可选 rc.5 宿主扩展](host-integration/rc5/README.md)。
 
@@ -126,13 +130,15 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 
 普通聊天的自动知识模式由模型按需查询已保存资料，不在每次发送前固定检索；实际查询后才显示知识依据。仅知识库模式仍先检索，未命中时不调用模型；关闭模式不自动查询。知识工具沿用当前会话的空间、项目和本轮引用范围，模型不能自行扩大范围。详见[按需检索](docs/KNOWLEDGE-ON-DEMAND-2026-11-04.md)。
 
+可将已读云之家消息、助手定稿和资讯原文保存为笔记。保存前可编辑正文、标签及所属空间；默认仅保存笔记，勾选「用于 AI 回答」后才纳入该范围的知识检索。资讯原文不可用时仍可收藏链接。详见[多来源笔记](docs/KNOWLEDGE-CAPTURE-2026-11-04.md)。
+
 ### 开发工具与数据查询
 
 工具箱按工具展示输入和结果，可搜索、筛选并在当前页面保留切换前的输入。JSON 支持格式化、树形查看和路径复制；Diff 支持文本和 JSON 结构对比；HTTP 调试支持导入基础 cURL，导入本身不发送请求；另有 MCP Streamable HTTP 调试、日志筛选、正则、Cron、SQL 格式化、类型生成、YAML/CSV 转换等工具。AI 辅助需显式点击，沿用宿主助手。
 
 数据连接支持 MySQL、PostgreSQL、Elasticsearch 和单节点 Redis：读取所选结构、生成查询并在用户点击后执行。SQL 使用语法树校验和只读事务，Redis 仅开放受限读取；建议配合只读账号使用。AI 生成只传数据库类型与所选结构元数据，不传连接密码、地址或业务行数据；生成的结构变更与回滚脚本仅供预览。查询结果最多 200 行、1 MB。
 
-数据连接密码只驻留宿主内存，重启或断开后重新填写；非密码配置保存在本地。HTTP/MCP 调试按用户操作联网，离线转换在本地执行。详见[工具箱介绍](docs/DEVELOPER-TOOLBOX-2026-10-31.md)、[数据连接说明](docs/DATA-TOOLS-2026-10-31.md)和[研发协作](docs/DEVELOPER-WORKFLOWS-2026-10-29.md)。
+数据连接密码默认仅驻留宿主内存。macOS 可选择「记住密码」，保存加密密文，密钥由系统钥匙串保管；取消勾选并保存可清除密文。HTTP/MCP 调试按用户操作联网，离线转换在本地执行。详见[工具箱介绍](docs/DEVELOPER-TOOLBOX-2026-10-31.md)、[数据连接说明](docs/DATA-TOOLS-2026-10-31.md)和[研发协作](docs/DEVELOPER-WORKFLOWS-2026-10-29.md)。
 
 ### 知识检索与工作汇总
 
@@ -148,12 +154,13 @@ AI 助手的办公工具将工作记录组织为回复草稿、日报周报和�
 | --- | --- |
 | 业务记录与处理队列 | `state.json` |
 | 业务状态备份 | `backups/` |
-| 数据连接非密码配置 | `data-connections.json` |
+| 数据连接配置与可选密码密文 | `data-connections.json` |
 | 研发配置、任务和适配器记录 | `development/` |
 | 助手会话索引、事项绑定、操作与轮次回执 | `assistant-*.json` |
 | 与原生请求配对的独立事项上下文 | `assistant-native-contexts/` |
 | 托管云之家 CLI | `tools/yunzhijia/` |
 | 本地语义模型、运行时与派生向量索引 | `knowledge-engine/` |
+| 长笔记与采集原文快照 | `knowledge-content/` |
 
 迁移工具提供预检、备份、关联检查、合并或替换。**现有业务导出不会包含独立的 `development/`，备份研发记录时须一并保存该目录。助手会话索引及回执保存在独立的 `assistant-*.json` 中，现有业务导出不包含这些文件；需要保留助手归属时也应一并备份。** 模型凭据、厂商登录状态和原生 Harness 会话另行管理。
 

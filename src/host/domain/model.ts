@@ -1,4 +1,5 @@
 import {normalizeBusyReply} from '../../shared/busy-reply.js'
+import {normalizeContentRef,normalizeKnowledgeCapture} from '../../shared/knowledge-capture.js'
 import {normalizeBackgroundModels} from '../../shared/background-models.js'
 import {normalizeConversationReadMarks} from '../../shared/conversation-read.js'
 import {normalizeMessageSelection,normalizeMessageInbox} from '../../shared/message-intake.js'
@@ -461,6 +462,8 @@ function normalizeKnowledge(raw?: any, existing?: any): any {
     const body = asString(input.body === undefined ? base.body : input.body, 20000);
     const url = input.url === undefined ? base.url || null : asUrl(input.url);
     return {
+        contentRef: normalizeContentRef(input.contentRef===undefined?base.contentRef:input.contentRef),
+        capture: normalizeKnowledgeCapture(input.capture===undefined?base.capture:input.capture),
         archivedAt: asIso(input.archivedAt === undefined ? base.archivedAt : input.archivedAt),
         id: base.id || newId('kb'),
         projectId: asString(input.projectId===undefined?base.projectId:input.projectId,80)||null,
@@ -509,6 +512,8 @@ function normalizeRadarItem(raw?: any, existing?: any): any {
     const summaryInput = input.summary && typeof input.summary === 'object' ? input.summary : base.summary || {};
     const url = input.url === undefined ? base.url || null : asUrl(input.url);
     return {
+        article: (input.article===undefined?base.article:input.article)?.contentRef ? {contentRef:normalizeContentRef((input.article===undefined?base.article:input.article).contentRef),fetchedAt:asIso((input.article===undefined?base.article:input.article).fetchedAt),author:asString((input.article===undefined?base.article:input.article).author,300),status:'ready'} : null,
+        knowledgeId: asString(input.knowledgeId===undefined?base.knowledgeId:input.knowledgeId,120)||null,
         archivedAt: asIso(input.archivedAt === undefined ? base.archivedAt : input.archivedAt),
         github: base.github || null,
         id: base.id || newId('radar'),

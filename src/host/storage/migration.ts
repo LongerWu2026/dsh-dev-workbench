@@ -1,4 +1,5 @@
 import {normalizeMessageInbox} from '../../shared/message-intake.js'
+import {exportKnowledgeContents,validateKnowledgeContents,importKnowledgeContents} from '../knowledge/content-store.js'
 import { analysisBatchInFlight } from '../analysis/message-analysis.js'
 import {normalizeWebAI,WEB_AI_ACTIVE,webAIProvider} from '../../shared/web-ai.js'
 import { radarSummaryInFlight } from '../news/summarizer.js'
@@ -33,6 +34,7 @@ function buildMigrationPackage(includeSettings?: any): any {
     data.messageInbox=normalizeMessageInbox(state.messageInbox);
     data.reminderSnoozes = JSON.parse(JSON.stringify(state.reminderSnoozes || {}));
     data.syncCursors = JSON.parse(JSON.stringify(state.syncCursors || {}));
+    data.knowledgeContents=exportKnowledgeContents(data);
     if (includeSettings) {
         data.settings = Object.assign({}, state.settings);
         for (const key of ['assistantSessionId', 'analysisSessionId', 'summarySessionId'])
@@ -47,6 +49,7 @@ function migrationPrecheck(payload?: any, request?: any, currentState?: any): an
     const counts: any = {};
     const conflicts: any = {};
     const data = payload && payload.data;
+    if(data)try{validateKnowledgeContents(data)}catch(error:any){issues.push(error.message)}
     if (!payload || payload.format !== MIGRATION_FORMAT)
         issues.push('格式不识别');
     if (!payload || ![1, 2].includes(Number(payload.version)))
@@ -197,6 +200,7 @@ async function applyMigration(request?: any): Promise<any> {
         if (!createBackup('pre-import'))
             throw new Error('导入前备份失败，原数据未改动');
         const next = composeMigration(current, payload.data, request);
+        importKnowledgeContents(payload.data);
         auditEntry(next, 'migration.applied', '导入 ' + (request.mode || 'replace') + '：' + fresh.incomingTotal + ' 条');
         return next;
     });

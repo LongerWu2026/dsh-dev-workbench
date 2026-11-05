@@ -28,6 +28,21 @@ export const TOOLBOX_CSS = `
 .wb-data-sidebar { display:flex;flex-direction:column;gap:12px;padding:16px;min-width:0;border-right:1px solid var(--dsw-alias-border-l1);background:var(--wb-hover-bg); }
 .wb-data-sidebar-head,.wb-data-query-head { display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap; }
 .wb-data-sidebar-head strong { font-size:12px; }
+.wb-data-connections { display:grid;grid-template-columns:minmax(0,1fr);gap:4px;list-style:none;padding:0;margin:0;max-height:216px;overflow:auto; }
+.wb-data-connection {
+  display:flex;align-items:center;gap:8px;width:100%;padding:8px;
+  border:1px solid var(--dsw-alias-border-l1);border-radius:8px;
+  background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);
+  font:inherit;font-size:12px;text-align:left;cursor:pointer;
+}
+.wb-data-connection > svg { flex:none; }
+.wb-data-connection > span { min-width:0;overflow-wrap:anywhere; }
+.wb-data-connection small { display:block;margin-top:2px;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.wb-data-connection:hover:not(:disabled) { background:var(--wb-hover-bg); }
+.wb-data-connection[aria-pressed="true"] { border-color:var(--wb-accent);background:color-mix(in srgb,var(--wb-accent) 10%,var(--dsw-alias-bg-base)); }
+.wb-data-connection:focus-visible { outline:2px solid var(--wb-accent);outline-offset:-2px; }
+.wb-data-connection:disabled { cursor:default; }
+.wb-data-catalog { min-width:0;border-top:1px solid var(--dsw-alias-border-l1);padding-top:12px; }
 .wb-data-main { display:flex;flex-direction:column;gap:14px;min-width:0;padding:16px; }
 .wb-data-main textarea[aria-label="数据查询编辑器"] { min-height:240px; font-size:13px; line-height:1.7; tab-size:2; }
 .wb-data-main .wb-table th { position:sticky;top:0;background:var(--dsw-alias-bg-base);z-index:1; }

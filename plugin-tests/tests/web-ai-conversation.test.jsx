@@ -9,8 +9,25 @@ import {selectCapturedTurn} from '../../src/client/features/web-ai/capture.ts'
 afterEach(cleanup)
 const answer=(patch={})=>({providerId:'kimi',status:'generating',text:'第一段',note:'正在采集',url:null,updatedAt:'2026-10-30T00:00:00Z',...patch})
 const round=(id,question,patch={})=>({id,topicId:'t1',requestId:id,question,createdAt:'2026-10-30T00:00:00Z',answers:[answer(patch)]})
-const props=(rounds)=>({topicId:'t1',visible:true,rounds,total:rounds.length,filter:'all',authentication:{},busy:false,canEdit:true,onEarlier:vi.fn(),onOpen:vi.fn(),onCapture:vi.fn(),onEditQuestion:vi.fn(),onEditAnswer:vi.fn(),onKnowledge:vi.fn()})
+const props=(rounds)=>({topicId:'t1',visible:true,rounds,total:rounds.length,filter:'all',authentication:{},busy:false,canEdit:true,onEarlier:vi.fn(),onOpen:vi.fn(),onEditQuestion:vi.fn(),onEditAnswer:vi.fn(),onKnowledge:vi.fn()})
 describe('聚合聊天记录',()=>{
+ it('收藏替换手动采集，只保存所选轮次的当前厂商回答',()=>{
+  const first={...round('one','第一问'),answers:[answer({status:'completed',text:'Kimi 的回答',capture:{answerCount:0}}),answer({providerId:'glm',status:'completed',text:'智谱的回答'})]},second=round('two','第二问',{status:'completed',text:'第二轮回答'}),p=props([first,second])
+  const view=render(<ConversationThread {...p}/>),items=view.container.querySelectorAll('.wb-chat-round')
+  fireEvent.click(within(items[0]).getByLabelText('回答更多操作'))
+  expect(screen.queryByRole('button',{name:'采集本轮回答'})).toBeNull()
+  expect(screen.queryByRole('button',{name:'存为候选知识'})).toBeNull()
+  fireEvent.click(within(items[0]).getByRole('button',{name:'收藏到知识库'}))
+  expect(p.onKnowledge).toHaveBeenLastCalledWith(first,first.answers[0])
+  fireEvent.click(within(items[0]).getByRole('tab',{name:'智谱清言'}))
+  fireEvent.click(within(items[0]).getByRole('button',{name:'收藏到知识库'}))
+  expect(p.onKnowledge).toHaveBeenLastCalledWith(first,first.answers[1])
+  expect(within(items[1]).getByRole('tab',{name:'Kimi'}).getAttribute('aria-selected')).toBe('true')
+ })
+ it.each([{status:'completed',text:''},{status:'completed',text:'   '},{status:'generating',text:'尚未完成'},{status:'queued',text:'旧回答'}])('空回答或进行中的回答不允许收藏：%s',patch=>{
+  const p=props([round('one','第一问',patch)]);render(<ConversationThread {...p}/>);fireEvent.click(screen.getByLabelText('回答更多操作'))
+  const save=screen.getByRole('button',{name:'收藏到知识库'});expect(save.disabled).toBe(true);fireEvent.click(save);expect(p.onKnowledge).not.toHaveBeenCalled()
+ })
  it('官网格式化全角标点与标点旁空格仍绑定同一问题，其他问题保持隔离',()=>{
   const question='请读 PDF，按“代号,数量”输出。',turn={id:'live',ordinal:0,question:'请读 PDF，按 “代号，数量” 输出。',userIndex:0,text:'WB-LIVE-P7Q4,13',complete:true}
   expect(selectCapturedTurn({turns:[turn],userCount:1,lastQuestion:turn.question},question,{answerCount:0,userCount:0}).turn).toBe(turn)
@@ -42,16 +59,16 @@ describe('聚合聊天记录',()=>{
   expect(screen.getByText('Kimi 内容')).toBeTruthy();expect(screen.queryByText('智谱内容')).toBeNull()
   fireEvent.click(screen.getByRole('tab',{name:/智谱清言/}));expect(screen.getByText('智谱内容')).toBeTruthy()
  })
- it('历史登录失败在未检查时显示待继续采集，已登录后显示可继续，不伪造完成',()=>{
+ it('历史登录失败提示核对原对话和粘贴保存，不再引导手动采集或伪造完成',()=>{
   const a=answer({status:'needs_login',text:'',note:'请在官网完成登录。'}),p=props([{...round('r','历史问题'),answers:[a]}]),view=render(<ConversationThread {...p}/> )
-  expect(screen.getByText('上次采集中断，打开官网核对当前状态后可继续采集。')).toBeTruthy();expect(screen.queryByText('需要登录')).toBeNull();expect(screen.queryByText('请在官网完成登录。')).toBeNull()
+  expect(screen.getByText('上次回答同步中断，请查看原对话；未同步的回答可粘贴保存。')).toBeTruthy();expect(screen.queryByText('需要登录')).toBeNull();expect(screen.queryByText('请在官网完成登录。')).toBeNull()
   view.rerender(<ConversationThread {...p} authentication={{kimi:{status:'authenticated',note:'',evidence:[]}}}/> )
-  expect(screen.getByText('官网已登录，可继续采集本轮回答。')).toBeTruthy();expect(screen.queryByText('已保存')).toBeNull();expect(a.status).toBe('needs_login')
+  expect(screen.getByText('官网已登录，可查看原对话；未同步的回答可粘贴保存。')).toBeTruthy();expect(screen.queryByText('已保存')).toBeNull();expect(a.status).toBe('needs_login')
   expect(answerPresentation(a,{status:'needs_login',note:'',evidence:[]}).label).toBe('需要登录')
  })
  it('Markdown 标题、代码和列表可读，HTML 保持文本且不执行',()=>{
   const p=props([round('r','格式',{text:'# 标题\n\n- 第一项\n- 第二项\n\n```js\nconst value = 1\n```\n\n<img src=x onerror=alert(1)>'})]),view=render(<ConversationThread {...p}/> )
-  expect(screen.getByRole('heading',{name:'标题'})).toBeTruthy();expect(screen.getAllByRole('listitem')).toHaveLength(2);expect(view.container.querySelector('pre code').textContent).toBe('const value = 1');expect(view.container.querySelector('img')).toBeNull()
+  expect(screen.getByRole('heading',{name:'标题'})).toBeTruthy();expect(screen.getAllByRole('listitem')).toHaveLength(2);expect(view.container.querySelector('pre code').textContent).toBe('const value = 1');expect(view.container.querySelector('.wb-chat-answer-body img')).toBeNull();expect(view.container.querySelector('.wb-chat-assistant img[data-avatar="lulu"]')).toBeTruthy()
  })
  it('阅读较早内容时增量更新不拉回底部，加载更早内容保持阅读位置',()=>{
   const p=props([round('r','问题')]),view=render(<ConversationThread {...p}/> ),node=screen.getByLabelText('聊天记录');let height=600

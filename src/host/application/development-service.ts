@@ -7,13 +7,14 @@ import {homedir} from 'node:os'
 import {setTimeout as delay} from 'node:timers/promises'
 import {DEVELOPMENT_STAGES,developmentTaskSessionIds,type DevelopmentTask,type DevelopmentStage} from '../../shared/development.js'
 import {readDevelopmentConfig,saveDevelopmentConfig,listDevelopmentTasks,readDevelopmentTask,saveDevelopmentTask,developmentConfigPath,developmentDir} from '../storage/development-store.js'
-import {developmentCommand,linkyWorkItems,detectLinky,linkyConnection,linkyIssue,linkyIssues,linkyRead,linkyRows} from '../integrations/linky.js'
+import {developmentCommand,linkyWorkItems,detectLinky,detectLinkyInstallation,linkyConnection,linkyIssue,linkyIssues,linkyRead,linkyRows} from '../integrations/linky.js'
 import {loadWorkbenchState,workbenchGenerationGuard} from '../storage/state-store.js'
 import {workbenchContext} from './service-context.js'
 import {directoryError,createDirectoryBaseline,ensureDirectoryBaseline,directoryChanges} from '../storage/development-directory.js'
 import {transcriptDelta,assistantTextOf} from '../assistant/transcript.js'
 import {developmentErrorText,developmentHistoryFailure,developmentCurrentSteps,developmentNativeFailure,recoverDevelopmentSession} from './development-recovery.js'
 import {createDevelopmentSession as createSession,bindDevelopmentWorkspace} from './development-sessions.js'
+import {prepareNativeContext} from '../assistant/native-context.js'
 
 const active=new Map<string,AbortController>(),preparing=new Set<string>()
 export function isDevelopmentTaskActive(id:string){return active.has(id)}
@@ -91,7 +92,7 @@ async function prepare(request:any){
         return saveDevelopmentTask(row)
     }finally{preparing.delete(key)}
 }
-function prompt(row:DevelopmentTask,stage:string){
+function developmentContext(row:DevelopmentTask,stage:string){
     const instructions=stage==='analysis'?'分析需求、定位代码、列出修改与验证计划，先完成分析。':stage==='implementation'?'按照需求与分析完成代码开发或缺陷修复，保留已有改动，禁止提交、推送、发布和修改外部系统。完成后总结变更。':'独立审查工作区的实际差异与测试证据，检查需求符合性、回归风险和安全问题。只读，不修改文件。列出发现，最后明确是否建议人工验收；不要自行批准。'
     return ['研发任务 '+row.issue.code+' · '+row.issue.title,'阶段：'+stage,instructions,
         row.workspaceMode==='directory'?'直接在所选目录开发，保留已有内容；不要初始化Git、创建提交或修改 .git 等版本控制元数据。node_modules、构建产物和IDE缓存不在源码审查范围，不在这些目录中实现需求。':'在独立 Git 工作区中开发。',
@@ -101,7 +102,7 @@ function prompt(row:DevelopmentTask,stage:string){
         'Linky 来源：profile='+row.profile+' workspace='+row.issue.workspaceId+' issue='+row.issue.id,
         '如需知识，可通过已登录 Linky CLI 查询 wiki / agent / skill；知识不可访问时明确说明，不能虚构。',
         '业务状态：'+row.issue.status,'描述：\n'+row.issue.description,
-        stage==='review'?'\n真实测试记录：\n'+JSON.stringify(row.steps.filter(s=>s.stage==='test'))+'\n实际变更：\n'+row.diff:''].join('\n\n')
+        stage==='review'?'\n真实测试记录：\n'+JSON.stringify(row.steps.filter(s=>s.stage==='test'))+'\n实际变更：\n'+row.diff:''].filter(Boolean).join('\n\n')
 }
 async function modelTurn(row:DevelopmentTask,stage:'analysis'|'implementation'|'review',signal:AbortSignal,assertCurrent:()=>void,previousError=''){
     const c=controller(),sessions=workbenchContext()?.get?.('sessions'),guard=()=>{assertCurrent();signal.throwIfAborted()}
@@ -135,8 +136,11 @@ async function modelTurn(row:DevelopmentTask,stage:'analysis'|'implementation'|'
     for(let attempt=0;attempt<2;attempt++){
         guard();const step:any={stage,status:'running',at:time(),sessionId:live.id,fromSeq:Number(live.seq)||0,...(stage==='review'?{workspaceHash:row.diffHash}:{})};row.steps.push(step);saveDevelopmentTask(row)
         try{
-            const content=prompt(row,stage)+(recovery?.status==='ready'?'\n\n'+recovery.context:'')
-            await c.prompt({requestId:'development-'+randomUUID(),sessionId:live.id,mode:'queue',content:[{type:'text',text:content}]},signal)
+            const requestId='development-'+randomUUID(),userText=({analysis:'开始需求分析',implementation:'继续开发',review:'独立审查'})[stage]+'：'+row.issue.code+' · '+row.issue.title
+            const context=developmentContext(row,stage)+(recovery?.status==='ready'?'\n\n'+recovery.context:'')
+            prepareNativeContext(workbenchContext(),{sessionId:live.id,requestId,userText,text:context,purpose:'development'})
+            guard()
+            await c.prompt({requestId,sessionId:live.id,mode:'queue',content:[{type:'text',text:userText}]},signal)
             guard();if(recovery){recovery.status='submitted';saveDevelopmentTask(row)}
             const until=Date.now()+30*60*1000
             while(Date.now()<until){guard();const current=sessions.get(live.id);if(!current)throw Error('会话已断开');if(outcome(current,step))return;await delay(800,undefined,{signal})}
@@ -205,6 +209,7 @@ export const developmentService={async development(request:any={}){
     if(action==='pinWorkspace'){if(typeof request.workspaceId!=='string')throw new Error('请选择工作空间');return saveDevelopmentConfig({defaultWorkspaceId:request.workspaceId})}
     if(action==='connect')return linkyConnection()
     if(action==='detect')return detectLinky()
+    if(action==='detectInstallation')return detectLinkyInstallation()
     if(action==='projectSetup'){
         const project=loadWorkbenchState().projects.find((p:any)=>p.id===request.projectId)
         if(!project?.repoPath)throw new Error('请选择已配置的本地工程')

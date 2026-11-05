@@ -35,6 +35,7 @@ const readConversation=createConversationReader({state:loadWorkbenchState,probe:
     });
     return {readMark:snapshot.conversationReadMarks[conversationReadKey(mark.accountId,mark.groupId)],snapshot};
 }})
+export const selectedConversationMessages=(request:any)=>readConversation.selectedMessages(workbenchContext(),request)
 export const sourceService = {
     async conversationMessages(request:any){return readConversation(workbenchContext(),request)},
     async conversationRead(request:any){return readConversation.markRead(workbenchContext(),request)},

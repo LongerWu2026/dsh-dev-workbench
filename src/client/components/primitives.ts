@@ -105,7 +105,7 @@ function IconBtn(props?: any): any {
         type: 'button',
         className: 'wb-iconbtn' + (props.active ? ' is-active' : ''),
         onClick: props.onClick,
-        title: props.label,
+        title: props.title ?? props.label,
         'aria-label': props.label,
         disabled: props.disabled,
     }, h(Icon, { name: props.name, size: props.size || 15 }));

@@ -15,7 +15,7 @@ export function BackgroundModels(){
   setSaving(purpose);setError('')
   try{await WB.actions.backgroundModelConfigure(purpose,route)}catch(failure:any){if(alive.current)setError(failure.message||'模型设置保存失败')}finally{if(alive.current)setSaving('')}
  }
- return <Panel title="后台任务模型" icon="sparkles" sub="消息识别与资讯摘要分别设置，历史会话下一轮生效。" className="wb-settings-wide">
+ return <Panel title="后台任务模型" icon="sparkles" sub="消息识别与资讯摘要分别设置，历史会话下一轮生效。">
   <div className="wb-row wb-row--wrap" style={{justifyContent:'space-between',gap:8,marginBottom:12}}><span className="wb-tiny wb-muted">保留历史与已完成进度；不改变 Harness 默认模型。</span><Btn size="sm" disabled={loading||!!saving} onClick={()=>refresh()}>{loading?<><Spinner size={12}/>读取模型…</>:'刷新模型列表'}</Btn></div>
   <div className="wb-stack" style={{gap:12}}>{([['analysis','消息识别'],['summary','资讯摘要']] as const).map(([purpose,title])=>{
    const value=backgroundModelKey(models[purpose]),exists=!value||(catalog?.groups||[]).some((group:any)=>group.models.some((model:any)=>value===backgroundModelKey({provider:group.id,model:model.id})))

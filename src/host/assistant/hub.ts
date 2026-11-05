@@ -122,7 +122,7 @@ async function restore(ctx:any,id:string){
     return session
 }
 function pageMessages(session:any,request:any={}){
-    const delta=transcriptDelta(session,0),before=Number(request.before),limit=Math.max(1,Math.min(200,Number(request.limit)||80))
+    const delta=transcriptDelta(session,0,{includeTools:false}),before=Number(request.before),limit=Math.max(1,Math.min(200,Number(request.limit)||80))
     const entries=delta.entries.filter((entry:any)=>!['tool','toolResult'].includes(entry.role)&&(!Number.isFinite(before)||entry.seq<before))
     const messages=entries.slice(-limit)
     return {messages,hasMore:entries.length>messages.length,before:messages[0]?.seq??null,turnActive:delta.turnActive,nextSeq:delta.nextSeq}

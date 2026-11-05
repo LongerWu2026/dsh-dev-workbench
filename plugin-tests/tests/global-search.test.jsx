@@ -3,7 +3,7 @@ import {beforeEach,afterEach,it,expect,vi} from 'vitest'
 import {render,screen,within,fireEvent,waitFor,act,cleanup} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {loadClientBundle} from './load-plugin.mjs'
-let WB,App,data,calls,search
+let WB,App,data,calls,search,realSearch
 const hit=(kind,id,title)=>({kind,id,title,snippet:'命中的内容摘要',url:null,extra:{}})
 const groups=()=>[
  {id:'tasks',label:'我的待办',status:'ok',items:[hit('task','t','验收待办')]},
@@ -22,10 +22,11 @@ beforeEach(()=>{
   if(endpoint==='workbench/operationsStatus')value={reminders:[]}
   if(endpoint==='workbench/assistantHub'){
    const req=payload.args.request;value=req.action==='list'?{status:'ok',conversations:[{id:'system:radar',kind:'system',title:'AI 资讯'}]}:{status:'ok',conversation:{id:req.conversationId,kind:req.conversationId?.split(':')[0],title:'搜索后的原事项会话'},messages:[],events:[],runs:[],items:[],threads:[],confirmations:[]}
+   if(req.action==='reset')value={status:'ok',conversationId:'chat:enterprise-'+calls.filter(row=>row.args?.request?.action==='reset').length,sessionId:'enterprise-session'}
   }
   return {ok:true,value}
  }}},slots:{inject(_name,fn){fn();return()=>{}},register(d,c){if(d.name==='main')App=c;return()=>{}}},locale:{register:()=>()=>{},bind:()=>()=>''}})
- search=vi.fn(async()=>({groups:groups()}));WB.actions.search=search
+ realSearch=WB.actions.search;search=vi.fn(async()=>({groups:groups()}));WB.actions.search=search
 })
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
 async function quick(){const user=userEvent.setup();render(<App/>);await user.click(screen.getByRole('button',{name:'搜索工作内容（⌘K / Ctrl+K）'}));return user}
@@ -69,4 +70,33 @@ it('互联网搜索只预填助手指令，用户发送前不调用模型或联�
 it('搜索失败可见，Escape关闭后焦点返回顶部搜索按钮',async()=>{
  search.mockRejectedValue(Error('本地读取失败'));const user=await quick();await user.type(screen.getByRole('textbox',{name:'搜索工作内容关键词'}),'验收');expect(await screen.findByRole('alert')).toHaveProperty('textContent',expect.stringContaining('本地读取失败'))
  await user.keyboard('{Escape}');expect(document.activeElement).toBe(screen.getByRole('button',{name:'搜索工作内容（⌘K / Ctrl+K）'}))
+})
+const cloudContact=()=>({id:'contacts',label:'企业联系人',status:'ok',items:[{id:'yzj-user-real',kind:'contact',title:'Alex Example',snippet:'研发/平台 · 工程师',extra:{provider:'yunzhijia',accountId:'org:self',department:'研发/平台',jobTitle:'工程师'}}]})
+async function cloud(user){search.mockImplementation(async(_q,options)=>({groups:options.scope==='enterprise'?[cloudContact()]:groups()}));await query(user,'Alex Example');await user.click(screen.getByRole('button',{name:'查询云之家'}));await screen.findByRole('button',{name:'Alex Example'});expect(screen.getByRole('tab',{name:'云之家'}).getAttribute('aria-selected')).toBe('true')}
+it('顶部搜索显式进入云之家联系人结果，查看部门岗位；输入期间仍只读本地',async()=>{
+ const user=await quick();await cloud(user)
+ expect(search.mock.calls.slice(0,-1).every(([,options])=>options.scope==='local')).toBe(true);expect(search).toHaveBeenLastCalledWith('Alex Example',{scope:'enterprise',includeWeb:false,enterpriseType:'contacts'})
+ await user.click(screen.getByRole('button',{name:'Alex Example'}));const preview=screen.getByRole('dialog',{name:'Alex Example'});expect(within(preview).getByText('研发/平台')).toBeTruthy();expect(within(preview).getByText('工程师')).toBeTruthy();expect(calls.some(row=>row.args?.request?.action==='send')).toBe(false)
+})
+it('切换云之家产品不自动查询，搜索后仅提交所选类型，文档注明标题范围',async()=>{
+ const user=await quick();await cloud(user);const before=search.mock.calls.length
+ await user.click(within(screen.getByRole('group',{name:'云之家搜索类型'})).getByRole('button',{name:'文档'}));expect(search).toHaveBeenCalledTimes(before);expect(screen.getByRole('note').textContent).toContain('不检索文档正文')
+ await user.click(screen.getByRole('button',{name:'搜索',exact:true}));expect(search).toHaveBeenLastCalledWith('Alex Example',{scope:'enterprise',includeWeb:false,enterpriseType:'documents'})
+})
+it('本人考勤按所选北京时间日期查询，不把联系人姓名传成他人考勤条件',async()=>{
+ const user=await quick();await cloud(user);const before=search.mock.calls.length;await user.click(within(screen.getByRole('group',{name:'云之家搜索类型'})).getByRole('button',{name:'本人考勤'}));expect(search).toHaveBeenCalledTimes(before);expect(screen.getByRole('textbox',{name:'工作搜索关键词'}).disabled).toBe(true)
+ fireEvent.change(screen.getByLabelText('云之家查询开始时间'),{target:{value:'2026-11-02'}});fireEvent.change(screen.getByLabelText('云之家查询结束时间'),{target:{value:'2026-11-04'}});await user.click(screen.getByRole('button',{name:'搜索',exact:true}));expect(search).toHaveBeenLastCalledWith('',{scope:'enterprise',includeWeb:false,enterpriseType:'attendance',start:'2026-11-02',end:'2026-11-04'})
+})
+it('切换回本地后，迟到的云之家结果不会覆盖本地页面',async()=>{
+ const user=await quick();await cloud(user);let release;search.mockImplementation(()=>new Promise(resolve=>release=resolve));await user.click(screen.getByRole('button',{name:'搜索',exact:true}));await user.click(screen.getByRole('tab',{name:'工作内容'}));await act(async()=>release({groups:[cloudContact()]}));expect(screen.queryByRole('button',{name:'Alex Example'})).toBeNull();expect(screen.queryByRole('group',{name:'云之家搜索类型'})).toBeNull()
+})
+it('云之家结果交给普通助手会话，可复用该查询对话，替换引用且不自动发消息',async()=>{
+ const user=await quick();await cloud(user);await user.click(screen.getByRole('button',{name:'AI 继续处理'}));await waitFor(()=>expect(WB.store.get().assistantConversationId).toBe('chat:enterprise-1'));expect(WB.store.get().assistantRefs).toEqual([expect.objectContaining({id:'yzj-user-real',kind:'search',meta:'搜索来源：云之家 · 企业联系人'})]);expect(WB.store.get().assistantRefs.some(ref=>ref.id==='stale')).toBe(false)
+ await user.click(screen.getByRole('button',{name:'搜索工作内容（⌘K / Ctrl+K）'}));await cloud(user);await user.click(screen.getByRole('button',{name:'AI 继续处理'}));await waitFor(()=>expect(WB.store.get().page).toBe('assistant'));expect(calls.filter(row=>row.args?.request?.action==='reset')).toHaveLength(1);expect(calls.some(row=>['send','operate'].includes(row.args?.request?.action))).toBe(false)
+})
+it('企业查询失败不当作无命中，保留明确来源错误',async()=>{
+ const user=await quick();await cloud(user);search.mockResolvedValue({groups:[{id:'enterprise',label:'云之家',status:'unavailable',items:[],note:'登录已过期，请重新登录'}]});await user.click(screen.getByRole('button',{name:'搜索',exact:true}));await screen.findByText('未能取得搜索结果');expect(screen.getAllByText('登录已过期，请重新登录').length).toBeGreaterThan(0);expect(screen.queryByText('没有匹配的结果')).toBeNull()
+})
+it('实际RPC保留云之家类型与日期参数，不丢弃 enterprise 范围',async()=>{
+ await realSearch('B10',{scope:'enterprise',includeWeb:false,enterpriseType:'rooms',start:'2026-11-04T14:00',end:'2026-11-04T15:00'});expect(calls.find(row=>row.endpoint==='workbench/search').args.request).toEqual({query:'B10',scope:'enterprise',includeWeb:false,enterpriseType:'rooms',start:'2026-11-04T14:00',end:'2026-11-04T15:00'})
 })

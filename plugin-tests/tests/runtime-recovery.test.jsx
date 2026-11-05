@@ -1,6 +1,6 @@
 import React from 'react'
 import {afterEach,describe,it,expect,vi} from 'vitest'
-import {act,cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react'
+import {act,cleanup,fireEvent,render,screen} from '@testing-library/react'
 import {loadClientBundle} from './load-plugin.mjs'
 afterEach(()=>{cleanup();vi.useRealTimers()})
 function setup(respond){
@@ -8,7 +8,7 @@ function setup(respond){
  const data={version:2,revision:1,settings:{topics:[],feeds:[],automation:{enabled:false},aiExtract:{enabled:false}},projects:[],tasks:[],sources:[],radar:[],replies:[],analysisQueue:[],jobs:[],knowledge:[],connectors:[],runs:[],audit:[]}
  const rpc=vi.fn(async(_channel,endpoint,payload,signal)=>{
   let value=await respond?.(endpoint,payload.args,signal)
-  if(value===undefined){value=data;if(endpoint==='workbench/backups')value={backups:[]};if(endpoint==='workbench/diagnostics')value={tools:[],counts:{}};if(endpoint==='workbench/automationStatus')value={enabled:false}}
+  if(value===undefined){value=data;if(endpoint==='workbench/backups')value={backups:[]};if(endpoint==='workbench/automationStatus')value={enabled:false}}
   return {ok:true,value}
  })
  WB.store.set({data,status:'ready',page:'settings'})
@@ -27,16 +27,18 @@ describe('长时间打开与唤醒恢复',()=>{
   WB.store.set({data:{...data,revision:3}});release({...data,revision:99});await Promise.resolve();await Promise.resolve();expect(WB.store.get().data.revision).toBe(3)
   expect(await WB.actions.syncCheck()).toBe(false)
  })
- it('设置中的实时统计随revision更新，预算草稿和新结果不被旧响应覆盖',async()=>{
-  const pending=[];const {WB,data}=setup(endpoint=>endpoint==='workbench/operationsStatus'?new Promise(r=>pending.push(r)):undefined)
-  render(<WB.pages.settings/>);await waitFor(()=>expect(pending.length).toBe(1))
-  await act(async()=>pending[0]({queue:{pending:3},policy:{dailyCallLimit:10,dailyTokenLimit:1000},qualityReviews:[],storageBytes:1024}))
-  const input=screen.getByRole('spinbutton',{name:'每日后台调用上限'});fireEvent.change(input,{target:{value:'99'}})
-  await act(async()=>WB.store.set({data:{...data,revision:2}}));await waitFor(()=>expect(pending.length).toBe(2))
-  await act(async()=>WB.store.set({data:{...data,revision:3}}));await waitFor(()=>expect(pending.length).toBe(3))
-  await act(async()=>pending[2]({queue:{pending:1},policy:{dailyCallLimit:10},qualityReviews:[],storageBytes:1024}))
-  await act(async()=>pending[1]({queue:{pending:9},policy:{dailyCallLimit:20},qualityReviews:[],storageBytes:1024}))
-  expect(screen.getByText(/待分析 1 ·/)).toBeTruthy();expect(screen.queryByText(/待分析 9 ·/)).toBeNull();expect(input.value).toBe('99')
+ it('设置随修订更新时保留资讯源草稿，无需读取诊断或运行质量',async()=>{
+  const {WB,data,rpc}=setup();render(<WB.pages.settings/>);
+  fireEvent.click(screen.getByRole('button',{name:'添加资讯源'}));
+  const address=screen.getByRole('textbox',{name:'RSS / Atom 地址'});
+  fireEvent.change(address,{target:{value:'https://example.test/draft.xml'}});
+  const feeds=[{id:'updated-feed',label:'同步的订阅',url:'https://example.test/updated.xml',topics:[]}];
+  await act(async()=>WB.store.set({data:{...data,revision:2,settings:{...data.settings,feeds}}}));
+  expect(screen.getByText('同步的订阅')).toBeTruthy();
+  expect(screen.getByRole('textbox',{name:'RSS / Atom 地址'})).toBe(address);
+  expect(address.value).toBe('https://example.test/draft.xml');
+  expect(rpc.mock.calls.map(call=>call[1])).not.toContain('workbench/diagnostics');
+  expect(rpc.mock.calls.map(call=>call[1])).not.toContain('workbench/operationsStatus');
  })
  it('后台标签停止轮询，重新可见时立即同步，卸载后移除监听',async()=>{
   vi.useFakeTimers();const {WB,App}=setup();const sync=vi.spyOn(WB.actions,'syncCheck').mockResolvedValue(false)

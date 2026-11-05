@@ -4,16 +4,20 @@ import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest'
 import {render,screen,within,act,fireEvent,cleanup,waitFor} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {loadClientBundle} from './load-plugin.mjs'
-let WB,App,calls,fixture,deferred=[]
+import {version} from '../../package.json'
+let WB,App,calls,fixture,deferred=[],feedSaveError
 beforeEach(()=>{
- const plugin=loadClientBundle();WB=plugin.WB;calls=[];deferred=[]
+ const plugin=loadClientBundle();WB=plugin.WB;calls=[];deferred=[];feedSaveError=null
  fixture={version:2,revision:10,updatedAt:new Date().toISOString(),settings:{topics:['Agent'],feeds:[],automation:{enabled:false},aiExtract:{enabled:false},assistantWidth:384},projects:[],tasks:[],sources:[],runs:[],knowledge:[],radar:[],connectors:[],candidates:[],analysisQueue:[],replies:[],jobs:[],audit:[]}
  const call=async(_channel,endpoint,payload)=>{calls.push({endpoint,args:payload.args});let value=fixture
   if(endpoint==='workbench/snapshot')return new Promise(resolve=>deferred.push(resolve))
   if(endpoint==='workbench/backgroundHistory')value={supported:true,total:2,eligible:1,items:[{id:'old-session',active:false,archived:false,protected:false},{id:'current-session',active:true,archived:false,protected:false}],note:'日志保留'}
   if(endpoint==='workbench/archiveBackgroundHistory')value={archived:1,skipped:0,failed:0,results:[{id:'old-session',status:'archived'}]}
-  if(endpoint==='workbench/operationsStatus')value={queue:{pending:2,failed:0,oldestPendingMinutes:5},policy:{dailyCallLimit:0,dailyTokenLimit:0},qualityReviews:[],reminders:[],storageBytes:1024}
-  if(endpoint==='workbench/changesPage')value={total:1,items:[{id:'change-test',title:'变更待办',reason:'测试变更',before:{title:'旧标题'},after:{title:'新标题'}}]}
+  if(endpoint==='workbench/saveSettings'&&payload.args.patch?.feeds){
+   if(feedSaveError)throw Error(feedSaveError)
+   fixture={...fixture,revision:fixture.revision+1,settings:{...fixture.settings,feeds:payload.args.patch.feeds}}
+   value=fixture
+  }
   if(endpoint==='workbench/generateReplyDraft')value={text:'已收到，我核实后回复。'}
   if(endpoint==='workbench/dataPage')value={total:0,items:[]}
   if(endpoint==='workbench/knowledgeRetrieve')value={id:'retrieval-test',status:'ok',query:payload.args.request.query,scope:{},strategy:'local-bm25-chinese',elapsedMs:1,hits:[{id:'kb-test@v1:1',documentId:'kb-test',version:'v1',title:'知识验收规范',text:'发布前先完成灰度验收。',lineStart:1,lineEnd:1}]};
@@ -22,7 +26,6 @@ beforeEach(()=>{
   if(endpoint==='workbench/refreshStart')value={id:'fixture-refresh',scope:payload.args.request.scope,status:'completed',collecting:false,steps:{messages:{status:'completed',note:'已同步'}}};
   if(endpoint==='workbench/revision')value={revision:fixture.revision};
   if(endpoint==='workbench/analysisStatus')value={pending:0,failed:0,awaitingHuman:0,done:0,entries:[]}
-  if(endpoint==='workbench/diagnostics')value={platform:'test',counts:{},tools:[],dataPath:'/fixture/state.json'}
   if(endpoint==='workbench/backups')value={backups:[]}
   if(endpoint==='workbench/automationStatus')value={enabled:false}
   if(endpoint==='workbench/assistantSessions')value={sessions:[]}
@@ -179,14 +182,55 @@ describe('办公流程与布局入口',()=>{
   await user.click(screen.getByRole('button',{name:'这条资讯的操作'}));await user.click(screen.getByRole('button',{name:'添加为我的待办'}));await user.click(screen.getByRole('button',{name:'确认添加待办'}));expect(calls.filter(c=>c.endpoint==='workbench/createTaskFromRadar')).toHaveLength(1)
  })
 
- it('预算保存传递明确阈值，变更需打开预览后才能撤销',async()=>{
-  WB.store.set({page:'settings'});const user=userEvent.setup();render(<App/>);
-  const callsInput=screen.getByRole('spinbutton',{name:'每日后台调用上限'}),tokenInput=screen.getByRole('spinbutton',{name:'每日已知 Token 上限'});
-  await user.clear(callsInput);await user.type(callsInput,'20');await user.clear(tokenInput);await user.type(tokenInput,'10000');await user.click(screen.getByRole('button',{name:'保存'}));
-  expect(calls.find(call=>call.endpoint==='workbench/saveSettings').args.patch.aiPolicy).toEqual({dailyCallLimit:20,dailyTokenLimit:10000});
-  await user.click(screen.getByRole('button',{name:'查看变更记录'}));await user.click(await screen.findByRole('button',{name:'查看前后变化'}));
-  expect(screen.getByText(/旧标题/)).toBeTruthy();expect(calls.some(call=>call.endpoint==='workbench/undoChange')).toBe(false);
-  await user.click(screen.getByRole('button',{name:'撤销这次变更'}));await waitFor(()=>expect(calls.some(call=>call.endpoint==='workbench/undoChange'&&call.args.id==='change-test')).toBe(true));
+ it('设置页底部显示构建版本，归档入口留在数据管理',()=>{
+  WB.store.set({page:'settings'});render(<WB.pages.settings/>);
+  expect(screen.getByText('版本 v'+version).tagName).toBe('FOOTER');
+  for(const name of ['关于','运行时诊断','运行与质量'])expect(screen.queryByRole('heading',{name})).toBeNull();
+  expect(calls.some(call=>['workbench/diagnostics','workbench/operationsStatus'].includes(call.endpoint))).toBe(false);
+  const data=screen.getByRole('heading',{name:'数据管理'}).closest('section');
+  for(const name of ['管理记录归档','管理后台会话历史'])expect(within(data).getByText(name).closest('details').open).toBe(false);
+ })
+ it('载入示例提示会清空执行记录，只有确认才提交',async()=>{
+  WB.store.set({page:'settings'});const user=userEvent.setup();render(<WB.pages.settings/>);
+  const trigger=screen.getByRole('button',{name:'载入示例数据'});
+  const demoCalls=()=>calls.filter(call=>call.endpoint==='workbench/seedDemo');
+  await user.click(trigger);
+  let dialog=within(screen.getByRole('dialog',{name:'载入示例数据'}));
+  expect(dialog.getByText(/清空当前工作台的所有执行记录/)).toBeTruthy();
+  expect(demoCalls()).toHaveLength(0);
+  await user.click(dialog.getByRole('button',{name:'取消'}));
+  expect(screen.queryByRole('dialog',{name:'载入示例数据'})).toBeNull();
+  expect(demoCalls()).toHaveLength(0);
+  await user.click(trigger);
+  dialog=within(screen.getByRole('dialog',{name:'载入示例数据'}));
+  await user.click(dialog.getByRole('button',{name:'确认载入'}));
+  expect(demoCalls()).toHaveLength(1);
+ })
+ it('默认资讯来源只读，自定义订阅从弹窗添加和移除',async()=>{
+  WB.store.set({page:'settings'});const user=userEvent.setup();render(<WB.pages.settings/>);
+  const list=within(screen.getByRole('list',{name:'资讯源列表'})),add=screen.getByRole('button',{name:'添加资讯源'});
+  expect(list.getAllByRole('listitem')).toHaveLength(5);
+  expect(list.getByText('OpenAI 官方动态')).toBeTruthy();expect(list.getByText('DeepSeek 官方更新')).toBeTruthy();
+  expect(list.queryByRole('button')).toBeNull();expect(screen.queryByRole('textbox',{name:'RSS / Atom 地址'})).toBeNull();
+  await user.click(add);let dialog=within(screen.getByRole('dialog',{name:'添加资讯源'}));
+  fireEvent.change(dialog.getByRole('textbox',{name:'RSS / Atom 地址'}),{target:{value:'https://example.test/cancel.xml'}});
+  await user.keyboard('{Escape}');expect(document.activeElement).toBe(add);
+  expect(calls.some(call=>call.endpoint==='workbench/saveSettings')).toBe(false);
+  await user.click(add);dialog=within(screen.getByRole('dialog',{name:'添加资讯源'}));
+  const address=dialog.getByRole('textbox',{name:'RSS / Atom 地址'}),save=dialog.getByRole('button',{name:'保存'});
+  expect(address.value).toBe('');expect(save.disabled).toBe(true);
+  fireEvent.change(address,{target:{value:'https://openai.com/news/rss.xml'}});await user.click(save);
+  expect(dialog.getByRole('alert').textContent).toContain('已在列表中');
+  fireEvent.change(address,{target:{value:'https://example.test/feed.xml'}});
+  fireEvent.change(dialog.getByRole('textbox',{name:'名称（选填）'}),{target:{value:'测试订阅'}});
+  fireEvent.change(dialog.getByRole('textbox',{name:'主题（选填）'}),{target:{value:'AI，开源'}});
+  feedSaveError='测试保存失败';await user.click(save);
+  expect((await dialog.findByRole('alert')).textContent).toContain('测试保存失败');expect(address.value).toBe('https://example.test/feed.xml');
+  feedSaveError=null;await user.click(save);await waitFor(()=>expect(screen.queryByRole('dialog',{name:'添加资讯源'})).toBeNull());
+  expect(document.activeElement).toBe(add);
+  expect(list.getAllByRole('listitem')).toHaveLength(6);
+  expect(fixture.settings.feeds[0]).toMatchObject({label:'测试订阅',url:'https://example.test/feed.xml',topics:['AI','开源']});
+  await user.click(list.getByRole('button',{name:'移除资讯源 测试订阅'}));await waitFor(()=>expect(list.getAllByRole('listitem')).toHaveLength(5));
  })
  it('YAML 列表和嵌套配置可双向转换，拒绝重复键与别名',async()=>{
   WB.store.set({data:fixture,page:'toolbox'});const user=userEvent.setup();render(<WB.pages.toolbox/>);

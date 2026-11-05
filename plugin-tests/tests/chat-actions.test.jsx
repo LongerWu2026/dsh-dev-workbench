@@ -15,6 +15,10 @@ beforeEach(()=>{
 })
 afterEach(()=>{cleanup();disposers.reverse().forEach(fn=>fn());vi.restoreAllMocks()})
 describe('原生聊天动作菜单',()=>{
+ it('存为知识将精确消息身份交给工作台保存面板，不截取正文或直接创建记录',async()=>{
+  const user=userEvent.setup();render(<Actions sessionId="native-session" messageId="native-final"/>);await user.click(screen.getByRole('button',{name:'工作台操作'}));await user.click(screen.getByRole('menuitem',{name:'存为知识'}))
+  expect(WB.store.get().knowledgeCaptureRequest).toEqual({kind:'native',sessionId:'native-session',messageId:'native-final'});expect(WB.store.get().page).toBe('knowledge');expect(calls.some(row=>/assistantMessage|createKnowledge/.test(row.endpoint))).toBe(false)
+ })
  it('不打开工作台页面也安装自身样式，键盘执行时锁定重复操作并使用正确消息ID',async()=>{
   const user=userEvent.setup();let finish;const create=vi.spyOn(WB.actions,'createTask').mockImplementation(()=>new Promise(resolve=>{finish=resolve}))
   const view=render(<Actions sessionId="session-style" messageId="message-style"/>);expect(view.container.querySelector('.wb-root')).toBeNull();expect(document.head.querySelector('style[data-workbench-chat-actions]')).toBeTruthy()

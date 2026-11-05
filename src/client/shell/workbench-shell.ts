@@ -3,6 +3,7 @@ import {AnalysisMonitor} from '../components/AnalysisActivity.js'
 import {KnowledgeSources} from '../components/KnowledgeSources.js'
 import {AssistantSessionsNav} from '../components/AssistantSessionsNav.js'
 import {AssistantHubEntry} from '../components/AssistantHub.js'
+import {KnowledgeCaptureHost} from '../components/KnowledgeCapture.js'
 import {AssistantKnowledgeSettings} from '../components/AssistantKnowledgeSettings.js'
 import {installAssistantNative} from '../core/assistant-native.js'
 import { AssistantContextPicker } from '../components/AssistantContextPicker.js'
@@ -533,6 +534,10 @@ function ErrorScreen(props?: any): any {
 /* ---------------------------------------------------------------- nav rail */
 function NavRail(props?: any): any { return h(TopNavigation, props); }
 /* ----------------------------------------------------------------- toolbar */
+function toolbarAction(label: string, button: React.ReactElement) {
+    return h('span', {className:'wb-toolbar-action'}, button,
+        h('span', {className:'wb-toolbar-hint','aria-hidden':true}, label));
+}
 function Toolbar(props?: any): any {
     const state = useStore();
     const counts = WB.taskCounts(props.data);
@@ -546,27 +551,15 @@ function Toolbar(props?: any): any {
             title: '查看逾期任务',
             style: { color: T.err, borderColor: 'color-mix(in srgb, ' + T.err + ' 45%, transparent)' },
         }, h(Icon, { name: 'alert', size: 12 }), counts.overdue + ' 项逾期')
-        : null, h(IconBtn,{name:'search',label:'搜索工作内容（⌘K / Ctrl+K）',active:state.searchOpen,onClick:()=>WB.openSearch()}), h(Btn, {
-        icon: 'plus',
-        size: 'sm',
-        kind: 'primary',
-        onClick: function (): any { WB.openTaskForm(null); },
-        children: '新建待办',
-    }), h(WorkspaceRefresh,{scope:'all',iconOnly:true}), h(IconBtn, {
-        name: 'sparkles',
-        label: '工作台助手（携带上下文进入会话）',
-        active: !!props.assistantOpen,
-        onClick: function (): any {
-            WB.assistant.toggle();
-        },
-    }), h(IconBtn, {
-        name: 'settings',
-        label: '连接与设置',
-        active: props.page === 'settings',
-        onClick: function (): any {
-            WB.go('settings');
-        },
-    }));
+        : null, h('div', {className:'wb-toolbar-actions'},
+        toolbarAction('搜索', h(IconBtn,{name:'search',label:'搜索工作内容（⌘K / Ctrl+K）',title:'',active:state.searchOpen,onClick:()=>WB.openSearch()})),
+        toolbarAction('刷新', h(WorkspaceRefresh,{scope:'all',iconOnly:true})),
+        toolbarAction('设置', h(IconBtn,{name:'settings',label:'连接与设置',title:'',active:props.page==='settings',onClick:()=>WB.go('settings')})),
+        toolbarAction('新建待办', h(Btn, {
+            kind: 'primary',
+            'aria-label': '新建待办',
+            onClick: () => WB.openTaskForm(null),
+        }, h(Icon,{name:'plus'})))));
 }
 /* --------------------------------------------------------------- page frame */
 function MissingPage(props?: any): any {
@@ -634,13 +627,13 @@ function WorkbenchApp(): any {
     React.useEffect(()=>{if(page==='web-ai')setWebAIVisited(true)},[page]);
     return h('div', {className:'wb-root'+(page==='web-ai'?' is-web-ai':'')+(page==='agents'?' is-development':'')},
       h('style',null,WB_CSS+WB_LAYOUT_CSS),
-      h('header',{className:'wb-head'},h(Toolbar,{data:state.data,page,assistantOpen:state.assistantOpen}),h(TopNavigation,{page,data:state.data})),
+      h('header',{className:'wb-head'},h(Toolbar,{data:state.data,page}),h(TopNavigation,{page,data:state.data})),
       h('div',{className:'wb-workarea'+(page==='assistant'?' wb-assistant-page':'')+(state.assistantOpen||state.taskForm&&state.taskForm.presentation!=='modal'&&!state.contextHidden?' is-context-open':'')},
         h('div',{className:'wb-main'},h('div',{className:'wb-scroll'},
           page!=='web-ai'&&page!=='assistant'?h('div',{key:'business-page',className:'wb-page'+(page==='agents'?' wb-development-page':'')},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
           (webAIVisited||page==='web-ai')&&WebAIPage?h('div',{key:'web-ai-surface',className:'wb-page wb-chat-page',hidden:page!=='web-ai'},h(WebAIPage)):null)),
         h(AssistantHubEntry,{Legacy:AssistantDrawer}),h(TaskFormHost,{embedded:true})),
-      WB.Palette?h(WB.Palette,{open:state.searchOpen,initialQuery:state.searchInitialQuery,onClose:()=>WB.closeSearch()}):null,h(SearchResultPreview),h(AnalysisMonitor),h(WorkspaceRefreshMonitor),h(Toaster));
+      WB.Palette?h(WB.Palette,{open:state.searchOpen,initialQuery:state.searchInitialQuery,onClose:()=>WB.closeSearch()}):null,h(KnowledgeCaptureHost),h(SearchResultPreview),h(AnalysisMonitor),h(WorkspaceRefreshMonitor),h(Toaster));
 }
 /* -------------------------------------------------------------------- apply */
 WB.apply = function apply(ctx?: any): any {

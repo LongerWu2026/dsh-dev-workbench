@@ -159,7 +159,7 @@ function modelErrorText(value:any,depth=0):string {
     if(!value||typeof value!=='object'||depth>=8)return '';
     return modelErrorText(value.error,depth+1)||modelErrorText(value.cause,depth+1)||modelErrorText(value.message,depth+1);
 }
-function transcriptDelta(session?: any, fromSeq?: any): any {
+function transcriptDelta(session?: any, fromSeq?: any, options:{includeTools?:boolean}={}): any {
     const start = Number(fromSeq);
     const events = session.snapshotEvents(Number.isFinite(start) && start >= 0 ? start : 0);
     const contextRequests=nativeContextRequests(session.snapshotEvents());
@@ -190,7 +190,7 @@ function transcriptDelta(session?: any, fromSeq?: any): any {
             if (text)
                 entries.push({ role: 'assistant', text: text, at: event.time, seq: event.seq });
         }
-        else if (event.type === 'tool/call') {
+        else if (event.type === 'tool/call' && options.includeTools!==false) {
             const name = event.data && event.data.name ? String(event.data.name) : 'tool';
             let summary = '';
             try {
@@ -201,7 +201,7 @@ function transcriptDelta(session?: any, fromSeq?: any): any {
             }
             entries.push({ role: 'tool', text: name, summary: summary, at: event.time, seq: event.seq });
         }
-        else if (event.type === 'tool/result') {
+        else if (event.type === 'tool/result' && options.includeTools!==false) {
             const name = event.data && event.data.name ? String(event.data.name) : 'tool';
             const ok = !(event.data && (event.data.isError === true || event.data.error));
             entries.push({ role: 'toolResult', text: name, ok: ok, at: event.time, seq: event.seq });

@@ -1,6 +1,6 @@
 /** Check source boundaries without executing plugin code or touching business data. */
 import ts from 'typescript'
-import {readdirSync,readFileSync} from 'node:fs'
+import {readdirSync,readFileSync,existsSync} from 'node:fs'
 import {resolve,dirname,relative,basename} from 'node:path'
 import {fileURLToPath} from 'node:url'
 const root=resolve(dirname(fileURLToPath(import.meta.url)),'..')
@@ -15,6 +15,11 @@ for(const file of files){
   const spec=node.moduleSpecifier.text
   if(label.startsWith('src/shared/')&&!spec.startsWith('.'))errors.push(`${label}: shared contracts cannot import runtime package ${spec}`)
   if(!spec.startsWith('.'))continue
+  if(spec.endsWith('.svg')){
+   const asset=resolve(dirname(file),spec)
+   if(!label.startsWith('src/client/')||!asset.startsWith(resolve(root,'src/client/assets')+'/')||!existsSync(asset))errors.push(`${label}: unresolved or invalid Client asset ${spec}`)
+   continue
+  }
   const base=resolve(dirname(file),spec.replace(/\.js$/,'')),target=[base+'.ts',base+'.tsx',base+'/index.ts'].find(path=>known.has(path))
   if(!target){errors.push(`${label}: unresolved ${spec}`);continue}
   const destination=relative(root,target)

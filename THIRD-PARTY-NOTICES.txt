@@ -1,4 +1,10 @@
 Bundled component: node-sql-parser 5.4.0 (MySQL and PostgreSQL grammars only)
+Article-reading runtime dependencies (loaded on demand; distributed with their own licenses):
+@mozilla/readability 0.6.0 — Apache-2.0 — https://github.com/mozilla/readability
+linkedom 0.18.15 — ISC — https://github.com/WebReflection/linkedom
+turndown 7.2.5 — MIT — https://github.com/mixmark-io/turndown
+turndown-plugin-gfm 1.0.2 — MIT — https://github.com/mixmark-io/turndown-plugin-gfm
+
 Source: https://github.com/taozhi8833998/node-sql-parser
 License: Apache-2.0
 Modifications: bundled with esbuild; no grammar source changes.
