@@ -1,3 +1,5 @@
+import {createZip, MAX_CONTENT_BYTES, MAX_ENTRIES, MAX_ZIP_BYTES, readZip} from './zip.js'
+import {checkAttachment, normalizeAttachments, readAttachment, writeAttachment} from './conversation-attachments.js'
 import {normalizeMessageInbox} from '../../shared/message-intake.js'
 import {exportKnowledgeContents,validateKnowledgeContents,importKnowledgeContents} from '../knowledge/content-store.js'
 import { analysisBatchInFlight } from '../analysis/message-analysis.js'
@@ -20,7 +22,7 @@ function migrationStableStringify(value?: any): any {
     });
 }
 function migrationChecksum(data?: any): any { return createHash('sha256').update(migrationStableStringify(data)).digest('hex'); }
-function buildMigrationPackage(includeSettings?: any): any {
+function buildMigrationPackage(includeSettings?: any, includeAttachments = false): any {
     const state = loadWorkbenchState();
     const data: any = {};
     const counts: any = {};
@@ -35,6 +37,7 @@ function buildMigrationPackage(includeSettings?: any): any {
     data.reminderSnoozes = JSON.parse(JSON.stringify(state.reminderSnoozes || {}));
     data.syncCursors = JSON.parse(JSON.stringify(state.syncCursors || {}));
     data.knowledgeContents=exportKnowledgeContents(data);
+    if (includeAttachments) data.conversationAttachments = normalizeAttachments(state.conversationAttachments);
     if (includeSettings) {
         data.settings = Object.assign({}, state.settings);
         for (const key of ['assistantSessionId', 'analysisSessionId', 'summarySessionId'])
@@ -43,6 +46,42 @@ function buildMigrationPackage(includeSettings?: any): any {
     return { format: MIGRATION_FORMAT, version: MIGRATION_FORMAT_VERSION, schemaVersion: HOST_STATE_VERSION,
         pluginVersion: PLUGIN_EXPORT_VERSION, exportedAt: hostNowIso(), counts, data, checksum: migrationChecksum(data) };
 }
+export function buildMigrationArchive() {
+    const pack = buildMigrationPackage(false, true)
+    const entries = new Map<string, Buffer>([['migration.json', Buffer.from(JSON.stringify(pack))]])
+    let bytes = entries.get('migration.json')!.length
+    for (const ref of Object.values(normalizeAttachments(pack.data.conversationAttachments))) {
+        const name = 'attachments/' + ref.hash
+        if (entries.has(name)) continue
+        bytes += ref.bytes
+        if (bytes > MAX_CONTENT_BYTES || entries.size >= MAX_ENTRIES) throw Error('迁移包的文件数量或总大小超过上限')
+        entries.set(name, readAttachment(ref))
+    }
+    return {data: createZip(entries).toString('base64')}
+}
+
+function unpackMigrationArchive(encoded: unknown) {
+    if (typeof encoded !== 'string' || encoded.length > Math.ceil(MAX_ZIP_BYTES / 3) * 4)
+        throw Error('ZIP 迁移包超过 96 MB 或数据无效')
+    const entries = readZip(Buffer.from(encoded, 'base64'))
+    const manifest = entries.get('migration.json')
+    if (!manifest) throw Error('ZIP 中缺少迁移清单')
+    let payload
+    try { payload = JSON.parse(manifest.toString('utf8')) }
+    catch { throw Error('ZIP 中的迁移清单无法读取') }
+    const raw = payload?.data?.conversationAttachments
+    const refs = normalizeAttachments(raw)
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).length !== Object.keys(refs).length) throw Error('ZIP 中的附件索引无效')
+    const referenced = new Set(['migration.json'])
+    for (const ref of Object.values(refs)) {
+        const name = 'attachments/' + ref.hash
+        checkAttachment(ref, entries.get(name))
+        referenced.add(name)
+    }
+    if (referenced.size !== entries.size) throw Error('ZIP 中存在未关联的文件')
+    return {payload, refs, entries}
+}
+
 function migrationPrecheck(payload?: any, request?: any, currentState?: any): any {
     const issues: any = [];
     const warnings: any = [];
@@ -186,7 +225,9 @@ function composeMigration(state?: any, data?: any, request?: any): any {
     return normalizeState(next).state;
 }
 async function applyMigration(request?: any): Promise<any> {
-    const payload = request && request.payload;
+    const archive = request?.archive === undefined ? null : unpackMigrationArchive(request.archive)
+    const payload = archive ? archive.payload : request?.payload
+    if (!archive && payload?.data?.conversationAttachments !== undefined) throw Error('请导入包含附件原件的 ZIP 迁移包')
     const preview = migrationPrecheck(payload, request, loadWorkbenchState());
     if (preview.issues.length)
         throw new Error('迁移包预检不通过：' + preview.issues.join('；'));
@@ -201,6 +242,13 @@ async function applyMigration(request?: any): Promise<any> {
             throw new Error('导入前备份失败，原数据未改动');
         const next = composeMigration(current, payload.data, request);
         importKnowledgeContents(payload.data);
+        if (archive) {
+            const merged = request.mode === 'merge' ? {...archive.refs, ...current.conversationAttachments} : archive.refs
+            for (const [key, ref] of Object.entries(archive.refs)) {
+                if (merged[key].hash === ref.hash) writeAttachment(ref, archive.entries.get('attachments/' + ref.hash)!)
+            }
+            next.conversationAttachments = merged
+        }
         auditEntry(next, 'migration.applied', '导入 ' + (request.mode || 'replace') + '：' + fresh.incomingTotal + ' 条');
         return next;
     });

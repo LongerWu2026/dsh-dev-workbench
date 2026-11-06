@@ -382,7 +382,7 @@ button.wb-brief-reply-content { display: block; width: 100%; padding: 0; margin-
 .wb-task-tag { max-width:100%; color:var(--dsw-alias-label-secondary); font-size:10.5px; overflow-wrap:anywhere; }
 .wb-task-preview { display:-webkit-box; -webkit-line-clamp:1; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; margin-top:4px; line-height:1.6; }
 .wb-task-full-description { color:var(--dsw-alias-label-primary); margin-bottom:12px; font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
-.wb-task-full-description p { margin:6px 0 0; white-space:pre-wrap; }
+.wb-task-full-description .wb-task-description-content { margin-top:6px; }
 @container taskcenter (max-width:1100px) {
   .wb-task-table { overflow:hidden; }
   .wb-task-table .wb-table, .wb-task-table tbody { display:block; width:100%; }

@@ -1,4 +1,4 @@
-import {isIgnoredNews} from './news.js'
+import {isIgnoredNews, newsDateGroup, newsPublishedAt, newsWindowDays} from './news.js'
 export const OFFICIAL_NEWS_FEEDS=[
  {id:'official:openai',label:'OpenAI 官方动态',url:'https://openai.com/news/rss.xml',topics:['AI','LLM']},
  {id:'official:deepmind',label:'Google DeepMind 官方动态',url:'https://deepmind.google/blog/rss.xml',topics:['AI','LLM']},
@@ -16,8 +16,18 @@ export function newsCategory(item:any):string {
  return '模型与研究'
 }
 /** Project from live source records: edits/deletions/failed reads cannot leave stale summaries. */
-export function newsBriefItems(data:any,limit=5):any[]{
+export function newsBriefItems(data:any,limit=5,now=Date.now()):any[]{
  const ids=data.radarBrief?.ids
+ const days=newsWindowDays(data.settings?.newsDays)
  const rows=(data.radar||[]).filter((item:any)=>!isIgnoredNews(item)&&item.url&&isNewsBriefCandidate(item,!ids)&&(!ids||ids.includes(item.id)))
- return rows.sort((a:any,b:any)=>Number(/官方/.test(b.source))-Number(/官方/.test(a.source))||(!ids?Number(!!b.summary?.change)-Number(!!a.summary?.change):0)||Date.parse(b.publishedAt||b.fetchedAt||b.createdAt)-Date.parse(a.publishedAt||a.fetchedAt||a.createdAt)).slice(0,Math.max(0,Math.min(60,limit)))
+  .map((item:any)=>({...item,publishedAt:newsPublishedAt(item)}))
+  .filter((item:any)=>newsDateGroup(item.publishedAt,days,now)==='recent')
+ return rows.sort((a:any,b:any)=>Number(/官方/.test(b.source))-Number(/官方/.test(a.source))||(!ids?Number(!!b.summary?.change)-Number(!!a.summary?.change):0)||Date.parse(b.publishedAt)-Date.parse(a.publishedAt)).slice(0,Math.max(0,Math.min(60,limit)))
+}
+
+export function newsBriefOverview(data:any,items:any[]):string {
+ const batch=data.radarBrief, sourceIds=batch?.overviewIds??batch?.ids;
+ if(typeof batch?.overview!=='string'||!sourceIds?.length)return '';
+ const recentIds=new Set(items.map(item=>item.id));
+ return sourceIds.every((id:string)=>recentIds.has(id))?batch.overview:'';
 }

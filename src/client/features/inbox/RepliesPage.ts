@@ -1,3 +1,4 @@
+import {LinkedMessageImages} from '../../components/LinkedMessageImages.js'
 import {WorkspaceRefresh} from '../../components/WorkspaceRefresh.js'
 import {MessageSelectionBadges} from '../../components/MessageSelectionBadges.js'
 import {Pagination,PAGE_SIZE,pageIndex} from '../../components/Pagination.js'
@@ -84,11 +85,13 @@ function RepliesPage(): any {
                             h(MessageSelectionBadges,{source,inbox:data.messageInbox}),h('span', null, '来自：' + messageOrigin(source, reply)),
                             h('span', null, '发出时间：' + messageSentTime(source)))),
                     h('p', { className: 'wb-inbox-message' }, reply.snippet || '无文本摘录'),
+                    h(LinkedMessageImages,{source,accountId:data.messageInbox?.accountId}),
                     h('div', { className: 'wb-inbox-footer' },
                         h(ReplyDraft, { reply, data, actions: statusActions,initialOpen:selectedReply===reply.id }),
                         source ? h('details', { className: 'wb-inbox-evidence' },
                             h('summary', null, '查看原消息依据'),
                             h('p', null, source.excerpt),
+                            !source.locator?.imageIds&&!/\[(?:图片|image)\]/i.test(source.excerpt||'')?h(LinkedMessageImages,{source,accountId:data.messageInbox?.accountId,allowLookup:true}):null,
                             h('div', { className: 'wb-tiny wb-muted' }, '发出时间：' + messageSentTime(source))) : null,
                         (reply.taskIds || []).length ? h('div', { className: 'wb-reply-actions' }, (reply.taskIds || []).map(function (id: any): any {
                             const task = (data.tasks || []).find((row: any) => row.id === id);
@@ -97,7 +100,7 @@ function RepliesPage(): any {
             })) : h(Empty, { icon: 'reply', title: historyView?'没有匹配的回复记录':'当前没有需要处理的回复', hint: '未读不等于需要回复；识别出回复义务或手动添加后才显示在这里。' }),
         h(Pagination, { page, total: replies.length, onChange: setPage }),
         h(WorkflowJobs, { jobs: data.jobs || [], kind: 'analysis' }),
-        h(AnalysisQueuePanel, { entries: data.analysisQueue || [], sources: data.sources || [] }));
+        h(AnalysisQueuePanel, { entries: data.analysisQueue || [], sources: data.sources || [], accountId:data.messageInbox?.accountId }));
 }
 
 export {RepliesPage}

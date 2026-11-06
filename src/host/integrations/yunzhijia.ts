@@ -15,6 +15,8 @@ import { messageConversation, messageSender } from '../../shared/message-display
 import { linkedMessageSources, repairLinkedMessageMetadata } from './message-metadata.js'
 import { messageReplyId, reconcileYunzhijiaReplies, replyStatusSnapshot, mergeReconciledReplies } from './reply-reconciliation.js'
 import {nativeYunzhijiaBinary, yunzhijiaBinDirs, yunzhijiaManagedBinary} from './yunzhijia-paths.js'
+import {createLinkedMessageImages} from './linked-message-images.js'
+import {conversationImageIds,readConversationFile,readConversationImage} from './conversation-images.js'
 import {platform} from 'node:os'
 /* ============================================================================
  * dev-workbench host — 云之家 yzj-cli integration (design report §3.2, §6.3)
@@ -173,7 +175,15 @@ async function sendYzjTextReply(ctx: any, groupId: string, msgId: string|null, t
     if(msgId)args.push('--reply-msg-id',msgId);
     return executeYzj(ctx,args);
 }
-async function executeYzj(ctx: any, args: string[]): Promise<any> {
+/** Only the conversation reader calls this after resolving an image in the active view. */
+export function downloadYzjAttachment(ctx: any, fileId: string) {
+    return readConversationFile(path => executeYzj(ctx, ['file', 'download', '--id', fileId, '--output', path], 'file'));
+}
+
+export function downloadYzjImage(ctx: any, fileId: string) {
+    return readConversationImage(path => executeYzj(ctx, ['file', 'download', '--id', fileId, '--output', path], 'file'));
+}
+async function executeYzj(ctx: any, args: string[], outputMode: 'json' | 'file' = 'json'): Promise<any> {
     const path = await resolveYzjPath(ctx);
     if (!path) {
         return { status: 'unavailable', note: '未找到 yzj-cli（PATH 与常见安装位置都没有）' };
@@ -229,6 +239,7 @@ async function executeYzj(ctx: any, args: string[]): Promise<any> {
                 note: (stderr.trim() || stdout.trim() || '退出码 ' + outcome.exitCode).slice(0, 300),
             };
         }
+        if (outputMode === 'file') return { status: outcome?.exitCode === 0 ? 'ok' : 'error' };
         let json: any = null;
         try {
             json = JSON.parse(stdout);
@@ -372,6 +383,7 @@ function yzjParseMentionSearch(json?: any, myOpenId?: any): any {
                 continue;
             out.push({
                 selection:{policy:'focused-v1',reasons:mentionSignals(message,myOpenId),unreadCount:null,observedAt:hostNowIso()},
+                imageIds:conversationImageIds(message),
                 msgId: asString(message.msgId, 60),
                 groupId: groupId,
                 groupName: groupName,
@@ -507,7 +519,7 @@ async function fetchYunzhijiaMentionsInto(ctx?: any, state?: any): Promise<any> 
         const prior=ensureArray(state.sources).find((row:any)=>row.provider==='yunzhijia'&&(row.externalId===externalId||row.locator?.groupId===mention.groupId&&row.locator?.msgId===mention.msgId&&row.locator.accountId===accountId));
         if(prior){
             prior.selection=normalizeMessageSelection(mention.selection);
-            prior.locator={...prior.locator,...(mention.sendTime?{sentAt:mention.sendTime}:{}),sentAtVerified:!!mention.sendTime,groupType:mention.groupType??prior.locator?.groupType,intake:mention.intake!==false,direction:mention.direction||'inbound',replyToMsgId:mention.replyToMsgId||null};
+            prior.locator={...prior.locator,imageIds:mention.imageIds??prior.locator?.imageIds,...(mention.sendTime?{sentAt:mention.sendTime}:{}),sentAtVerified:!!mention.sendTime,groupType:mention.groupType??prior.locator?.groupType,intake:mention.intake!==false,direction:mention.direction||'inbound',replyToMsgId:mention.replyToMsgId||null};
             const q=ensureArray(state.analysisQueue).find((q:any)=>q.sourceId===prior.id);
             if(q?.status==='skipped'&&String(q.reviewReason).includes('旧全量消息队列'))Object.assign(q,{status:'pending',reviewReason:null,attempts:0});
             if(!q)state.analysisQueue.push({id:newId('aq'),sourceId:prior.id,msgId:mention.msgId,groupId:mention.groupId,accountId, status:'pending',attempts:0,at});
@@ -526,6 +538,7 @@ async function fetchYunzhijiaMentionsInto(ctx?: any, state?: any): Promise<any> 
             locator: {
                 groupId: mention.groupId,
                 msgId: mention.msgId,
+                imageIds:mention.imageIds,
                 groupName: mention.groupName,
                 groupType: mention.groupType,
                 accountId: mention.accountId || probe.accountId || probe.openId,
@@ -910,6 +923,8 @@ export function repairYunzhijiaMetadata(ctx:any):Promise<any> {
     })().finally(()=>{metadataRepairPromise=null});
     return metadataRepairPromise;
 }
+export const linkedYzjImages=createLinkedMessageImages({probe:probeYunzhijia,run:runYzj,download:downloadYzjImage});
+
 function syncYunzhijiaMessages(ctx?: any): any {
     if (mentionsSyncPromise)
         return mentionsSyncPromise;
@@ -929,12 +944,21 @@ function syncYunzhijiaMessages(ctx?: any): any {
             // Merge only enrichment fields. Never replace edits made while CLI calls ran.
             mergeMessageMetadata(current,fetched,before);
             const fetchedSources=new Map(ensureArray(fetched.sources).map((s:any)=>[s.id,s]));
-            for(const source of current.sources){const selected:any=fetchedSources.get(source.id);if(selected?.selection){source.selection=normalizeMessageSelection(selected.selection);source.locator={...source.locator,sentAtVerified:selected.locator?.sentAtVerified===true,groupType:selected.locator?.groupType??source.locator?.groupType,intake:selected.locator?.intake,direction:selected.locator?.direction,replyToMsgId:selected.locator?.replyToMsgId||null};}}
+            for(const source of current.sources){const selected:any=fetchedSources.get(source.id);if(selected?.selection){source.selection=normalizeMessageSelection(selected.selection);source.locator={...source.locator,imageIds:selected.locator?.imageIds??source.locator?.imageIds,sentAtVerified:selected.locator?.sentAtVerified===true,groupType:selected.locator?.groupType??source.locator?.groupType,intake:selected.locator?.intake,direction:selected.locator?.direction,replyToMsgId:selected.locator?.replyToMsgId||null};}}
             current.messageInbox=fetched.messageInbox;
             applyCalendarPlan(current,fetched.__calendarPlan);
             mergeReconciledReplies(current,fetched,replyStates);
-            for(const q of current.analysisQueue||[]){const fq=(fetched.analysisQueue||[]).find((x:any)=>x.id===q.id);if(q.status==='skipped'&&String(q.reviewReason).includes('旧全量消息队列')&&fq?.status==='pending')Object.assign(q,{status:'pending',reviewReason:null,attempts:0});}
-            current.analysisQueue = ensureArray(current.analysisQueue).concat(ensureArray(fetched.analysisQueue).filter((row:any)=>!current.analysisQueue.some((q:any)=>q.sourceId===row.sourceId)&&current.sources.some((s:any)=>s.id===row.sourceId&&normalizeMessageSelection(s.selection))));
+            const currentQueue=ensureArray(current.analysisQueue),fetchedQueue=ensureArray(fetched.analysisQueue);
+            const fetchedById=new Map();
+            for(const row of fetchedQueue)if(!fetchedById.has(row.id))fetchedById.set(row.id,row);
+            const queuedSources=new Set();
+            for(const row of currentQueue){
+                queuedSources.add(row.sourceId);
+                if(row.status==='skipped'&&String(row.reviewReason).includes('旧全量消息队列')&&fetchedById.get(row.id)?.status==='pending')
+                    Object.assign(row,{status:'pending',reviewReason:null,attempts:0});
+            }
+            const selectedSources=new Set(current.sources.filter((source:any)=>normalizeMessageSelection(source.selection)).map((source:any)=>source.id));
+            current.analysisQueue=currentQueue.concat(fetchedQueue.filter((row:any)=>!queuedSources.has(row.sourceId)&&selectedSources.has(row.sourceId)));
             for(const [key,value] of replyCursors)if(!(key in fetched.syncCursors) && JSON.stringify(current.syncCursors?.[key])===value)delete current.syncCursors[key];
             skipHistoricalMessages(current);
             if(current.messageInbox?.accountId)seedUnreadPrivateReplies(current,current.messageInbox.accountId);
@@ -944,6 +968,7 @@ function syncYunzhijiaMessages(ctx?: any): any {
             auditEntry(current, 'messages.sync', '采集来源 ' + fresh.length + ' 条');
             return current;
         });
+        void linkedYzjImages.sync(ctx);
         await runBusyReplies(()=>probeYunzhijia(ctx),(groupId,text)=>sendYzjTextReply(ctx,groupId,null,text));
         return loadWorkbenchState();
     })().finally(function (): any { mentionsSyncPromise = null; });

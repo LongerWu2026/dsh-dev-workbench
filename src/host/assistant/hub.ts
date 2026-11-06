@@ -325,7 +325,10 @@ async function send(ctx:any,request:any){
     const controller=hostService(ctx,'sessionController')
     if(typeof controller?.prompt!=='function')throw Error('当前宿主没有模型会话服务')
     const state=loadWorkbenchState(),runs=runRows(conversation,state),entity=entityFor(conversation,state)
-    const retrieval=await retrieveAssistantKnowledge(state,text,{...request,...knowledgeScope,knowledgeScope})
+    const existingId=selectedSession(conversation,request)
+    const matter=['task','development'].includes(conversation.kind)?{title:conversation.title,
+        previousText:existingId?hubTurns(conversation.id,{sessionId:existingId,knowledgeScope}).reverse().find(row=>row.sessionId===existingId&&row.userSeq!==undefined&&row.trigger!=='system'&&!row.attachmentOnly)?.text:undefined}:undefined
+    const retrieval=await retrieveAssistantKnowledge(state,text,{...request,...knowledgeScope,knowledgeScope,sessionId:existingId},matter)
     retrieval.turnId=turn.id
     if(retrieval.mode==='only'&&retrieval.status!=='ok'){const note=retrieval.note||'知识库未找到依据，未调用模型';turn=updateHubTurn(turn.id,{status:'failed',reply:note});return {status:'knowledge_empty',note,retrieval,turn,turnId:turn.id,requestId}}
     const background=await backgroundMessages(ctx,conversation,{limit:10})
@@ -346,7 +349,6 @@ async function send(ctx:any,request:any){
     if(lines.join('\n').length>64000)throw Error('上下文过长，请减少附加引用后继续')
     if(original)lines.push('（需要落库时，本轮例外：仅重新识别原话，不执行任何操作、不调用任何工具，也不重复之前动作。请以“识别指令：”给出你理解的操作及对象，再说明与原规则识别有何不同；如不明确则询问。最后说明这是建议，需要用户明确下一步后才执行。不要输出内部推理过程。）')
     if(turn.clarificationOnly)lines.push('（本轮需要澄清：'+(turn.recognition?.reason||'用户的操作意图尚未明确')+'。先回答用户的问题或澄清对象，只使用上下文；禁止调用任何工具、禁止执行修改、禁止代替用户确认。不要声称指令已经执行。不要输出内部推理过程。）')
-    const existingId=selectedSession(conversation,request)
     if(existingId){const existing=await restore(ctx,existingId);reconcileHubTurns(conversation.id,existing,conversation.id==='system:knowledge'?{knowledgeScope}:{});const pending=hubTurns(conversation.id,{sessionId:existingId}).some(row=>row.id!==turn.id&&(row.mode==='reinterpret'||row.clarificationOnly)&&['recognizing','executing'].includes(row.status));if(pending||(original||turn.clarificationOnly)&&transcriptDelta(existing,0).turnActive)throw Error('当前会话仍在处理，请等待本轮结束后再发送或重新识别')}
     const session=await ensureSession(ctx,conversation,request)
     await checkDevelopmentController(ctx,conversation,request,session)

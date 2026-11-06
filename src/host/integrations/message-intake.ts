@@ -1,3 +1,4 @@
+import {conversationImageIds} from './conversation-images.js'
 import {asString,hostNowIso} from '../platform/runtime.js'
 import {messageProcessingStart} from '../domain/message-policy.js'
 import {messageReplyId,messageSentAt as yzjMessageTime} from './reply-reconciliation.js'
@@ -68,7 +69,7 @@ export async function fetchFocusedMessages(ctx:any,probe:any,cursors:any,install
     for(const group of groups){
         const m=group.lastMsg,sentAt=yzjMessageTime(m?.sendTime);
         if(!freshGroups.has(group.groupId)||Number(group.groupType)!==1||!(group.unreadCount>0)||!m?.msgId||!m.fromOpenId||m.fromOpenId===probe.openId||group.lastMsgId&&group.lastMsgId!==m.msgId||!sentAt||cutoff!==null&&Date.parse(sentAt)<cutoff||!m.content)continue;
-        mentions.push({msgId:asString(m.msgId,80),groupId:asString(group.groupId,120),groupName:asString(group.groupName,120)||'未知会话',accountId:probe.accountId||probe.openId,content:asString(m.content,4000),fromOpenId:m.fromOpenId,sendTime:sentAt,direction:'inbound',intake:true,groupType:1,replyToMsgId:messageReplyId(m),selection:{policy:MESSAGE_INTAKE_POLICY,reasons:['unread'],unreadCount:group.unreadCount,observedAt:hostNowIso()}});
+        mentions.push({imageIds:m.param?conversationImageIds(m):undefined,msgId:asString(m.msgId,80),groupId:asString(group.groupId,120),groupName:asString(group.groupName,120)||'未知会话',accountId:probe.accountId||probe.openId,content:asString(m.content,4000),fromOpenId:m.fromOpenId,sendTime:sentAt,direction:'inbound',intake:true,groupType:1,replyToMsgId:messageReplyId(m),selection:{policy:MESSAGE_INTAKE_POLICY,reasons:['unread'],unreadCount:group.unreadCount,observedAt:hostNowIso()}});
     }
     const failures: any = [];
     let scannedMessages = 0;const incomplete:any[]=[];
@@ -146,7 +147,7 @@ export async function fetchFocusedMessages(ctx:any,probe:any,cursors:any,install
             if(replyToMsgId&&linkedIds.has(replyToMsgId))reasons.push('followup');
             if(!reasons.length||own&&!reasons.includes('followup'))continue;
             const intake=!own&&reasons.some((r:string)=>r!=='followup');
-            mentions.push({msgId:asString(message.msgId,80),groupId,groupName:asString(group.groupName,120)||'未知会话',accountId:probe.accountId||probe.openId,content:asString(message.content,4000),fromOpenId:message.fromOpenId||null,sendTime:yzjMessageTime(message.sendTime),direction:own?'outbound':'inbound',intake,groupType:group.groupType,replyToMsgId,selection:{policy:MESSAGE_INTAKE_POLICY,reasons:[...new Set(reasons)],unreadCount,observedAt:hostNowIso()}});
+            mentions.push({imageIds:conversationImageIds(message),msgId:asString(message.msgId,80),groupId,groupName:asString(group.groupName,120)||'未知会话',accountId:probe.accountId||probe.openId,content:asString(message.content,4000),fromOpenId:message.fromOpenId||null,sendTime:yzjMessageTime(message.sendTime),direction:own?'outbound':'inbound',intake,groupType:group.groupType,replyToMsgId,selection:{policy:MESSAGE_INTAKE_POLICY,reasons:[...new Set(reasons)],unreadCount,observedAt:hostNowIso()}});
         }
         // The caller commits these cursors together with every fetched source, without truncating the batch.
         nextCursors[key] = complete && !failed

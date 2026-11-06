@@ -1,3 +1,4 @@
+import {linkedYzjImages} from '../integrations/yunzhijia.js'
 import { messageSkipReason } from '../domain/message-policy.js'
 import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store.js'
 import { extractCandidatesInto } from '../analysis/rule-candidates.js'
@@ -24,7 +25,7 @@ export const analysisService = {
     /** 采纳候选：原子地建任务（带来源证据）并把候选标记为已采纳。 */
     async acceptCandidate(id?: any, patch?: any): Promise<any> {
         const input = patch && typeof patch === 'object' ? patch : {};
-        return mutateWorkbenchState(function (state?: any): any {
+        const result=await mutateWorkbenchState(function (state?: any): any {
             const candidate = ensureArray(state.candidates).find(function (row?: any): any {
                 return row.id === id;
             });
@@ -61,6 +62,9 @@ export const analysisService = {
             auditEntry(state, 'candidate.accepted', task.title);
             return state;
         });
+        const sourceId=result.candidates.find((row:any)=>row.id===id)?.sourceRefId;
+        if(sourceId)void linkedYzjImages.sync(workbenchContext(),new Set([sourceId]));
+        return result;
     },
 
     async rejectCandidate(id?: any): Promise<any> {

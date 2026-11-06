@@ -1,3 +1,4 @@
+import {TaskDescription} from '../../components/LinkedMessageImages.js'
 import {WorkspaceRefresh} from '../../components/WorkspaceRefresh.js'
 import {MessageSelectionBadges} from '../../components/MessageSelectionBadges.js'
 import {Pagination,PAGE_SIZE,pageIndex} from '../../components/Pagination.js'
@@ -369,7 +370,7 @@ function TaskCenterRow(props?: any): any {
                 padding: '0 12px 12px',
                 background: 'color-mix(in srgb, ' + T.accent + ' 3%, transparent)',
             },
-        }, task.description?h('div',{className:'wb-task-full-description'},h('strong',null,'任务说明'),h('p',null,task.description)):null,h(Btn, {size:'sm',icon:'agent',disabled:busy,onClick:prepareWithAssistant,children:'AI 整理处理方案'}),h(TaskCenterEvidence, { task: task, data: data })))
+        }, (task.description||task.sourceRefId||task.sourceRefs?.length)?h('div',{className:'wb-task-full-description'},h('strong',null,'任务说明'),h(TaskDescription,{key:data.messageInbox?.accountId,task,data})):null,h(Btn, {size:'sm',icon:'agent',disabled:busy,onClick:prepareWithAssistant,children:'AI 整理处理方案'}),h(TaskCenterEvidence, { task: task, data: data })))
         : null);
 }
 function TaskCenterBoardCard(props?: any): any {

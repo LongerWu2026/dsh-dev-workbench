@@ -402,6 +402,9 @@ const wbActions: any = {
      *  Zero-parameter endpoint: the gateway strictly validates arg fields against
      *  the descriptor, so the payload must be exactly {}. */
     conversationMessages(request:any):Promise<any>{return wbRpc('workbench/conversationMessages',{request})},
+    sourceImages(request:any):Promise<any>{return wbRpc('workbench/sourceImages',{request})},
+    conversationAttachment(request:any):Promise<any>{return wbRpc('workbench/conversationAttachment',{request})},
+    conversationImage(request:any):Promise<any>{return wbRpc('workbench/conversationImage',{request})},
     async conversationRead(request:any):Promise<any>{
         const response=await wbRpc('workbench/conversationRead',{request}),mark=response?.readMark,current=wbStore.get().data;
         if(response?.status!=='ok'||!mark||mark.accountId!==request.accountId||mark.groupId!==request.groupId||response.snapshot?.messageInbox?.accountId!==mark.accountId)throw Error('未能保存工作台已读状态，请重试');
@@ -593,6 +596,12 @@ const wbActions: any = {
     /** TODO 20：对指定资讯批量生成四段摘要（读原文 → 模型 → 写回卡片）。 */
     radarSummarize(onlyIds?: any, retryFailed?: boolean): any {
         return wbRpc('workbench/radarSummaryStart', { request: { onlyIds: onlyIds || [], retryFailed: retryFailed === true } });
+    },
+    exportMigrationArchive(): Promise<any> {
+        return wbRpc('workbench/exportMigrationArchive', {});
+    },
+    importMigrationArchive(archive: string, mode: string, dryRun: boolean, mapPaths: Record<string, string>): Promise<any> {
+        return wbRpc('workbench/importMigration', {request: {archive, mode, dryRun, mapPaths}});
     },
     exportMigration(): any {
         return wbRpc('workbench/exportMigration', {});

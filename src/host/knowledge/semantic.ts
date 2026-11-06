@@ -1,6 +1,6 @@
 import {scheduleKnowledgeIndex} from './engine.js'
 import {localEmbeddingEnabled,localEmbeddingVectors} from './local-embedding.js'
-import { retrieveKnowledge, knowledgeAllowed, chunkKnowledge } from './retrieval.js'
+import { retrieveKnowledge, knowledgeAllowed, chunkKnowledge, knowledgeTopicFilter } from './retrieval.js'
 import { hashText } from '../platform/runtime.js'
 import type { KnowledgeHit } from '../../shared/knowledge.js'
 const vectors=new Map<string,number[]>()
@@ -16,7 +16,7 @@ export async function retrieveKnowledgeAsync(state:any,query:string,request:any=
   const url=new URL(endpoint);if(!['http:','https:'].includes(url.protocol)||url.username||url.password||url.search)throw new Error('Embedding地址格式无效')
   const loopback=url.hostname==='localhost'||url.hostname==='[::1]'||/^127(?:\.\d{1,3}){3}$/.test(url.hostname)
   if(url.protocol==='http:'&&!loopback)throw new Error('远程Embedding必须使用HTTPS；HTTP仅允许localhost或回环IP')
-  const all=(state.knowledge||[]).filter((d:any)=>knowledgeAllowed(d,local.scope)&&d.body?.trim()).flatMap(chunkKnowledge)
+  const all=(state.knowledge||[]).filter((d:any)=>knowledgeAllowed(d,local.scope)&&d.body?.trim()).flatMap(chunkKnowledge).filter(knowledgeTopicFilter(request.topic))
   if(all.length>200)return {...local,note:'当前范围超过200片段，保留本地全文检索；请缩小项目范围再使用语义检索'}
   if(!all.length)return local
   const key=(h:KnowledgeHit)=>hashText(JSON.stringify([endpoint,model,h.id,h.title,h.text]))
@@ -44,7 +44,7 @@ export async function retrieveKnowledgeAsync(state:any,query:string,request:any=
 async function retrieveLocalHybrid(state:any,query:string,request:any,local:any){
  const began=performance.now()
  try{
-  const chunks=(state.knowledge||[]).filter((doc:any)=>knowledgeAllowed(doc,local.scope)&&doc.body?.trim()).flatMap(chunkKnowledge)
+  const chunks=(state.knowledge||[]).filter((doc:any)=>knowledgeAllowed(doc,local.scope)&&doc.body?.trim()).flatMap(chunkKnowledge).filter(knowledgeTopicFilter(request.topic))
   if(!chunks.length)return local
   if(chunks.length>20000)return {...local,note:'当前范围超过20000片段，请缩小项目范围；已保留关键词检索'}
   const vectors=await localEmbeddingVectors(chunks.map((hit:any)=>({id:hit.id,text:String(hit.title||'').slice(0,80)+'\n'+hit.text})),false,{maxMissing:8})

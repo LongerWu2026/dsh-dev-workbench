@@ -13,6 +13,15 @@ export function knowledgeTokens(text:string):string[]{
 export function expandKnowledgeQuery(query:string):string{
  return query+' '+SYNONYMS.filter(group=>group.some(term=>query.toLowerCase().includes(term))).flat().join(' ')
 }
+/** Contextual follow-ups must share topic terms with a candidate before ranking. */
+export function knowledgeTopicFilter(topic:string|undefined){
+ const terms=[...new Set(knowledgeTokens(topic||''))].slice(0,40)
+ return (hit:KnowledgeHit)=>{
+  if(!terms.length)return true
+  const tokens=new Set(knowledgeTokens(hit.title+' '+hit.text))
+  return terms.filter(term=>tokens.has(term)).length>=Math.min(2,terms.length)
+ }
+}
 export function knowledgeVersion(doc:any):string{return hashText(JSON.stringify(['chunks-v3',doc.title,doc.body,doc.contentRef,doc.tags,doc.url,doc.projectId||null,doc.accountId||null,knowledgeSpaceOf(doc),!!doc.sharedAcrossSpaces,doc.reviewState||'candidate',doc.validUntil||null]))}
 export function knowledgeAllowed(doc:any,scope:KnowledgeScope,includeCandidates=false):boolean{
  const space=scope.spaceId||(scope.accountId?legacyKnowledgeSpace(scope.accountId):PERSONAL_KNOWLEDGE_SPACE),own=knowledgeSpaceOf(doc)
@@ -52,7 +61,8 @@ export function retrieveKnowledge(state:any,query:string,request:any={}):Retriev
  if(mode==='off')return {...base,status:'off'}
  const terms=[...new Set(knowledgeTokens(expandKnowledgeQuery(base.query)).slice(0,40))];if(!terms.length)return {...base,status:'empty',note:'问题中没有可检索关键词'}
  const docs=(state.knowledge||[]).filter((d:any)=>knowledgeAllowed(d,scope,request.includeCandidates===true)&&String(d.body||'').trim())
- const corpus=docs.flatMap((d:any)=>chunkKnowledge(d).map(hit=>({hit,tokens:knowledgeTokens([d.title,d.title,(d.tags||[]).join(' '),hit.text].join(' '))})))
+ const onTopic=knowledgeTopicFilter(request.topic)
+ const corpus=docs.flatMap((d:any)=>chunkKnowledge(d).filter(onTopic).map(hit=>({hit,tokens:knowledgeTokens([d.title,d.title,(d.tags||[]).join(' '),hit.text].join(' '))})))
  const avg=corpus.reduce((n:any,c:any)=>n+c.tokens.length,0)/Math.max(1,corpus.length)
  const df=new Map(terms.map(term=>[term,corpus.filter((c:any)=>c.tokens.includes(term)).length]))
  const ranked=corpus.map(({hit,tokens}:any)=>{let score=0,matched=0;for(const term of terms){const tf=tokens.filter((t:string)=>t===term).length;if(tf){matched++;const idf=Math.log(1+(corpus.length-(df.get(term)||0)+0.5)/((df.get(term)||0)+0.5));score+=idf*tf*2.2/(tf+1.2*(0.25+0.75*tokens.length/Math.max(1,avg)))}}return {...hit,score,matched}}).filter((r:any)=>r.matched>=Math.min(2,terms.length)&&r.score>0).sort((a:any,b:any)=>b.score-a.score)

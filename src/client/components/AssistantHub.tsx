@@ -11,7 +11,7 @@ import {AssistantSidebar,AssistantSidebarToggle,useAssistantSidebar,ASSISTANT_SI
 import {DevelopmentStatusChoices} from './DevelopmentStatusChoices.js'
 import {AssistantConversationDeleteButton,AssistantConversationDeleteDialog} from './AssistantConversationDelete.js'
 import {mdInline,mdParse} from '../features/toolbox/tools-extra.js'
-import {readAssistantHub,cachedAssistantDirectory,rememberAssistantDirectory,updateAssistantDirectories} from '../core/assistant-hub-read.js'
+import {readAssistantHub,cachedAssistantDirectory,rememberAssistantDirectory,updateAssistantDirectories,cachedAssistantHistory,rememberAssistantHistory,clearAssistantHistory} from '../core/assistant-hub-read.js'
 import {AssistantToolActivity,isBusinessAssistantCommand,ASSISTANT_TOOL_ACTIVITY_CSS} from './AssistantToolActivity.js'
 
 const labels:Record<string,string>={system:'系统',task:'待办',reply:'待回复',development:'研发',radar:'资讯',knowledge:'知识',chat:'对话',office:'工作',source:'消息',search:'检索结果'}
@@ -150,7 +150,9 @@ function AssistantTurn({turn,conversationKind,events,confirmations,disabled,onRe
  const operationOrigin=turn.trigger==='operation'||!!turn.operationSignature||explain,inputAuthor=historyOrigin?'history':turn.trigger==='system'?'function':operationOrigin?'function':'user',responseAuthor=historyOrigin?'history':turn.source==='rule'?'rule':turn.source==='ai'?'assistant':'system'
  const reply=turn.streamingText||(conversationKind==='chat'&&turn.replySource==='tools'&&turn.reply==='本轮未返回文字答复，可展开工具执行记录核对执行状态。'?'本轮未返回文字答复，请在原会话查看执行状态。':turn.reply)
  const quietAnswer=turn.status==='completed'&&turn.source==='ai'&&!commands.length&&!historyOrigin&&!explain&&!turn.clarificationOnly&&turn.replySource!=='tools'&&!turn.blocked&&!turn.jobs?.length&&!turn.artifacts?.length
- const status=turn.replyStreaming?'正在回复':historyOrigin&&turn.recordedStatus?statusOf(turn.recordedStatus):turn.blocked?'暂不能执行':turn.status==='failed'?'未完成':turn.status==='completed'?(commands[0]?.operation==='development.issue.get'?'已查询':turn.clarificationOnly&&!commands.length?'待你补充':explain?'已重新识别':ordinary&&turn.replySource==='tools'?'已结束':turn.source==='ai'&&!commands.length?'已回复':'已完成'):ordinary&&working?'正在回复':turn.status==='recognizing'?(turn.source==='ai'?'AI 理解中':'正在识别指令'):turnStatuses[turn.status]||turn.status||'等待处理'
+ const failedTools=tools.filter((tool:any)=>tool.status==='failed').length
+ const answeredWithToolFailures=turn.status==='failed'&&turn.replySource==='assistant'&&!!reply&&turn.failurePhase==='execution'&&failedTools>0&&!commands.some((command:any)=>command.status==='failed')
+ const status=turn.replyStreaming?'正在回复':historyOrigin&&turn.recordedStatus?statusOf(turn.recordedStatus):turn.blocked?'暂不能执行':answeredWithToolFailures?'已回复 · '+failedTools+' 项工具失败':turn.status==='failed'?'未完成':turn.status==='completed'?(commands[0]?.operation==='development.issue.get'?'已查询':turn.clarificationOnly&&!commands.length?'待你补充':explain?'已重新识别':ordinary&&turn.replySource==='tools'?'已结束':turn.source==='ai'&&!commands.length?'已回复':'已完成'):ordinary&&working?'正在回复':turn.status==='recognizing'?(turn.source==='ai'?'AI 理解中':'正在识别指令'):turnStatuses[turn.status]||turn.status||'等待处理'
  return <section className="wb-hub-turn" aria-label="提交与处理结果" data-turn-id={turn.id} data-request-id={turn.requestId}>
   {(turn.text||(turn.attachments||[]).length>0)&&<MessageRow author={inputAuthor} at={turn.at} operation={commands[0]?.operation} detail={historyOrigin?'历史办公记录':explain?'重新理解':operationOrigin?'操作触发':undefined}><article className={'wb-assistant-message wb-hub-message'+(inputAuthor==='user'?' is-user':'')}><Markdown text={turn.attachmentOnly?'':turn.text}/><MessageAttachments attachments={turn.attachments} pending={String(turn.id).startsWith('pending:')}/></article></MessageRow>}
   <MessageRow author={responseAuthor} at={turn.replyAt} detail={historyOrigin?'处理结果':undefined}><article className="wb-hub-turn-response" aria-label="处理回复" aria-busy={turn.replyStreaming||undefined}>
@@ -195,7 +197,7 @@ export function AssistantHub({initial=[],onUnsupported}:{initial?:any[];onUnsupp
  const scopedRead=(request:any,signal?:AbortSignal)=>readAssistantHub({...request,knowledgeScope,...knowledgeScope},signal)
  async function listConversations(request:any={},signal?:AbortSignal){const version=listMutation.current,connection=wbConnection,result=await scopedRead({action:'list',...request},signal);if(version!==listMutation.current)return {...result,conversations:undefined,listSuperseded:true};if(!signal?.aborted&&!request.query&&result?.status==='ok'&&Array.isArray(result.conversations))rememberAssistantDirectory(knowledgeScope,result.conversations,connection);return result}
  function conversationDeleted(target:any){
-  listMutation.current++;updateAssistantDirectories(rows=>rows.filter(row=>row.id!==target.id));setRows(previous=>previous.filter(row=>row.id!==target.id));setDeleteTarget(null)
+  clearAssistantHistory(target.id);listMutation.current++;updateAssistantDirectories(rows=>rows.filter(row=>row.id!==target.id));setRows(previous=>previous.filter(row=>row.id!==target.id));setDeleteTarget(null)
   for(const key of Object.keys(drafts.current))if(key.startsWith(target.id+':'))delete drafts.current[key]
   const current=WB.store.get()
   if(current.assistantConversationId===target.id){cancelQueuedOffice('临时会话已删除',target.id);choose({id:'system:analysis',kind:'system'})}
@@ -223,10 +225,11 @@ export function AssistantHub({initial=[],onUnsupported}:{initial?:any[];onUnsupp
   if(page)setBackgroundPageErrors(value.errors||[])
  }
  async function refresh(g=generation.current,targetThread=threadId,signal?:AbortSignal){
-  const eKey=extractionKeyRef.current,eVersion=extractionVersion.current
+  const eKey=extractionKeyRef.current,eVersion=extractionVersion.current,connection=wbConnection
   const response=await scopedRead({action:'detail',conversationId:id,...(targetThread?{sessionId:targetThread}:{}),...extractionRequest(),limit:60},signal)
   if(g!==generation.current)return
   if(response?.status!=='ok')throw Error(response?.note||'无法读取会话')
+  rememberAssistantHistory(id,targetThread||null,knowledgeScope,response,connection)
   receiveBackground(response.background);receiveExtraction(response.extraction,eKey,eVersion);acknowledgeTurns(response.turns)
   setDetail((previous:any)=>{
    const keep=!!response.historyError&&previous?.conversation?.id===response.conversation.id&&previous?.sessionId===response.sessionId
@@ -234,6 +237,10 @@ export function AssistantHub({initial=[],onUnsupported}:{initial?:any[];onUnsupp
   });if(!busyRef.current&&!response.historyError)messagesRef.current=response.messages||[]
   if(stopPending.current?.g===g&&stopPending.current.acked&&response.stop&&!response.stop.available)finishStop(g)
   setLoading(false);setReadError('');receiveRetrievals(response.retrievals||[response.retrieval]);return !!response.turnActive
+ }
+ async function retryRead(){
+  const g=generation.current
+  try{await refresh(g)}catch(failure:any){if(g===generation.current)setReadError(failure.message||'读取会话失败')}
  }
  const directoryScopeKey=JSON.stringify(knowledgeScope)
  React.useEffect(()=>{
@@ -255,11 +262,13 @@ export function AssistantHub({initial=[],onUnsupported}:{initial?:any[];onUnsupp
  },[query,directoryScopeKey,listRetry])
 
  React.useEffect(()=>{
-  const g=++generation.current;stopPending.current=null;setStopping(false);setStopNote('');pinVersion.current++;setPinBusy('');busyRef.current=false;setBusy(false);setStreaming(false);setLoading(true);setDetail(null);setResult(null);setHistory(null);setError('');setClientTurns(WB.store.get().assistantHubClientTurns?.[clientTurnKey]||[]);serverTurnsRef.current=[];setThreadId(state.assistantHubThreadId||null);setPast([]);setPastTurns([]);setPastCursor(null);setMorePast(null);setPastLoading(false);pastLoadingRef.current=false;setBackgroundMessages([]);setBackgroundCursor(null);setBackgroundHasMore(false);setBackgroundLoading(false);setBackgroundPageErrors([]);setExtraction(null);setExtractionBusy(id==='system:analysis');extractionVersion.current++;backgroundAnchor.current=null;backgroundPaging.current=false;backgroundLoadingRef.current=false;backgroundScroll.current=null;setRetrievals({});setCitationAudits({});historyVersion.current++;setDraft(drafts.current[clientTurnKey]||'');messagesRef.current=[];pinned.current=true
+  const cached=cachedAssistantHistory(id,state.assistantHubThreadId||null,knowledgeScope)
+  const g=++generation.current;stopPending.current=null;setStopping(false);setStopNote('');pinVersion.current++;setPinBusy('');busyRef.current=false;setBusy(false);setStreaming(false);setLoading(true);setDetail(cached||null);setResult(null);setHistory(null);setError('');setClientTurns(WB.store.get().assistantHubClientTurns?.[clientTurnKey]||[]);serverTurnsRef.current=[];setThreadId(state.assistantHubThreadId||null);setPast([]);setPastTurns([]);setPastCursor(null);setMorePast(null);setPastLoading(false);pastLoadingRef.current=false;setBackgroundMessages([]);setBackgroundCursor(null);setBackgroundHasMore(false);setBackgroundLoading(false);setBackgroundPageErrors([]);setExtraction(null);setExtractionBusy(id==='system:analysis');extractionVersion.current++;backgroundAnchor.current=null;backgroundPaging.current=false;backgroundLoadingRef.current=false;backgroundScroll.current=null;setRetrievals({});setCitationAudits({});historyVersion.current++;setDraft(drafts.current[clientTurnKey]||'');messagesRef.current=[];pinned.current=true
   let active=true,running=false;const controller=new AbortController()
-  setReadError('')
+  setReadError('');if(cached)receiveRetrievals(cached.retrievals||[cached.retrieval]);messagesRef.current=cached?.messages||[]
+  let failures=0
   let timer:ReturnType<typeof setTimeout>
-  const tick=async()=>{if(!active||running)return;running=true;let replying=false;try{const awaitingAttachmentReceipt=(WB.store.get().assistantHubClientTurns?.[clientTurnKey]||[]).some((turn:any)=>String(turn.id).startsWith('pending:')&&turn.attachments?.length&&!turn.attachmentAccepted&&turn.userSeq==null);if(!busyRef.current||awaitingAttachmentReceipt||stopPending.current)replying=await refresh(g,state.assistantHubThreadId||null,controller.signal)||false}catch(e:any){if(active&&g===generation.current){setReadError(e.message||'读取会话失败');cancelQueuedOffice('目标会话读取失败',id);setLoading(false)}}finally{running=false;if(active)timer=setTimeout(tick,replying?250:2500)}}
+  const tick=async()=>{if(!active||running)return;running=true;let replying=false;try{const awaitingAttachmentReceipt=(WB.store.get().assistantHubClientTurns?.[clientTurnKey]||[]).some((turn:any)=>String(turn.id).startsWith('pending:')&&turn.attachments?.length&&!turn.attachmentAccepted&&turn.userSeq==null);if(!busyRef.current||awaitingAttachmentReceipt||stopPending.current)replying=await refresh(g,state.assistantHubThreadId||null,controller.signal)||false;failures=0}catch(e:any){if(active&&g===generation.current){failures++;setReadError(e.message||'读取会话失败');cancelQueuedOffice('目标会话读取失败',id);setLoading(false)}}finally{running=false;if(active)timer=setTimeout(tick,replying?250:Math.min(10000,2500*2**failures))}}
   void tick()
   return()=>{active=false;controller.abort();clearTimeout(timer);clearTimeout(pollRef.current);generation.current++}
  },[scopeKey])
@@ -292,10 +301,10 @@ export function AssistantHub({initial=[],onUnsupported}:{initial?:any[];onUnsupp
   }catch(failure:any){if(g===generation.current){stopPending.current=null;setStopping(false);setError(failure.message||'停止失败，历史已保留')}}
  }
 
- async function newChat(same=false){if(busyRef.current)return;submission.current=null;const g=generation.current;setBusy(true);busyRef.current=true;setError('');try{const r=await scopedCall({action:'reset',...(same?{conversationId:id}:{})});if(g!==generation.current)return;if(r?.status!=='ok')throw Error(r?.note||'无法新建对话');setListRetry(n=>n+1);if(!same){setFilter('chat');setQuery('')}WB.store.set((s:any)=>({assistantConversationId:r.conversationId,assistantHubThreadId:null,assistantTaskId:same?s.assistantTaskId:null,assistantRefs:same?s.assistantRefs:[],assistantOpenSeq:(s.assistantOpenSeq||0)+1}));}catch(e:any){if(g===generation.current)setError(e.message)}finally{if(g===generation.current){busyRef.current=false;setBusy(false)}}}
+ async function newChat(same=false){if(busyRef.current)return;submission.current=null;const g=generation.current;setBusy(true);busyRef.current=true;setError('');try{const r=await scopedCall({action:'reset',...(same?{conversationId:id}:{})});if(g!==generation.current)return;if(r?.status!=='ok')throw Error(r?.note||'无法新建对话');if(same)clearAssistantHistory(id);setListRetry(n=>n+1);if(!same){setFilter('chat');setQuery('')}WB.store.set((s:any)=>({assistantConversationId:r.conversationId,assistantHubThreadId:null,assistantTaskId:same?s.assistantTaskId:null,assistantRefs:same?s.assistantRefs:[],assistantOpenSeq:(s.assistantOpenSeq||0)+1}));}catch(e:any){if(g===generation.current)setError(e.message)}finally{if(g===generation.current){busyRef.current=false;setBusy(false)}}}
  async function operate(operation:string,extra:any={}){await submit({action:'operate',operation,...extra})}
  async function submit(request:any,text?:string,retrying?:any,attachmentIds:string[]=[]){
-  if(busyRef.current||loading||detail?.conversation?.id!==id)return
+  if(busyRef.current||loading||detail?.cached||detail?.conversation?.id!==id)return
   if(['send','reinterpret'].includes(request.action)&&nativeBlocked){setError(nativeBinding.reason||'当前会话暂不可继续发送，请先查看会话状态。');return}
   const tracked=['send','reinterpret'].includes(request.action)||request.action==='operate'&&!!text,g=generation.current,hasAttachments=request.action==='send'&&attachmentIds.length>0
   const attachmentMetadata=hasAttachments?attachmentIds.map(key=>attachments.items.find(row=>row.id===key)).filter(Boolean).map((row:any)=>({id:row.id,type:row.type,name:row.name,size:row.size,mediaType:row.mediaType})):[]
@@ -433,7 +442,7 @@ export function AssistantHub({initial=[],onUnsupported}:{initial?:any[];onUnsupp
     {office?<article className="wb-hub-turn-response" aria-label="办公处理结果">{progress}<OfficeArtifacts artifacts={runArtifacts(message)} disabled={busy} onAction={operate} onOpen={openItem} renderText={(text:string)=><Markdown text={text}/>}/></article>:progress}
    </MessageRow>
   }
-  if(type==='turn'){const retrieval=turnRetrieval(message);return <AssistantTurn conversationKind={kind} retrieval={retrieval} citationAudit={citationAudits[retrieval?.id]} key={key} turn={message} events={events.filter((event:any)=>event.turnId===message.id)} confirmations={confirmations.filter((confirmation:any)=>confirmation.turnId===message.id)} disabled={busy||nativeBlocked} onReinterpret={reinterpret} onRetry={retryTurn} onAction={operate} onOpen={openItem} reinterpretSupported={detail?.reinterpretSupported}/>}
+  if(type==='turn'){const retrieval=turnRetrieval(message);return <AssistantTurn conversationKind={kind} retrieval={retrieval} citationAudit={citationAudits[retrieval?.id]} key={key} turn={message} events={events.filter((event:any)=>event.turnId===message.id)} confirmations={confirmations.filter((confirmation:any)=>confirmation.turnId===message.id)} disabled={busy||loading||detail?.cached||nativeBlocked} onReinterpret={reinterpret} onRetry={retryTurn} onAction={operate} onOpen={openItem} reinterpretSupported={detail?.reinterpretSupported}/>}
   if(type==='background')return <BackgroundMessage key={key} message={message}/>
   if(type==='event')return <MessageRow key={key} author="function" at={message.at} operation={message.operation} detail="状态更新"><article className="wb-hub-turn-response" aria-label="状态更新"><TurnResult event={message} onOpen={openItem} onAction={operate} disabled={busy||nativeBlocked}/></article></MessageRow>
   const manual=message.role==='user'&&message.trigger!=='operation'&&message.trigger!=='system'&&message.origin!=='background',author=manual?'user':message.role==='assistant'?'assistant':message.role==='user'?'function':'system'
@@ -457,7 +466,7 @@ export function AssistantHub({initial=[],onUnsupported}:{initial?:any[];onUnsupp
 
     <div ref={body} className="wb-assistant-body wb-hub-body" onScroll={()=>{const el=body.current;if(el)pinned.current=el.scrollHeight-el.scrollTop-el.clientHeight<80}}>
      {state.assistantOfficeNotice&&<p role="status" className="wb-hub-notice">{state.assistantOfficeNotice}</p>}
-     {detail?.historyError&&<p role="alert" className="wb-hub-error">历史记录暂不可读：{detail.historyError}</p>}{loading?<div className="wb-hub-loading"><Spinner size={16}/>正在读取记录…</div>:<>
+     {detail?.historyError&&<p role="alert" className="wb-hub-error">历史记录暂不可读：{detail.historyError}</p>}{loading&&!detail?<div className="wb-hub-loading"><Spinner size={16}/>正在读取记录…</div>:<>
       {((morePast??detail?.hasMore)||backgroundHasMore)&&<div className="wb-hub-history-loaders" role="group" aria-label="加载历史消息">
        {(morePast??detail?.hasMore)&&<Btn size="sm" disabled={pastLoading||backgroundLoading} onClick={older}>{pastLoading?'正在读取更早对话…':'加载更早的对话'}</Btn>}
        {backgroundHasMore&&<Btn size="sm" disabled={backgroundLoading||pastLoading} onClick={olderBackground}>{backgroundLoading?'正在读取系统记录…':'加载更早的系统记录'}</Btn>}
@@ -469,7 +478,7 @@ export function AssistantHub({initial=[],onUnsupported}:{initial?:any[];onUnsupp
       {[...historical.entries()].map(([day,entries])=><details className="wb-hub-history-day" aria-label={'历史记录：'+day} key={day} open={!!expandedDays[id+'|'+day]} onToggle={event=>toggleDay(day,event.currentTarget.open)}><summary>{day} · {entries.length}条记录</summary><div>{entries.map(renderTimeline)}</div></details>)}
       {currentTimeline.map(renderTimeline)}
       {!!messages.filter((m:any)=>['tool','toolResult'].includes(m.role)).length&&<details className="wb-hub-diagnostics"><summary>执行诊断</summary>{messages.filter((m:any)=>['tool','toolResult'].includes(m.role)).map((m:any,i:number)=><p className="wb-hub-text" key={i}>{m.text}{m.summary?' · '+m.summary:''}</p>)}</details>}
-      {!turns.length&&!messages.length&&!events.length&&!backgroundMessages.length&&!detail?.runs?.length&&!detail?.items?.length&&<div className="wb-hub-empty"><Icon name="messages" size={24}/><strong>{system?'在这里查看结果并继续处理':'从这里继续处理这件事'}</strong><p>可以查看之前的进展、提出问题，或直接说明要执行的操作。</p></div>}
+      {!readError&&!detail?.historyError&&!detail?.cached&&!turns.length&&!messages.length&&!events.length&&!backgroundMessages.length&&!detail?.runs?.length&&!detail?.items?.length&&<div className="wb-hub-empty"><Icon name="messages" size={24}/><strong>{system?'在这里查看结果并继续处理':'从这里继续处理这件事'}</strong><p>可以查看之前的进展、提出问题，或直接说明要执行的操作。</p></div>}
      </>}
      {!result?.turn&&!result?.turnId&&(result?.note||result?.reply)&&!events.some((event:any)=>event.text===(result.note||result.reply))&&<MessageRow author={result.operation?'rule':'system'}><p className="wb-hub-notice" role="status">{result.note||result.reply}</p></MessageRow>}
      {result?.existing&&relatedConversation(result.conversationId)&&!events.some((event:any)=>(event.result?.relatedConversationId||event.relatedConversationId)===result.conversationId)&&<div className="wb-hub-notice"><Btn size="sm" onClick={()=>openItem({conversationId:result.conversationId})}>打开原会话</Btn></div>}
@@ -492,14 +501,14 @@ export function AssistantHub({initial=[],onUnsupported}:{initial?:any[];onUnsupp
      {detail?.background?.turnActive&&<MessageRow author="function"><p role="status" className="wb-row wb-muted wb-hub-background-active"><Spinner size={12}/>系统任务正在处理，结果会自动更新</p></MessageRow>}
      {[...new Map([...(detail?.background?.errors||[]),...backgroundPageErrors].map((failure:any)=>[failure.sessionId+':'+failure.note,failure])).values()].map((failure:any)=><p role="alert" className="wb-hub-error" key={failure.sessionId+':'+failure.note}>系统记录暂不可读：{failure.note}</p>)}
      {nativeBlocked&&<div className="wb-hub-native-blocked" role="status"><span>{nativeBinding.reason||'当前会话暂不可继续发送。'}</span>{nativeBinding.primarySessionId&&nativeBinding.primarySessionId!==nativeSessionId&&<Btn size="sm" disabled={busy||loading} onClick={()=>switchThread(nativeBinding.primarySessionId)}>切回主会话</Btn>}</div>}
-     {streaming&&!turns.some(turn=>['recognizing','executing'].includes(turn.status))&&<MessageRow author="assistant"><p role="status" className="wb-row wb-muted"><Spinner size={12}/>正在处理…</p></MessageRow>}{readError&&<div className="wb-hub-read-error"><p role="alert" className="wb-hub-error">{readError}</p><Btn size="sm" onClick={()=>refresh().catch((failure:any)=>setReadError(failure.message))}>重试读取</Btn></div>}{error&&<MessageRow author="system" detail="处理异常"><p role="alert" className="wb-hub-error">{error}</p></MessageRow>}
+     {streaming&&!turns.some(turn=>['recognizing','executing'].includes(turn.status))&&<MessageRow author="assistant"><p role="status" className="wb-row wb-muted"><Spinner size={12}/>正在处理…</p></MessageRow>}{readError&&<div className="wb-hub-read-error"><p role="alert" className="wb-hub-error">{readError}</p><Btn size="sm" onClick={retryRead}>重试读取</Btn></div>}{error&&<MessageRow author="system" detail="处理异常"><p role="alert" className="wb-hub-error">{error}</p></MessageRow>}
     </div>
     {stopNote&&<p role="status" className="wb-tiny wb-muted wb-hub-stop-note">{stopNote}</p>}
     <div className="wb-assistant-composer" {...attachmentDragHandlers(addAttachments,busy||loading||nativeBlocked)}><div className="wb-assistant-input">
      <AssistantAttachmentCards items={attachments.items} disabled={busy} onRemove={attachments.remove} onRetry={attachments.retry}/>
      {refs.length>0&&<div className="wb-hub-selected-context" role="region" aria-label="已选择的上下文">{refs.map((ref:any)=><Chip key={ref.kind+':'+ref.id} active title={ref.title} onRemove={busy?undefined:()=>WB.assistant.remove(ref.kind,ref.id)}>{labels[ref.kind]||'上下文'}：{WB.util.truncate(ref.title||ref.id,28)}</Chip>)}</div>}
      <Textarea aria-label="助手消息" placeholder={attachments.items.length?'描述附件需要如何处理，也可以直接发送…':'输入问题，或直接说要继续处理、修改什么…'} value={draft} disabled={loading||busy} rows={2} onChange={(e:any)=>setText(e.target.value)} onKeyDown={(e:any)=>{if(e.key==='Enter'&&!e.shiftKey&&!e.nativeEvent?.isComposing){e.preventDefault();send()}}}/>
-     <div className="wb-row wb-assistant-input-actions"><AssistantAddMaterials data={state.data} refs={refs} disabled={busy||loading||nativeBlocked} onAddFiles={addAttachments}/>{attachments.items.length>0&&<span className="wb-hub-attachment-route">有附件，由 AI 处理</span>}<span className="wb-spacer"/>{showStop&&<Btn aria-label="停止当前会话" disabled={stopping||!busy&&detail?.stop?.supported===false} onClick={stopCurrent}><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor"/></svg>{stopping?'正在停止…':'停止'}</Btn>}<Btn kind="primary" icon="arrowRight" disabled={loading||busy||stopping||nativeBlocked||!draft.trim()&&!attachments.items.length} onClick={send}>{busy?'处理中':'发送'}</Btn></div>
+     <div className="wb-row wb-assistant-input-actions"><AssistantAddMaterials data={state.data} refs={refs} disabled={busy||loading||nativeBlocked} onAddFiles={addAttachments}/>{attachments.items.length>0&&<span className="wb-hub-attachment-route">有附件，由 AI 处理</span>}<span className="wb-spacer"/>{showStop&&<Btn aria-label="停止当前会话" disabled={stopping||!busy&&detail?.stop?.supported===false} onClick={stopCurrent}><svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="3" width="10" height="10" rx="2" fill="currentColor"/></svg>{stopping?'正在停止…':'停止'}</Btn>}<Btn kind="primary" icon="arrowRight" disabled={loading||busy||stopping||nativeBlocked||!detail||detail.cached||!draft.trim()&&!attachments.items.length} onClick={send}>{busy?'处理中':'发送'}</Btn></div>
     </div></div>
    </div>
   </div>

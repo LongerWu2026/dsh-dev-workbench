@@ -122,6 +122,24 @@ describe('统一助手真实业务入口',()=>{
   expect(screen.getByRole('textbox',{name:'助手消息'}).value).toBe('草稿保持')
   expect(body.scrollTop).toBe(150)
  })
+ it('重新进入已读事项时先保留历史，超时后可只重试读取',async()=>{
+  let slow=false
+  const {WB,calls}=setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?slow?Promise.reject(Error('当前会话读取较慢')):{...value,messages:[{role:'assistant',text:'已经读到的事项回复'}]}:undefined})
+  await screen.findByText('已经读到的事项回复')
+  slow=true
+  await act(async()=>WB.store.set({page:'dashboard',assistantOpen:false}))
+  await act(async()=>WB.assistant.openHub('task','a'))
+  await screen.findByText('当前会话读取较慢')
+  expect(screen.getByText('已经读到的事项回复')).toBeTruthy()
+  expect(screen.queryByText('从这里继续处理这件事')).toBeNull()
+  fireEvent.change(screen.getByRole('textbox',{name:'助手消息'}),{target:{value:'保留草稿'}})
+  expect(screen.getByRole('button',{name:'发送',exact:true}).disabled).toBe(true)
+  slow=false
+  fireEvent.click(screen.getByRole('button',{name:'重试读取'}))
+  await waitFor(()=>expect(screen.queryByText('当前会话读取较慢')).toBeNull())
+  expect(screen.getByRole('button',{name:'发送',exact:true}).disabled).toBe(false)
+  expect(calls.every(request=>['list','detail'].includes(request.action))).toBe(true)
+ })
  it('原历史暂未恢复的局部响应也保留已显示的消息和进度',async()=>{
   let pending=false
   setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,sessionId:'original',messages:pending?[]:[{role:'assistant',text:'已完成步骤的原历史'}],historyError:pending?'原历史仍在恢复':undefined,nativeBinding:{sessionId:'original',canSend:!pending},runs:[{id:'completed-step',kind:'analysis',status:'completed'}]}:undefined})
@@ -314,6 +332,14 @@ describe('统一助手真实业务入口',()=>{
  it('普通聊天隐藏工具记录后仍保留失败原因和未完成状态',async()=>{
   const turn={id:'failed-native',text:'查看目录',source:'ai',status:'failed',reply:'目录查询失败，请核对访问权限。',commands:[{id:'read',kind:'tool',operation:'task.update',label:'内部工具',status:'failed',resultText:'<img src=x onerror=alert(1)> permission denied'}]}
   setup({id:'chat:failed',hub:(request,{value})=>request.action==='detail'?{...value,turns:[turn],messages:[]}:undefined});await screen.findByText(turn.reply);const reply=screen.getByRole('article',{name:'处理回复'});expect(within(reply).queryByLabelText('工具执行记录')).toBeNull();expect(reply.querySelector('img')).toBeNull();expect(within(reply).getByRole('status').textContent).toContain('未完成');expect(within(reply).queryByLabelText('识别的命令')).toBeNull()
+ })
+ it('事项已收到最终答复时单独标记网页工具失败',async()=>{
+  const turn={id:'answered-with-fetch-error',text:'申报一次就可以了吗？',source:'ai',status:'failed',failurePhase:'execution',replySource:'assistant',reply:'请核对正式申报说明。',commands:[{id:'search',kind:'tool',operation:'web_search',status:'completed'},{id:'fetch',kind:'tool',operation:'web_fetch',status:'failed',resultText:'HTTP 422'}]}
+  setup({id:'task:a',hub:(request,{value})=>request.action==='detail'?{...value,turns:[turn],messages:[]}:undefined})
+  await screen.findByText(turn.reply)
+  const reply=screen.getByRole('article',{name:'处理回复'})
+  expect(within(reply).getByRole('status').textContent).toContain('已回复 · 1 项工具失败')
+  expect(within(reply).getByLabelText('工具执行记录').textContent).toContain('HTTP 422')
  })
  it('旧普通会话的真实业务操作保留确认卡，但不再显示工具执行记录',async()=>{
   const turn={id:'mixed-tools',text:'检查目录并登记待办',source:'ai',status:'needs_confirmation',reply:'已查询目录，请确认后再修改知识。',commands:[{id:'read',kind:'tool',operation:'read_file',label:'read_file',status:'completed',resultText:'INTERNAL_FILE_CONTENT'},{id:'business',kind:'business',operation:'knowledge.update',label:'预览修改知识',status:'needs_confirmation'}]}

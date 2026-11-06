@@ -1,5 +1,6 @@
 import {workflowGuard,isWorkflowStopped,dispatchPaused} from '../automation/job-control.js'
 import {needsNewsBatchOverview,summarizeNewsBatch} from './batch-overview.js'
+import {newsBriefItems} from '../../shared/news-brief.js'
 import { isIgnoredNews, isUnreadableNewsError } from '../../shared/news.js'
 import { ensureBackgroundSession, hostService } from '../assistant/sessions.js'
 import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store.js'
@@ -105,7 +106,7 @@ async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<
     const input = request && typeof request === 'object' ? request : {};
     const limit = Math.max(1, Math.min(10, Number(input.limit) || 3));
     const state0 = loadWorkbenchState();
-    const onlyIds = ensureArray(input.onlyIds?.length?input.onlyIds:needsNewsBatchOverview(loadWorkbenchState())?loadWorkbenchState().radarBrief.ids:[]).map(function (id?: any): any { return String(id); });
+    const onlyIds = ensureArray(input.onlyIds?.length?input.onlyIds:needsNewsBatchOverview(state0)?newsBriefItems(state0,60).map(item=>item.id):[]).map(function (id?: any): any { return String(id); });
     const all = ensureArray(state0.radar).filter(function (item?: any): any {
         return item.url && radarNeedsSummary(item) && (Number(item.summaryAttempts) < 3 || input.retryFailed === true) && (!item.summaryRetryAt || input.retryFailed === true || new Date(item.summaryRetryAt).getTime() <= Date.now());
     });

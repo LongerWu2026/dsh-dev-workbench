@@ -49,7 +49,8 @@ export const newsService = {
         await runRadarFetchOrDiscover(workbenchContext());
         await refreshGithubQuality(workbenchContext());
         const state=loadWorkbenchState(),ids=state.lastRadarFetch?.itemIds||[];
-        if(ids.length&&state.settings.aiExtract?.enabled)await startWorkflowJob(workbenchContext(),'summary',{onlyIds:newsBriefItems(state).map((item:any)=>item.id),limit:5});
+        const onlyIds=newsBriefItems(state).filter(item=>ids.includes(item.id)).map(item=>item.id);
+        if(onlyIds.length&&state.settings.aiExtract?.enabled)await startWorkflowJob(workbenchContext(),'summary',{onlyIds,limit:5});
         return loadWorkbenchState();
     },
 

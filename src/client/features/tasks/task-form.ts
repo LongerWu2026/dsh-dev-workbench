@@ -1,3 +1,4 @@
+import {TaskDescription} from '../../components/LinkedMessageImages.js'
 import { ContextFormPane } from '../../components/ContextFormPane.js'
 import { TaskEventFields } from '../../components/TaskEventFields.js'
 import {TaskReplyPanel} from './TaskReplyPanel.js'
@@ -24,6 +25,7 @@ function TaskFormHost(props?: {embedded?:boolean}): any {
     const data = state.data;
     const [title, setTitle] = React.useState<any>('');
     const [description, setDescription] = React.useState<any>('');
+    const [editingDescription,setEditingDescription]=React.useState(false);
     const [priority, setPriority] = React.useState<any>('normal');
     const [status, setStatus] = React.useState<any>('ready');
     const [dueInput, setDueInput] = React.useState<any>('');
@@ -40,6 +42,7 @@ function TaskFormHost(props?: {embedded?:boolean}): any {
             return;
         setTitle(task ? task.title : defaults.title || '');
         setDescription(task ? task.description || '' : defaults.description || '');
+        setEditingDescription(false);
         setPriority(task ? task.priority || 'normal' : defaults.priority || 'normal');
         setStatus(task ? task.status || 'ready' : defaults.status || 'ready');
         setDueInput(taskFormToLocalInput(task ? task.dueAt : defaults.dueAt));
@@ -131,13 +134,17 @@ function TaskFormHost(props?: {embedded?:boolean}): any {
         onChange: function (event?: any): any {
             setTitle(event.target.value);
         },
-    })), h(Field, { label: '描述', hint: '保留原始上下文，后续 Agent 读取的就是这段内容' }, h(Textarea, {
-        value: description,
-        placeholder: '背景、期望结果、相关链接…',
-        onChange: function (event?: any): any {
-            setDescription(event.target.value);
-        },
-    })), h('div', { className: 'wb-task-form-grid' }, h(Field, { label: '状态' }, h(Select, {
+    })), h('section',{className:'wb-stack','aria-label':'描述',style:{gap:6}},
+        task?h('div',{className:'wb-row',style:{justifyContent:'space-between'}},
+            h('span',{className:'wb-label'},'描述'),
+            h(Btn,{size:'sm',onClick:()=>setEditingDescription(!editingDescription)},editingDescription?'完成编辑':'编辑描述')):null,
+        !task||editingDescription?h(Field,{label:task?undefined:'描述'},h(Textarea,{
+            'aria-label':task?'描述':undefined,
+            value:description,
+            placeholder:'背景、期望结果、相关链接…',
+            onChange:(event:any)=>setDescription(event.target.value),
+        })):null,
+        task?h(TaskDescription,{key:task.id+':'+data?.messageInbox?.accountId,task,data,text:description,hidden:editingDescription}):null), h('div', { className: 'wb-task-form-grid' }, h(Field, { label: '状态' }, h(Select, {
         options: statusOptions,
         value: status,
         onChange: function (event?: any): any {

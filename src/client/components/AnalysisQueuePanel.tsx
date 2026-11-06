@@ -1,9 +1,19 @@
 import { messageOrigin, messageSender, messageSentTime } from '../../shared/message-display.js'
 import * as React from 'react'
-import { WB, Panel } from '../core/runtime.js'
+import { WB, Modal, Panel, useStore } from '../core/runtime.js'
+import {LinkedMessageImages,type ImageData} from './LinkedMessageImages.js'
 import type { Source } from '../../shared/contracts.js'
 interface Entry { id: string; sourceId: string; status: string; lastError?: string; reviewReason?: string; reviewKind?:string; rejectedEvidence?:string[]; attempts?: number; analysis?: { summary?: string } }
-export function AnalysisQueuePanel({ entries, sources }: { entries: Entry[]; sources: Source[] }): React.ReactElement {
+type QueueImage = {accountId:string;entryId:string;image:ImageData}
+export function AnalysisQueuePanel({ entries, sources, accountId }: { entries: Entry[]; sources: Source[]; accountId?:string }): React.ReactElement {
+  const preview:QueueImage|undefined=useStore().analysisQueueImagePreview
+  const previewVisible=preview&&preview.accountId===accountId&&entries.some(entry=>entry.id===preview.entryId)
+  React.useEffect(()=>{
+    if(preview&&!previewVisible)WB.store.set({analysisQueueImagePreview:null})
+  },[preview,previewVisible])
+  function showImage(entry:Entry,image:ImageData){
+    if(accountId)WB.store.set({analysisQueueImagePreview:{accountId,entryId:entry.id,image}})
+  }
   const [page, setPage] = React.useState(0)
   const [busyId, setBusyId] = React.useState<string | null>(null)
   const [visibility, setVisibility] = React.useState('open')
@@ -32,6 +42,7 @@ export function AnalysisQueuePanel({ entries, sources }: { entries: Entry[]; sou
       <p className="wb-tiny wb-muted" style={{overflowWrap:'anywhere'}}>发件人：{messageSender(source)} · 来自：{messageOrigin(source)}</p>
       <p className="wb-tiny wb-muted">发出时间：{messageSentTime(source)}</p>
       <p>{source?.excerpt || '原消息不可用'}</p>
+      <LinkedMessageImages source={source} accountId={accountId} entryId={entry.id} onPreview={image=>showImage(entry,image)}/>
       {entry.analysis?.summary && <p className="wb-tiny wb-muted">{entry.analysis.summary}</p>}
       {entry.lastError && <p className="wb-tiny wb-muted">{entry.lastError}</p>}
       {entry.reviewReason && <p className="wb-tiny wb-muted">{entry.reviewReason}</p>}
@@ -48,5 +59,9 @@ export function AnalysisQueuePanel({ entries, sources }: { entries: Entry[]; sou
     </article>})}
     {!rows.length && <p className="wb-tiny wb-muted">没有待处理的识别条目。</p>}
     {rows.length > 20 && <div className="wb-reply-actions"><button type="button" className="wb-chip" disabled={index === 0} onClick={() => setPage(index - 1)}>上一页</button><span>{index + 1} / {Math.ceil(rows.length / 20)}</span><button type="button" className="wb-chip" disabled={(index + 1) * 20 >= rows.length} onClick={() => setPage(index + 1)}>下一页</button></div>}
+    {previewVisible&&<Modal open title="原消息图片" width={840} onClose={()=>WB.store.set({analysisQueueImagePreview:null})}>
+      <img src={`data:${preview.image.mediaType};base64,${preview.image.data}`} alt="原消息图片"
+        style={{display:'block',maxWidth:'100%',maxHeight:'60vh',objectFit:'contain',margin:'0 auto'}}/>
+    </Modal>}
   </div></Panel>
 }

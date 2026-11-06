@@ -1,3 +1,4 @@
+import {openHarnessFile} from '../core/harness-file.js'
 import {WorkspaceRefresh,WorkspaceRefreshMonitor} from '../components/WorkspaceRefresh.js'
 import {AnalysisMonitor} from '../components/AnalysisActivity.js'
 import {KnowledgeSources} from '../components/KnowledgeSources.js'
@@ -637,6 +638,7 @@ function WorkbenchApp(): any {
 }
 /* -------------------------------------------------------------------- apply */
 WB.apply = function apply(ctx?: any): any {
+    WB.openHarnessFile = (path: string) => openHarnessFile(ctx, path);
     ctx.effect(()=>installAssistantNative(WB,ctx));
     if (ctx.connection)
         setShared_wbConnection(ctx.connection);

@@ -1,3 +1,4 @@
+import {linkedYzjImages} from '../integrations/yunzhijia.js'
 import {analysisEntryWait} from '../automation/analysis-readiness.js'
 import {analysisRemainder} from '../automation/analysis-progress.js'
 import {workflowGuard,isWorkflowStopped,dispatchPaused} from '../automation/job-control.js'
@@ -539,6 +540,7 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
                     }
                     return state;
                 });
+                void linkedYzjImages.sync(ctx,new Set(sources.map(source=>source.id)));
                 if(deferred)break;
             }catch(error){
                 assertActive();if(isWorkflowStopped(error))throw error;
@@ -572,7 +574,7 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
     }
 }
 async function confirmAnalysis(ctx?: any, entryId?: any): Promise<any> {
-    return mutateWorkbenchState(function (state?: any): any {
+    const result=await mutateWorkbenchState(function (state?: any): any {
         const entry = ensureArray(state.analysisQueue).find(function (row?: any): any { return row.id === entryId; });
         if (!entry || !entry.analysis)
             throw new Error('找不到已分析条目');
@@ -589,6 +591,9 @@ async function confirmAnalysis(ctx?: any, entryId?: any): Promise<any> {
         auditEntry(state, 'analysis.confirmed', entry.sourceId);
         return state;
     });
+    const entry=result.analysisQueue.find((row:any)=>row.id===entryId);
+    if(entry)void linkedYzjImages.sync(ctx,new Set([entry.sourceId]));
+    return result;
 }
 
 export { ANALYSIS_TURN_TIMEOUT_MS, ANALYSIS_POLL_MS, analysisBatchInFlight, analysisScope, analysisPrompt, extractJsonFromReply, validateAnalysis, findTaskBySourceRef, upsertReply, mergeAnalysisIntoState, waitStructuredReply, runAnalysisBatch, confirmAnalysis }

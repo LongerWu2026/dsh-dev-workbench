@@ -1,12 +1,14 @@
+import {normalizeAttachments} from '../storage/conversation-attachments.js'
 import {normalizeBusyReply} from '../../shared/busy-reply.js'
 import {normalizeContentRef,normalizeKnowledgeCapture} from '../../shared/knowledge-capture.js'
 import {normalizeBackgroundModels} from '../../shared/background-models.js'
 import {normalizeConversationReadMarks} from '../../shared/conversation-read.js'
-import {normalizeMessageSelection,normalizeMessageInbox} from '../../shared/message-intake.js'
+import {normalizeMessageImageIds,normalizeMessageSelection,normalizeMessageInbox} from '../../shared/message-intake.js'
 import {normalizeLaunchCommands} from '../../shared/developer-tools.js'
 import { knowledgeMode, knowledgeSpaceOf } from '../../shared/knowledge.js'
 import {normalizeWebAI} from '../../shared/web-ai.js'
 import { normalizeAiPolicy } from '../../shared/ai-policy.js'
+import {newsPublishedAt, newsWindowDays} from '../../shared/news.js'
 import type { Source, Reply, Task } from '../../shared/contracts.js'
 import { HOST_STATE_VERSION, asEvidence, asIso, asSteps, asString, asTags, asUrl, hashText, hostNowIso, newId } from '../platform/runtime.js'
 /* ============================================================================
@@ -59,6 +61,7 @@ function emptyWorkbenchState(): any {
         replies: [],
         syncCursors: {},
         conversationReadMarks: {},
+        conversationAttachments: {},
         lastAutomation: null,
         audit: [],
     };
@@ -295,7 +298,7 @@ function normalizeSettings(raw?: any): any {
         analysisSessionId: asString(input.analysisSessionId, 120) || null,
         summarySessionId: asString(input.summarySessionId, 120) || null,
         backgroundModels:normalizeBackgroundModels(input.backgroundModels),
-        newsDays: Math.max(1, Math.min(90, Number(input.newsDays) || 7)),
+        newsDays: newsWindowDays(input.newsDays),
         /** TODO 15：AI 结构化识别配置（默认全关；自动运行另由 automation/19 控制） */
         aiExtract: normalizeAiExtract(input.aiExtract),
         /** 助手侧栏宽度（px）：拖拽分栏后持久化，重启/刷新保持 */
@@ -442,6 +445,7 @@ function normalizeSource(raw?: any): Source {
             ? {
                 groupId: asString(input.locator.groupId, 80) || null,
                 msgId: asString(input.locator.msgId, 80) || null,
+                imageIds:normalizeMessageImageIds(input.locator.imageIds),
                 groupName: asString(input.locator.groupName, 120) || null,
                 groupType: [1,2,3,8].includes(Number(input.locator.groupType)) ? Number(input.locator.groupType) : null,
                 accountId: asString(input.locator.accountId, 120) || null,
@@ -511,6 +515,11 @@ function normalizeRadarItem(raw?: any, existing?: any): any {
     const base = existing || {};
     const summaryInput = input.summary && typeof input.summary === 'object' ? input.summary : base.summary || {};
     const url = input.url === undefined ? base.url || null : asUrl(input.url);
+    const publishedAt = newsPublishedAt({
+        url,
+        publishedAt: input.publishedAt === undefined ? base.publishedAt : asIso(input.publishedAt),
+        dateKind: input.dateKind ?? (input.publishedAt === undefined ? base.dateKind : undefined),
+    });
     return {
         article: (input.article===undefined?base.article:input.article)?.contentRef ? {contentRef:normalizeContentRef((input.article===undefined?base.article:input.article).contentRef),fetchedAt:asIso((input.article===undefined?base.article:input.article).fetchedAt),author:asString((input.article===undefined?base.article:input.article).author,300),status:'ready'} : null,
         knowledgeId: asString(input.knowledgeId===undefined?base.knowledgeId:input.knowledgeId,120)||null,
@@ -520,17 +529,8 @@ function normalizeRadarItem(raw?: any, existing?: any): any {
         title: asString(input.title === undefined ? base.title : input.title, 300) || '未命名资讯',
         source: asString(input.source === undefined ? base.source : input.source, 80) || 'manual',
         url: url,
-        publishedAt: input.publishedAt === undefined ? base.publishedAt || null : asIso(input.publishedAt),
-        /** TODO 20 日期纪律：publishedAt 可核实才标 published；未知 → unknown（不得用抓取时间冒充） */
-        dateKind: (function (): any {
-            if (input.dateKind !== undefined)
-                return input.dateKind === 'published' ? 'published' : 'unknown';
-            if (base.dateKind)
-                return base.dateKind;
-            if (base.publishedAt || input.publishedAt)
-                return 'published';
-            return 'unknown';
-        })(),
+        publishedAt,
+        dateKind: publishedAt ? 'published' : 'unknown',
         fetchedAt: input.fetchedAt === undefined ? base.fetchedAt || base.createdAt || hostNowIso() : asIso(input.fetchedAt) || hostNowIso(),
         topics: input.topics === undefined ? asTags(base.topics, 8) : asTags(input.topics, 8),
         summary: {
@@ -585,6 +585,7 @@ function normalizeState(raw?: any): any {
         settings: normalizeSettings(raw.settings),
         messageInbox:normalizeMessageInbox(raw.messageInbox),
         conversationReadMarks:normalizeConversationReadMarks(raw.conversationReadMarks),
+        conversationAttachments:normalizeAttachments(raw.conversationAttachments),
         // 恢复时必须把「已存的记录自身」当作 base 传入：normalizeX(raw, null) 会把
         // base 当成空对象，从而为每条记录重新生成 ID，导致 projectId / taskId /
         // runIds / sourceRefId 等关联在每次加载后全部失效。
@@ -668,7 +669,7 @@ function normalizeState(raw?: any): any {
                 note: asString(raw.lastRadarSummarize.note, 200) || null,
             }
             : null,
-        radarBrief:raw.radarBrief&&asIso(raw.radarBrief.at)?{at:asIso(raw.radarBrief.at),overview:asString(raw.radarBrief.overview,1600),status:asString(raw.radarBrief.status,20)||'pending',error:asString(raw.radarBrief.error,200)||null,overviewAt:asIso(raw.radarBrief.overviewAt),ids:ensureArray(raw.radarBrief.ids).filter((id:any)=>typeof id==='string').slice(0,60)}:null,
+        radarBrief:raw.radarBrief&&asIso(raw.radarBrief.at)?{at:asIso(raw.radarBrief.at),overview:asString(raw.radarBrief.overview,1600),status:asString(raw.radarBrief.status,20)||'pending',error:asString(raw.radarBrief.error,200)||null,overviewAt:asIso(raw.radarBrief.overviewAt),ids:ensureArray(raw.radarBrief.ids).filter((id:any)=>typeof id==='string').slice(0,60),...(Array.isArray(raw.radarBrief.overviewIds)?{overviewIds:raw.radarBrief.overviewIds.filter((id:any)=>typeof id==='string').slice(0,60)}:{})}:null,
         lastRadarFetch: normalizeFetchReport(raw.lastRadarFetch),
         lastMentionsFetch: normalizeMentionsReport(raw.lastMentionsFetch),
         audit: ensureArray(raw.audit).slice(-AUDIT_LIMIT),

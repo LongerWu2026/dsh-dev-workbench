@@ -14,7 +14,15 @@ function setup(initialConnections=[],supportsAutoSelection=true){const {WB}=load
  case 'dataQuery':return {columns:['id'],rows:[{id:'9007199254740993'}],durationMs:2,truncated:false};
  case 'dataTest':return {note:'连接成功'};default:return {status:'ok'}
  }});render(<WB.pages.toolbox/>);fireEvent.click(toolButton(/数据连接 SQL/));return {WB,calls}}
-async function save(){fireEvent.click(screen.getByRole('button',{name:'连接配置',exact:true}));fireEvent.change(screen.getByRole('combobox',{name:'数据库类型'}),{target:{value:'postgres'}});fireEvent.change(screen.getByRole('textbox',{name:'数据库名称'}),{target:{value:'fixture'}});fireEvent.change(screen.getByLabelText('数据库密码'),{target:{value:'fixture-secret'}});fireEvent.click(screen.getByRole('button',{name:'保存'}));await screen.findByRole('checkbox',{name:'public.orders'})}
+async function save(){
+ fireEvent.click(screen.getByRole('button',{name:'连接配置',exact:true}));
+ fireEvent.change(screen.getByRole('combobox',{name:'数据库类型'}),{target:{value:'postgres'}});
+ fireEvent.change(screen.getByRole('textbox',{name:'连接名称'}),{target:{value:'开发库'}});
+ fireEvent.change(screen.getByRole('textbox',{name:'数据库名称'}),{target:{value:'fixture'}});
+ fireEvent.change(screen.getByLabelText('数据库密码'),{target:{value:'fixture-secret'}});
+ fireEvent.click(screen.getByRole('button',{name:'保存'}));
+ await screen.findByRole('checkbox',{name:'public.orders'});
+}
 async function selectTable(){const check=await screen.findByRole('checkbox',{name:'public.orders'});fireEvent.click(check)}
 describe('数据连接工具',()=>{
  it('默认选中首个已保存连接，不执行查询；手动新建后切换工具保留输入',async()=>{const {calls}=setup([{id:'first',name:'第一个库',kind:'postgres',host:'db.local',port:5432,database:'firstdb',unlocked:false},{id:'second',name:'第二个库',kind:'mysql'}]);await screen.findByRole('button',{name:/第一个库/,pressed:true});fireEvent.click(screen.getByRole('button',{name:'连接配置',exact:true}));expect(screen.getByRole('textbox',{name:'数据库名称'}).value).toBe('firstdb');fireEvent.click(screen.getByRole('button',{name:'关闭',exact:true}));expect(calls.map(c=>c.method)).toEqual(['workbench/dataConnections']);expect(screen.queryByText('切换工具会保留各自输入')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'新建连接',exact:true}));fireEvent.change(screen.getByRole('textbox',{name:'连接名称'}),{target:{value:'正在编辑'}});fireEvent.click(screen.getByRole('button',{name:'关闭',exact:true}));fireEvent.click(toolButton(/JSON 格式化/));fireEvent.click(toolButton(/数据连接 SQL/));await screen.findByRole('list',{name:'已保存连接'});expect(calls.length).toBe(2);expect(savedConnections().queryByRole('button',{pressed:true})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'连接配置',exact:true}));expect(screen.getByRole('textbox',{name:'连接名称'}).value).toBe('正在编辑')})
@@ -79,6 +87,7 @@ describe('数据连接工具',()=>{
   expect(screen.queryByRole('button',{name:'测试连接'})).toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'连接配置',exact:true}));
   const dialog=within(screen.getByRole('dialog',{name:'新建连接'}));
+  fireEvent.change(dialog.getByRole('textbox',{name:'连接名称'}),{target:{value:'草稿库'}});
   fireEvent.change(dialog.getByRole('textbox',{name:'数据库主机'}),{target:{value:'draft.local'}});
   fireEvent.change(dialog.getByRole('textbox',{name:'数据库名称'}),{target:{value:'draft_db'}});
   fireEvent.change(dialog.getByLabelText('数据库密码'),{target:{value:'draft-secret'}});
@@ -98,11 +107,46 @@ describe('数据连接工具',()=>{
   fireEvent.click(screen.getByRole('button',{name:'连接配置',exact:true}));
   expect(screen.getByLabelText('数据库密码').value).toBe('');
  })
+ it('必填项缺失时定位输入框，保存和测试均不发送请求',async()=>{
+  const {calls}=setup();await screen.findByText('暂无已保存的连接');
+  fireEvent.click(screen.getByRole('button',{name:'新建连接',exact:true}));
+  const dialog=within(screen.getByRole('dialog',{name:'新建连接'}));
+  const name=dialog.getByRole('textbox',{name:'连接名称'});
+  const database=dialog.getByRole('textbox',{name:'数据库名称'});
+  fireEvent.change(name,{target:{value:'   '}});
+  fireEvent.click(dialog.getByRole('button',{name:'保存'}));
+  expect(dialog.getByRole('alert').textContent).toBe('请填写连接名称');
+  expect(name.getAttribute('aria-invalid')).toBe('true');
+  expect(document.activeElement).toBe(name);
+  fireEvent.change(name,{target:{value:'测试库'}});
+  fireEvent.click(dialog.getByRole('button',{name:'测试连接'}));
+  expect(dialog.getByRole('alert').textContent).toBe('请填写数据库名称');
+  expect(document.activeElement).toBe(database);
+  expect(calls.map(call=>call.method)).toEqual(['workbench/dataConnections']);
+ })
+ it('配置已保存时立即显示连接，读取表失败有独立反馈',async()=>{
+  const {WB,calls}=setup();await screen.findByText('暂无已保存的连接');
+  const rpc=WB.rpc;
+  WB.rpc=vi.fn(async(method,payload)=>{
+   if(method.endsWith('dataObjects'))throw Error('无法连接到数据库');
+   return rpc(method,payload);
+  });
+  fireEvent.click(screen.getByRole('button',{name:'新建连接',exact:true}));
+  fireEvent.change(screen.getByRole('textbox',{name:'连接名称'}),{target:{value:'开发库'}});
+  fireEvent.change(screen.getByRole('textbox',{name:'数据库名称'}),{target:{value:'fixture'}});
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await screen.findByText(/读取表列表失败.*无法连接到数据库/);
+  expect(screen.getByText('连接配置已保存，密码不落盘')).toBeTruthy();
+  expect(savedConnections().getByRole('button',{name:/开发库 PostgreSQL/,pressed:true})).toBeTruthy();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(calls.filter(call=>call.method.endsWith('dataSave'))).toHaveLength(1);
+ })
  it('记住密码默认关闭，勾选保存后密码输入框仍为空',async()=>{
   const {calls}=setup();
   fireEvent.click(screen.getByRole('button',{name:'连接配置',exact:true}));
   const checkbox=await screen.findByRole('checkbox',{name:'记住密码'});
   expect(checkbox.checked).toBe(false);
+  fireEvent.change(screen.getByRole('textbox',{name:'连接名称'}),{target:{value:'开发库'}});
   fireEvent.change(screen.getByRole('textbox',{name:'数据库名称'}),{target:{value:'fixture'}});
   fireEvent.change(screen.getByLabelText('数据库密码'),{target:{value:'fixture-secret'}});
   fireEvent.click(checkbox);

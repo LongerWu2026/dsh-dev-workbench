@@ -25,5 +25,20 @@ try{
  const combined=await h.runRadarFetchOrDiscover(separated);assert.equal(rawCalls,4);assert.equal(extractCalls,0);assert.equal(queries,7);assert.ok(combined.lastRadarFetch.perFeed.some(row=>row.channel==='rss'));assert.ok(combined.lastRadarFetch.perFeed.some(row=>row.channel==='search'))
  const withoutSearch={get(name){if(name==='rssReader')return {fetch:async()=>({statusCode:200,body:{content:rss('https://openai.com/news/raw-without-search','Standalone inference research')}})}}}
  const rssOnly=await h.runRadarFetchOrDiscover(withoutSearch);assert.equal(rssOnly.lastRadarFetch.added,1);assert.ok(rssOnly.lastRadarFetch.perFeed.some(row=>row.channel==='rss'&&row.status==='ok'));assert.ok(rssOnly.lastRadarFetch.perFeed.some(row=>row.channel==='search'&&row.status==='unavailable'))
+ const storedUrl='https://example.test/legacy-undated'
+ await h.mutate(s=>{s.radar.push({id:'legacy-undated',url:storedUrl,title:'Legacy inference announcement',dateKind:'unknown',fetchedAt:now});return s})
+ const freshness={get(name){
+  if(name==='rssReader')return {fetch:async()=>({statusCode:200,body:{content:'<feed><entry><title>Agent experiment with only an update date</title><link href="https://openai.com/news/updated-only"/><updated>'+now+'</updated></entry></feed>'}})}
+  if(name==='web')return {search:async({query})=>({sources:query.startsWith('site:api-docs')?[
+   {title:'Old DeepSeek preview',url:'https://api-docs.deepseek.com/zh-cn/news/news200101/?ref=test'}
+  ]:[{title:'Legacy inference announcement',url:storedUrl,publishedAt:'2020-01-01'},{title:'Unverified AI framework article',url:'https://example.test/no-date'}]})}
+ }}
+ const classified=await h.runRadarFetchOrDiscover(freshness)
+ assert.ok(classified.lastRadarFetch.perFeed.some(row=>row.label==='话题 DeepSeek 官方更新'&&row.reasons.outdated===1))
+ assert.ok(!classified.radar.some(row=>row.title==='Old DeepSeek preview'))
+ assert.equal(classified.radar.find(row=>row.id==='legacy-undated').publishedAt,'2020-01-01T00:00:00.000Z')
+ assert.equal(classified.radar.find(row=>row.url.endsWith('/updated-only')).dateKind,'unknown')
+ assert.equal(classified.radar.find(row=>row.url.endsWith('/no-date')).dateKind,'unknown')
+ assert.deepEqual(classified.radarBrief.ids,rssOnly.radarBrief.ids)
  console.log('news-brief: hybrid collection, official provenance, bounded searches, dedup reasons, concurrency, empty/failure retention and restart persistence passed')
 }finally{rmSync(home,{recursive:true,force:true})}

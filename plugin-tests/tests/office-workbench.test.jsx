@@ -39,6 +39,74 @@ beforeEach(()=>{
 })
 afterEach(()=>cleanup())
 describe('办公流程与布局入口',()=>{
+ it('待办详情内嵌原消息图片，待回复点击后交给 Harness 原生侧栏',async()=>{
+  const account='org:fixture',sourceId='image-source'
+  fixture.messageInbox={accountId:account,conversations:[]}
+  fixture.sources=[{id:sourceId,provider:'yunzhijia',title:'带图消息',excerpt:'请处理 [图片]',locator:{groupId:'g',msgId:'m',accountId:account,imageIds:['img']}}]
+  const task={id:'task-image',title:'检查图片证据',description:'含图片',status:'ready',priority:'normal',sourceRefId:sourceId,tags:[]}
+  fixture.tasks=[task]
+  fixture.replies=[{id:'reply-image',sourceId,msgId:'m',stage:'待回复',contact:'测试同事',taskIds:[],snippet:'请处理 [图片]'}]
+  WB.store.set({data:fixture,page:'tasks'})
+  const path='/tmp/图证.png'
+  const read=vi.spyOn(WB.actions,'sourceImages').mockImplementation(async request=>request.mode==='open'?{path}:{mediaType:'image/png',data:'aW1hZ2U='})
+  WB.openHarnessFile=vi.fn().mockResolvedValue(true)
+  const view=render(<WB.pages.tasks/>)
+  expect(read).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button',{name:'展开来源证据'}))
+  expect((await screen.findByRole('img',{name:'原消息图片 1'})).getAttribute('src')).toBe('data:image/png;base64,aW1hZ2U=')
+  expect(read).toHaveBeenCalledWith({sourceId,index:0,mode:'inline'})
+  view.unmount();read.mockClear()
+  WB.store.set({data:fixture,page:'replies'})
+  render(<WB.pages.replies/>)
+  const button=await screen.findByRole('button',{name:'查看图片 1'})
+  expect(read).not.toHaveBeenCalled()
+  fireEvent.click(button)
+  await waitFor(()=>expect(WB.openHarnessFile).toHaveBeenCalledWith(path))
+  expect(read).toHaveBeenCalledWith({sourceId,index:0,mode:'open'})
+ })
+ it('旧待办详情自动补查图片，描述按正文显示且可切换编辑',async()=>{
+  const accountId='org:fixture'
+  fixture.messageInbox={accountId,conversations:[]}
+  const source={id:'legacy',provider:'yunzhijia',excerpt:'[图片] 请核对',locator:{groupId:'g',msgId:'m',accountId}}
+  fixture.sources=[source,{...source,id:'duplicate'}]
+  const task={id:'task-image',title:'核对旧图片',description:'请先看 [图片] 再核对',status:'ready',priority:'normal',sourceRefId:source.id,sourceRefs:[{sourceId:'duplicate'}],tags:[]}
+  fixture.tasks=[task]
+  WB.store.set({data:fixture,page:'tasks'})
+  const images=vi.spyOn(WB.actions,'sourceImages').mockImplementation(async request=>request.mode==='list'?{count:1}:{mediaType:'image/png',data:'aW1hZ2U='})
+  render(<App/>)
+  await act(async()=>WB.openTaskForm(task))
+  const description=screen.getByRole('region',{name:'描述'})
+  expect(within(description).getByText(/请先看.*再核对/)).toBeTruthy()
+  expect(within(description).queryByRole('textbox')).toBeNull()
+  const image=await within(description).findByRole('img',{name:'原消息图片 1'})
+  expect(image.getAttribute('src')).toContain('data:image/png;')
+  expect(image.style.maxHeight).toBe('88px')
+  const inline=image.closest('button').parentElement
+  expect(inline.previousSibling.textContent).toBe('请先看 ')
+  expect(inline.nextSibling.textContent).toBe(' 再核对')
+  expect(images.mock.calls).toEqual([[{sourceId:'legacy',mode:'list'}],[{sourceId:'legacy',index:0,mode:'inline'}]])
+  fireEvent.click(within(description).getByRole('button',{name:'编辑描述'}))
+  fireEvent.change(within(description).getByRole('textbox',{name:'描述'}),{target:{value:'更新说明'}})
+  fireEvent.click(within(description).getByRole('button',{name:'完成编辑'}))
+  expect(within(description).getByText('更新说明')).toBeTruthy()
+  expect(within(description).getByRole('img',{name:'原消息图片 1'})).toBeTruthy()
+ })
+ it('多条原消息遇到旧 Host 时只显示一条可操作提示',async()=>{
+  const accountId='org:fixture'
+  fixture.messageInbox={accountId,conversations:[]}
+  fixture.sources=['s1','s2'].map(id=>({id,provider:'yunzhijia',excerpt:'[图片]',locator:{groupId:'g',msgId:id,accountId}}))
+  const task={id:'task-missing-route',title:'图片接口未加载',description:'[图片]',status:'ready',priority:'normal',sourceRefId:'s1',sourceRefs:[{sourceId:'s2'}],tags:[]}
+  fixture.tasks=[task]
+  WB.store.set({data:fixture,page:'tasks'})
+  vi.spyOn(WB.actions,'sourceImages').mockRejectedValue(Error('transport failure for /api/workbench/sourceImages: HTTP 404'))
+  render(<App/>)
+  await act(async()=>WB.openTaskForm(task))
+  const description=screen.getByRole('region',{name:'描述'})
+  await within(description).findByText('图片接口尚未加载，请完全退出并重新打开 Harness。')
+  expect(within(description).getAllByText(/完全退出并重新打开/)).toHaveLength(1)
+  expect(within(description).queryByText(/HTTP 404/)).toBeNull()
+  expect(within(description).getByRole('button',{name:'重试加载图片'})).toBeTruthy()
+ })
  it('消息工作时段与资讯间隔分别展示，不把消息同步误写为60分钟',()=>{WB.store.set({data:fixture,page:'settings'});render(<WB.pages.settings/>);expect(screen.getByText('资讯等自动化间隔')).toBeTruthy();expect(screen.getAllByText(/每天北京时间09:00–21:00，每5分钟同步一次/).length).toBeGreaterThan(0)})
 
  it.each(['dashboard','replies'])('%s刷新实际同步云之家，实际答复后从待回复移出',async(page)=>{
@@ -100,9 +168,21 @@ describe('办公流程与布局入口',()=>{
   expect(calls.filter(c=>c.endpoint==='workbench/importMigration')[0].args.request.dryRun).toBe(true)
   expect(screen.getByRole('textbox',{name:'目标目录 项目'})).toBeTruthy()
  })
+ it('选择 ZIP 文件后以预检方式提交，且保留旧 JSON 输入入口',async()=>{
+  WB.store.set({data:fixture,page:'settings'});const user=userEvent.setup();render(<WB.pages.settings/>)
+  const section=screen.getByRole('region',{name:'迁移导入'})
+  const archive=new File([Uint8Array.of(80,75,3,4)],'迁移.zip',{type:'application/zip'})
+  await user.upload(within(section).getByLabelText('或选择迁移文件'),archive)
+  expect(within(section).getByText('已选择 迁移.zip')).toBeTruthy()
+  await user.click(within(section).getByRole('button',{name:'预检迁移包'}))
+  await waitFor(()=>expect(within(section).getByText(/预检通过 · 1 条/)).toBeTruthy())
+  const requests=calls.filter(call=>call.endpoint==='workbench/importMigration')
+  expect(requests.map(call=>call.args.request)).toEqual([{archive:'UEsDBA==',mode:'merge',dryRun:true,mapPaths:{}}])
+  expect(within(section).getByPlaceholderText('在这里粘贴导出的迁移包 JSON')).toBeTruthy()
+ })
  it('资讯未知日期不冒充发布日期，摘要可展开且编辑入口有接线',async()=>{
   fixture.radar=[{id:'news-one',title:'AI工具发布',source:'test',publishedAt:null,createdAt:'2026-10-28T01:00:00Z',fetchedAt:'2026-10-28T01:00:00Z',url:'https://example.org/news',topics:['Agent'],excerpt:'可核对的原文摘录',summary:{}}];WB.store.set({data:fixture,page:'radar'})
-  const user=userEvent.setup();render(<WB.pages.radar/>);expect(screen.getByText(/日期未注明/)).toBeTruthy();expect(within(document.querySelector('.wb-news-grid')).getAllByText('AI工具发布')).toHaveLength(1)
+  const user=userEvent.setup();render(<WB.pages.radar/>);expect(screen.queryByText('AI工具发布')).toBeNull();await user.click(screen.getByRole('button',{name:/^日期待确认/}));expect(screen.getByText(/发布日期待确认/)).toBeTruthy();expect(within(document.querySelector('.wb-news-grid')).getAllByText('AI工具发布')).toHaveLength(1)
   await user.click(screen.getByRole('button',{name:'展开摘要'}));expect(within(document.querySelector('.wb-news-grid')).getByText('可核对的原文摘录')).toBeTruthy()
   await user.click(screen.getByRole('button',{name:'这条资讯的操作'}));await user.click(screen.getByRole('button',{name:'编辑四段摘要'}));expect(screen.getByDisplayValue('AI工具发布')).toBeTruthy()
  })
@@ -118,6 +198,29 @@ describe('办公流程与布局入口',()=>{
    expect(screen.getByRole('button',{name:'参加月度质量星期四'})).toBeTruthy();expect(screen.getByText('A303')).toBeTruthy();expect(screen.queryByText('明天的会议')).toBeNull();expect(WB.taskCounts(fixture).today).toBe(1);
    await user.click(screen.getByRole('button',{name:'全部日程'}));expect(screen.getByRole('button',{name:'参加月度质量星期四'})).toBeTruthy();expect(fixture.tasks[0].dueAt).toBeNull();
   }finally{vi.useRealTimers()}
+ })
+ it.each([true,false])('识别队列旧图片点击一次即可查看，原生侧栏可用 %s',async(nativeAvailable)=>{
+  const accountId='org:fixture',sourceId='queue-source',entryId='image-review'
+  fixture.messageInbox={accountId,conversations:[]}
+  fixture.sources=[{id:sourceId,provider:'yunzhijia',excerpt:'[图片]',locator:{accountId,groupId:'g',msgId:'m'}}]
+  fixture.analysisQueue=[{id:entryId,sourceId,status:'awaiting_human',reviewKind:'recognition',reviewReason:'仅图片消息'}]
+  WB.store.set({data:fixture,page:'replies'})
+  const path='/tmp/识别原图.png'
+  WB.openHarnessFile=vi.fn().mockResolvedValue(nativeAvailable)
+  const images=vi.spyOn(WB.actions,'sourceImages').mockImplementation(async request=>request.mode==='open'?{path,count:1}:{mediaType:'image/png',data:'aW1hZ2U='})
+  render(<WB.pages.replies/>)
+  const row=screen.getByText('仅图片消息').closest('article')
+  expect(images).not.toHaveBeenCalled()
+  fireEvent.click(within(row).getByRole('button',{name:'查看图片'}))
+  await waitFor(()=>expect(WB.openHarnessFile).toHaveBeenCalledWith(path))
+  expect(images.mock.calls[0]).toEqual([{sourceId,entryId,index:0,mode:'open'}])
+  if(nativeAvailable){
+   expect(images).toHaveBeenCalledTimes(1)
+  }else{
+   const dialog=await screen.findByRole('dialog',{name:'原消息图片'})
+   expect(within(dialog).getByRole('img',{name:'原消息图片'}).getAttribute('src')).toBe('data:image/png;base64,aW1hZ2U=')
+   expect(images.mock.calls[1]).toEqual([{sourceId,entryId,index:0,mode:'inline'}])
+  }
  })
  it('已完成的识别记录可以复核并只重跑选中条目',async()=>{
   fixture.sources=[{id:'source-history',excerpt:'可复核的已识别消息'}];fixture.analysisQueue=[{id:'done-entry',sourceId:'source-history',status:'done',analysis:{summary:'已有判断'}}];WB.store.set({data:fixture,page:'replies'})
@@ -163,7 +266,7 @@ describe('办公流程与布局入口',()=>{
  })
 
  it('首页展示整批总结，不展示逐条列表和原始错误，更多进入资讯页',async()=>{
-  fixture.radar=Array.from({length:5},(_,i)=>({id:'ai-'+i,title:'AI release '+i,url:'https://github.com/example/ai-'+i,topics:['AI'],createdAt:new Date().toISOString(),summary:{}}))
+  fixture.radar=Array.from({length:5},(_,i)=>({id:'ai-'+i,title:'AI release '+i,url:'https://github.com/example/ai-'+i,topics:['AI'],publishedAt:new Date().toISOString(),summary:{}}))
   fixture.radar.push({id:'expired',title:'AI expired article',topics:['AI'],summaryStatus:'failed',summaryAttempts:3,summaryError:'Unable to extract content HTTP 422 auth credential secret',summary:{}})
   fixture.radarBrief={at:new Date().toISOString(),ids:fixture.radar.filter(row=>row.id!=='expired').map(row=>row.id),status:'done',overview:'这一批主要关注模型与开源工具的更新。'};
   WB.store.set({data:fixture});const user=userEvent.setup();render(<WB.pages.dashboard/>);
@@ -176,7 +279,7 @@ describe('办公流程与布局入口',()=>{
  })
 
  it('资讯转待办必须展示确认内容，取消不创建，确认仅提交一次',async()=>{
-  fixture.radar=[{id:'practice-news',title:'AI 实践资讯',url:'https://example.org/news',topics:['AI'],summary:{}}];WB.store.set({data:fixture});const user=userEvent.setup();render(<WB.pages.radar/>);
+  fixture.radar=[{id:'practice-news',title:'AI 实践资讯',url:'https://example.org/news',topics:['AI'],publishedAt:new Date().toISOString(),summary:{}}];WB.store.set({data:fixture});const user=userEvent.setup();render(<WB.pages.radar/>);
   await user.click(screen.getByRole('button',{name:'这条资讯的操作'}));await user.click(screen.getByRole('button',{name:'添加为我的待办'}));expect(screen.getByText(/将创建「实践：AI 实践资讯」/)).toBeTruthy();expect(calls.some(c=>c.endpoint==='workbench/createTaskFromRadar')).toBe(false)
   await user.click(screen.getByRole('button',{name:'取消'}));expect(calls.some(c=>c.endpoint==='workbench/createTaskFromRadar')).toBe(false)
   await user.click(screen.getByRole('button',{name:'这条资讯的操作'}));await user.click(screen.getByRole('button',{name:'添加为我的待办'}));await user.click(screen.getByRole('button',{name:'确认添加待办'}));expect(calls.filter(c=>c.endpoint==='workbench/createTaskFromRadar')).toHaveLength(1)

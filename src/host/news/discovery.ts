@@ -1,6 +1,7 @@
 import {OFFICIAL_NEWS_FEEDS,OFFICIAL_NEWS_SITES,isNewsBriefCandidate} from '../../shared/news-brief.js'
 import {fetchRssXml} from './rss-reader.js'
 import { newsSearchError } from '../../shared/news-fetch.js'
+import { newsDateGroup, newsPublishedAt, newsWindowDays } from '../../shared/news.js'
 import { githubQuality } from './github-quality.js'
 import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store.js'
 import { auditEntry, ensureArray, normalizeRadarItem } from '../domain/model.js'
@@ -26,6 +27,14 @@ import { asIso, asString, asUrl, hostNowIso } from '../platform/runtime.js'
 const RADAR_FETCH_TIMEOUT_MS = 12000;
 const RADAR_FETCH_PER_FEED_LIMIT = 10;
 const RADAR_FETCH_TOTAL_LIMIT = 30;
+function saveNewsCandidates(current: any, candidates: any[], dates: Map<string, string>) {
+    const known = new Set(current.radar.map((row: any) => row.url));
+    current.radar = current.radar.concat(candidates.filter(row => !known.has(row.url)));
+    for (const row of current.radar) {
+        const publishedAt = dates.get(row.url);
+        if (publishedAt && !newsPublishedAt(row)) Object.assign(row, { publishedAt, dateKind: 'published' });
+    }
+}
 /** 标题三元组集合，用于语义近似去重（不依赖模型）。 */
 function radarTrigrams(text?: any): any {
     const clean = String(text || '')
@@ -122,7 +131,6 @@ function radarParseFeed(xml?: any): any {
             url = radarTagValue(block, 'guid') || '';
         const dateRaw = radarTagValue(block, 'pubDate') ||
             radarTagValue(block, 'published') ||
-            radarTagValue(block, 'updated') ||
             radarTagValue(block, 'dc:date');
         const parsed = dateRaw ? new Date(dateRaw) : null;
         const publishedAt = parsed && !Number.isNaN(parsed.getTime()) ? parsed.toISOString() : null;
@@ -171,6 +179,8 @@ async function runRadarFetch(ctx?: any, selectedFeeds?: any[]): Promise<any> {
     const state = loadWorkbenchState();
     const feeds = ensureArray(selectedFeeds || state.settings && state.settings.feeds).slice(0, RADAR_FETCH_TOTAL_LIMIT);
     const at = hostNowIso();
+    const days = newsWindowDays(state.settings.newsDays);
+    const dates = new Map<string, string>();
     if (feeds.length === 0) {
         return mutateWorkbenchState(function (current?: any): any {
             current.lastRadarFetch = {
@@ -201,6 +211,7 @@ async function runRadarFetch(ctx?: any, selectedFeeds?: any[]): Promise<any> {
     let added = 0;
     let skipped = 0;
     const fetched=await Promise.all(feeds.map((feed:any)=>reader&&typeof reader.fetch==='function'?fetchOneFeed(reader,feed):Promise.resolve(null)));
+    const now = Date.now();
     for (const [feedIndex,feed] of feeds.entries()) {
         if (!reader || typeof reader.fetch !== 'function') {
             perFeed.push({
@@ -222,7 +233,9 @@ async function runRadarFetch(ctx?: any, selectedFeeds?: any[]): Promise<any> {
                 const key = String(entry.url).toLowerCase();
                 if(String(feed.id).startsWith('official:')&&!/AI|model|agent|research|engineering|code|API|inference|模型|智能体|推理|技术/i.test(entry.title+' '+entry.excerpt)){feedSkipped++;reasons.irrelevant++;continue;}
                 if(String(feed.id).startsWith('official:')){const host=new URL(entry.url).hostname,origin=new URL(feed.url).hostname;if(host!==origin&&!host.endsWith('.'+origin)&&!(feed.id==='official:deepmind'&&['blog.google','www.blog.google'].includes(host))){feedSkipped++;reasons.irrelevant++;continue;}}
-                if(entry.publishedAt && (Date.parse(entry.publishedAt)<Date.now()-(state.settings.newsDays||7)*86400000||Date.parse(entry.publishedAt)>Date.now()+86400000)){feedSkipped++;reasons.outdated++;continue;}
+                const publishedAt = newsPublishedAt(entry);
+                if (publishedAt && Date.parse(publishedAt) <= now) dates.set(entry.url, publishedAt);
+                if (publishedAt && newsDateGroup(publishedAt, days, now) !== 'recent') { feedSkipped++; reasons.outdated++; continue; }
                 if (knownUrls.has(key) || seenInBatch.has(key)) {
                     feedSkipped += 1;reasons.duplicate++;
                     continue;
@@ -240,7 +253,7 @@ async function runRadarFetch(ctx?: any, selectedFeeds?: any[]): Promise<any> {
                     title: entry.title,
                     source: feed.label,
                     url: entry.url,
-                    publishedAt: entry.publishedAt,
+                    publishedAt,
                     topics: feed.topics,
                     summary: { change: '', usage: '', risk: '', practice: '' },
                     excerpt: entry.excerpt,
@@ -264,10 +277,7 @@ async function runRadarFetch(ctx?: any, selectedFeeds?: any[]): Promise<any> {
             break;
     }
     return mutateWorkbenchState(function (current?: any): any {
-        if (candidates.length > 0) {
-            const known = new Set(ensureArray(current.radar).map(function (row?: any): any { return row.url; }));
-            current.radar = ensureArray(current.radar).concat(candidates.filter(function (row?: any): any { return !known.has(row.url); }));
-        }
+        saveNewsCandidates(current, candidates, dates);
         current.lastRadarFetch = { at: at, added: added, skipped: skipped, perFeed: perFeed, nextTopicIndex:state.lastRadarFetch?.nextTopicIndex||0,note: null };
         auditEntry(current, 'radar.fetch', '新增 ' + added + ' 条，跳过 ' + skipped + ' 条');
         return current;
@@ -287,6 +297,8 @@ async function discoverRadarByTopics(ctx?: any, official=false): Promise<any> {
     const topicOffset = Math.max(0, Number(state.lastRadarFetch?.nextTopicIndex) || 0) % Math.max(1, allTopics.length);
     const topics = Array.from({length:Math.min(3,allTopics.length)},(_,index)=>allTopics[(topicOffset+index)%allTopics.length]);
     const at = hostNowIso();
+    const days = newsWindowDays(state.settings.newsDays);
+    const dates = new Map<string, string>();
     if (!web || typeof web.search !== 'function') {
         return mutateWorkbenchState(function (current?: any): any {
             current.lastRadarFetch = {
@@ -328,6 +340,7 @@ async function discoverRadarByTopics(ctx?: any, official=false): Promise<any> {
     const lanes=[...(official?OFFICIAL_NEWS_SITES.map(site=>({topic:site.label,kind:'official',domain:site.domain})):[]),...topics.map((topic:any)=>({topic,kind:'news'})),{topic:'AI 开源',kind:'github'},{topic:'AI 前沿',kind:'ai'}];
     const queries=lanes.map(lane=>{const {topic,kind}=lane;const since=new Date(Date.now()-(state.settings.newsDays||7)*86400000).toISOString().slice(0,10);const searchTopic=/^agents?$/i.test(topic)?'"AI Agent"':/^rag$/i.test(topic)?'"retrieval augmented generation"':topic;return kind==='official'?'site:'+('domain' in lane?lane.domain:'')+' (model OR API OR agent OR release OR engineering) after:'+since:kind==='github'?'site:github.com (AI OR LLM OR agent OR multimodal) (trending OR new release OR stars) after:'+since:kind==='ai'?'(AI model OR reasoning OR multimodal OR AI coding agent) (release OR announcement OR benchmark) after:'+since:searchTopic+(/^(Java|Python|数据库)$/i.test(topic)?' AI engineering':'')+NEWS_QUERY_SUFFIX+' after:'+since});
     const searches=await Promise.all(queries.map(query=>Promise.resolve().then(()=>web.search({query,maxResults:15},AbortSignal.timeout(12000))).then(value=>({value,error:null}),error=>({value:null,error}))));
+    const now = Date.now();
     for (const [laneIndex,lane] of lanes.entries()) {
         const {topic,kind}=lane;
         let result;
@@ -360,19 +373,25 @@ async function discoverRadarByTopics(ctx?: any, official=false): Promise<any> {
                 continue;
             }
             const key = String(url).toLowerCase();
+            if(kind==='official' && 'domain' in lane){const host=new URL(url).hostname;if(host!==lane.domain&&!host.endsWith('.'+lane.domain)){topicSkipped++;reasons.irrelevant++;continue;}}
+            const title = asString(source.title, 300) || url;
+            if(!isNewsBriefCandidate({title,url},kind!=='official')){topicSkipped++;reasons.irrelevant++;continue;}
+            const publishedAt = newsPublishedAt({url, publishedAt: asIso(source.publishedAt)});
+            if (publishedAt && Date.parse(publishedAt) <= now) dates.set(url, publishedAt);
             if (knownUrls.has(key)) {
                 topicSkipped += 1;reasons.duplicate++;
                 continue;
             }
-            if(kind==='official' && 'domain' in lane){const host=new URL(url).hostname;if(host!==lane.domain&&!host.endsWith('.'+lane.domain)){topicSkipped++;reasons.irrelevant++;continue;}}
-            const title = asString(source.title, 300) || url;
-            if(!isNewsBriefCandidate({title,url},kind!=='official')){topicSkipped++;reasons.irrelevant++;continue;}
+            if (publishedAt && newsDateGroup(publishedAt, days, now) !== 'recent') {
+                topicSkipped += 1;reasons.outdated++;
+                continue;
+            }
             // 搜索 Provider 可能忽略 after:，并且不返回 publishedAt。
             // 明确的历史日期路径只用于排除旧文，不作为发布日期写回。
             const pathDate = /\/(20\d{2})[\/-](\d{2})[\/-](\d{2})(?:[\/-]|$)/.exec(new URL(url).pathname);
-            if (pathDate) {
+            if (!publishedAt && pathDate) {
                 const pathTimestamp = Date.parse(pathDate.slice(1).join('-') + 'T00:00:00Z');
-                if (Number.isFinite(pathTimestamp) && pathTimestamp < Date.now() - (state.settings.newsDays || 7) * 86400000) { topicSkipped += 1;reasons.outdated++; continue; }
+                if (Number.isFinite(pathTimestamp) && pathTimestamp < now - days * 86400000) { topicSkipped += 1;reasons.outdated++; continue; }
             }
             const topicText = title + ' ' + (source.snippet || '');
             if(kind==='github' && (new URL(url).hostname!=='github.com' || !/^\/[^/]+\/[^/]+\/?$/.test(new URL(url).pathname) || !/AI|LLM|agent|人工智能|模型|智能体/i.test(topicText))){topicSkipped++;reasons.irrelevant++;continue;}
@@ -385,19 +404,12 @@ async function discoverRadarByTopics(ctx?: any, official=false): Promise<any> {
                 topicSkipped += 1;reasons.duplicate++;
                 continue;
             }
-            const parsedPublished = asIso(source.publishedAt);
-            if (parsedPublished && (new Date(parsedPublished).getTime() < Date.now() - (state.settings.newsDays || 7) * 86400000 || new Date(parsedPublished).getTime() > Date.now() + 86400000)) {
-                topicSkipped += 1;reasons.outdated++;
-                continue;
-            }
             knownUrls.add(key);knownTitles.push(title);
             candidates.push(normalizeRadarItem({
                 title: title,
                 source: kind==='github'?'GitHub 项目发现':kind==='official'?topic:'联网检索 · ' + topic,
                 url: url,
-                publishedAt: parsedPublished,
-                // TODO 20 日期纪律：publishedAt 可核实才标 published，否则 unknown（显示时注明抓取时间）
-                dateKind: parsedPublished ? 'published' : 'unknown',
+                publishedAt,
                 fetchedAt: hostNowIso(),
                 topics: kind==='github'?['AI','GitHub']:kind==='ai'?['AI', 'LLM']:[topic],
                 summary: { change: '', usage: '', risk: '', practice: '' },
@@ -419,10 +431,7 @@ async function discoverRadarByTopics(ctx?: any, official=false): Promise<any> {
             break;
     }
     return mutateWorkbenchState(function (current?: any): any {
-        if (candidates.length > 0) {
-            const known = new Set(ensureArray(current.radar).map(function (row?: any): any { return row.url; }));
-            current.radar = ensureArray(current.radar).concat(candidates.filter(function (row?: any): any { return !known.has(row.url); }));
-        }
+        saveNewsCandidates(current, candidates, dates);
         current.lastRadarFetch = {
             at: at,
             added: added,
@@ -450,7 +459,9 @@ async function collectNews(ctx:any):Promise<any>{
     return mutateWorkbenchState((state:any)=>{
         const reports=[rssReport,searchReport],items=state.radar.filter((item:any)=>!known.has(item.id));
         state.lastRadarFetch={at:hostNowIso(),added:items.length,skipped:reports.reduce((n,report)=>n+(report?.skipped||0),0),perFeed:reports.flatMap(report=>report?.perFeed?.length?report.perFeed:report?.note?[{channel:'search',id:'search:unavailable',label:'主题与厂商检索',status:'unavailable',added:0,skipped:0,note:report.note}]:[]),nextTopicIndex:searchReport?.nextTopicIndex||0,itemIds:items.map((item:any)=>item.id),note:reports.map(report=>report?.note).filter(Boolean).join('；')};
-        if(items.length)state.radarBrief={at:state.lastRadarFetch.at,status:'pending',overview:'',error:null,ids:items.map((item:any)=>item.id)};
+        const now=Date.parse(state.lastRadarFetch.at),days=newsWindowDays(state.settings.newsDays);
+        const recent=items.filter((item:any)=>newsDateGroup(newsPublishedAt(item),days,now)==='recent');
+        if(recent.length)state.radarBrief={at:state.lastRadarFetch.at,status:'pending',overview:'',error:null,ids:recent.map((item:any)=>item.id)};
         return state;
     });
 }

@@ -3,7 +3,8 @@ import {conversationReadKey,mergeConversationReadMark} from '../../shared/conver
 import {configureBusyReply} from '../integrations/busy-reply.js'
 import { REPLY_STATUSES, auditEntry, ensureArray, normalizeReplies, normalizeSource } from '../domain/model.js'
 import { loadWorkbenchState, mutateWorkbenchState } from '../storage/state-store.js'
-import { probeYunzhijia, runYzj, sendYzjTextReply, syncYunzhijiaMessages } from '../integrations/yunzhijia.js'
+import {describeAttachment,readAttachment,writeAttachment} from '../storage/conversation-attachments.js'
+import { downloadYzjAttachment, downloadYzjImage, linkedYzjImages, probeYunzhijia, runYzj, sendYzjTextReply, syncYunzhijiaMessages } from '../integrations/yunzhijia.js'
 import { workbenchContext } from './service-context.js'
 import { asString, hostNowIso, newId } from '../platform/runtime.js'
 import {taskReplyMatches,taskReplyTarget} from '../../shared/task-reply.js'
@@ -27,7 +28,17 @@ function replySendTarget(state: any, request: any): any {
 }
 
 /** source-service: shared Remote and Agent business use cases. */
-const readConversation=createConversationReader({state:loadWorkbenchState,probe:probeYunzhijia,run:runYzj,markRead:async mark=>{
+const readConversation=createConversationReader({state:loadWorkbenchState,probe:probeYunzhijia,run:runYzj,downloadImage:downloadYzjImage,attachments:{
+    read:readAttachment,download:downloadYzjAttachment,
+    save:async(key,account,name,mediaType,bytes)=>{
+        const ref=describeAttachment(bytes,name,mediaType)
+        await mutateWorkbenchState((state:any)=>{
+            if(state.messageInbox?.accountId!==account)throw Error('消息账号已变化，请重新打开会话')
+            writeAttachment(ref,bytes)
+            state.conversationAttachments={...state.conversationAttachments,[key]:ref}
+        })
+    },
+},markRead:async mark=>{
     const snapshot=await mutateWorkbenchState((state:any)=>{
         if(state.messageInbox?.accountId!==mark.accountId)throw Error('消息账号已变化，请重新打开会话');
         state.conversationReadMarks=mergeConversationReadMark(state.conversationReadMarks,mark);
@@ -39,6 +50,9 @@ export const selectedConversationMessages=(request:any)=>readConversation.select
 export const sourceService = {
     async conversationMessages(request:any){return readConversation(workbenchContext(),request)},
     async conversationRead(request:any){return readConversation.markRead(workbenchContext(),request)},
+    async sourceImages(request:any){return linkedYzjImages.read(workbenchContext(),request)},
+    async conversationAttachment(request:any){return readConversation.conversationAttachment(workbenchContext(),request)},
+    async conversationImage(request:any){return readConversation.previewImage(workbenchContext(),request)},
     async busyReplyConfigure(request:any){const ctx=workbenchContext();const snapshot=await configureBusyReply(request,()=>probeYunzhijia(ctx));if(request.enabled)void syncYunzhijiaMessages(ctx).catch(()=>{});return snapshot},
 
     /** Prepare local communication evidence without reopening a reply obligation. */

@@ -35,3 +35,8 @@ export function isFreshPrivateHead(state:any,source:any):boolean {
  const c=box.conversations?.find((c:any)=>c.groupId===loc.groupId)
  return c?.latestDirection==='inbound'&&c.unreadCount>0&&c.latestMsgId===loc.msgId&&!!loc.sentAt&&Date.parse(c.latestSentAt)===Date.parse(loc.sentAt)
 }
+
+export function normalizeMessageImageIds(raw: unknown): string[] | undefined {
+ if(!Array.isArray(raw))return undefined
+ return [...new Set(raw.filter((id):id is string=>typeof id==='string'&&/^[a-z\d][\w.-]{0,127}$/i.test(id)))].slice(0,20)
+}

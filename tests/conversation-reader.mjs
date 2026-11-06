@@ -1,20 +1,20 @@
 /** Actual reader with synthetic CLI responses. No real account or state writes. */
 import assert from 'node:assert/strict'
 import {build} from 'esbuild'
-import {mkdtempSync,rmSync} from 'node:fs'
+import {existsSync,mkdtempSync,rmSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {resolve,join} from 'node:path'
 const dir=mkdtempSync(join(tmpdir(),'workbench-conversation-reader-'))
 try{
- await build({entryPoints:[resolve('src/host/integrations/conversation-reader.ts')],outfile:join(dir,'reader.mjs'),bundle:true,platform:'node',format:'esm',logLevel:'silent'})
- const {createConversationReader}=await import(join(dir,'reader.mjs'));let count=0
+ await build({stdin:{contents:`export * from './src/host/integrations/conversation-reader.ts';export * from './src/host/integrations/conversation-images.ts';`,resolveDir:process.cwd(),loader:'ts'},outfile:join(dir,'reader.mjs'),bundle:true,platform:'node',format:'esm',logLevel:'silent'})
+ const {createConversationReader,readConversationImage}=await import(join(dir,'reader.mjs'));let count=0
  await build({stdin:{contents:`export * from '${resolve('src/shared/conversation-read.ts')}';export {normalizeState} from '${resolve('src/host/domain/model.ts')}';`,resolveDir:process.cwd(),loader:'ts'},outfile:join(dir,'read-state.mjs'),bundle:true,platform:'node',format:'esm',logLevel:'silent'})
  const {conversationReadKey,mergeConversationReadMark,isConversationRead,normalizeConversationReadMarks,normalizeState}=await import(join(dir,'read-state.mjs'))
  const check=(name,fn)=>{fn();count++;console.log('✓ '+name)}
- function fixture({unread=3,total=30,overlap=false,extra=0}={}){
+ function fixture({unread=3,total=30,overlap=false,extra=0,downloadImage}={}){
   const messages=Array.from({length:total+extra},(_,i)=>({msgId:'msg-'+i,content:'消息 '+i,fromOpenId:i%5?'other':'me',sendTime:new Date(1760000000000+i*1000).toISOString()})),state={messageInbox:{accountId:'org:me',at:'2026-11-02T02:00:00Z',conversations:[{groupId:'group',name:'合成会话',latestMsgId:'msg-'+(total-1),unreadCount:unread}]},sources:[],replies:[],tasks:[],analysisQueue:[],syncCursors:{}},calls=[],ctx={},probe={state:'ok',accountId:'org:me',openId:'me'}
   let beforeRead=null,failed=0,markFailed=false,markWrites=0
-  const read=createConversationReader({state:()=>state,probe:async()=>probe,markRead:async mark=>{if(markFailed)throw Error('合成保存失败');markWrites++;state.conversationReadMarks=mergeConversationReadMark(state.conversationReadMarks,mark);return {readMark:state.conversationReadMarks[conversationReadKey(mark.accountId,mark.groupId)],snapshot:structuredClone(state)}},run:async(_ctx,args)=>{calls.push(args);if(beforeRead)await beforeRead(args);if(failed-->0)return {status:'rate_limited',note:'合成限流'};if(args[0]==='contact')return {status:'ok',json:{data:{list:[{openId:'other',name:'合成同事'}]}}};const anchor=args.includes('--msg-id')?args[args.indexOf('--msg-id')+1]:null,stop=anchor?messages.findIndex(row=>row.msgId===anchor)+(overlap?1:0):messages.length;return {status:'ok',json:{data:{list:messages.slice(Math.max(0,stop-20),stop)}}}}})
+  const read=createConversationReader({state:()=>state,probe:async()=>probe,downloadImage,markRead:async mark=>{if(markFailed)throw Error('合成保存失败');markWrites++;state.conversationReadMarks=mergeConversationReadMark(state.conversationReadMarks,mark);return {readMark:state.conversationReadMarks[conversationReadKey(mark.accountId,mark.groupId)],snapshot:structuredClone(state)}},run:async(_ctx,args)=>{calls.push(args);if(beforeRead)await beforeRead(args);if(failed-->0)return {status:'rate_limited',note:'合成限流'};if(args[0]==='contact')return {status:'ok',json:{data:{list:[{openId:'other',name:'合成同事'}]}}};const anchor=args.includes('--msg-id')?args[args.indexOf('--msg-id')+1]:null,stop=anchor?messages.findIndex(row=>row.msgId===anchor)+(overlap?1:0):messages.length;return {status:'ok',json:{data:{list:messages.slice(Math.max(0,stop-20),stop)}}}}})
   const request={accountId:'org:me',groupId:'group'},next=(r,mode='unread')=>read(ctx,{...request,viewId:r.viewId,cursor:r.nextCursor,mode})
   return {read,ctx,state,calls,request,next,messages,probe,ack:r=>read.markRead(ctx,{...request,viewId:r.viewId}),markWrites:()=>markWrites,failMark:value=>{markFailed=value},setBeforeRead:fn=>{beforeRead=fn},fail:n=>{failed=n}}
  }
@@ -23,6 +23,33 @@ try{
  const firstHistory=await f.next(r,'history'),secondHistory=await f.next(firstHistory,'history'),lastHistory=await f.next(secondHistory,'history')
  check('每次历史请求只返回更早10条，最后不足10条按实际7条返回',()=>{assert.deepEqual(firstHistory.messages.map(m=>m.id),Array.from({length:10},(_,i)=>'msg-'+(i+17)));assert.deepEqual(secondHistory.messages.map(m=>m.id),Array.from({length:10},(_,i)=>'msg-'+(i+7)));assert.equal(lastHistory.messages.length,7);assert.equal(lastHistory.hasMoreHistory,false);assert.equal(lastHistory.contextLoaded,27);assert.ok(firstHistory.messages.every(m=>!m.unread))})
  check('查阅不改变快照、来源、队列、回复或待办，不使用发送/标读命令',()=>{assert.equal(JSON.stringify(f.state),before);assert.ok(f.calls.every(a=>a.join(' ').startsWith('im message list ')||a.join(' ').startsWith('contact user get ')))})
+ const downloaded=[]
+ const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1kAAAAASUVORK5CYII=','base64')
+ f=fixture({downloadImage:(_ctx,fileId)=>readConversationImage(async path=>{
+  downloaded.push({fileId,path});writeFileSync(path,png);return {status:'ok'}
+ })})
+ Object.assign(f.messages[27],{msgType:'file',content:'[图片]',param:{file_id:'file-standalone',ext:'jpg'}})
+ Object.assign(f.messages[28],{msgType:'richText',content:'说明 [图片] [图片]',param:{desc:[{type:'at',data:'person-id'},{type:'image',data:'file-rich'},{type:'image',localPath:'https://static.yunzhijia.com/docrest/doc/user/image?fileId=file-url'},{type:'image',data:'https://example.test/docrest/image?fileId=file-other'}]}})
+ Object.assign(f.messages[26],{msgType:'file',content:'[图片]',param:{file_id:'file-history',ext:'jpg'}})
+ r=await f.read(f.ctx,f.request)
+ check('列表只返回图片数量和文字，图片标识与下载留在 Host',()=>{
+  assert.deepEqual(r.messages.map(m=>m.imageCount),[1,2,undefined]);assert.equal(downloaded.length,0)
+  assert.equal(r.messages[1].text,'说明 [图片] [图片]');assert.doesNotMatch(JSON.stringify(r),/file-standalone|file-rich|file-url/)
+ })
+ const imageRequest={...f.request,viewId:r.viewId,messageId:'msg-28',imageIndex:1}
+ await assert.rejects(f.read.previewImage(f.ctx,{...imageRequest,messageId:'msg-26',imageIndex:0}),/已读取/)
+ await assert.rejects(f.read.previewImage({},imageRequest),/过期/)
+ await assert.rejects(f.read.previewImage(f.ctx,{...imageRequest,imageIndex:2}),/已读取/)
+ f.probe.accountId='other';f.probe.openId='other';await assert.rejects(f.read.previewImage(f.ctx,imageRequest),/账号已变化/)
+ check('拒绝未展示、越界、跨宿主和跨账号的图片请求',()=>assert.equal(downloaded.length,0))
+ f.probe.accountId=f.request.accountId;f.probe.openId='me'
+ const image=await f.read.previewImage(f.ctx,imageRequest)
+ check('按需下载指定图片，按文件头识别格式，完成后清理临时文件',()=>{
+  assert.deepEqual(image,{mediaType:'image/png',data:png.toString('base64')});assert.equal(downloaded[0].fileId,'file-url');assert.equal(existsSync(downloaded[0].path),false)
+ })
+ let invalidPath
+ await assert.rejects(readConversationImage(async path=>{invalidPath=path;writeFileSync(path,'<svg/>');return {status:'ok'}}),/不是可预览/)
+ check('拒绝非栅格图片并清理临时文件',()=>assert.equal(existsSync(invalidPath),false))
  f=fixture({unread:69,total:120});r=await f.read(f.ctx,f.request);const second=await f.next(r),all=[...second.messages,...r.messages]
  check('69条未读跨批次读完仍不返回历史，未读边界准确',()=>{assert.equal(r.unreadLoaded,60);assert.equal(r.unreadComplete,false);assert.equal(second.unreadComplete,true);assert.equal(all.length,69);assert.equal(new Set(all.map(m=>m.id)).size,69);assert.ok(all.every(m=>m.unread));assert.equal(all[0].id,'msg-51');assert.equal(second.contextLoaded,0)})
  const callsBefore=f.calls.length,replayed=await f.read(f.ctx,{...f.request,viewId:r.viewId,cursor:1})

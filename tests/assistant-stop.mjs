@@ -74,7 +74,7 @@ try{
  const child=session('owned-child');child.header.parentSession={sessionId:a.id};h.rememberHubSession('task:b',child.id,'子会话');start(child)
  const childDetail=await detail('task:b');check('子智能体不通过普通会话取消接口越权停止',()=>assert.ok(childDetail.stop.sessions.every(r=>r.sessionId!==child.id)));end(child)
  // A delayed overall news summary cannot overwrite a paused run.
- await h.mutate(s=>{s.jobs.push({id:'summary-paused',kind:'summary',status:'running',createdAt:new Date().toISOString(),input:{}});s.radar=[{id:'news-one',title:'资讯',url:'https://example.invalid/news'}];s.radarBrief={at:new Date().toISOString(),ids:['news-one'],status:'pending'};return s})
+ await h.mutate(s=>{s.jobs.push({id:'summary-paused',kind:'summary',status:'running',createdAt:new Date().toISOString(),input:{}});s.radar=[{id:'news-one',title:'资讯',url:'https://example.invalid/news',publishedAt:new Date().toISOString()}];s.radarBrief={at:new Date().toISOString(),ids:['news-one'],status:'pending'};return s})
  const summaryGate=deferred();let summaryEntered=false
  const summaryResult=h.summarizeNewsBatch(ctx,controller,{id:'synthetic-summary'},{hubRunId:'summary-paused'},async()=>{summaryEntered=true;await summaryGate.promise;return {overview:'不应提交的迟到总结'}}).catch(e=>e)
  await until(()=>summaryEntered);await h.pauseWorkflowJobs(['summary-paused']);summaryGate.resolve();const stoppedSummary=await summaryResult

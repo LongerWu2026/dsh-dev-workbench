@@ -19,6 +19,27 @@ export function updateAssistantDirectories(update:(rows:any[])=>any[]){
  if(cache)for(const [key,rows] of cache)cache.set(key,update(rows))
 }
 
+const histories=new WeakMap<object,Map<string,any>>()
+const historyKey=(conversationId:string,sessionId:string|null,scope:any)=>JSON.stringify([conversationId,sessionId,scope])
+export function cachedAssistantHistory(conversationId:string,sessionId:string|null,scope:any){
+ return wbConnection&&histories.get(wbConnection)?.get(historyKey(conversationId,sessionId,scope))
+}
+export function rememberAssistantHistory(conversationId:string,sessionId:string|null,scope:any,detail:any,connection:object){
+ if(!connection||connection!==wbConnection||detail.historyError)return
+ let cache=histories.get(connection)
+ if(!cache){cache=new Map();histories.set(connection,cache)}
+ const key=historyKey(conversationId,sessionId,scope)
+ cache.delete(key)
+ // Store only display data. Confirmations, live streams and permissions require a fresh read.
+ const {conversation,sessionId:nativeId,messages,turns,retrievals,retrieval,before,hasMore}=detail
+ cache.set(key,{cached:true,conversation:{id:conversation.id,title:conversation.title,kind:conversation.kind,status:conversation.status},sessionId:nativeId,messages,turns,retrievals,retrieval,before,hasMore})
+ while(cache.size>12)cache.delete(cache.keys().next().value!)
+}
+export function clearAssistantHistory(conversationId:string){
+ const cache=wbConnection&&histories.get(wbConnection)
+ if(cache)for(const [key,detail] of cache)if(detail.conversation.id===conversationId)cache.delete(key)
+}
+
 /** Only read requests may time out/retry. Never resubmit a mutation or prompt. */
 export async function readAssistantHub(request:any,signal?:AbortSignal){
  if(!['list','detail','history','delta','availableSessions'].includes(request.action))throw new Error('仅支持读取助手记录')

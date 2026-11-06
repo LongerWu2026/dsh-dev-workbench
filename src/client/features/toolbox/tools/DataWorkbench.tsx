@@ -4,18 +4,39 @@ import {toolCopyButton as Copy} from '../shared-controls.js'
 const defaults:any={kind:'mysql',name:'',host:'127.0.0.1',port:3306,database:'',username:'',password:'',rememberPassword:false,tls:false,ca:'',url:'http://127.0.0.1:9200'}
 const initialQuery:any={mysql:'SELECT 1 AS value',postgres:'SELECT 1 AS value',es:'{\n  "query": {"match_all": {}},\n  "size": 20\n}',redis:'["TYPE", "example:key"]'}
 const connectionKinds:Record<string,string>={mysql:'MySQL',postgres:'PostgreSQL',es:'Elasticsearch',redis:'Redis'}
+type ConnectionField = 'name' | 'host' | 'port' | 'url' | 'database' | 'password'
+
+function validateConnection(form:any, isSql:boolean, passwordRequired:boolean): [ConnectionField, string] | undefined {
+    if(!String(form.name??'').trim())return ['name','请填写连接名称'];
+    if(form.kind==='es'){
+        let valid=false;
+        try {
+            const url=new URL(form.url.trim());
+            valid=['http:','https:'].includes(url.protocol)&&!url.username&&!url.password&&!url.search&&!url.hash;
+        } catch { /* Show the same error for malformed and unsupported addresses. */ }
+        if(!valid)return ['url','请填写不含凭据和参数的 HTTP/HTTPS 地址'];
+    }else{
+        const host=String(form.host??'').trim(),port=Number(form.port),database=String(form.database??'').trim();
+        if(!host||/[\s/@?#]/.test(host))return ['host','请填写有效的数据库主机'];
+        if(!Number.isInteger(port)||port<1||port>65535)return ['port','请填写 1–65535 之间的整数端口'];
+        if(isSql&&!database)return ['database','请填写数据库名称'];
+        if(form.kind==='redis'&&!/^\d{1,3}$/.test(database||'0'))return ['database','Redis DB 必须为 0–999 之间的整数'];
+    }
+    if(passwordRequired&&!form.password)return ['password','请输入要记住的连接密码'];
+}
 export function DataWorkbench({value:v,patch}:any){
     const [connections,setConnections]=React.useState<any[]>([]),[operation,setBusy]=React.useState(''),[error,setError]=React.useState(''),[note,setNote]=React.useState('');
     const [disconnecting,setDisconnecting]=React.useState(false);
     const busy=disconnecting?'断开连接':operation;
     const [autoTableSelection,setAutoTableSelection]=React.useState<boolean|null>(null);
     const [canRememberPassword,setCanRememberPassword]=React.useState(false);
-    const catalogVersion=React.useRef(0);
+    const catalogVersion=React.useRef(0),connectionListVersion=React.useRef(0);
     const live=React.useRef(true),lock=React.useRef(false),current=React.useRef(v);current.current=v;const form={...defaults,...v.form},selected=v.selected||[];
     const rpc=(method:string,request?:any)=>WB.rpc('workbench/'+method,method==='dataConnections'?{}:{request});
     async function refresh(){
+        const version=connectionListVersion.current;
         const result=await rpc('dataConnections');
-        if(!live.current)return;
+        if(!live.current||version!==connectionListVersion.current)return;
         const items=result.connections||[];
         setConnections(items);
         setAutoTableSelection(result.capabilities?.autoTableSelection===true);
@@ -48,7 +69,9 @@ export function DataWorkbench({value:v,patch}:any){
         }
     }
     const refreshObjects=(id:string,pattern:string)=>run('读取对象',()=>loadObjects(id,pattern));
-    function clearFeedback(){setError('');setNote('')}
+    const [invalidField,setInvalidField]=React.useState<ConnectionField|null>(null);
+    const configFields=React.useRef<HTMLDivElement>(null);
+    function clearFeedback(){setError('');setNote('');setInvalidField(null)}
     const edit=(key:string,value:any)=>{clearFeedback();patch({id:v.id??'',form:{...form,[key]:value}})};
     const choose=(id:string,items=connections)=>{
         const c=items.find(c=>c.id===id);
@@ -69,21 +92,41 @@ export function DataWorkbench({value:v,patch}:any){
     const [configOpen,setConfigOpen]=React.useState(false),[aiOpen,setAiOpen]=React.useState(false),[objectFilter,setObjectFilter]=React.useState('');
     const openConfig=()=>{clearFeedback();setConfigOpen(true)};
     const connectionInput=()=>({...form,...(v.id?{id:v.id}:{}),password:form.password||undefined});
-    const testConnection=()=>run('测试连接',()=>rpc('dataTest',{draft:connectionInput()}));
-    const saveConnection=()=>run('保存',async()=>{
+    const passwordRequired=form.rememberPassword&&!connections.some(c=>c.id===v.id&&(c.unlocked||c.rememberPassword));
+    function submitConnection(label:string,action:()=>Promise<any>){
+        if(lock.current)return;
+        clearFeedback();
+        const invalid=validateConnection(form,isSql,label==='保存'&&passwordRequired);
+        if(!invalid)return run(label,action);
+        const [field,message]=invalid;
+        setError(message);
+        setInvalidField(field);
+        configFields.current?.querySelector<HTMLInputElement>('input[name="'+field+'"]')?.focus();
+    }
+    function fieldState(name:ConnectionField,required:boolean){
+        return {name,required,'aria-invalid':invalidField===name||undefined,'aria-describedby':invalidField===name?'wb-data-config-error':undefined};
+    }
+    const testConnection=()=>submitConnection('测试连接',()=>rpc('dataTest',{draft:connectionInput()}));
+    const saveConnection=()=>submitConnection('保存',async()=>{
         const response=await rpc('dataSave',connectionInput());
         if(!live.current)return null;
-        const config=response.config;
+        const config=response?.config;
+        if(!config?.id)throw Error('保存未返回连接编号，请重新打开连接列表核对');
         const savedNote=config.rememberPassword?'连接配置已保存，已记住密码':'连接配置已保存，密码不落盘';
+        connectionListVersion.current++;
+        setConnections(items=>[...items.filter(item=>item.id!==config.id),{...config,unlocked:response.unlocked!==false}]);
         patch({id:config.id,form:{...config,password:''},objects:null,cursor:null,selected:[],structure:null,generated:null,result:null,query:v.query||initialQuery[form.kind]});
         setObjectFilter('');
         setConfigOpen(false);
         setBusy('读取对象');
         setNote(savedNote);
-        const version=catalogVersion.current;
-        await refresh();
-        if(!live.current||version!==catalogVersion.current)return null;
-        return loadObjects(config.id,v.pattern,'0',savedNote);
+        if(response.unlocked===false)return null;
+        try {
+            return await loadObjects(config.id,v.pattern,'0',savedNote);
+        } catch(error) {
+            if(live.current)setError('读取'+objectLabel+'列表失败，可刷新重试。'+(error instanceof Error?error.message:''));
+            return null;
+        }
     });
     async function disconnect(){
         setDisconnecting(true);
@@ -157,13 +200,13 @@ export function DataWorkbench({value:v,patch}:any){
 </div>        <Modal open={configOpen} title={v.id?'连接配置':'新建连接'} sub={canRememberPassword?'可使用 macOS 钥匙串保护记住的密码':'密码仅在本次宿主进程内保留'}
     onClose={()=>{if(!lock.current){clearFeedback();setConfigOpen(false)}}}
     footer={<><Btn disabled={!!busy} onClick={testConnection}>{busy==='测试连接'?'测试中…':'测试连接'}</Btn><Btn kind="primary" disabled={!!busy} onClick={saveConnection}>{busy==='保存'?'保存中…':'保存'}</Btn></>}>
-<div className="wb-stack" style={{paddingTop:10}}>
-{error&&<p role="alert" className="wb-tiny">{error}</p>}
+<div ref={configFields} className="wb-stack" style={{paddingTop:10}}>
+{error&&<p id="wb-data-config-error" role="alert" className="wb-tiny" style={{color:'var(--dsw-alias-state-error-primary)'}}>{error}</p>}
 {note&&<p role="status" className="wb-tiny">{note}</p>}
-            <div className="wb-split"><Field label="连接名称"><Input aria-label="连接名称" value={form.name} disabled={!!busy} onChange={(e:any)=>edit('name',e.target.value)}/></Field><label className="wb-label">类型<select aria-label="数据库类型" className="wb-select" value={form.kind} disabled={!!busy||!!v.id} onChange={e=>{clearFeedback();patch({id:v.id??'',form:{...defaults,kind:e.target.value,port:({mysql:3306,postgres:5432,es:9200,redis:6379} as any)[e.target.value]},query:initialQuery[e.target.value]})}}>{['mysql','postgres','es','redis'].map(k=><option key={k} value={k}>{k}</option>)}</select></label></div>
-            {form.kind==='es'?<Field label="ES URL"><Input aria-label="ES URL" value={form.url} disabled={!!busy} onChange={(e:any)=>edit('url',e.target.value)}/></Field>:<div className="wb-split"><Field label="主机"><Input aria-label="数据库主机" value={form.host} disabled={!!busy} onChange={(e:any)=>edit('host',e.target.value)}/></Field><Field label="端口"><Input aria-label="数据库端口" type="number" value={form.port} disabled={!!busy} onChange={(e:any)=>edit('port',e.target.value)}/></Field></div>}
-            {form.kind!=='es'&&<Field label={form.kind==='redis'?'Redis DB（默认0）':'数据库名称'}><Input aria-label="数据库名称" value={form.database} disabled={!!busy} onChange={(e:any)=>edit('database',e.target.value)}/></Field>}
-            <div className="wb-split"><Field label="用户名"><Input aria-label="数据库用户名" autoComplete="off" value={form.username} disabled={!!busy} onChange={(e:any)=>edit('username',e.target.value)}/></Field><Field label="密码"><Input aria-label="数据库密码" type="password" autoComplete="new-password" value={form.password} disabled={!!busy} placeholder={needsConnection?'输入密码':'留空沿用原连接密码'} onChange={(e:any)=>edit('password',e.target.value)}/></Field></div>
+            <div className="wb-split"><Field label="连接名称（必填）"><Input aria-label="连接名称" {...fieldState('name',true)} value={form.name} disabled={!!busy} onChange={(e:any)=>edit('name',e.target.value)}/></Field><label className="wb-label">类型<select aria-label="数据库类型" className="wb-select" value={form.kind} disabled={!!busy||!!v.id} onChange={e=>{clearFeedback();patch({id:v.id??'',form:{...defaults,name:form.name,kind:e.target.value,port:({mysql:3306,postgres:5432,es:9200,redis:6379} as any)[e.target.value]},query:initialQuery[e.target.value]})}}>{Object.entries(connectionKinds).map(([kind,label])=><option key={kind} value={kind}>{label}</option>)}</select></label></div>
+            {form.kind==='es'?<Field label="ES URL（必填）"><Input aria-label="ES URL" {...fieldState('url',true)} value={form.url} disabled={!!busy} onChange={(e:any)=>edit('url',e.target.value)}/></Field>:<div className="wb-split"><Field label="主机（必填）"><Input aria-label="数据库主机" {...fieldState('host',true)} value={form.host} disabled={!!busy} onChange={(e:any)=>edit('host',e.target.value)}/></Field><Field label="端口（必填）"><Input aria-label="数据库端口" {...fieldState('port',true)} type="number" min={1} max={65535} value={form.port} disabled={!!busy} onChange={(e:any)=>edit('port',e.target.value)}/></Field></div>}
+            {form.kind!=='es'&&<Field label={form.kind==='redis'?'Redis DB（默认0）':'数据库名称（必填）'}><Input aria-label="数据库名称" {...fieldState('database',isSql)} value={form.database} disabled={!!busy} onChange={(e:any)=>edit('database',e.target.value)}/></Field>}
+            <div className="wb-split"><Field label="用户名"><Input aria-label="数据库用户名" autoComplete="off" value={form.username} disabled={!!busy} onChange={(e:any)=>edit('username',e.target.value)}/></Field><Field label={passwordRequired?'密码（必填）':'密码'}><Input aria-label="数据库密码" {...fieldState('password',passwordRequired)} type="password" autoComplete="new-password" value={form.password} disabled={!!busy} placeholder={needsConnection?'输入密码':'留空沿用原连接密码'} onChange={(e:any)=>edit('password',e.target.value)}/></Field></div>
             {(canRememberPassword||form.rememberPassword)&&<label className="wb-row" style={{gap:8}}><input type="checkbox" checked={!!form.rememberPassword} disabled={!!busy} onChange={e=>edit('rememberPassword',e.target.checked)}/>记住密码</label>}
             {form.kind!=='es'&&<><label className="wb-label"><input type="checkbox" checked={form.tls} disabled={!!busy} onChange={e=>edit('tls',e.target.checked)}/> 使用 TLS（校验证书）</label>{form.tls&&<Field label="CA证书（PEM，可选）"><Textarea aria-label="数据库CA证书" rows={3} value={form.ca} disabled={!!busy} onChange={(e:any)=>edit('ca',e.target.value)}/></Field>}</>}
         </div></Modal>

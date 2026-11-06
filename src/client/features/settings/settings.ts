@@ -429,7 +429,7 @@ function SettingsPage(): any {
                 patchSettings({ staleHours: Number(event.target.value) });
             },
         }),
-    }), h(SettingsRow, {title:'资讯时效',hint:'联网搜索限制已知发布时间，未知日期单独标注',control:h(Select,{value:String(settings.newsDays||7),options:[1,3,7,14,30].map((value:number)=>({value:String(value),label:'最近 '+value+' 天'})),onChange:(event:any)=>patchSettings({newsDays:Number(event.target.value)})})}), h(SettingsRow, {
+    }), h(SettingsRow, {title:'资讯时效',hint:'按发布日期筛选近期资讯，日期待确认的单独显示',control:h(Select,{value:String(settings.newsDays||7),options:[1,3,7,14,30].map((value:number)=>({value:String(value),label:'最近 '+value+' 天'})),onChange:(event:any)=>patchSettings({newsDays:Number(event.target.value)})})}), h(SettingsRow, {
         title: '默认项目',
         hint: '新建待办时预选的项目',
         control: h(Select, {

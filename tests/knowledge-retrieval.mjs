@@ -47,6 +47,16 @@ try{
  const hybrid=await h.retrieveKnowledgeAsync(s,'资源不够怎么办',{scope:{projectId:'A'}})
  check('可选向量召回及混合排序，不把其他项目内容发给提供者',()=>{assert.equal(hybrid.strategy,'hybrid-bm25-vector-rrf');assert.ok(hybrid.hits.some(x=>x.documentId==='general'));assert.ok(!embeddedTexts.flat().some(t=>t.includes('另一个系统规范')))})
  await h.retrieveKnowledgeAsync(s,'容量如何处理',{scope:{projectId:'A'}});check('同版本向量复用缓存，后续只向量化新问题',()=>assert.equal(embeddedTexts.at(-1).length,1))
+ await api.createTask({title:'申报 APEC 绿色出行',description:'核对申请流程'})
+ const application=h.loadWorkbenchState().tasks.find(row=>row.title==='申报 APEC 绿色出行')
+ await api.createKnowledge({title:'业务规则获取当期最后一天',body:'在深圳我只要申请一次是不是就行了是日期计算演示。',reviewState:'confirmed'})
+ const query='在深圳我只要申请一次是不是就行了'
+ const first=await api.assistantHub({action:'send',conversationId:'task:'+application.id,text:query})
+ check('事项短追问带上事项主题，无关资料不注入模型',()=>{assert.equal(first.status,'ok');assert.equal(first.retrieval.status,'empty');assert.ok(first.retrieval.query.includes(application.title));assert.ok(!lastPrompt.includes('日期计算演示'))})
+ await api.createKnowledge({title:'APEC 绿色出行申报示例',body:'这是一份合成的申报流程测试资料。',reviewState:'confirmed'})
+ globalThis.fetch=async(_url,options)=>{const body=JSON.parse(options.body);return new Response(JSON.stringify({embeddings:body.input.map(()=>[1,0])}),{status:200})}
+ const second=await api.assistantHub({action:'send',conversationId:'task:'+application.id,text:query})
+ check('有相关资料时继续提供依据，混合检索也拒绝离题片段',()=>{assert.equal(second.status,'ok');assert.equal(second.retrieval.strategy,'hybrid-bm25-vector-rrf');assert.deepEqual(second.retrieval.hits.map(hit=>hit.title),['APEC 绿色出行申报示例']);assert.ok(lastPrompt.includes('合成的申报流程测试资料'))})
  globalThis.fetch=async()=>new Response('{"embeddings":[[1,"bad"]]}',{status:200});const fallback=await h.retrieveKnowledgeAsync(s,'内存不足')
  check('向量错误保留本地全文结果并显示降级原因',()=>{assert.equal(fallback.hits[0].documentId,'general');assert.match(fallback.note,/语义检索不可用/)})
  process.env.AWB_EMBEDDING_TOKEN='synthetic-transport-test-only'

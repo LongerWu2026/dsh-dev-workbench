@@ -1,3 +1,4 @@
+import {ConversationAttachmentHost} from './ConversationAttachment.js'
 import {ConversationReader} from './ConversationReader.js'
 import * as React from 'react'
 import {Badge,Btn,Icon,Panel,WB} from '../../core/runtime.js'
@@ -18,6 +19,7 @@ export function FocusedInbox({data,compact=false}:{data:any;compact?:boolean}){
   </section>}
 
   {selected&&account&&selected.viewerAccountId===account&&<ConversationReader key={account+":"+selected.groupId} accountId={account} conversation={selected} onClose={()=>setSelected(null)}/>}
+  <ConversationAttachmentHost accountId={account}/>
  </div>
  return compact?<details className="wb-card wb-inbox-summary" open>
   <summary className="wb-card-head">

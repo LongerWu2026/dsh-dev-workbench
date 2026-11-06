@@ -3,6 +3,11 @@ import {ArticleReader} from './ArticleReader.js'
 import * as React from 'react'
 import { Badge, Btn, Divider, Field, Icon, IconBtn, Input, Modal, T, Textarea, WB, h } from '../../core/runtime.js'
 import { dashTagPill } from '../dashboard/selectors.js'
+import { newsPublishedAt } from '../../../shared/news.js'
+
+function publicationDay(publishedAt: string | null): string {
+    return publishedAt ? new Date(Date.parse(publishedAt) + 8 * 3600000).toISOString().slice(0, 10) : '';
+}
 
 function dashRadarTimeValue(item?: any): any {
     const value = item.publishedAt || item.fetchedAt || item.createdAt;
@@ -42,7 +47,8 @@ function DashRadarRow(props?: any): any {
             ? [{ key: 'excerpt', label: '原文摘录', text: item.excerpt }]
             : [];
     const needsDigest = rawParts.length === 0 && !!item.excerpt;
-    const published = item.dateKind !== 'unknown' ? item.publishedAt : null;
+    const publishedAt = newsPublishedAt(item);
+    const published = publishedAt && Date.parse(publishedAt) <= Date.now() ? publishedAt : null;
     const topics = Array.isArray(item.topics) ? item.topics : [];
     const capture=useKnowledgeCapture(),saving=capture.loading;
     const [reading,setReading]=React.useState(false);
@@ -78,7 +84,7 @@ function DashRadarRow(props?: any): any {
         }, item.title, h(Icon, { name: 'external', size: 10 }))
         : h('span', null, item.title), item.saved ? h(Badge, { tone: 'ok' }, '已收藏') : null, item.github ? h('span',{className:'wb-tiny wb-muted'},item.github.status==='verified'?'GitHub 已核验 · ★ '+item.github.stars+' · 最近提交 '+WB.fmt.date(item.github.pushedAt)+(item.github.starGrowth==null?' · 增长待观察':' · 观察期增长 '+item.github.starGrowth)+(item.github.archived?' · 已归档':'')+(item.github.release?' · '+item.github.release:''): 'GitHub 热度未核验') : null), h('div', { className: 'wb-item-sub', style: { gap: 5 } }, h('span', { className: 'wb-muted' }, item.source || '未知来源'), h('span', { className: 'wb-muted' }, '·'), published
         ? h('span', { className: 'wb-muted' }, WB.fmt.date(published))
-        : h('span', { className: 'wb-muted', title: '原文未注明发布时间；抓取于 ' + (item.fetchedAt ? WB.fmt.datetime(item.fetchedAt) : '') + '，不以抓取时间冒充' }, '日期未注明（抓取于 ' + (item.fetchedAt ? WB.fmt.relative(item.fetchedAt) : '最近') + '）'), topics.map(function (topic?: any, index?: any): any {
+        : h('span', { className: 'wb-muted', title: item.fetchedAt ? '抓取时间 ' + WB.fmt.datetime(item.fetchedAt) : undefined }, '发布日期待确认' + (item.fetchedAt ? '（抓取于 ' + WB.fmt.relative(item.fetchedAt) + '）' : '')), topics.map(function (topic?: any, index?: any): any {
         return dashTagPill(topic, 'topic:' + topic + ':' + index);
     }))), h('div', { className: 'wb-item-actions', style: { opacity: 1 } }, h(DashRadarMenu, {
         item: item,
@@ -247,7 +253,7 @@ function DashRadarModal(props?: any): any {
         setTitle(item ? item.title || '' : '');
         setSource(item ? item.source || '' : '');
         setUrl(item ? item.url || '' : '');
-        setPublishedAt(item && item.publishedAt ? String(item.publishedAt).slice(0, 10) : '');
+        setPublishedAt(publicationDay(item ? newsPublishedAt(item) : null));
         setTopics(item && Array.isArray(item.topics) ? item.topics.join(', ') : '');
         setChange(summary.change || '');
         setUsage(summary.usage || '');
@@ -273,10 +279,12 @@ function DashRadarModal(props?: any): any {
             setError('链接需以 http:// 或 https:// 开头');
             return;
         }
-        let publishedIso: any = null;
+        const previousPublication = editing ? newsPublishedAt(editing) : null;
+        let publishedIso: string | null = null;
         if (publishedAt) {
-            const parsed = new Date(publishedAt + 'T00:00:00');
-            publishedIso = Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+            const parsed = Date.parse(publishedAt + 'T00:00:00+08:00');
+            publishedIso = publishedAt === publicationDay(previousPublication)
+                ? previousPublication : Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
         }
         setBusy(true);
         setError(null);

@@ -1,6 +1,7 @@
 import React from 'react'
 import {afterEach,expect,it,vi} from 'vitest'
 import {render,screen,within,fireEvent,act,cleanup,waitFor} from '@testing-library/react'
+import {openHarnessFile} from '../../src/client/core/harness-file.ts'
 import {loadClientBundle} from './load-plugin.mjs'
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
 const at='2026-11-02T02:00:00Z'
@@ -16,6 +17,79 @@ it('首次仅显示未读，内容纯文本且不启动识别或写入业务',as
  const {WB,data,panel,reader,transport}=setup(async()=>result([row('u1','<img src=x onerror=alert(1)>'),row('u2','第二条未读')])),before=JSON.stringify(data)
  fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}));const dialog=await screen.findByRole('dialog',{name:'第一会话'});await within(dialog).findByText('第二条未读')
  expect(reader).toHaveBeenCalledWith({accountId:'org:me',groupId:'one',mode:'unread'});expect(within(dialog).getAllByRole('article')).toHaveLength(2);expect(within(dialog).queryByText(/历史消息 ·/)).toBeNull();expect(dialog.querySelector('img')).toBeNull();expect(within(dialog).getByText('<img src=x onerror=alert(1)>')).toBeTruthy();expect(JSON.stringify(WB.store.get().data)).toBe(before);expect(transport.mock.calls.some(([name])=>/analy|send|fetchMentions|setReply|createTask/i.test(name))).toBe(false)
+})
+it('点击图片或普通文件后，把已保存的原件交给 Harness 原生文件侧栏',async()=>{
+ const {WB,panel}=setup(async()=>result([{...row('image','[图片]'),imageCount:1},{...row('pdf','[文件]'),fileName:'手册.pdf'}]))
+ const target='/tmp/原件 #1.png'
+ WB.openHarnessFile=vi.fn().mockResolvedValue(true)
+ const attachment=vi.spyOn(WB.actions,'conversationAttachment').mockRejectedValueOnce(Error('图片暂时不可用'))
+  .mockResolvedValueOnce({name:'原件 #1.png',bytes:32,saved:true,supported:true,path:target})
+  .mockResolvedValueOnce({name:'手册.pdf',bytes:32,saved:true,supported:true,path:'/tmp/手册.pdf'})
+ fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}))
+ const reader=await screen.findByRole('dialog',{name:'第一会话'})
+ const image=await within(reader).findByRole('button',{name:'查看图片'})
+ expect(attachment).not.toHaveBeenCalled()
+ fireEvent.click(image)
+ const dialog=await screen.findByRole('dialog',{name:'附件'})
+ await within(dialog).findByText('图片暂时不可用')
+ fireEvent.click(within(dialog).getByRole('button',{name:'重试打开'}))
+ await waitFor(()=>expect(WB.openHarnessFile).toHaveBeenCalledWith(target))
+ await waitFor(()=>expect(screen.queryByRole('dialog',{name:'附件'})).toBeNull())
+ expect(attachment.mock.calls[1][0]).toMatchObject({messageId:'image',imageIndex:0,native:true})
+ fireEvent.click(within(reader).getByRole('button',{name:'打开文件 · 手册.pdf'}))
+ await waitFor(()=>expect(WB.openHarnessFile).toHaveBeenCalledWith('/tmp/手册.pdf'))
+ expect(attachment.mock.calls[2][0]).toMatchObject({messageId:'pdf',file:true,native:true})
+ expect(reader.querySelector('img,iframe')).toBeNull()
+})
+it('原生侧栏按当前 Harness 会话打开文件，打开失败则回到工作台',async()=>{
+ let activePanelId='dev-workbench',session='session one',attempts=0
+ const selectPanel=vi.fn(panel=>{activePanelId=panel})
+ const openResource=vi.fn(()=>{
+  if(attempts++===0)throw Error('sidebarRight: no session surface is mounted')
+ })
+ const services={
+  sidebarRight:{mounted:{getSnapshot:()=>activePanelId===null?session:undefined},openResource},
+  layout:{panelInfo:{getSnapshot:()=>({activePanelId})},selectPanel},
+  uiSession:{adapter:{current:{getSnapshot:()=>({key:session})}}},
+ }
+ const context={get:key=>services[key]}
+ expect(await openHarnessFile(context,'/tmp/报告 #1.pdf')).toBe(true)
+ expect(openResource).toHaveBeenLastCalledWith('dsh-resource://file/session/session%20one//tmp/%E6%8A%A5%E5%91%8A%20%231.pdf')
+ expect(selectPanel.mock.calls).toEqual([[null]])
+ activePanelId='dev-workbench'
+ openResource.mockImplementationOnce(()=>{throw Error('no registered tab type claims')})
+ expect(await openHarnessFile(context,'/tmp/test.pdf')).toBe(false)
+ expect(selectPanel.mock.calls.slice(1)).toEqual([[null],['dev-workbench']])
+ session=undefined
+ expect(await openHarnessFile(context,'/tmp/test.pdf')).toBe(false)
+ expect(selectPanel).toHaveBeenCalledTimes(3)
+})
+it('无预览格式自动保存，只有点下载才把文件交给浏览器',async()=>{
+ const {WB,panel}=setup(async()=>result([{...row('zip','[文件]'),fileName:'压缩包.zip'}]))
+ WB.openHarnessFile=vi.fn()
+ const attachment=vi.spyOn(WB.actions,'conversationAttachment')
+  .mockResolvedValueOnce({name:'压缩包.zip',bytes:4,saved:true,supported:false})
+  .mockResolvedValueOnce({name:'压缩包.zip',data:'UEsDBA=='})
+ const createObjectURL=URL.createObjectURL,revokeObjectURL=URL.revokeObjectURL
+ URL.createObjectURL=vi.fn(()=> 'blob:test-download');URL.revokeObjectURL=vi.fn()
+ const click=vi.spyOn(HTMLAnchorElement.prototype,'click').mockImplementation(()=>{})
+ try{
+  fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}))
+  const reader=await screen.findByRole('dialog',{name:'第一会话'})
+  fireEvent.click(await within(reader).findByRole('button',{name:'打开文件 · 压缩包.zip'}))
+  const dialog=await screen.findByRole('dialog',{name:'附件'})
+  await within(dialog).findByText('此格式可下载后打开。')
+  expect(WB.openHarnessFile).not.toHaveBeenCalled()
+  expect(within(dialog).getByText(/已保存到工作台/)).toBeTruthy()
+  expect(click).not.toHaveBeenCalled()
+  vi.useFakeTimers()
+  await act(async()=>fireEvent.click(within(dialog).getByRole('button',{name:'下载文件'})))
+  expect(click).toHaveBeenCalledTimes(1)
+  expect(attachment.mock.calls[1][0]).toMatchObject({messageId:'zip',file:true,download:true})
+ }finally{
+  if(vi.isFakeTimers()){vi.runOnlyPendingTimers();vi.useRealTimers()}
+  URL.createObjectURL=createObjectURL;URL.revokeObjectURL=revokeObjectURL
+ }
 })
 it('未读部分失败保留已加载内容，重试沿用未读游标且不提前查历史',async()=>{
  let n=0;const {panel,reader}=setup(async()=>++n===1?result([row('u2','已读取的未读')],{status:'partial',note:'服务限流，稍后重试',unreadComplete:false,unreadLoaded:1}):result([row('u1','较早未读'),row('u2','已读取的未读')],{nextCursor:2}))

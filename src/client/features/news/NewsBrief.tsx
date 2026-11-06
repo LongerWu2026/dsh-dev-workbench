@@ -1,10 +1,9 @@
 import * as React from 'react'
 import {WB,Btn} from '../../core/runtime.js'
-import {isIgnoredNews} from '../../../shared/news.js'
+import {newsBriefItems,newsBriefOverview} from '../../../shared/news-brief.js'
 export function NewsBrief({data,compact=false}:{data:any;compact?:boolean}){
- const batch=data.radarBrief,overview=cleanNewsCopy(typeof batch?.overview==='string'?batch.overview:''),paragraph=React.useRef<HTMLParagraphElement>(null)
+ const batch=data.radarBrief,sources=batch?newsBriefItems(data,60):[],overview=cleanNewsCopy(newsBriefOverview(data,sources)),paragraph=React.useRef<HTMLParagraphElement>(null)
  const [expanded,setExpanded]=React.useState(false),[hasMore,setHasMore]=React.useState(false),[submitting,setSubmitting]=React.useState(false),[sourcesExpanded,setSourcesExpanded]=React.useState(false)
- const sources=(data.radar||[]).filter((item:any)=>(batch?.ids||[]).includes(item.id)&&!isIgnoredNews(item)&&item.url)
  function openNews(id:string){WB.store.set({radarFocusId:id});WB.go('radar')}
  const previous=batch&&data.lastRadarFetch?.added===0,active=(data.jobs||[]).some((job:any)=>job.kind==='summary'&&['queued','running'].includes(job.status))
  React.useEffect(()=>{setExpanded(false)},[batch?.at,overview])
@@ -13,8 +12,8 @@ export function NewsBrief({data,compact=false}:{data:any;compact?:boolean}){
  async function generate(){if(submitting)return;setSubmitting(true);try{await WB.actions.radarSummarize([]);await WB.actions.reload()}catch{}finally{setSubmitting(false)}}
  return <section className={'wb-news-brief'+(compact?' is-compact':'')} aria-label="AI 技术简报"><style>{CSS}</style>
   <header><div><strong>概览</strong>{batch?.at&&<p>{previous?'暂无新增，保留上次简报 · ':''}{WB.fmt.datetime(batch.at)}</p>}</div><Btn size="sm" onClick={()=>WB.assistant.openHub('system','radar')}>继续问 AI</Btn></header>
-  {overview?<><p ref={paragraph} className={'wb-news-batch-text'+(expanded?' is-expanded':'')}>{overview}</p>{hasMore&&<button type="button" className="wb-link" aria-expanded={expanded} onClick={()=>setExpanded(!expanded)}>{expanded?'收起总结':'展开完整总结'}</button>}</>:<p className="wb-news-brief-empty" role={active?'status':undefined}>{!batch?'暂无可展示的简报。更新资讯后，会为资讯内容生成一份总结和介绍。':!data.settings?.aiExtract?.enabled?'开启 AI 识别后可生成总结。':active||batch.status==='running'?'正在归纳资讯，完成后会自动展示整体总结。':batch.status==='failed'?'总结暂不可用，可重试生成。':'整体总结待生成。'}</p>}
-  {!overview&&batch&&data.settings?.aiExtract?.enabled&&!active&&<Btn size="sm" disabled={submitting} onClick={generate}>{submitting?'提交中…':batch.status==='failed'?'重试总结':'生成总结'}</Btn>}
+  {overview?<><p ref={paragraph} className={'wb-news-batch-text'+(expanded?' is-expanded':'')}>{overview}</p>{hasMore&&<button type="button" className="wb-link" aria-expanded={expanded} onClick={()=>setExpanded(!expanded)}>{expanded?'收起总结':'展开完整总结'}</button>}</>:<p className="wb-news-brief-empty" role={active&&sources.length?'status':undefined}>{!batch?'暂无可展示的简报。更新资讯后，会为资讯内容生成一份总结和介绍。':!sources.length?'最近一批简报暂无符合日期范围的资讯。':!data.settings?.aiExtract?.enabled?'开启 AI 识别后可生成总结。':active||batch.status==='running'?'正在归纳资讯，完成后会自动展示整体总结。':batch.status==='failed'?'总结暂不可用，可重试生成。':'整体总结待生成。'}</p>}
+  {!overview&&sources.length>0&&data.settings?.aiExtract?.enabled&&!active&&<Btn size="sm" disabled={submitting} onClick={generate}>{submitting?'提交中…':batch.status==='failed'?'重试总结':'生成总结'}</Btn>}
   <section className="wb-news-brief-sources" aria-label="相关资讯"><strong>相关资讯</strong>{sources.length?<ul>{(sourcesExpanded?sources:sources.slice(0,3)).map((item:any)=><li key={item.id}><button type="button" className="wb-news-source-link" aria-label={'查看资讯：'+item.title} title={item.title} onClick={()=>openNews(item.id)}>{item.title}</button><span className="wb-news-source-origin">{item.source}</span></li>)}</ul>:<p>暂无可展示的来源。</p>}{sources.length>3&&<button type="button" className="wb-link" aria-expanded={sourcesExpanded} onClick={()=>setSourcesExpanded(!sourcesExpanded)}>{sourcesExpanded?'收起资讯':'查看剩余资讯（'+(sources.length-3)+'）'}</button>}{batch?.error&&<p className="wb-news-brief-error">{cleanNewsCopy(batch.error)}</p>}</section>
  </section>
 }

@@ -7,7 +7,7 @@ import { HOST_META, arch, asString, fileSizeOf, hostNowIso, platform, workbenchS
 import { buildEnvironment, invalidateEnvironmentCache } from '../integrations/environment.js'
 import { runUnifiedSearch } from '../search/unified-search.js'
 import { buildGithubSnapshot } from '../integrations/github.js'
-import { applyMigration, buildMigrationPackage } from '../storage/migration.js'
+import { applyMigration, buildMigrationArchive, buildMigrationPackage } from '../storage/migration.js'
 import { automationDue, runAutomationTick } from '../automation/scheduler.js'
 
 /** system-service: shared Remote and Agent business use cases. */
@@ -144,6 +144,10 @@ export const systemService = {
     },
 
     /** TODO 21：导出迁移包（一致性快照 + 校验；凭据/原生会话不入包）。 */
+    async exportMigrationArchive(): Promise<any> {
+        return buildMigrationArchive();
+    },
+
     async exportMigration(): Promise<any> {
         return buildMigrationPackage(false);
     },

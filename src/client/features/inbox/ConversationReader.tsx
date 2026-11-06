@@ -1,4 +1,5 @@
 import * as React from 'react'
+import {openConversationAttachment} from './ConversationAttachment.js'
 import {useKnowledgeCapture} from '../../components/KnowledgeCapture.js'
 import {Badge,Btn,Modal,Spinner,WB} from '../../core/runtime.js'
 import {messageSentTime} from '../../../shared/message-display.js'
@@ -88,7 +89,15 @@ export function ConversationReader({conversation,accountId,onClose}:{conversatio
     {index===firstUnreadIndex&&<div className="wb-conversation-divider is-unread" role="separator">以下为打开时的未读消息</div>}
     <article className={'wb-conversation-message'+(message.own?' is-own':'')} data-message-id={message.id} aria-label={(message.unread?'未读消息：':'之前的消息：')+message.sender}>
      <header>{selecting&&<input type="checkbox" aria-label={"选择消息："+message.id} checked={selectedIds.includes(message.id)} onChange={e=>setSelectedIds(ids=>e.target.checked?[...ids,message.id]:ids.filter(id=>id!==message.id))}/>}<strong>{message.sender}</strong><time>{messageSentTime({locator:{sentAt:message.at}})}</time>{message.own&&<Badge tone="idle">本人</Badge>}</header>
-     <p>{message.text||'[非文本消息]'}</p>
+     {(!message.imageCount||message.text&&!/^\s*\[(?:图片|image)\]\s*$/i.test(message.text))&&<p>{message.text||'[非文本消息]'}</p>}
+     {!!message.fileName&&<Btn size="sm" onClick={()=>void openConversationAttachment({
+      accountId,groupId:conversation.groupId,viewId:result.viewId,messageId:message.id,file:true,name:message.fileName,
+     })}>打开文件 · {message.fileName}</Btn>}
+     {!!message.imageCount&&<div className="wb-row wb-row--wrap" style={{marginTop:6}}>
+      {Array.from({length:message.imageCount},(_,imageIndex)=><Btn key={imageIndex} size="sm" onClick={()=>void openConversationAttachment({
+       accountId,groupId:conversation.groupId,viewId:result.viewId,messageId:message.id,imageIndex,name:'云之家图片',
+      })}>{message.imageCount===1?'查看图片':`查看图片 ${imageIndex+1}`}</Btn>)}
+     </div>}
     </article>
    </React.Fragment>)}
    {error&&<p role="alert">{error}</p>}
