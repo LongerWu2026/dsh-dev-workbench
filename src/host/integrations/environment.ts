@@ -175,7 +175,8 @@ async function buildEnvironment(ctx?: any, request?: any): Promise<any> {
     const state = loadWorkbenchState();
     const selected = request?.projectId ? ensureArray(state.projects).find((p:any)=>p.id===request.projectId) : null;
     if (request?.projectId && !selected?.repoPath) throw new Error('请选择已配置目录的项目');
-    const key = selected ? selected.id + ':' + selected.repoPath : 'all';
+    const repositoryOnly = request?.scope === 'repository';
+    const key = (repositoryOnly ? 'repository:' : 'environment:') + (selected ? selected.id + ':' + selected.repoPath : 'all');
     if (!request?.force && environmentCache.key === key && environmentCache.value && Date.now() - environmentCache.at < ENVIRONMENT_TTL_MS) {
         return environmentCache.value;
     }
@@ -202,10 +203,10 @@ async function buildEnvironment(ctx?: any, request?: any): Promise<any> {
         projectId: selected?.id || null,
         cwd: defaultDir,
         git: repositories,
-        docker: await readDockerState(ctx),
-        ports: await readListeningPorts(ctx),
-        processes: await readTopProcesses(ctx),
-        note: '全部为只读探测：git status/log、docker ps、lsof -i、ps aux，不写仓库、不启动容器、不结束进程。',
+        docker: repositoryOnly ? null : await readDockerState(ctx),
+        ports: repositoryOnly ? null : await readListeningPorts(ctx),
+        processes: repositoryOnly ? null : await readTopProcesses(ctx),
+        note: repositoryOnly ? '仓库只读状态：git status/log。' : '全部为只读探测：git status/log、docker ps、lsof -i、ps aux，不写仓库、不启动容器、不结束进程。',
     };
     environmentCache = { key, at: Date.now(), value: value };
     return value;

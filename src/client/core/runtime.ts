@@ -574,6 +574,9 @@ const wbActions: any = {
     },
     analysisRetry(entryId?: string): any { return settle(wbRpc('workbench/analysisRetry', {entryId}), '已加入重试队列') },
     analysisCancel(entryId?: string): any { return settle(wbRpc('workbench/analysisCancel', {entryId}), '已取消分析') },
+    setAnalysisDismissed(entryId: string, dismissed: boolean): any {
+        return settle(wbRpc('workbench/setAnalysisDismissed', {entryId, dismissed}), dismissed?'已标为无需处理':'已恢复待确认');
+    },
     analysisStatus(): any {
         return wbRpc('workbench/analysisStatus', {});
     },

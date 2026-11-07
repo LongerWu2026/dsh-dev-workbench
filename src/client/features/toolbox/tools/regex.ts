@@ -1,3 +1,4 @@
+import {toolScrollableTable} from '../shared-controls.js'
 import { Btn, Field, Input, T, Textarea, h } from '../../../core/runtime.js'
 import { toolCopyButton, toolErrorBlock, toolMonoStyle, toolOutputBlock } from '../shared-controls.js'
 
@@ -72,7 +73,7 @@ function toolRegexPane(props?: any): any {
         return '#' + (index + 1) + ' @' + match.index + ' ' + JSON.stringify(match.text) + groups;
     })
         .join('\n');
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '模式' }, h(Input, {
+    return h('div', { className: 'wb-stack wb-tool-regex', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '模式' }, h(Input, {
         value: value.pattern || '',
         spellCheck: false,
         style: { fontFamily: T.font.mono, fontSize: 12 },
@@ -104,7 +105,7 @@ function toolRegexPane(props?: any): any {
         onClick: run,
         children: '匹配',
     }), h('div', { className: 'wb-spacer' }), h(toolCopyButton, { text: copyText })), h(toolErrorBlock, { text: value.error }), matches.length
-        ? h('div', { className: 'wb-stack', style: { gap: 6 } }, h('div', { className: 'wb-tiny wb-muted' }, '共 ' + matches.length + ' 处匹配'), h('table', { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '#'), h('th', null, '位置'), h('th', null, '匹配'), h('th', null, '捕获组'))), h('tbody', null, matches.map(function (match?: any, index?: any): any {
+        ? h('div', { className: 'wb-stack', style: { gap: 6 } }, h('div', { className: 'wb-tiny wb-muted' }, '共 ' + matches.length + ' 处匹配'), h(toolScrollableTable, { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '#'), h('th', null, '位置'), h('th', null, '匹配'), h('th', null, '捕获组'))), h('tbody', null, matches.map(function (match?: any, index?: any): any {
             const groups = match.groups.length
                 ? match.groups
                     .map(function (group?: any, groupIndex?: any): any {

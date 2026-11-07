@@ -11,7 +11,7 @@ function setup(){
   if(method.endsWith('/httpDebug'))return {status:200,headers:{'content-type':'application/json'},text:'{"ok":true}',durationMs:12}
   if(method.endsWith('/mcpConnect'))return {connectionId:'fixture-connection',tools:[{name:'echo',description:'测试工具',inputSchema:{type:'object',properties:{text:{type:'string'}}}}],version:'2025-11-25',durationMs:1}
   if(method.endsWith('/mcpCall'))return {result:{content:[{type:'text',text:'测试返回'}]},durationMs:2}
-  if(method.endsWith('/projectRuntime'))return {cwd:'/synthetic/project',commands:[{id:'dev',name:'pnpm run dev',argv:['pnpm','run','dev']}],runs:[],platform:'darwin'}
+  if(method.endsWith('/projectFiles'))return {entries:[],total:0}
   return {status:'ok'}
  })
  return {WB,calls}
@@ -20,7 +20,7 @@ describe('研发协作与联网工具的职责边界',()=>{
  it('离线工具不请求宿主；切换HTTP后才显示联网提示，点击后发送所填参数',async()=>{
   const {WB,calls}=setup(),user=userEvent.setup();render(<WB.pages.toolbox/>);await user.click(toolButton(/JSON 格式化/));calls.length=0;expect(calls).toHaveLength(0)
   await user.click(toolButton(/接口调试 HTTP/));expect(calls).toHaveLength(0)
-  expect(screen.getByText('宿主联网调试')).toBeTruthy();expect(screen.queryByText(/本地执行 · 全部计算/)).toBeNull()
+  expect(screen.getByText('联网调试')).toBeTruthy();expect(screen.queryByText(/本地执行 · 全部计算/)).toBeNull()
   await user.type(screen.getByRole('textbox',{name:'接口请求地址'}),'http://localhost:8080/test');await user.selectOptions(screen.getByRole('combobox',{name:'HTTP 方法'}),'POST');await user.type(screen.getByRole('textbox',{name:'接口请求正文'}),'test-body');await user.click(screen.getByRole('button',{name:'发送请求'}))
   await screen.findByLabelText('调试响应');expect(calls.find(c=>c.method.endsWith('/httpDebug')).request).toMatchObject({url:'http://localhost:8080/test',method:'POST',body:'test-body'})
  })
@@ -36,11 +36,11 @@ describe('研发协作与联网工具的职责边界',()=>{
   render(<WB.pages.toolbox/>);await user.click(toolButton(/接口调试 HTTP/));await user.type(screen.getByRole('textbox',{name:'接口请求地址'}),'http://localhost:8080/slow');await user.click(screen.getByRole('button',{name:'发送请求'}));expect(screen.getByRole('button',{name:'请求中…'}).disabled).toBe(true)
   await user.click(screen.getByRole('button',{name:'停止请求'}));expect(calls.some(c=>c.method.endsWith('/debugCancel'))).toBe(true);reject(new Error('请求已停止'));await screen.findByRole('alert')
  })
- it('研发协作显示项目启动与软件联动，启动只提交项目ID与配置ID',async()=>{
+ it('研发协作只浏览项目文件，不再请求启动项、PR或CI',async()=>{
   const {WB,calls}=setup(),user=userEvent.setup();WB.store.set({data:{projects:[{id:'fixture',name:'测试项目',repoPath:'/synthetic/project'}]}});WB.actions.environment=async()=>({git:[],docker:{status:'ok',containers:[]}});WB.actions.github=async()=>({status:'unavailable',note:'fixture'})
-  render(<WB.pages.collab/>);const start=await screen.findByRole('button',{name:'启动 pnpm run dev'});expect(calls.some(c=>c.method.endsWith('/projectStart'))).toBe(false)
-  await user.click(screen.getByRole('button',{name:'打开 VS Code'}));await user.click(start)
-  expect(calls.find(c=>c.method.endsWith('/projectOpen')).request).toEqual({projectId:'fixture',target:'vscode'});expect(calls.find(c=>c.method.endsWith('/projectStart')).request).toEqual({projectId:'fixture',commandId:'dev'})
+  const github=WB.actions.github=vi.fn();render(<WB.pages.collab/>);await screen.findByText('当前目录为空')
+  await user.click(screen.getByRole('button',{name:'刷新项目'}));expect(github).not.toHaveBeenCalled();expect(calls.some(c=>/project(Start|Open|Runtime)|github/.test(c.method))).toBe(false)
+  expect(screen.queryByText('项目启动与运行')).toBeNull();expect(screen.queryByText('PR 与 CI')).toBeNull()
   expect(screen.queryByRole('button',{name:'发送请求'})).toBeNull()
  })
 })

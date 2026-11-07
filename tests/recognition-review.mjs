@@ -44,6 +44,15 @@ try{
  check('纠正时服务故障仍提交已成功邻项，问题项待确认，其余账号保留排队不抢跑服务',()=>{assert.equal(calls.length,2);assert.equal(entry(serviceGood).status,'done');assert.equal(entry(serviceBad).status,'awaiting_human');assert.equal(entry(otherAccount).status,'pending');assert.ok(state().modelHealth.analysis);assert.equal(serviceJob.status,'queued');assert.equal(entry(otherAccount).attempts,0)})
  await reset();const uncertain=await add('这个按之前说的处理');onPrompt=p=>result(p,()=>({...action('这个按之前说的处理'),needsReview:true,reviewReason:'未说明具体处理对象'}));await run([uncertain]);
  check('AI主动表示无法判断时只保存待确认，任何任务和回复建议均不执行',()=>{assert.equal(entry(uncertain).status,'awaiting_human');assert.match(entry(uncertain).reviewReason,/处理对象/);assert.equal(state().tasks.length,0);assert.equal(state().replies.length,0);assert.equal(calls.length,1)})
+ const reviewReason=entry(uncertain).reviewReason;
+ await api.setAnalysisDismissed('entry-'+uncertain,true);
+ await api.setAnalysisDismissed('entry-'+uncertain,true);
+ const diskReview=h.normalizeState(JSON.parse(readFileSync(join(home,'storages/dev-workbench/state.json'),'utf8'))).state.analysisQueue.find(row=>row.sourceId===uncertain);
+ const dismissedStatus=await api.analysisStatus();
+ await assert.rejects(api.analyzeConfirm('entry-'+uncertain),/无需处理/);
+ check('人工标为无需处理后退出待确认，状态和原原因可回读，重复点击不重复记账',()=>{assert.equal(dismissedStatus.awaitingHuman,0);assert.equal(diskReview.reviewDismissed,true);assert.equal(diskReview.reviewReason,reviewReason);assert.equal(state().audit.filter(row=>row.event==='analysis.dismiss').length,1);assert.equal(calls.length,1)})
+ await api.setAnalysisDismissed('entry-'+uncertain,false);
+ check('恢复待确认保留原原因，整个过程不运行模型或生成业务结果',()=>{assert.equal(entry(uncertain).status,'awaiting_human');assert.equal(entry(uncertain).reviewReason,reviewReason);assert.equal(entry(uncertain).reviewDismissed,undefined);assert.equal(state().tasks.length,0);assert.equal(state().replies.length,0);assert.equal(calls.length,1)})
  await reset();const quote=await add('引用中的接口报错详情',{sentAt:new Date(Date.now()-3*86400000).toISOString()});
  for(let i=0;i<20;i++)await add('后续无关消息 '+i);
  const quoted=await add('@本人 你看下',{replyToMsgId:quote});await run([quoted]);await api.analysisRetry('entry-'+quoted);await run([quoted]);

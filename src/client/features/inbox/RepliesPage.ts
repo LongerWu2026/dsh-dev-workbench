@@ -47,8 +47,8 @@ function RepliesPage(): any {
     return h('div', { className: 'wb-inbox' },
         h(PageHead, {
             icon: 'reply', title: filter==='all'?'全部回复记录':historyView?'已处理回复':'待回复',
-            sub: filter==='all'?'当前包含待处理及已处理记录；首页仅统计仍需答复的消息。':historyView?'这里是已处理记录；切换到「待处理」可查看仍需答复的消息。':'仅跟踪需要本人答复的消息；普通未读留在消息收件箱，具体事项进入待办。',
-            actions: h(WorkspaceRefresh,{scope:'replies'}),
+            summary: '共 '+replies.length+' 条',
+            primaryAction: h(WorkspaceRefresh,{scope:'replies'}),
         }),
         focusNotice?h('p',{role:'status',className:'wb-tiny wb-muted'},focusNotice):null,
         h('div', { className: 'wb-inbox-filters' },
@@ -63,8 +63,7 @@ function RepliesPage(): any {
                 options: [{ value: 'open', label: '待处理' }, { value: 'all', label: '全部' }].concat(
                     ['待回复', '已确认收到', '已自动回复', '已回复', '不需回复'].map(value => ({ value, label: value }))),
                 onChange: (event: any) => { setFilter(event.target.value); setPage(0); },
-            })),
-            h('span', { className: 'wb-inbox-count' }, '共 ' + replies.length + ' 条')),
+            }))),
         replies.length ? h('div', { className: 'wb-reply-list',ref:listRef },
             replies.slice(pageIndex(page, replies.length) * PAGE_SIZE, (pageIndex(page, replies.length) + 1) * PAGE_SIZE).map(function (reply: any): any {
                 const source = (data.sources || []).find((row: any) => row.id === reply.sourceId);

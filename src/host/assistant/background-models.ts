@@ -34,7 +34,10 @@ const bindings=new WeakMap<object,Binding>(),owners=new WeakMap<object,Map<strin
 /** Called immediately before prompt admission. The immutable route stays fixed for every step of that turn. */
 export async function prepareBackgroundModel(ctx:any,sessionId:string,purpose:string):Promise<string>{
  if(purpose!=='analysis'&&purpose!=='summary')return ''
- const guard=workbenchGenerationGuard(),route=normalizeBackgroundModels(loadWorkbenchState().settings?.backgroundModels)[purpose]
+ const guard=workbenchGenerationGuard(),state=loadWorkbenchState()
+ const thread=Object.values(state.backgroundThreads||{}).find((row:any)=>row.sessionId===sessionId) as any
+ // A branch owns its model for the whole batch, including bounded repair turns.
+ const route=thread?backgroundModel(thread.model):normalizeBackgroundModels(state.settings?.backgroundModels)[purpose]
  const controller=service(ctx,'sessionController')
  if(!route&&!owners.get(ctx)?.has(sessionId))return ''
  if(typeof controller?.resolveAgent!=='function')throw unavailable('当前宿主无法独立设置后台会话模型，已保留任务等待重试')

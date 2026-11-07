@@ -231,7 +231,7 @@ check('包含 workbench_fetch_mentions 工具', tools.some((tool) => tool.name =
 
 // Remote 描述符必须与 service 方法一一对应，否则客户端会打到不存在的端点
 const invocations = (remoteContribution && remoteContribution.invocations) || []
-check('注册了 128 个 Remote 描述符（含待办和待回复原消息图片）', invocations.length === 128 && invocations.some(entry=>entry.method==='sourceImages'), '实际 ' + invocations.length)
+check('注册了 133 个 Remote 描述符，包含原消息图片、人工标记、数据工作区和项目文件', invocations.length === 133 && ['sourceImages','setAnalysisDismissed','dataWorkspaceLoad','dataWorkspaceSave','dataWorkspaceClear','projectFiles'].every(method=>invocations.some(entry=>entry.method===method)), '实际 ' + invocations.length)
 check('回复发送只有显式页面入口，不暴露后台发送工具', invocations.some(entry => entry.method === 'sendReply') && !tools.some(tool => /send_reply|send_message/.test(tool.name)))
 check('本地语义检索及空间管理接口已接线',invocations.some(entry=>entry.method==='knowledgeEngine')&&invocations.some(entry=>entry.method==='knowledgeSpace'))
 check('统一刷新启动及进度读取接口已接线',invocations.some(entry=>entry.method==='refreshStart')&&invocations.some(entry=>entry.method==='refreshStatus'))

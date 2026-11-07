@@ -1,3 +1,4 @@
+import {toolScrollableTable} from '../shared-controls.js'
 import { Badge, Btn, Field, Textarea, WB, h } from '../../../core/runtime.js'
 import { toolCopyButton, toolErrorBlock, toolMonoStyle } from '../shared-controls.js'
 
@@ -240,7 +241,7 @@ function toolCronPane(props?: any): any {
         return row.label + '  ' + row.raw + '  ' + row.description;
     })
         .join('\n');
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6 } }, h(Badge, { tone: 'warn' }, '仅解释，不执行'), h('span', { className: 'wb-tiny wb-muted' }, '标准 5 段（分 时 日 月 周）；秒字段、年份与 L / W / # 扩展不执行')), h(Field, { label: '表达式', hint: '例如 */15 9-18 * * 1-5' }, h(Textarea, {
+    return h('div', { className: 'wb-stack wb-tool-form', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6 } }, h(Badge, { tone: 'warn' }, '仅解释，不执行'), h('span', { className: 'wb-tiny wb-muted' }, '标准 5 段（分 时 日 月 周）；秒字段、年份与 L / W / # 扩展不执行')), h(Field, { label: '表达式', hint: '例如 */15 9-18 * * 1-5' }, h(Textarea, {
         value: value.expr || '',
         rows: 2,
         spellCheck: false,
@@ -256,7 +257,7 @@ function toolCronPane(props?: any): any {
         onClick: run,
         children: '解释',
     }), h('div', { className: 'wb-spacer' }), h(toolCopyButton, { text: copyText })), h(toolErrorBlock, { text: value.error }), rows.length
-        ? h('table', { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '字段'), h('th', null, '表达式'), h('th', null, '解释'))), h('tbody', null, rows.map(function (row?: any): any {
+        ? h(toolScrollableTable, { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '字段'), h('th', null, '表达式'), h('th', null, '解释'))), h('tbody', null, rows.map(function (row?: any): any {
             return h('tr', { key: 'cron-' + row.key }, h('td', null, row.label), h('td', { className: 'wb-mono' }, row.raw), h('td', null, row.description));
         })))
         : null, times.length

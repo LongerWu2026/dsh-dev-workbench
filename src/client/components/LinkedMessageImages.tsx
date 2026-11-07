@@ -92,12 +92,12 @@ export function LinkedMessageImages({source,accountId,allowLookup=false,entryId,
   if(!lookup||!attempt)return
   let active=true
   setBusy(true);setError('')
-  WB.actions.sourceImages({sourceId,mode:'list'}).then((result:{count:number})=>{
+  WB.actions.sourceImages({sourceId,mode:'list',...(entryId===undefined?{}:{entryId})}).then((result:{count:number})=>{
    if(active)setFound(result.count)
   }).catch((failure:unknown)=>{if(active)setError(imageError(failure,'无法读取原消息图片'))})
    .finally(()=>{if(active)setBusy(false)})
   return()=>{active=false}
- },[lookup,attempt,sourceId,accountId])
+ },[lookup,attempt,sourceId,accountId,entryId])
  if(!eligible||(!lookup&&!count)||known===0)return null
  return <div className="wb-stack" aria-label="原消息图片" style={{gap:8}}>
   {count===null||count===undefined?<div className="wb-stack" style={{gap:4}}>

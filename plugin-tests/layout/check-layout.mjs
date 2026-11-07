@@ -18,6 +18,23 @@ try{
   await page.setViewportSize({width,height:600});await page.evaluate(t=>document.documentElement.className=t,theme)
   for(const section of ['dashboard','tasks','replies','radar','knowledge','web-ai','search','agents','toolbox','collab','settings']){
    await page.evaluate(p=>window.WB.go(p),section);await page.locator('.wb-page').first().waitFor();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r))))
+   if(section==='agents')await page.locator('.wb-dev-workspace').waitFor()
+   const toolbar=page.locator('.wb-page-head').first()
+   if(await toolbar.count()){
+    const title=await toolbar.locator('h1').boundingBox();if(!title||title.width>1||title.height>1)throw Error(`${section}: 重复页面标题仍占据空间`)
+    if(width>=800){
+     const alignment=await toolbar.evaluate(el=>{const context=el.querySelector('.wb-page-context'),actions=el.querySelector('.wb-ph-actions');if(!context?.checkVisibility()||!actions?.checkVisibility())return 0;const a=context.getBoundingClientRect(),b=actions.getBoundingClientRect();return Math.abs(a.top+a.height/2-b.top-b.height/2)})
+     if(alignment>2)throw Error(`${section}: 工具栏左右未在同一水平线上，偏移 ${alignment}px`)
+    }
+    for(const disclosure of ['.wb-page-more']){
+     const details=toolbar.locator(disclosure);if(!await details.count())continue
+     await details.locator('summary').click()
+     const popover=await details.locator('.wb-page-popover').boundingBox()
+     if(!popover||popover.x<0||popover.x+popover.width>width+2)throw Error(`${section}: ${disclosure} 超出窗口`)
+     await details.locator('summary').press('Escape');if(await details.evaluate(el=>el.open))throw Error(`${section}: Escape 未收起工具栏浮层`)
+    }
+    if(theme==='light'&&[1280,800,360].includes(width)&&['dashboard','tasks','replies','toolbox','agents','collab','knowledge','radar','settings'].includes(section))await page.screenshot({path:resolve(out,`toolbar-${section}-${width}.png`)})
+   }
    const metrics=await page.evaluate(()=>{const root=document.querySelector('.wb-root'),scroll=document.querySelector('.wb-scroll'),nav=document.querySelector('.wb-topnav');const clippedControls=[...root.querySelectorAll('button,input,select,textarea')].filter(el=>{if(!el.checkVisibility())return false;const header=el.closest('.wb-task-table thead');if(header&&header.getBoundingClientRect().width<=1&&getComputedStyle(header).clipPath!=='none')return false;const r=el.getBoundingClientRect();for(let parent=el.parentElement;parent&&parent!==root;parent=parent.parentElement){const p=parent.getBoundingClientRect();if(['auto','scroll'].includes(getComputedStyle(parent).overflowX)&&parent.scrollWidth>parent.clientWidth+2)break;if(['hidden','clip'].includes(getComputedStyle(parent).overflowX)&&(r.left<p.left-2||r.right>p.right+2))return true}return false}).map(el=>(el.getAttribute('aria-label')||el.textContent||el.tagName).slice(0,60));return{pageOverflow:scroll.scrollWidth-scroll.clientWidth,rootOverflow:root.scrollWidth-root.clientWidth,navOverflow:nav.scrollWidth-nav.clientWidth,visibleHeight:scroll.clientHeight,clippedControls}})
    report.push({width,theme,section,...metrics});if(metrics.pageOverflow>2||metrics.rootOverflow>2||metrics.navOverflow>2||metrics.clippedControls.length)await page.screenshot({path:resolve(out,`${width}-${theme}-${section}.png`)})
   }
@@ -67,8 +84,8 @@ try{
    await openTools(page);await page.getByRole('button',{name}).click();await page.evaluate(()=>new Promise(r=>requestAnimationFrame(r)))
    const metrics=await page.locator('.wb-scroll').evaluate(el=>({pageOverflow:el.scrollWidth-el.clientWidth,visibleHeight:el.clientHeight}));report.push({section,width,...metrics});await page.screenshot({path:resolve(out,`${section}-${width}.png`)})
   }
-  await page.evaluate(()=>window.WB.go('collab'));await page.getByRole('button',{name:'启动 pnpm run dev'}).waitFor();await page.getByRole('button',{name:'启动配置',exact:true}).click()
-  const metrics=await page.locator('.wb-scroll').evaluate(el=>({pageOverflow:el.scrollWidth-el.clientWidth,visibleHeight:el.clientHeight}));report.push({section:'project-launcher',width,...metrics});await page.screenshot({path:resolve(out,`project-launcher-${width}.png`)})
+  await page.evaluate(()=>window.WB.go('collab'));await page.getByRole('button',{name:'复制交接摘要'}).waitFor()
+  const metrics=await page.locator('.wb-scroll').evaluate(el=>({pageOverflow:el.scrollWidth-el.clientWidth,visibleHeight:el.clientHeight}));report.push({section:'project-files',width,...metrics});await page.screenshot({path:resolve(out,`project-files-${width}.png`)})
  }
  await page.setViewportSize({width:360,height:480});await page.evaluate(()=>window.WB.go('tasks'))
  await page.getByRole('region',{name:'任务列表，可横向滚动查看操作'}).waitFor()
@@ -98,7 +115,7 @@ try{
  await page.evaluate(()=>{document.documentElement.style.zoom='1';window.WB.store.set({assistantOpen:false,assistantRefs:[],taskForm:null})})
 
  for(const width of [800,360]){
-  await page.setViewportSize({width,height:480});await page.evaluate(()=>{window.WB.store.set({assistantOpen:false,assistantRefs:[]});window.WB.go('knowledge')});await page.getByRole('textbox',{name:'知识检索测试问题'}).fill('接口发布验收');await page.getByRole('button',{name:'测试检索'}).click();if(!await page.locator('section[aria-label="知识检索依据"] details').evaluate(el=>el.open))await page.getByText(/知识依据 · 1 个片段/).click();await page.getByRole('button',{name:/合成知识验收规范.*行1/}).click();await page.getByRole('dialog').waitFor();const metrics=await page.getByRole('dialog').evaluate(el=>({overflow:el.scrollWidth-el.clientWidth,visibleHeight:el.getBoundingClientRect().height}));report.push({section:'knowledge-source-modal',width,...metrics});await page.screenshot({path:resolve(out,`knowledge-source-${width}.png`)});await page.getByRole('button',{name:'关闭',exact:true}).click()
+  await page.setViewportSize({width,height:480});await page.evaluate(()=>{window.WB.store.set({assistantOpen:false,assistantRefs:[]});window.WB.go('knowledge')});await page.getByLabel('知识更多操作').click();await page.getByRole('button',{name:'检索验证',exact:true}).click();await page.getByRole('textbox',{name:'知识检索测试问题'}).fill('接口发布验收');await page.getByRole('button',{name:'测试检索'}).click();if(!await page.locator('section[aria-label="知识检索依据"] details').evaluate(el=>el.open))await page.getByText(/知识依据 · 1 个片段/).click();await page.getByRole('button',{name:/合成知识验收规范.*行1/}).click();await page.getByRole('dialog').waitFor();const metrics=await page.getByRole('dialog').evaluate(el=>({overflow:el.scrollWidth-el.clientWidth,visibleHeight:el.getBoundingClientRect().height}));report.push({section:'knowledge-source-modal',width,...metrics});await page.screenshot({path:resolve(out,`knowledge-source-${width}.png`)});await page.getByRole('button',{name:'关闭',exact:true}).click()
  }
  await page.evaluate(()=>{const data=window.WB.store.get().data;window.WB.store.set({data:{...data,revision:100,tasks:[{id:'layout-message-task',title:'消息时间布局验收',status:'ready',priority:'high',sourceRefId:'layout-source',sourceRefs:[],tags:[]}],replies:[{id:'layout-reply',sourceId:'layout-source',msgId:'original-message',stage:'待回复',contact:'BOT-6a50…',taskIds:[]}],sources:[{id:'layout-source',provider:'yunzhijia',sender:'BOT-6a50…',excerpt:'原消息'+('original-text-'.repeat(30)),locator:{groupId:'session-'.repeat(10),groupName:'研发协作讨论群'.repeat(8),senderId:'BOT-6a501234abcd',msgId:'original-message',accountId:'fixture:me',sentAt:'2026-08-24T01:32:03.405Z'}}]}});window.WB.go('replies')})
  for(const width of [800,360])for(const section of ['dashboard','replies']){

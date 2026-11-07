@@ -123,7 +123,27 @@ export const analysisService = {
             if (reason) throw new Error(reason)
             if (row.status === 'running') throw new Error('条目正在运行，请先取消或等待结束')
             Object.assign(row,{status:'pending',attempts:0,nextRetryAt:null,lastError:null,leaseUntil:null,reviewKind:null,reviewReason:null,rejectedEvidence:[]})
+            delete row.reviewDismissed
             auditEntry(state,'analysis.retry','人工重试消息 '+row.sourceId)
+            return state
+        })
+    },
+
+    async setAnalysisDismissed(entryId?: string, dismissed?: boolean): Promise<any> {
+        if (typeof dismissed !== 'boolean') throw new Error('请选择有效的人工标记')
+        return mutateWorkbenchState((state: any) => {
+            const row = state.analysisQueue.find((entry: any) => entry.id === entryId)
+            if (!row) throw new Error('找不到分析条目')
+            const nextStatus = dismissed ? 'cancelled' : 'awaiting_human'
+            if (row.status === nextStatus && Boolean(row.reviewDismissed) === dismissed) return state
+            const canChange = dismissed ? row.status === 'awaiting_human' : row.status === 'cancelled' && row.reviewDismissed === true
+            if (!canChange) throw new Error('这条消息的识别状态已变化，请刷新后重试')
+            const reason = messageSkipReason(state,state.sources.find((source:any)=>source.id===row.sourceId),row)
+            if (reason) throw new Error(reason)
+            Object.assign(row, {status: nextStatus, leaseUntil: null, nextRetryAt: null})
+            if (dismissed) row.reviewDismissed = true
+            else delete row.reviewDismissed
+            auditEntry(state,dismissed?'analysis.dismiss':'analysis.restore',(dismissed?'人工标记无需处理 ':'人工恢复待确认 ')+row.sourceId)
             return state
         })
     },

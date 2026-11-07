@@ -91,7 +91,7 @@ function toolJsonPane(props?: any): any {
             props.patch({ output: '', error: toolJsonError(error, text) });
         }
     }
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '输入 JSON' }, h(Textarea, {
+    return h('div', { className: 'wb-stack wb-tool-pair', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '输入 JSON' }, h(Textarea, {
         value: value.input || '',
         rows: 12,
         spellCheck: false,
@@ -122,6 +122,6 @@ function toolJsonPane(props?: any): any {
             run('validate');
         },
         children: '校验',
-    }), h(Btn,{size:'sm',onClick:()=>run('tree')},'树形查看'),h(Btn,{size:'sm',onClick:()=>run('types')},'转 TypeScript'), h('div', { className: 'wb-spacer' }), h(toolCopyButton, { text: value.output })), h(toolErrorBlock, { text: value.error }), value.tree?h(JsonTree,{value:value.treeValue}):h(toolOutputBlock, { text: value.output, placeholder: '格式化 / 压缩 / 校验的结果' }))));
+    }), h(Btn,{size:'sm',onClick:()=>run('tree')},'树形查看'),h(Btn,{size:'sm',onClick:()=>run('types')},'转 TypeScript'), h('div', { className: 'wb-spacer' }), h(toolCopyButton, { text: value.output })), h(toolErrorBlock, { text: value.error }), value.tree?h('div',{className:'wb-tool-tree',tabIndex:0,role:'region','aria-label':'JSON 树，可滚动'},h(JsonTree,{value:value.treeValue})):h(toolOutputBlock, { text: value.output, placeholder: '格式化 / 压缩 / 校验的结果' }))));
 }
 export { toolJsonError, toolJsonSummary, toolJsonPane }

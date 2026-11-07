@@ -41,7 +41,7 @@ function toolTimestampPane(props?: any): any {
         const result = parseText(String(stamp));
         props.patch({ input: String(stamp), output: result.output, error: result.error });
     }
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, {
+    return h('div', { className: 'wb-stack wb-tool-pair', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, {
         label: '输入时间戳或日期',
         hint: '纯数字按位数自动识别秒 / 毫秒；其它按 Date 解析',
     }, h(Textarea, {

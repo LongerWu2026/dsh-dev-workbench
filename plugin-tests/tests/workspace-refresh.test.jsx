@@ -26,6 +26,15 @@ it('首页去掉独立提取操作栏，全局刷新入口有清晰范围',async
  expect(screen.getAllByRole('button',{name:'刷新全部内容'}).every(b=>b.disabled)).toBe(true)
  expect(f.WB.store.get().toasts.some(t=>t.kind==='ok')).toBe(false)
 })
+it.each([['summary','资讯摘要','workbench/radarSummaryStart','radar'],['analysis','消息识别','workbench/analysisStart','replies']])('设置显示%s的真实暂停原因，手工恢复调用现有后台入口',async(purpose,title,endpoint,page)=>{
+ const f=setup('settings');await flush();const data=f.WB.store.get().data
+ await act(async()=>f.WB.store.set({data:{...data,modelHealth:{[purpose]:{blocked:true,note:'历史 reasoning_content 不兼容'}}}}))
+ expect(screen.getByText(new RegExp(title+'待恢复'))).toBeTruthy()
+ fireEvent.click(screen.getByRole('button',{name:'恢复'+title}));await flush()
+ expect(f.calls.filter(call=>call.endpoint===endpoint)).toHaveLength(1)
+ expect(f.WB.store.get().page).toBe(page)
+ expect(f.calls.some(call=>call.endpoint==='workbench/refreshStart')).toBe(false)
+})
 it.each([['dashboard','刷新待办','tasks'],['dashboard','刷新待回复','replies'],['tasks','刷新待办','tasks'],['replies','刷新待回复','replies']])('%s的%s调用局部刷新',async(page,label,scope)=>{
  const f=setup(page);await flush();fireEvent.click(screen.getByRole('button',{name:label,exact:true}));await flush();expect(f.calls.find(c=>c.endpoint==='workbench/refreshStart').args.request.scope).toBe(scope)
 })

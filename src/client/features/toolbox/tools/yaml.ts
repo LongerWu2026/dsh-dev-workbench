@@ -47,7 +47,7 @@ function toolYamlPane(props?: any): any {
             props.patch({ output: '', error: 'JSON 解析失败：' + String((error && error.message) || error) });
         }
     }
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '输入（YAML 或 JSON）' }, h(Textarea, {
+    return h('div', { className: 'wb-stack wb-tool-pair', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '输入（YAML 或 JSON）' }, h(Textarea, {
         value: value.input || '',
         style: toolMonoStyle(210),
         placeholder: 'name: dev-workbench\ntags:\n  - offline\n  - browser',

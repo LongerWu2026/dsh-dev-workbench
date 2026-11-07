@@ -1,3 +1,4 @@
+import {toolScrollableTable} from '../shared-controls.js'
 import { Badge, Chip, Empty, Input, h } from '../../../core/runtime.js'
 import { toolCopyButton } from '../shared-controls.js'
 
@@ -39,7 +40,7 @@ function toolShellPane(props?: any): any {
             return true;
         return row.cmd.toLowerCase().indexOf(query) >= 0 || row.desc.indexOf(query) >= 0;
     });
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6 } }, groups.map(function (group?: any): any {
+    return h('div', { className: 'wb-stack wb-tool-catalog', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6 } }, groups.map(function (group?: any): any {
         return h(Chip, {
             key: group,
             active: active === group,
@@ -57,7 +58,7 @@ function toolShellPane(props?: any): any {
         },
     })), rows.length === 0
         ? h(Empty, { icon: 'search', title: '没有匹配的命令', hint: '换个关键词，或切到「全部」。' })
-        : h('table', { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '分类'), h('th', null, '命令'), h('th', null, '说明'), h('th', null, ''))), h('tbody', null, rows.map(function (row?: any, index?: any): any {
+        : h(toolScrollableTable, { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '分类'), h('th', null, '命令'), h('th', null, '说明'), h('th', null, ''))), h('tbody', null, rows.map(function (row?: any, index?: any): any {
             return h('tr', { key: row.cmd + index }, h('td', null, h(Badge, { tone: 'idle' }, row.group)), h('td', { className: 'wb-mono', style: { overflowWrap: 'anywhere' } }, row.cmd), h('td', { className: 'wb-muted' }, row.desc), h('td', null, h(toolCopyButton, { text: row.cmd, label: '复制', title: '复制命令' })));
         }))), h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.7 } }, '离线速查表：不会执行任何命令。带 <占位> 的请替换为实际容器名/PID/URL。'));
 }

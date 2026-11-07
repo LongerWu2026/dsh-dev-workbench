@@ -1,3 +1,4 @@
+import {toolScrollableTable} from '../shared-controls.js'
 import { Btn, Field, Segmented, Textarea, h } from '../../../core/runtime.js'
 import { toolCopyButton, toolErrorBlock, toolMonoStyle, toolOutputBlock } from '../shared-controls.js'
 
@@ -59,7 +60,7 @@ function toolUrlPane(props?: any): any {
         }
     }
     const rows = Array.isArray(value.rows) ? value.rows : [];
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8 } }, h(Segmented, {
+    return h('div', { className: 'wb-stack wb-tool-pair', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8 } }, h(Segmented, {
         items: [
             { value: 'encode', label: 'encodeURIComponent' },
             { value: 'decode', label: 'decodeURIComponent' },
@@ -84,7 +85,7 @@ function toolUrlPane(props?: any): any {
         onClick: run,
         children: value.mode === 'decode' ? '解码' : '编码',
     }), h('div', { className: 'wb-spacer' }), h(toolCopyButton, { text: value.output })), h(toolErrorBlock, { text: value.error }), h(toolOutputBlock, { text: value.output, placeholder: '编码 / 解码结果' }))), rows.length
-        ? h('div', null, h('div', { className: 'wb-tiny wb-muted', style: { marginBottom: 4 } }, 'Query 参数拆解'), h('table', { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '参数'), h('th', null, '解码后的值'), h('th', null, '原始片段'))), h('tbody', null, rows.map(function (row?: any): any {
+        ? h('div', {className:'wb-tool-extra'}, h('div', { className: 'wb-tiny wb-muted', style: { marginBottom: 4 } }, 'Query 参数拆解'), h(toolScrollableTable, { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '参数'), h('th', null, '解码后的值'), h('th', null, '原始片段'))), h('tbody', null, rows.map(function (row?: any): any {
             return h('tr', { key: 'query-' + row.index }, h('td', { className: 'wb-mono' }, row.key), h('td', { className: 'wb-mono', style: { overflowWrap: 'anywhere' } }, row.value), h('td', { className: 'wb-mono wb-muted' }, row.raw));
         }))))
         : null);

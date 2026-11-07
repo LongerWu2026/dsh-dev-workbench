@@ -77,7 +77,7 @@ function toolBase64Pane(props?: any): any {
             props.patch({ output: '', error: String((error && error.message) || error) });
         }
     }
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8 } }, h(Segmented, {
+    return h('div', { className: 'wb-stack wb-tool-pair', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8 } }, h(Segmented, {
         items: [
             { value: 'encode', label: '编码' },
             { value: 'decode', label: '解码' },

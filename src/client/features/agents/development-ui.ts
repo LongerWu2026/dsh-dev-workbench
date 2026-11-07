@@ -33,6 +33,10 @@ export const developmentCSS=`
 .wb-development-page > .wb-dev { height:100%;margin:0; }
 .wb-dev { --dev-border:var(--dsw-alias-border-l1);display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden; }
 .wb-dev-header { flex:none; }
+.wb-dev > .wb-page-head { flex:none; }
+.wb-dev-workspace { min-width:0; }
+.wb-dev-workspace strong { max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px; }
+.wb-dev-connection { max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
 .wb-dev-notices { flex:0 1 auto;min-height:0;max-height:28%;overflow:auto; }
 .wb-dev-native-runs { flex:0 1 auto;min-height:0;max-height:28%;overflow:auto; }
 .wb-workitems { display:flex;flex-direction:column;flex:1;min-height:0;overflow:hidden; }

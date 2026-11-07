@@ -40,6 +40,7 @@ try{
   await check(width,theme,'review',height);if(!await page.getByText('已保留原历史会话 · 1 次兼容接续').evaluate(el=>el.parentElement.open))await page.getByText('已保留原历史会话 · 1 次兼容接续').click();await page.getByRole('button',{name:'打开原历史会话 1'}).waitFor();await check(width,theme,'compatibility-history',height)
   await page.getByRole('button',{name:/BUG-2026-046131/}).waitFor();await page.evaluate(()=>document.querySelector('.wb-scroll').scrollTop=0);await check(width,theme,'choose-issue',height)
   await page.getByRole('button',{name:/BUG-2026-046131/}).click();await check(width,theme,'item-details',height);await page.getByRole('button',{name:'下一步：选择工程'}).click();await page.getByRole('textbox',{name:'工程测试命令'}).waitFor();await check(width,theme,'choose-project',height);await page.getByRole('button',{name:'返回工作项',exact:true}).click()
+  if(!await page.getByRole('button',{name:'研发设置',exact:true}).isVisible())await page.locator('.wb-page-more > summary').click()
   await page.getByRole('button',{name:'研发设置',exact:true}).click();await check(width,theme,'settings',height);await page.getByText('从 Linky 发起任务（CLI 适配）',{exact:true}).click();await check(width,theme,'advanced',height);await page.getByRole('button',{name:'取消',exact:true}).click()
  }
  // Long execution content scrolls inside the right pane without moving the outer page.

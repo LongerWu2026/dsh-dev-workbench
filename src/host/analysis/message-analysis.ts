@@ -273,7 +273,7 @@ async function waitStructuredReply(ctx:any,controller:any,session:any,prompt:any
     options={...options,checkActive:options?.checkActive||workflowGuard(options?.hubRunId)};options.checkActive?.();
     const key=options?.backgroundKey || session?.workbenchThreadKey || (purpose ? backgroundSessionKey(purpose) : null);
     const current=key && loadWorkbenchState().backgroundThreads?.[key];
-    if(purpose && current && current.sessionId!==session.id)session=await ensureBackgroundSession(ctx,purpose,current.accountId || undefined);
+    if(purpose && current && current.sessionId!==session.id)session=await ensureBackgroundSession(ctx,purpose,current.accountId || undefined,current.model || null);
     try {return await waitStructuredReplyOnce(ctx,controller,session,prompt,timeout,purpose,options)}
     catch(error){
         if(!purpose || !isReasoningHistoryFailure(error))throw error;
@@ -576,6 +576,7 @@ async function executeAnalysisBatch(ctx:any,request:any,begin:()=>Promise<void>)
 async function confirmAnalysis(ctx?: any, entryId?: any): Promise<any> {
     const result=await mutateWorkbenchState(function (state?: any): any {
         const entry = ensureArray(state.analysisQueue).find(function (row?: any): any { return row.id === entryId; });
+        if (entry?.reviewDismissed) throw new Error('本条已标为无需处理，请先恢复待确认');
         if (!entry || !entry.analysis)
             throw new Error('找不到已分析条目');
         if(entry.reviewKind==='recognition')throw new Error('本条尚无可靠识别结果，请补充上下文后重试本条，不能直接确认建档');

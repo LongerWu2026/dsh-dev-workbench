@@ -192,9 +192,57 @@ export async function checkReadQuery(sql:string,kind:string){
     if(/\b(?:sleep|benchmark|load_file|pg_sleep|pg_read_file|pg_write_file|dblink_exec|lo_export|lo_import|set_config|pg_advisory_lock)\s*\(/i.test(sql))throw Error('不支持该函数');
     return sql.trim().replace(/;\s*$/,'');
 }
-function rowResult(rows:any[],columns:string[],extra:any={}){
-    let bytes=0,truncated=rows.length>ROWS;const kept=[];
-    for(const row of rows.slice(0,ROWS)){const next:any={};for(const [key,value] of Object.entries(row)){let cell:any=Buffer.isBuffer(value)?'[binary] '+value.subarray(0,8192).toString('hex'):typeof value==='bigint'?String(value):value;const raw=typeof cell==='string'?cell:JSON.stringify(cell);if(raw?.length>16000){cell=raw.slice(0,16000)+'…[单元格已截断]';truncated=true}next[key]=cell}const size=Buffer.byteLength(JSON.stringify(next));if(bytes+size>BYTES){truncated=true;break}bytes+=size;kept.push(next)}return {rows:kept,columns,truncated,...extra};
+function sqlPage(request:any){
+    const pageSize=request.pageSize===undefined?ROWS:request.pageSize,offset=request.offset===undefined?0:request.offset;
+    if(![50,100,200].includes(pageSize))throw Error('每页行数仅支持50、100或200');
+    if(!Number.isSafeInteger(offset)||offset<0)throw Error('查询偏移必须为非负安全整数');
+    return {pageSize,offset};
+}
+// MySQL has no text-protocol cursor. Stream the exact original SELECT so ORDER BY,
+// CTE/UNION and existing LIMIT/OFFSET retain their database-defined semantics.
+// Closing an unfinished read-only transaction rolls it back; never reuse that socket.
+async function mysqlPage(e:Entry,client:any,sql:string,pageSize:number,offset:number){
+    await client.query('SET SESSION MAX_EXECUTION_TIME=30000');
+    await client.query('START TRANSACTION READ ONLY');
+    try{return await new Promise<{rows:any[];columns:string[]}>((resolve,reject)=>{
+        const rows:any[]=[],signal=e.abort!.signal;let columns:string[]=[],skipped=0,settled=false,timeout:ReturnType<typeof setTimeout>|undefined;
+        const finish=(error?:Error,early=false)=>{
+            if(settled)return;settled=true;clearTimeout(timeout);signal.removeEventListener('abort',abort);
+            if(early)void closeEntry(e);
+            if(error)reject(error);else resolve({rows,columns});
+        };
+        const abort=()=>finish(Error('操作已停止'));
+        const stream=client.connection.query(sql);
+        stream.on('fields',(fields:any[])=>{columns=fields.map(field=>field.name)});
+        stream.on('result',(row:any)=>{
+            if(settled)return;
+            if(skipped<offset){skipped++;return}
+            rows.push(row);if(rows.length>pageSize)finish(undefined,true);
+        });
+        stream.on('error',(error:Error)=>finish(error,true));
+        stream.on('end',()=>finish());
+        timeout=setTimeout(()=>finish(Error('查询超时；未自动重试，请核对服务端状态'),true),30000);
+        signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();
+    })}finally{if(e.client===client)await client.query('ROLLBACK').catch(()=>{})}
+}
+function rowResult(rows:any[],columns:string[],extra:any){
+    const truncation={rowLimit:rows.length>extra.pageSize,byteLimit:false,cellLimit:false};
+    let bytes=0;const kept=[];
+    for(const row of rows.slice(0,extra.pageSize)){
+        const next:any={};let cellLimit=false;
+        for(const [key,value] of Object.entries(row)){
+            let cell:any=Buffer.isBuffer(value)?'[binary] '+value.subarray(0,8192).toString('hex'):typeof value==='bigint'?String(value):value;
+            const raw=typeof cell==='string'?cell:JSON.stringify(cell);
+            if(raw?.length>16000){cell=raw.slice(0,16000)+'…[单元格已截断]';cellLimit=true}
+            next[key]=cell;
+        }
+        const size=Buffer.byteLength(JSON.stringify(next));
+        if(bytes+size>BYTES){if(!kept.length)throw Error('单行结果超过1MB，请减少查询字段或缩小单元格');truncation.byteLimit=true;break}
+        bytes+=size;kept.push(next);truncation.cellLimit ||= cellLimit;
+    }
+    const hasMore=rows.length>kept.length,nextOffset=hasMore?extra.offset+kept.length:null;
+    if(nextOffset!==null&&!Number.isSafeInteger(nextOffset))throw Error('后续分页偏移超过安全整数范围');
+    return {rows:kept,columns,truncated:Object.values(truncation).some(Boolean),truncation,...extra,hasMore,nextOffset};
 }
 export async function executeDataQuery(request:any){return operation(request.id,async e=>{
     const start=Date.now(),kind=e.config.kind,client=await connect(e);
@@ -212,13 +260,25 @@ export async function executeDataQuery(request:any){return operation(request.id,
         else if(arity[command]===args.length)result=await client.call(command,...args.slice(1));else throw Error('仅支持GET/TYPE/TTL/PTTL/EXISTS/STRLEN/LLEN/HLEN/SCARD/ZCARD/LRANGE/HSCAN/SSCAN/ZSCAN只读命令');
         if(Buffer.byteLength(JSON.stringify(result))>BYTES)throw Error('Redis结果超过1MB，请缩小范围');return {kind,result,durationMs:Date.now()-start};
     }
-    const sql=await checkReadQuery(String(request.query||''),kind);let rows:any[]=[],columns:string[]=[];
+    const page=sqlPage(request),sql=await checkReadQuery(String(request.query||''),kind);let rows:any[]=[],columns:string[]=[];
     if(kind==='postgres'){
-        const {default:Cursor}=await import('pg-cursor');await client.query('BEGIN READ ONLY');try{await client.query("SET LOCAL statement_timeout = '30s'");const cursor=client.query(new Cursor(sql));rows=await cursor.read(ROWS+1);columns=cursor._result?.fields?.map((f:any)=>f.name)||Object.keys(rows[0]||{});await cursor.close()}finally{await client.query('ROLLBACK').catch(()=>{})}
-    }else{
-        await client.query('START TRANSACTION READ ONLY');try{const response=await client.query('SELECT /*+ MAX_EXECUTION_TIME(30000) */ * FROM ('+sql+'\n) AS wb_read_query LIMIT '+(ROWS+1));rows=response[0];columns=response[1].map((f:any)=>f.name)}finally{await client.query('ROLLBACK').catch(()=>{})}
-    }
-    if(e.cancelled)throw Error('操作已停止');return rowResult(rows,columns,{kind,durationMs:Date.now()-start});
+        const {default:Cursor}=await import('pg-cursor');await client.query('BEGIN READ ONLY');
+        try{
+            await client.query("SET LOCAL statement_timeout = '30s'");
+            const cursor=client.query(new Cursor(sql));
+            try{
+                let remaining=page.offset;
+                while(remaining>0){
+                    if(e.cancelled)throw Error('操作已停止');
+                    const count=Math.min(ROWS,remaining),skipped=await cursor.read(count);
+                    remaining-=skipped.length;if(skipped.length<count)break;
+                }
+                rows=remaining>0?[]:await cursor.read(page.pageSize+1);
+                columns=cursor._result?.fields?.map((f:any)=>f.name)||Object.keys(rows[0]||{});
+            }finally{await cursor.close()}
+        }finally{await client.query('ROLLBACK').catch(()=>{})}
+    }else({rows,columns}=await mysqlPage(e,client,sql,page.pageSize,page.offset));
+    if(e.cancelled)throw Error('操作已停止');return rowResult(rows,columns,{kind,...page,queriedAt:new Date().toISOString(),durationMs:Date.now()-start});
 })}
 export async function readDataGenerationContext(
     request:any,

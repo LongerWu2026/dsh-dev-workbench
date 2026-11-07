@@ -38,6 +38,10 @@ try{
  await api.environment({projectId:p1});check('环境快照仅命中同一项目缓存',()=>assert.equal(requests.length,initial))
  const env2=await api.environment({projectId:p2});check('环境探测按已登记项目ID切换目录，不混用旧缓存',()=>{assert.equal(env2.git.length,1);assert.equal(env2.git[0].dir,second)})
  const beforeForce=requests.length;await api.environment({projectId:p2,force:true});check('手动刷新绕过环境缓存',()=>assert.ok(requests.length>beforeForce))
+ const beforeRepository=requests.length,repository=await api.environment({projectId:p2,scope:'repository'})
+ check('研发协作仅读取Git，不再启动端口、Docker或进程探测',()=>{assert.ok(requests.length>beforeRepository);assert.ok(requests.slice(beforeRepository).every(spec=>basename(spec.argv[0])==='git'));assert.equal(repository.docker,null);assert.equal(repository.ports,null);assert.equal(repository.processes,null)})
+ const cachedRepository=requests.length;await api.environment({projectId:p2,scope:'repository'});check('仓库模式独立命中缓存',()=>assert.equal(requests.length,cachedRepository))
+ await api.environment({projectId:p2});check('仓库模式与完整环境模式不混用缓存',()=>assert.ok(requests.slice(cachedRepository).some(spec=>basename(spec.argv[0])==='docker')))
  await assert.rejects(api.environment({projectId:'unknown',dir:first}),/已配置/);await assert.rejects(api.github({projectId:'unknown'}),/已配置/)
  check('未知项目不回退到其他仓库或接受请求中的目录',()=>{})
  await api.github({projectId:p1});const firstGh=requests.filter(s=>basename(s.argv[0])==='gh').length

@@ -1,3 +1,4 @@
+import {toolScrollableTable} from '../shared-controls.js'
 import { toolBase64UrlDecode } from './encoding.js'
 import { Btn, Field, T, Textarea, WB, h } from '../../../core/runtime.js'
 import { toolCopyButton, toolErrorBlock, toolMonoStyle, toolOutputBlock } from '../shared-controls.js'
@@ -96,7 +97,7 @@ function toolJwtPane(props?: any): any {
     }
     const claims = Array.isArray(value.claims) ? value.claims : [];
     const parsed = !!(value.headerText || value.payloadText);
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', {
+    return h('div', { className: 'wb-stack wb-tool-form', style: { gap: 12 } }, h('div', {
         className: 'wb-tiny',
         style: {
             padding: '7px 9px',
@@ -127,7 +128,7 @@ function toolJwtPane(props?: any): any {
     })), h(toolErrorBlock, { text: value.error }), parsed
         ? h('div', { className: 'wb-split' }, h('div', { className: 'wb-stack', style: { gap: 4 } }, h('div', { className: 'wb-tiny wb-muted' }, 'Header'), h('pre', { className: 'wb-code', style: { maxHeight: 220 } }, value.headerText || '')), h('div', { className: 'wb-stack', style: { gap: 4 } }, h('div', { className: 'wb-tiny wb-muted' }, 'Payload'), h('pre', { className: 'wb-code', style: { maxHeight: 220 } }, value.payloadText || '')))
         : h(toolOutputBlock, { text: '', placeholder: '解析后显示 header 与 payload' }), claims.length
-        ? h('table', { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '声明'), h('th', null, '值'))), h('tbody', null, claims.map(function (claim?: any): any {
+        ? h(toolScrollableTable, { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '声明'), h('th', null, '值'))), h('tbody', null, claims.map(function (claim?: any): any {
             return h('tr', { key: 'claim-' + claim.name }, h('td', { className: 'wb-mono' }, claim.name), h('td', { style: { overflowWrap: 'anywhere' } }, claim.value));
         })))
         : null, value.ran && parsed

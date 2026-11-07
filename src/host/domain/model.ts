@@ -1,7 +1,7 @@
 import {normalizeAttachments} from '../storage/conversation-attachments.js'
 import {normalizeBusyReply} from '../../shared/busy-reply.js'
 import {normalizeContentRef,normalizeKnowledgeCapture} from '../../shared/knowledge-capture.js'
-import {normalizeBackgroundModels} from '../../shared/background-models.js'
+import {backgroundModel,normalizeBackgroundModels} from '../../shared/background-models.js'
 import {normalizeConversationReadMarks} from '../../shared/conversation-read.js'
 import {normalizeMessageImageIds,normalizeMessageSelection,normalizeMessageInbox} from '../../shared/message-intake.js'
 import {normalizeLaunchCommands} from '../../shared/developer-tools.js'
@@ -157,6 +157,7 @@ function normalizeAnalysisQueue(raw?: any): any {
             leaseUntil: asIso(row.leaseUntil),
             status: row.status==='awaiting_human' && row.reviewReason && !analysis && row.reviewKind!=='recognition' ? 'historical' : ANALYSIS_STATUSES.indexOf(row.status) >= 0 ? row.status : 'pending',
             ...(row.reviewKind==='recognition'?{reviewKind:'recognition',rejectedEvidence:ensureArray(row.rejectedEvidence).slice(0,3).map((value:any)=>asString(value,400)).filter(Boolean)}:{}),
+            ...(row.status==='cancelled'&&row.reviewDismissed===true?{reviewDismissed:true}:{}),
             attempts: Number(row.attempts) || 0,
             lastError: asString(row.lastError, 200) || null,
             reviewReason: asString(row.reviewReason, 200) || null,
@@ -642,7 +643,7 @@ function normalizeState(raw?: any): any {
         retrievalTraces: ensureArray(raw.retrievalTraces).slice(-100),
         webAI: normalizeWebAI(raw.webAI,true),
         jobs: ensureArray(raw.jobs).map((row:any)=>Object.assign({},row,row.input?.observed&&['running','queued'].includes(row.status)?{status:'failed',error:'上次同步执行中断；后续处理由原调度继续',nextRetryAt:null}:{status:row.status === 'running' ? 'queued' : row.status},Array.isArray(row.steps)?{steps:row.steps.map((step:any)=>({...step,status:step.status==='running'?'pending':step.status}))}:{})),
-        backgroundThreads: Object.fromEntries(Object.entries(raw.backgroundThreads || {}).filter(([key,value]:any)=>/^[a-f0-9]{16,64}$/.test(key) && value && typeof value==='object' && typeof value.sessionId==='string').map(([key,value]:any)=>[key,{purpose:value.purpose==='summary'?'summary':'analysis',accountId:typeof value.accountId==='string'?value.accountId:null,sessionId:asString(value.sessionId,120),protocol:asString(value.protocol,80)||null,rulesHash:asString(value.rulesHash,64)||null,compactionSeq:Number(value.compactionSeq)||0,reasoningRecoveries:Object.fromEntries(Object.entries(value.reasoningRecoveries || {}).filter(([model,guard]:any)=>/^[a-f0-9]{64}$/.test(model)&&guard&&typeof guard.sessionId==='string').map(([model,guard]:any)=>[model,{sessionId:asString(guard.sessionId,120),firstSuccessSeq:Number.isSafeInteger(guard.firstSuccessSeq)&&guard.firstSuccessSeq>=0?guard.firstSuccessSeq:null}])),seen:Object.fromEntries(Object.entries(value.seen || {}).filter(([id,hash])=>typeof hash==='string').slice(-256))}])),
+        backgroundThreads: Object.fromEntries(Object.entries(raw.backgroundThreads || {}).filter(([key,value]:any)=>/^[a-f0-9]{16,64}$/.test(key) && value && typeof value==='object' && typeof value.sessionId==='string').map(([key,value]:any)=>[key,{purpose:value.purpose==='summary'?'summary':'analysis',accountId:typeof value.accountId==='string'?value.accountId:null,sessionId:asString(value.sessionId,120),model:backgroundModel(value.model),protocol:asString(value.protocol,80)||null,rulesHash:asString(value.rulesHash,64)||null,compactionSeq:Number(value.compactionSeq)||0,reasoningRecoveries:Object.fromEntries(Object.entries(value.reasoningRecoveries || {}).filter(([model,guard]:any)=>/^[a-f0-9]{64}$/.test(model)&&guard&&typeof guard.sessionId==='string').map(([model,guard]:any)=>[model,{sessionId:asString(guard.sessionId,120),firstSuccessSeq:Number.isSafeInteger(guard.firstSuccessSeq)&&guard.firstSuccessSeq>=0?guard.firstSuccessSeq:null}])),seen:Object.fromEntries(Object.entries(value.seen || {}).filter(([id,hash])=>typeof hash==='string').slice(-256))}])),
         backgroundSessionIds: [...new Set(ensureArray(raw.backgroundSessionIds).filter((id:any)=>typeof id==='string' && id.length<=120))],
         lastAnalysisBatch: raw.lastAnalysisBatch && typeof raw.lastAnalysisBatch==='object' ? {at:asIso(raw.lastAnalysisBatch.at),status:asString(raw.lastAnalysisBatch.status,40),...Object.fromEntries(['durationMs','processed','failures','inputCount','modelCalls','promptChars','ruleInitializations','contextMessages','batches','reusedBatches'].map(key=>[key,Math.max(0,Number(raw.lastAnalysisBatch[key])||0)]))} : null,
         modelHealth: Object.fromEntries(['analysis','summary'].filter(key=>raw.modelHealth?.[key] && typeof raw.modelHealth[key]==='object').map(key=>{const h=raw.modelHealth[key];return[key,{failures:Math.max(0,Math.min(3,Number(h.failures)||0)),blocked:h.blocked===true,retryAt:asIso(h.retryAt),note:asString(h.note,200),detail:asString(h.detail,200),at:asIso(h.at)}]})),

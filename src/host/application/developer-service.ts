@@ -3,7 +3,9 @@ import {projectRuntimeState,startProject,stopProject,openProject,disposeProjectR
 import {sendHttpRequest,cancelDebugRequest,connectMcp,callMcp,disconnectMcp,disposeDebugClients} from '../integrations/debug-client.js'
 import {disposeYunzhijiaSetup} from '../integrations/yunzhijia-setup.js'
 import {disposeDevelopment} from './development-service.js'
+import {projectFiles} from '../integrations/project-files.js'
 export const developerService={
+    async projectFiles(request:any){return projectFiles(request)},
     async projectRuntime(request:any){return projectRuntimeState(request?.projectId,request?.force===true)},
     async projectStart(request:any){return startProject(request?.projectId,request?.commandId)},
     async projectStop(request:any){return stopProject(request?.runId)},

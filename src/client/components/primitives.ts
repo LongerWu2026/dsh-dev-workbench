@@ -151,7 +151,45 @@ function Panel(props?: any): any {
 }
 
 function PageHead(props?: any): any {
-    return h('header', { className: 'wb-page-head' }, props.icon ? h('div', { className: 'wb-ph-icon' }, h(Icon, { name: props.icon, size: 18 })) : null, h('div', { style: { minWidth: 0 } }, h('h1', null, props.title), props.sub ? h('p', null, props.sub) : null), props.actions ? h('div', { className: 'wb-ph-actions' }, props.actions) : null);
+    const root=React.useRef<HTMLElement>(null);
+    const [narrow,setNarrow]=React.useState(false);
+    React.useLayoutEffect(()=>{
+        const element=root.current;
+        if(!element)return;
+        const measure=()=>{if(element.clientWidth>0)setNarrow(element.clientWidth<640)};
+        measure();
+        const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(measure);
+        observer?.observe(element);
+        return()=>observer?.disconnect();
+    },[]);
+    React.useEffect(()=>{
+        const close=(event:Event)=>{
+            for(const details of root.current?.querySelectorAll<HTMLDetailsElement>('.wb-page-disclosure[open]')||[]){
+                if(!details.contains(event.target as Node))details.open=false;
+            }
+        };
+        document.addEventListener('pointerdown',close);
+        return()=>document.removeEventListener('pointerdown',close);
+    },[]);
+    function escape(event:React.KeyboardEvent<HTMLDetailsElement>){
+        if(event.key!=='Escape')return;
+        event.stopPropagation();
+        event.currentTarget.open=false;
+        event.currentTarget.querySelector('summary')?.focus();
+    }
+    return h('header',{ref:root,className:'wb-page-head','aria-label':props.title+'工具栏'},
+        h('h1',{className:'wb-page-title-a11y'},props.title),
+        h('div',{className:'wb-page-context'},
+            props.showTitle?h('strong',{className:'wb-page-context-title'},props.title):null,
+            props.controls,
+            props.summary?h('span',{className:'wb-page-summary'},props.summary):null),
+        (props.primaryAction||props.actions)?h('div',{className:'wb-ph-actions'},
+            props.primaryAction,
+            props.actions?(narrow?h('details',{className:'wb-page-disclosure wb-page-more',onKeyDown:escape},
+                h('summary',null,'更多操作',h(Icon,{name:'chevronDown',size:12})),
+                h('div',{className:'wb-page-popover wb-page-action-menu',onClick:(event:React.MouseEvent<HTMLDivElement>)=>{
+                    if((event.target as HTMLElement).closest('button,a'))event.currentTarget.closest('details')!.open=false;
+                }},props.actions)):props.actions):null):null);
 }
 
 function Stat(props?: any): any {

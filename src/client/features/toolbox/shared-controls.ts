@@ -6,7 +6,7 @@ function toolErrorBlock(props?: any): any {
         return null;
     return h('div', {
         role: 'alert',
-        className: 'wb-tiny',
+        className: 'wb-tiny wb-tool-error',
         style: {
             display: 'flex',
             alignItems: 'flex-start',
@@ -25,10 +25,10 @@ function toolErrorBlock(props?: any): any {
 
 function toolOutputBlock(props?: any): any {
     if (props.text) {
-        return h('pre', { className: 'wb-code', style: props.style }, String(props.text));
+        return h('pre', { className: 'wb-code wb-tool-output', tabIndex:0, role:'region', 'aria-label':'工具输出，可滚动', style: props.style }, String(props.text));
     }
     return h('div', {
-        className: 'wb-tiny wb-muted',
+        className: 'wb-tiny wb-muted wb-tool-output',
         style: {
             padding: '10px 12px',
             border: '1px dashed ' + T.border1,
@@ -76,4 +76,8 @@ function toolLocalNote(): any {
 function toolMonoStyle(minHeight?: any): any {
     return { minHeight: minHeight || 150, fontFamily: T.font.mono, fontSize: 11.5 };
 }
-export { toolErrorBlock, toolOutputBlock, toolCopyButton, toolLocalNote, toolMonoStyle }
+function toolScrollableTable(props:any):any {
+    const {children,...tableProps}=props;
+    return h('div',{className:'wb-tool-table-scroll',role:'region','aria-label':'工具结果表格，可滚动',tabIndex:0},h('table',tableProps,children));
+}
+export { toolScrollableTable, toolErrorBlock, toolOutputBlock, toolCopyButton, toolLocalNote, toolMonoStyle }

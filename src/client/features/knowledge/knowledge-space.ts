@@ -1,10 +1,9 @@
 import {KnowledgeDocumentButton} from '../../components/KnowledgeCapture.js'
-import {KnowledgeEnginePanel} from './KnowledgeEnginePanel.js'
+import {KnowledgeToolbar} from './KnowledgeToolbar.js'
 import {KnowledgeScopeFields} from '../../components/KnowledgeScopeFields.js'
-import {RetrievalPanel} from './RetrievalPanel.js'
 import {KNOWLEDGE_REVIEW_OPTIONS,knowledgeSpaceOf,knowledgeSpaces,PERSONAL_KNOWLEDGE_SPACE} from '../../../shared/knowledge.js'
 import {Pagination,PAGE_SIZE,pageIndex} from '../../components/Pagination.js'
-import { Badge, Btn, Chip, Empty, Field, Icon, IconBtn, Input, Modal, PageHead, Select, T, Tabs, Textarea, WB, h } from '../../core/runtime.js'
+import { Badge, Btn, Chip, Empty, Field, Icon, IconBtn, Input, Modal, Select, T, Tabs, Textarea, WB, h } from '../../core/runtime.js'
 import * as React from 'react'
 /* ============================================================================
  * dev-workbench page: Knowledge space
@@ -101,8 +100,9 @@ function knowPage(): any {
     });
     const [confirmItem, setConfirmItem] = React.useState<any>(null);
     const [editItem, setEditItem] = React.useState<any>(null);
-    const counts: any = { all: items.length, bookmark: 0, note: 0, snippet: 0 };
+    const counts: any = { all: items.length, bookmark: 0, note: 0, snippet: 0, pending: 0 };
     items.forEach(function (item?: any): any {
+        if(item&&item.reviewState!=='confirmed'&&item.reviewState!=='obsolete')counts.pending++;
         if (item && counts[item.kind] !== undefined)
             counts[item.kind] += 1;
     });
@@ -111,12 +111,13 @@ function knowPage(): any {
         { value: 'bookmark', label: knowKindMeta.bookmark.label, count: counts.bookmark },
         { value: 'note', label: knowKindMeta.note.label, count: counts.note },
         { value: 'snippet', label: knowKindMeta.snippet.label, count: counts.snippet },
+        { value: 'pending', label: '待审核', count: counts.pending },
     ];
     const needle = query.trim().toLowerCase();
     const filtered = knowSortItems(items.filter(function (item?: any): any {
         if (!item)
             return false;
-        if (kind !== 'all' && item.kind !== kind)
+        if (kind==='pending'?(item.reviewState==='confirmed'||item.reviewState==='obsolete'):kind!=='all'&&item.kind!==kind)
             return false;
         if (tag && !(Array.isArray(item.tags) && item.tags.indexOf(tag) >= 0))
             return false;
@@ -216,16 +217,6 @@ function knowPage(): any {
             /* Host error is already toasted by settle() */
         });
     }
-    const summary = items.length
-        ? '共 ' +
-            items.length +
-            ' 条 · 收藏 ' +
-            counts.bookmark +
-            ' · 笔记 ' +
-            counts.note +
-            ' · 片段 ' +
-            counts.snippet
-        : '知识审核、自动检索与原文引用；收藏、笔记和排障经验可供聊天及办公流程复用。';
     const typeOptions = Object.keys(knowKindMeta).map(function (key?: any): any {
         return { value: key, label: knowKindMeta[key].label };
     });
@@ -415,27 +406,19 @@ function knowPage(): any {
             }),
         ],
     }, h('p', { className: 'wb-tiny', style: { margin: 0, lineHeight: 1.7 } }, '删除后不可恢复：Host 会把这条记录从持久化数据中移除。'));
-    return h('div', { className: 'wb-page' }, h(PageHead, {
-        icon: 'book',
-        title: '知识空间',
-        sub: summary,
-        actions: h('div',{className:'wb-row wb-row--wrap'},h(Btn,{icon:'messages',onClick:()=>{WB.store.set({assistantHubKnowledgeScope:scope});WB.assistant.openHub('system','knowledge')},children:'知识库对话'}),h(Btn, {
-            kind: 'primary',
-            icon: 'plus',
-            onClick: openCreate,
-            children: '新建条目',
-        })),
-    }),h(KnowledgeEnginePanel,{data,scope}),h(RetrievalPanel,{data,scope,onScope:setScope,onReview:openEdit}), h('div', {
-        className: 'wb-row wb-row--wrap',
-        style: { gap: 10, marginBottom: 12, alignItems: 'center' },
+    return h('div', { className: 'wb-page' }, h(KnowledgeToolbar, {
+        data,scope,onScope:setScope,onCreate:openCreate,
+        onImported:()=>{setKind('pending');setQuery('');setTag('')},
+    }), h('div', { className:'wb-knowledge-filters'
     },h(Tabs, {
         items: tabs,
         value: kind,
         onChange: function (next?: any): any {
             setKind(next);
         },
-    }), h('div', { className: 'wb-spacer' }), h('div', { className: 'wb-row', style: { gap: 4 } }, h(Input, {
+    }), h('div', { className:'wb-knowledge-search' }, h(Input, {
         value: query,
+        'aria-label':'搜索知识资料',
         placeholder: '搜索标题、正文、标签或链接',
         style: { width: 260 },
         onChange: function (event?: any): any {
@@ -475,7 +458,7 @@ function knowPage(): any {
         ? h('div', {
             style: {
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))',
                 gap: 14,
             },
         }, cards)

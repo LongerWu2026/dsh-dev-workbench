@@ -51,4 +51,10 @@ for(const scope of ['tasks','replies']){
  check('资讯抓取和摘要单独跟踪，失效页面反馈不遮盖消息状态',()=>{assert.equal(c.status().steps.news.status,'partial');assert.equal(c.status().steps.summary.jobId,'summary');assert.equal(c.status().steps.summary.status,'running')})
  f.state.jobs.find(j=>j.id==='summary').status='failed';assert.equal(c.status().steps.summary.status,'failed')
 }
+{
+ const f=fixture();f.state.modelHealth={summary:{blocked:true,note:'历史 reasoning_content 不兼容，摘要待恢复'}}
+ f.dependencies.news=async()=>({...f.state,lastRadarFetch:{status:'ok',added:0}})
+ const c=f.coordinator();c.start('all');await flush();f.state.jobs[0].status='completed'
+ check('没有新资讯时仍展示摘要暂停，刷新不能隐藏旧兼容故障或假报全部完成',()=>{assert.equal(c.status().steps.summary.status,'paused');assert.match(c.status().steps.summary.note,/reasoning_content/);assert.equal(c.status().status,'partial');assert.equal(f.state.modelHealth.summary.blocked,true)})
+}
 console.log('workspace refresh: '+count+' checks passed (isolated fixtures; no cloud or model requests)')

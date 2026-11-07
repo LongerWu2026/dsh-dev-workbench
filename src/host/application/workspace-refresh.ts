@@ -22,6 +22,7 @@ export function createWorkspaceRefresh(deps:Dependencies) {
    reportStep('news',snapshot.lastRadarFetch,'资讯')
    const summary=(snapshot.jobs||[]).slice().reverse().find((job:any)=>job.kind==='summary'&&(!before.has(job.id)||['queued','running'].includes(job.status)))
    if(summary)step('summary','queued','资讯摘要已排队',summary.id)
+   else if(snapshot.modelHealth?.summary)step('summary','paused',snapshot.modelHealth.summary.note||'资讯摘要已暂停，请在后台任务模型设置中恢复')
   }catch(error){step('news','failed',String((error as Error).message||error).slice(0,200))}
  }
  const collectMessages=async()=>{

@@ -265,7 +265,7 @@ function toolSqlPane(props?: any): any {
             props.patch({ output: '', error: String((error && error.message) || error) });
         }
     }
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '输入 SQL', hint: '只做文本美化，不连接数据库、不执行语句' }, h(Textarea, {
+    return h('div', { className: 'wb-stack wb-tool-pair', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '输入 SQL', hint: '只做文本美化，不连接数据库、不执行语句' }, h(Textarea, {
         value: value.input || '',
         rows: 12,
         spellCheck: false,

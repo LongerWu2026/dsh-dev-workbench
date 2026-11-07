@@ -52,6 +52,10 @@ const React = {
       },
     ]
   },
+  useReducer(reducer, initial) {
+    const [state, setState] = React.useState(initial)
+    return [state, action => setState(previous => reducer(previous, action))]
+  },
   useEffect(fn, deps) {
     // 依赖数组语义与真实 React 一致：相同则跳过，不再每趟渲染重复执行
     // （否则依赖 [props.open] 的效果会不停的触发，比如命令面板 setQuery('')）
@@ -760,12 +764,12 @@ const pageSpecs = [
   ['今日简报', 'dashboard', ['AI 动态', '抓取资讯', '复制今日简报', '待回复', '张三', '查看全部回复']],
   ['AI 助手', 'assistant', ['最近会话', '新建对话']],
   ['任务中心', 'tasks', ['看板', '规则候选（备用）', '提取候选', '筛选']],
-  ['待回复', 'replies', ['仅跟踪需要本人答复的消息']],
+  ['待回复', 'replies', ['待回复', '刷新', '待处理']],
   ['资讯', 'radar', ['概览', '获取资讯', '资讯对话']],
   ['搜索结果', 'search', ['工作内容', '互联网', '消息']],
   ['研发任务', 'agents', ['研发设置', '刷新任务']],
-  ['开发工具箱', 'toolbox', ['工具箱不读取 Host 数据']],
-  ['研发协作', 'collab', ['添加仓库目录', '端口占用', 'PR 与 CI', '进程 CPU / 内存']],
+  ['开发工具箱', 'toolbox', ['数据连接', 'SQL 查询', '查询结果']],
+  ['研发协作', 'collab', ['添加仓库目录', 'Git 仓库', '刷新项目']],
   ['知识空间', 'knowledge', ['知识空间']],
   ['连接与设置', 'settings', ['仓库目录决定', '资讯源', '自动化', '补充 @ 关键词', '立即备份']],
   ['多 AI 对话', 'web-ai', ['新对话', '登录 / 官网', '启用 ChatGPT']],
@@ -835,12 +839,12 @@ for (const [title, id, expected] of pageSpecs) {
   const toolboxIndex = nav.findIndex((item) => treeText(item.children).trim() === '开发工具箱')
   if (nav[toolboxIndex]) nav[toolboxIndex].props.onClick()
   let tree = await renderTree('工具箱·入口')
-  const toolPicker=findButtons(tree,[]).find(item=>item.text.trim()==='切换工具');if(toolPicker){toolPicker.onClick();tree=await renderTree('工具箱·展开工具菜单')}
+  const toolPicker=findButtons(tree,[]).find(item=>item.label==='切换工具');if(toolPicker){toolPicker.onClick();tree=await renderTree('工具箱·展开工具菜单')}
   const allTools = findButtons(tree, []).find(item => item.text.trim() === '全部');if(allTools){allTools.onClick();tree=await renderTree('工具箱·全部')}
   const tools = ['YAML', 'CSV', 'Markdown', 'HTTP 状态码', 'Shell / Docker', 'SQL 计划解读']
   for (const toolName of tools) {
     let button = findButtons(tree, []).find((item) => item.text.indexOf(toolName) >= 0)
-    if(!button){const picker=findButtons(tree,[]).find(item=>item.text.trim()==='切换工具');if(picker){picker.onClick();tree=await renderTree('工具箱·切换菜单');button=findButtons(tree,[]).find(item=>item.text.indexOf(toolName)>=0)}}
+    if(!button){const picker=findButtons(tree,[]).find(item=>item.label==='切换工具');if(picker){picker.onClick();tree=await renderTree('工具箱·切换菜单');button=findButtons(tree,[]).find(item=>item.text.indexOf(toolName)>=0)}}
     if (!button) {
       problems.push('工具箱里找不到工具：' + toolName)
       continue

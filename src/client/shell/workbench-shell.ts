@@ -14,6 +14,7 @@ import { mdInline, mdParse } from '../features/toolbox/tools-extra.js'
 import { TopNavigation, WB_LAYOUT_CSS } from './layout.js'
 import { TaskFormHost } from '../features/tasks/task-form.js'
 import {SearchResultPreview} from '../features/search/SearchResultPreview.js'
+import {ProjectFilePreviewHost,projectFilePreviewActive,PROJECT_FILE_PREVIEW_CSS} from '../features/collaboration/ProjectFilePreview.js'
 /* ============================================================================
  * dev-workbench shell
  *
@@ -38,7 +39,7 @@ WB.PAGE_META = {
     agents: { title: '研发任务', icon: 'agent', hint: 'Linky 工作项、独立工作区、Harness 开发与审查' },
     'web-ai': { title: '多 AI 对话', icon: 'messages', hint: '统一提问、连续追问与多家 AI 回答对比' },
     toolbox: { title: '开发工具箱', icon: 'toolbox', hint: '本地执行、数据不出浏览器的高频工具' },
-    collab: { title: '研发协作', icon: 'git', hint: '项目启动、开发软件联动、运行日志与仓库环境' },
+    collab: { title: '研发协作', icon: 'git', hint: '项目文件、改动审阅与交接摘要' },
     knowledge: { title: '知识空间', icon: 'book', hint: '收藏、笔记与排障记录' },
     settings: { title: '连接与设置', icon: 'settings', hint: '连接器状态、关注主题与数据管理' },
 };
@@ -620,20 +621,21 @@ function WorkbenchApp(): any {
         };
     }, []);
     const page = state.page;
+    const filePreviewOpen=projectFilePreviewActive(state);
     const Page = WB.pages[page];
     React.useEffect(()=>{if(page==='assistant'&&!state.assistantOpen&&!state.taskForm?.open)WB.assistant.open()},[page,state.assistantOpen,state.taskForm?.open]);
     const loading = state.status === 'loading' && !state.data;
     const failed = state.status === 'error' && !state.data;
     const WebAIPage = WB.pages['web-ai'];
     React.useEffect(()=>{if(page==='web-ai')setWebAIVisited(true)},[page]);
-    return h('div', {className:'wb-root'+(page==='web-ai'?' is-web-ai':'')+(page==='agents'?' is-development':'')},
-      h('style',null,WB_CSS+WB_LAYOUT_CSS),
+    return h('div', {className:'wb-root'+(page==='web-ai'?' is-web-ai':'')+(page==='agents'?' is-development':'')+(page==='toolbox'?' is-toolbox':'')},
+      h('style',null,WB_CSS+WB_LAYOUT_CSS+PROJECT_FILE_PREVIEW_CSS),
       h('header',{className:'wb-head'},h(Toolbar,{data:state.data,page}),h(TopNavigation,{page,data:state.data})),
-      h('div',{className:'wb-workarea'+(page==='assistant'?' wb-assistant-page':'')+(state.assistantOpen||state.taskForm&&state.taskForm.presentation!=='modal'&&!state.contextHidden?' is-context-open':'')},
+      h('div',{className:'wb-workarea'+(page==='assistant'?' wb-assistant-page':'')+(filePreviewOpen?' is-file-preview-open':state.assistantOpen||state.taskForm&&state.taskForm.presentation!=='modal'&&!state.contextHidden?' is-context-open':'')},
         h('div',{className:'wb-main'},h('div',{className:'wb-scroll'},
-          page!=='web-ai'&&page!=='assistant'?h('div',{key:'business-page',className:'wb-page'+(page==='agents'?' wb-development-page':'')},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
+          page!=='web-ai'&&page!=='assistant'?h('div',{key:'business-page',className:'wb-page'+(page==='agents'?' wb-development-page':'')+(page==='toolbox'?' wb-toolbox-page':'')},loading?h(LoadingScreen):failed?h(ErrorScreen,{error:state.error,onRetry:()=>WB.actions.reload().catch(()=>{})}):Page?h(Page):h(MissingPage,{page})):null,
           (webAIVisited||page==='web-ai')&&WebAIPage?h('div',{key:'web-ai-surface',className:'wb-page wb-chat-page',hidden:page!=='web-ai'},h(WebAIPage)):null)),
-        h(AssistantHubEntry,{Legacy:AssistantDrawer}),h(TaskFormHost,{embedded:true})),
+        h(AssistantHubEntry,{Legacy:AssistantDrawer}),h(TaskFormHost,{embedded:true}),h(ProjectFilePreviewHost)),
       WB.Palette?h(WB.Palette,{open:state.searchOpen,initialQuery:state.searchInitialQuery,onClose:()=>WB.closeSearch()}):null,h(KnowledgeCaptureHost),h(SearchResultPreview),h(AnalysisMonitor),h(WorkspaceRefreshMonitor),h(Toaster));
 }
 /* -------------------------------------------------------------------- apply */

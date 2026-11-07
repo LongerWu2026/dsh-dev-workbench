@@ -1,3 +1,4 @@
+import {toolScrollableTable} from '../shared-controls.js'
 import { Badge, Chip, Empty, Input, h } from '../../../core/runtime.js'
 
 /* ------------------------------------------------------------ HTTP 状态码 */
@@ -52,7 +53,7 @@ function toolStatusPane(props?: any): any {
             row.title.toLowerCase().indexOf(query.toLowerCase()) >= 0 ||
             row.meaning.indexOf(query) >= 0);
     });
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6 } }, groups.map(function (item?: any): any {
+    return h('div', { className: 'wb-stack wb-tool-catalog', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 6 } }, groups.map(function (item?: any): any {
         return h(Chip, {
             key: item,
             active: group === item,
@@ -70,7 +71,7 @@ function toolStatusPane(props?: any): any {
         },
     })), rows.length === 0
         ? h(Empty, { icon: 'info', title: '没有匹配的状态码', hint: '试试输入 404 或 4xx。' })
-        : h('table', { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '码'), h('th', null, '名称'), h('th', null, '含义'), h('th', null, '常见成因'), h('th', null, '排查方向'))), h('tbody', null, rows.map(function (row?: any): any {
+        : h(toolScrollableTable, { className: 'wb-table' }, h('thead', null, h('tr', null, h('th', null, '码'), h('th', null, '名称'), h('th', null, '含义'), h('th', null, '常见成因'), h('th', null, '排查方向'))), h('tbody', null, rows.map(function (row?: any): any {
             return h('tr', { key: row.code }, h('td', null, h(Badge, { tone: row.group === '2xx' ? 'ok' : row.group === '3xx' ? 'idle' : row.group === '4xx' ? 'warn' : 'err' }, String(row.code))), h('td', { className: 'wb-mono', style: { whiteSpace: 'nowrap' } }, row.title), h('td', null, row.meaning), h('td', { className: 'wb-muted' }, row.cause), h('td', { className: 'wb-muted' }, row.fix));
         }))), h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.7 } }, '内置 ' + httpStatusTable.length + ' 个常见状态码；这里是离线速查表，不发起任何请求。'));
 }

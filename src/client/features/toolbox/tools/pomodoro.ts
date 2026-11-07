@@ -24,23 +24,6 @@ function ToolPomodoro(): any {
     }, [running]);
     const mm = String(Math.floor(left / 60)).padStart(2, '0');
     const ss = String(left % 60).padStart(2, '0');
-    return h('div', { className: 'wb-row', style: { gap: 8, padding: '9px 12px', border: '1px solid ' + T.border1, borderRadius: 10 } }, h(Icon, { name: 'clock', size: 14 }), h('span', { className: 'wb-label', style: { margin: 0 } }, '番茄钟'), h('span', { className: 'wb-mono', style: { fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } }, mm + ':' + ss), h('div', { className: 'wb-spacer' }), h(Btn, {
-        size: 'sm',
-        kind: running ? 'ghost' : 'primary',
-        icon: running ? 'close' : 'play',
-        onClick: function (): any {
-            setRunning(!running);
-        },
-        children: running ? '暂停' : '开始',
-    }), h(Btn, {
-        size: 'sm',
-        kind: 'subtle',
-        icon: 'refresh',
-        onClick: function (): any {
-            setRunning(false);
-            setLeft(FOCUS);
-        },
-        children: '重置',
-    }));
+    return h('div',{className:'wb-pomodoro'},h('div',{className:'wb-row',style:{gap:8}},h(Icon,{name:'clock',size:20}),h('span',{className:'wb-label'},'专注计时')),h('strong',{className:'wb-pomodoro-time'},mm+':'+ss),h('div',{className:'wb-row',style:{gap:8}},h(Btn,{size:'sm',kind:running?'ghost':'primary',icon:running?'close':'play',onClick:()=>setRunning(!running),children:running?'暂停':'开始'}),h(Btn,{size:'sm',kind:'subtle',icon:'refresh',onClick:()=>{setRunning(false);setLeft(FOCUS)},children:'重置'})),h('p',{className:'wb-tiny wb-muted',style:{margin:0}},'切换工具后继续计时'));
 }
 export { ToolPomodoro }

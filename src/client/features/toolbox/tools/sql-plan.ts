@@ -27,7 +27,7 @@ function toolSqlExplainPane(props?: any): any {
             return rule.re.test(plan);
         })
         : [];
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '粘贴 EXPLAIN / 执行计划文本' }, h(Textarea, {
+    return h('div', { className: 'wb-stack wb-tool-pair', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '粘贴 EXPLAIN / 执行计划文本' }, h(Textarea, {
         value: value.input || '',
         style: toolMonoStyle(240),
         placeholder: 'EXPLAIN SELECT ... 的输出，或 PostgreSQL 的 EXPLAIN (ANALYZE, BUFFERS) 结果',

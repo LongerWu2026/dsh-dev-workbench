@@ -118,14 +118,14 @@ function toolMarkdownPane(props?: any): any {
     const headingSize = function (level?: any): any {
         return [22, 19, 17, 15, 14, 13.5][Math.min(5, level - 1)];
     };
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: 'Markdown 输入' }, h(Textarea, {
+    return h('div', { className: 'wb-stack wb-tool-pair', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: 'Markdown 输入' }, h(Textarea, {
         value: value.input || '',
         style: toolMonoStyle(240),
         placeholder: '# 标题\n\n**加粗** 与 `代码`\n\n- 列表项',
         onChange: function (event?: any): any {
             props.patch({ input: event.target.value });
         },
-    })), h(Field, { label: '预览' }, h('div', {
+    })), h(Field, { label: '预览' }, h('div', {className:'wb-tool-preview',tabIndex:0,role:'region','aria-label':'Markdown 预览，可滚动',
         style: {
             minHeight: 240,
             maxHeight: 420,

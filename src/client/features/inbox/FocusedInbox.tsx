@@ -7,6 +7,7 @@ import {conversationReadMark,isConversationRead} from '../../../shared/conversat
 export function FocusedInbox({data,compact=false}:{data:any;compact?:boolean}){
  const inbox=data.messageInbox,account=inbox?.accountId,sources=(data.sources||[]).filter((s:any)=>account&&s.locator?.accountId===account&&s.selection?.policy==='focused-v1'),unread=(inbox?.conversations||[]).filter((c:any)=>c.unreadCount>0&&!isConversationRead(data,c))
  const [selected,setSelected]=React.useState<any>(null)
+ const currentConversation=selected&&(inbox?.conversations||[]).find((row:any)=>row.groupId===selected.groupId)||selected
  React.useEffect(()=>{setSelected(null)},[account])
  const rows=useConversationRows(account,JSON.stringify(unread.map((c:any)=>[c.groupId,c.name,c.unreadCount,conversationReadMark(data,c)])))
  const shownCount=Math.min(unread.length,rows.count),remaining=unread.length-shownCount
@@ -18,7 +19,7 @@ export function FocusedInbox({data,compact=false}:{data:any;compact?:boolean}){
    {rows.rows>3&&<div className="wb-row wb-row--wrap" style={{gap:8}}><span className="wb-tiny wb-muted">已展示 {shownCount} / {unread.length}</span><div className="wb-row wb-row--wrap" style={{gap:6}}>{remaining>0&&<Btn size="sm" onClick={rows.more}>展开更多</Btn>}{rows.rowLimit>3&&<Btn size="sm" onClick={rows.collapse}>收起列表</Btn>}</div></div>}
   </section>}
 
-  {selected&&account&&selected.viewerAccountId===account&&<ConversationReader key={account+":"+selected.groupId} accountId={account} conversation={selected} onClose={()=>setSelected(null)}/>}
+  {selected&&account&&selected.viewerAccountId===account&&<ConversationReader key={account+":"+selected.groupId} accountId={account} conversation={currentConversation} snapshotAt={inbox?.at} onClose={()=>setSelected(null)}/>}
   <ConversationAttachmentHost accountId={account}/>
  </div>
  return compact?<details className="wb-card wb-inbox-summary" open>

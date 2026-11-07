@@ -143,8 +143,7 @@ function SettingsPage(): any {
     return h('div', {className:'wb-settings-page'}, h('style',null,SETTINGS_CSS), h(PageHead, {
         icon: 'plug',
         title: WB.t('settings.title', '连接与设置'),
-        sub: '连接器状态、关注主题与数据落盘位置；改动的都是 Host 侧持久化配置。',
-        actions: h(Btn, {
+        primaryAction: h(Btn, {
             icon: 'refresh',
             size: 'sm',
             onClick: function (): any {
@@ -157,7 +156,7 @@ function SettingsPage(): any {
         sub: '一个 Provider 一种能力；未接入的能力保持“未配置”而不是假装可用',
         icon: 'plug',
     }, h('div', {ref:connectorList, className:'wb-settings-connector-list', role:'region', 'aria-label':'连接器列表', tabIndex:0},
-    h(YunzhijiaConnection, {initial:connectors.find((row:any)=>row.id === 'yunzhijia')}), h(LinkyConnection), h(KnowledgeEnginePanel,{connector:true}),
+    h(YunzhijiaConnection, {initial:connectors.find((row:any)=>row.id === 'yunzhijia')}), h(LinkyConnection), h(KnowledgeEnginePanel,{data}),
         connectors.filter((row:any)=>!['yunzhijia','linky'].includes(row.id)).map(function (connector?: any): any {
             const meta = WB.connectorState(connector.authState);
             return h('div', { key: connector.id, className: 'wb-item', style: { alignItems: 'flex-start' } }, h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title' }, connector.label || connector.type, h(Badge, { tone: meta.tone }, meta.label)), h('div', { className: 'wb-item-sub' }, (connector.capabilities || []).length > 0

@@ -54,7 +54,7 @@ function toolUuidPane(props?: any): any {
         }
         props.patch({ output: list.join('\n'), error: '' });
     }
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8, alignItems: 'flex-end' } }, h('div', { style: { width: 130 } }, h(Field, { label: '数量' }, h(Input, {
+    return h('div', { className: 'wb-stack wb-tool-form', style: { gap: 12 } }, h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8, alignItems: 'flex-end' } }, h('div', { style: { width: 130 } }, h(Field, { label: '数量' }, h(Input, {
         value: value.count || '',
         inputMode: 'numeric',
         onChange: function (event?: any): any {

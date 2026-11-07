@@ -6,6 +6,7 @@ import {FocusedInbox} from '../inbox/FocusedInbox.js'
 import { NewsFetchStatus } from '../news/NewsFetchStatus.js'
 import { radarFetchOutcome } from '../../../shared/news-fetch.js'
 import {MessageSelectionBadges} from '../../components/MessageSelectionBadges.js'
+import {AnalysisMessageDialog} from '../../components/AnalysisMessageDialog.js'
 import { messageOrigin, messageSender, messageSentTime } from '../../../shared/message-display.js'
 import * as React from 'react'
 import { Badge, Btn, Chip, Empty, Icon, IconBtn, PageHead, Panel, Spinner, T, WB, h } from '../../core/runtime.js'
@@ -49,6 +50,7 @@ function DashboardPage(): any {
     },[]);
     // TODO 22：AI 识别状态一块看全（待确认/失败/计数），上轮摘要状态也在这里
     const [analysis, setAnalysis] = React.useState<any>(null);
+    const [review,setReview] = React.useState<{id:string;accountId?:string}|null>(null);
     React.useEffect(function (): any {
         let active = true;
         WB.actions
@@ -59,6 +61,10 @@ function DashboardPage(): any {
             .catch(function (): any { });
         return ()=>{active=false};
     }, [data?.revision]);
+    const accountId=data?.messageInbox?.accountId;
+    const reviewing=review&&review.accountId===accountId
+        ? (analysis?.entries||[]).find((entry:any)=>entry.id===review.id&&entry.status==='awaiting_human') : undefined;
+    React.useEffect(()=>{if(review&&!reviewing)setReview(null)},[review,reviewing]);
     if (!data) {
         return h('div', { className: 'wb-page' }, h('div', { className: 'wb-row', style: { gap: 9, color: T.text2, padding: '10px 0' } }, h(Spinner, { size: 16 }), h('span', null, '正在读取今日简报…')));
     }
@@ -321,10 +327,13 @@ function DashboardPage(): any {
                 return h('div', { key: entry.id, className: 'wb-item' }, h(Badge, { tone: entry.status === 'failed' ? 'err' : 'warn' }, entry.status === 'failed' ? '失败' : '待确认'), h('div', { className: 'wb-item-main' }, h('div', { className: 'wb-item-title wb-ellipsis' }, WB.util.truncate((sourceRow && sourceRow.excerpt) || entry.msgId || entry.sourceId, 46)), entry.status === 'failed'
                     ? h('div', { className: 'wb-item-sub' }, '已失败 ' + (entry.attempts || 0) + ' 次' + ((entry.attempts || 0) >= 3 ? ' · 需手动重试' : '') + (entry.lastError ? ' · ' + entry.lastError : ''))
                     : h('div', { className: 'wb-item-sub' }, entry.reviewReason || (entry.analysis && entry.analysis.summary) || '需要核对原消息后重试')), ['awaiting_human','failed'].includes(entry.status)
-                    ? h(Btn, {
+                    ? h('div', {className:'wb-row wb-row--wrap',style:{gap:6,justifyContent:'flex-end'}}, entry.status==='awaiting_human'&&h(Btn,{
+                        size:'sm',kind:'subtle',onClick:()=>setReview({id:entry.id,accountId}),children:'查看消息',
+                    }), h(Btn, {
                         size: 'sm',
                         kind: canConfirm?'primary':'subtle',
                         icon: canConfirm?'check':'refresh',
+                        disabled:state.busy,
                         onClick: function (): any {
                             (canConfirm?WB.actions.analyzeConfirm(entry.id):WB.actions.analysisRetry(entry.id).then(()=>WB.actions.analyzeRun(1,[entry.id])))
                                 .then(function (): any {
@@ -337,7 +346,14 @@ function DashboardPage(): any {
                                 .catch(function (error: any): any {if(!error?.workbenchAnalysisNotified)WB.toast(error?.message||String(error),'err')});
                         },
                         children: canConfirm?'确认建档':'重试本条',
-                    })
+                    }), entry.status==='awaiting_human'&&h(Btn,{
+                        size:'sm',
+                        kind:'subtle',
+                        disabled:state.busy,
+                        onClick:()=>WB.actions.setAnalysisDismissed(entry.id,true)
+                            .then(()=>WB.actions.analysisStatus()).then(setAnalysis).catch(()=>{}),
+                        children:'标为无需处理',
+                    }))
                     : null);
             }))
             : h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.6 } }, data.settings?.aiExtract?.enabled ? (analysis.pending ? 'AI 已开启，待识别消息可运行分析，或在待回复页逐条处理。' : '本轮识别已完成，暂无待确认或失败条目。') : '开启「设置 → 自动化 → AI 识别」后，可处理已采集消息。'))
@@ -345,12 +361,9 @@ function DashboardPage(): any {
     return h('div', null, h(PageHead, {
         icon: 'dashboard',
         title: '今日简报',
-        sub: '北京时间 · '+new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'long',day:'numeric',weekday:'long'}).format(taskClock),
-        actions: [
-            h(Btn,{key:'copy',size:'sm',kind:'subtle',icon:'copy',onClick:()=>WB.util.copy(dashBriefMarkdown(data)).then(()=>WB.toast('今日简报已复制','ok')).catch((e:any)=>WB.toast(e.message,'err')),children:'复制今日简报'}),
-            h(WorkspaceRefresh,{key:'refresh',scope:'all'}),
-            // 「新建待办」主按钮只保留全局工具栏一处（用户反馈 #4：同屏三个主按钮互相打架）
-        ],
+        summary: '北京时间 · '+new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'long',day:'numeric',weekday:'long'}).format(taskClock),
+        primaryAction: h(WorkspaceRefresh,{scope:'all'}),
+        actions: h(Btn,{size:'sm',kind:'subtle',icon:'copy',onClick:()=>WB.util.copy(dashBriefMarkdown(data)).then(()=>WB.toast('今日简报已复制','ok')).catch((e:any)=>WB.toast(e.message,'err')),children:'复制今日简报'}),
     }), h('div',{className:'wb-stats-strip', 'aria-label':'今日行动概览'},
         h(Btn,{size:'sm',kind:'subtle',onClick:()=>goTasks({dueFilter:'overdue'}),children:'逾期事项 '+counts.overdue}),
         h(Btn,{size:'sm',kind:'subtle',onClick:()=>goTasks({dueFilter:'today'}),children:'今日到期 '+counts.today}),
@@ -369,6 +382,11 @@ function DashboardPage(): any {
         stale?h(Badge,{tone:'warn'},'快照可能过期'):null),
         mentionsStrip,analysis?.awaitingHuman>0?null:analysisPanel),
     h('details',{className:'wb-compact-status',onToggle:(event:any)=>setReminderToolsOpen(event.currentTarget.open)},h('summary',null,'提醒与日历导出'),reminderToolsOpen?h(RemindersPanel,{revision:data.revision}):null),
+    reviewing?h(AnalysisMessageDialog,{
+        key:reviewing.id,entryId:reviewing.id,source:(data.sources||[]).find((source:any)=>source.id===reviewing.sourceId),
+        sources:data.sources||[],accountId,reason:reviewing.reviewReason||reviewing.analysis?.summary,
+        canConfirm:!!reviewing.analysis&&reviewing.reviewKind!=='recognition',onClose:()=>setReview(current=>current===review?null:current),
+    }):null,
     h(DashRadarModal, {
         open: radarFormOpen,
         item: radarEditItem,

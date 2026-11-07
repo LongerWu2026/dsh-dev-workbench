@@ -13,6 +13,34 @@ function setup(read){
 }
 const row=(id,text,unread=true)=>({id,text,unread,sender:'合成同事',at})
 const result=(messages=[],extra={})=>({status:'ok',viewId:'view-one',groupId:'one',accountId:'org:me',unreadTotal:2,unreadLoaded:2,contextLoaded:0,messages,unreadComplete:true,hasMoreHistory:true,batchComplete:true,nextCursor:1,...extra})
+it('刷新消息快照后已打开的会话重新读取最新内容，普通状态更新不重读',async()=>{
+ const {WB,data,panel,reader}=setup(async()=>result([row('old','刷新前的内容')]))
+ fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}));const dialog=await screen.findByRole('dialog');await within(dialog).findByText('刷新前的内容')
+ await act(async()=>WB.store.set({data:{...data,revision:2}}));expect(reader).toHaveBeenCalledTimes(1)
+ reader.mockResolvedValueOnce(result([row('new','刷新后的内容')],{viewId:'fresh-view'}))
+ await act(async()=>WB.store.set({data:{...data,revision:3,messageInbox:{...data.messageInbox,at:'2026-11-02T02:01:00Z',conversations:data.messageInbox.conversations.map(c=>c.groupId==='one'?{...c,latestMsgId:'new-head'}:c)}}}))
+ await within(dialog).findByText('刷新后的内容');expect(within(dialog).queryByText('刷新前的内容')).toBeNull()
+ expect(reader.mock.calls[1][0]).toEqual({accountId:'org:me',groupId:'one',mode:'unread'})
+})
+it('刷新会话时丢弃上一轮迟到回包，避免旧内容覆盖新消息',async()=>{
+ let release;const {WB,data,panel,reader,acknowledge}=setup(()=>new Promise(resolve=>{release=resolve}))
+ fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}));await screen.findByRole('dialog')
+ reader.mockResolvedValueOnce(result([row('new','最新快照的内容')],{viewId:'fresh-view'}))
+ await act(async()=>WB.store.set({data:{...data,revision:2,messageInbox:{...data.messageInbox,at:'2026-11-02T02:01:00Z'}}}))
+ await screen.findByText('最新快照的内容');await act(async()=>release(result([row('late','过期回包')])));
+ expect(screen.queryByText('过期回包')).toBeNull();expect(acknowledge.mock.calls.every(([request])=>request.viewId==='fresh-view')).toBe(true)
+})
+it('窗口内刷新先同步消息，已读会话仍自动展示最近消息',async()=>{
+ const {WB,data,panel,reader}=setup(async()=>result([row('old','刷新前内容')]))
+ fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}));const dialog=await screen.findByRole('dialog');await within(dialog).findByText('刷新前内容')
+ const sync=vi.spyOn(WB.actions,'fetchMentions').mockResolvedValue(data)
+ reader.mockResolvedValueOnce(result([],{viewId:'new-view',unreadTotal:0,unreadLoaded:0}))
+ reader.mockResolvedValueOnce(result([row('latest','已读会话的最新内容',false)],{viewId:'new-view',unreadTotal:0,unreadLoaded:0,contextLoaded:1,nextCursor:2}))
+ fireEvent.click(within(dialog).getByRole('button',{name:'刷新消息'}));await within(dialog).findByText('已读会话的最新内容')
+ expect(sync).toHaveBeenCalledTimes(1);expect(reader.mock.calls[1][0]).toEqual({accountId:'org:me',groupId:'one',mode:'unread'})
+ expect(reader.mock.calls[2][0]).toEqual({accountId:'org:me',groupId:'one',mode:'history',viewId:'new-view',cursor:1})
+ expect(within(dialog).queryByText('刷新前内容')).toBeNull()
+})
 it('首次仅显示未读，内容纯文本且不启动识别或写入业务',async()=>{
  const {WB,data,panel,reader,transport}=setup(async()=>result([row('u1','<img src=x onerror=alert(1)>'),row('u2','第二条未读')])),before=JSON.stringify(data)
  fireEvent.click(within(panel).getByRole('button',{name:'查看会话：第一会话'}));const dialog=await screen.findByRole('dialog',{name:'第一会话'});await within(dialog).findByText('第二条未读')

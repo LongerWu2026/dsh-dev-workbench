@@ -10,6 +10,8 @@ export function TopNavigation({ page }: Props): React.ReactElement {
   const order: PageId[] = [...primary.filter(id=>WB.ORDER.includes(id)), ...WB.ORDER.filter((id:PageId)=>id!=='search'&&!primary.includes(id))]
   const orderKey=order.join('|')
   const [visibleCount,setVisibleCount]=React.useState(primary.length)
+  const currentInMore=order.indexOf(page)>=visibleCount
+  const moreLabel=currentInMore?WB.PAGE_META[page]?.title||'更多':'更多'
   const countRef=React.useRef(visibleCount);countRef.current=visibleCount
   const restoreFocus=React.useRef<string|null>(null)
   React.useLayoutEffect(()=>{
@@ -46,7 +48,7 @@ export function TopNavigation({ page }: Props): React.ReactElement {
     window.addEventListener?.('resize',measure)
     void document.fonts?.ready?.then(measure)
     return()=>{alive=false;observer?.disconnect();window.removeEventListener?.('resize',measure)}
-  },[orderKey,page])
+  },[orderKey,page,moreLabel])
   React.useLayoutEffect(()=>{
     const target=restoreFocus.current;if(!target)return;restoreFocus.current=null
     if(target==='more')detailsRef.current?.querySelector('summary')?.focus()
@@ -67,8 +69,8 @@ export function TopNavigation({ page }: Props): React.ReactElement {
   }
   return <nav ref={navRef} className="wb-topnav" aria-label="工作台导航">
     {order.slice(0,visibleCount).map(item)}
-    {more.length>0&&<details ref={detailsRef} className="wb-more" onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus()}}}><summary><span>更多</span><Icon name="chevronDown" size={12}/></summary><div className="wb-more-menu">{more.map(item)}</div></details>}
-    <div className="wb-nav-measure-clip" aria-hidden="true"><div ref={measureRef} className="wb-nav-measure">{order.map(id=><span key={id} className={'wb-nav-item'+(page===id?' is-active':'')}><Icon name={WB.PAGE_META[id].icon} size={15}/><span>{WB.PAGE_META[id].title}</span></span>)}<span className="wb-nav-more-measure"><span>更多</span><Icon name="chevronDown" size={12}/></span></div></div>
+    {more.length>0&&<details ref={detailsRef} className={'wb-more'+(currentInMore?' is-active':'')} onKeyDown={event=>{if(event.key==='Escape'){event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus()}}}><summary aria-current={currentInMore?'page':undefined}><span>{moreLabel}</span><Icon name="chevronDown" size={12}/></summary><div className="wb-more-menu">{more.map(item)}</div></details>}
+    <div className="wb-nav-measure-clip" aria-hidden="true"><div ref={measureRef} className="wb-nav-measure">{order.map(id=><span key={id} className={'wb-nav-item'+(page===id?' is-active':'')}><Icon name={WB.PAGE_META[id].icon} size={15}/><span>{WB.PAGE_META[id].title}</span></span>)}<span className="wb-nav-more-measure"><span>{moreLabel}</span><Icon name="chevronDown" size={12}/></span></div></div>
   </nav>
 }
 export const WB_LAYOUT_CSS = `
@@ -106,7 +108,7 @@ export const WB_LAYOUT_CSS = `
 .wb-topnav .wb-nav-item, .wb-topnav .wb-more > summary, .wb-topnav .wb-nav-more-measure { display:flex; align-items:center; gap:8px; min-height:36px; padding:8px 12px; border:0; border-radius:8px; box-shadow:none; font:inherit; font-size:13px; line-height:20px; color:var(--dsw-alias-label-secondary); background:transparent; cursor:pointer; }
 .wb-topnav > .wb-nav-item, .wb-nav-measure > .wb-nav-item { width:auto; flex:none; white-space:nowrap; }
 .wb-topnav .wb-nav-item:hover, .wb-topnav .wb-more > summary:hover, .wb-topnav .wb-more[open] > summary { background:var(--dsw-alias-bg-layer-2); color:var(--dsw-alias-label-primary); }
-.wb-topnav .wb-nav-item.is-active { background:var(--wb-selected-bg); color:var(--dsw-alias-label-primary); font-weight:600; box-shadow:none; }
+.wb-topnav .wb-nav-item.is-active,.wb-topnav .wb-more.is-active > summary { background:var(--wb-selected-bg); color:var(--dsw-alias-label-primary); font-weight:600; box-shadow:none; }
 .wb-topnav .wb-nav-item:focus-visible, .wb-topnav .wb-more > summary:focus-visible { outline:2px solid var(--wb-accent); outline-offset:2px; }
 .wb-nav-measure-clip { position:absolute; inset:0; overflow:hidden; visibility:hidden; pointer-events:none; }
 .wb-nav-measure { display:flex; flex-wrap:nowrap; gap:4px; width:max-content; }

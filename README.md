@@ -32,7 +32,7 @@ dsh plugin --profile desktop add dsh-dev-workbench
 从 [Releases](https://github.com/LongerWu2026/dsh-dev-workbench/releases) 下载 `dsh-dev-workbench-<版本>.tgz`，或直接安装：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.6/dsh-dev-workbench-0.4.6.tgz
+dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.7/dsh-dev-workbench-0.4.7.tgz
 ```
 
 升级后按宿主机制重载插件组件或重启 Harness，再打开侧栏「智能工作台」。只刷新页面不会重新注册新增 Host 接口；遇到 `/api/workbench/...` 返回 404，先重载插件组件。升级前建议备份工作台数据，位置见下文。
@@ -104,6 +104,8 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 - 人工审查展示差异、测试退出码及审查意见。批准绑定当前代码内容，后续变化会使批准失效。批准与向 Linky 回写评论分别确认，评论回写不会代替代码提交、合并或发布。
 - npm 包包含 `harness-linky` CLI，可将 Linky 的 Codex 协议入口适配到官方 Harness ACP；配置及权限边界见[实施说明](docs/LINKY-DEVELOPMENT-IMPLEMENTATION-2026-10-31.md)。
 
+项目协作支持浏览本地文件、查看未提交差异、项目全文搜索、保存审阅进度和复制交接摘要。
+
 研发目录支持列表与详情分栏，保留所选工作项、筛选及会话上下文，窄屏按可用空间展开。页面使用方式及工程选择见[研发任务说明](docs/DEVELOPMENT-UX-2026-10-31.md)。完整真实业务修复与回写仍需用户在实际工作项中验证，隔离测试不代表业务已完成。
 
 ### 全局搜索
@@ -136,7 +138,9 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 
 工具箱按工具展示输入和结果，可搜索、筛选并在当前页面保留切换前的输入。JSON 支持格式化、树形查看和路径复制；Diff 支持文本和 JSON 结构对比；HTTP 调试支持导入基础 cURL，导入本身不发送请求；另有 MCP Streamable HTTP 调试、日志筛选、正则、Cron、SQL 格式化、类型生成、YAML/CSV 转换等工具。AI 辅助需显式点击，沿用宿主助手。
 
-数据连接支持 MySQL、PostgreSQL、Elasticsearch 和单节点 Redis：读取所选结构、生成查询并在用户点击后执行。SQL 使用语法树校验和只读事务，Redis 仅开放受限读取；建议配合只读账号使用。AI 生成只传数据库类型与所选结构元数据，不传连接密码、地址或业务行数据；生成的结构变更与回滚脚本仅供预览。查询结果最多 200 行、1 MB。
+数据连接支持 MySQL、PostgreSQL、Elasticsearch 和单节点 Redis：读取所选结构、生成查询并在用户点击后执行。SQL 使用语法树校验和只读事务，Redis 仅开放受限读取；建议配合只读账号使用。AI 生成只传数据库类型与所选结构元数据，不传连接密码、地址或业务行数据；生成的结构变更与回滚脚本仅供预览。SQL 查询每页可选 50、100 或 200 行，每页最多 1 MB，可继续翻页读取原查询结果。
+
+每个连接目标保留独立的数据工作区，包括 SQL、对象选择、最近 AI 对话和查询结果；恢复后显示上次结果，执行查询仍需手动触发。工作区以本地私有权限文件保存，内容不加密，可在界面清除连接记忆。
 
 数据连接密码默认仅驻留宿主内存。macOS 可选择「记住密码」，保存加密密文，密钥由系统钥匙串保管；取消勾选并保存可清除密文。HTTP/MCP 调试按用户操作联网，离线转换在本地执行。详见[工具箱介绍](docs/DEVELOPER-TOOLBOX-2026-10-31.md)、[数据连接说明](docs/DATA-TOOLS-2026-10-31.md)和[研发协作](docs/DEVELOPER-WORKFLOWS-2026-10-29.md)。
 
@@ -155,6 +159,8 @@ AI 助手的办公工具将工作记录组织为回复草稿、日报周报和�
 | 业务记录与处理队列 | `state.json` |
 | 业务状态备份 | `backups/` |
 | 数据连接配置与可选密码密文 | `data-connections.json` |
+| 数据查询工作区、最近 AI 对话与结果 | `data-workspaces.json` |
+| 项目文件审阅记录 | `project-workspaces/` |
 | 研发配置、任务和适配器记录 | `development/` |
 | 助手会话索引、事项绑定、操作与轮次回执 | `assistant-*.json` |
 | 与原生请求配对的独立事项上下文 | `assistant-native-contexts/` |

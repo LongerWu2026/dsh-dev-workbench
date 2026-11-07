@@ -110,7 +110,7 @@ try{
    const rect=document.querySelector('.wb-modal').getBoundingClientRect()
    return rect.left>=0&&rect.right<=innerWidth&&rect.top>=0&&rect.bottom<=innerHeight
   })
-  assert.equal(await modelDialog.getByRole('button',{name:'更新当前范围索引'}).count(),0)
+  assert.equal(await modelDialog.getByRole('button',{name:'更新当前范围索引'}).count(),1)
   await page.screenshot({path:resolve(out,`model-dialog-${width}-${height}.png`),animations:'disabled'})
   if(width===1440){
    await modelDialog.getByRole('button',{name:'下载并启用（约 47 MB）'}).click()

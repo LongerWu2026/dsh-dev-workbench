@@ -140,6 +140,7 @@ async function executeTrackedRadarSummary(ctx:any,request:any,begin:()=>Promise<
                 sourceError=true;throw new Error('原文内容不足（可能被反爬或需要登录）');
             }
             phase='model';
+            resolved=await ensureBackgroundSession(ctx,'summary');
             const parsed = await waitStructuredReply(ctx, controller, resolved, summaryPrompt(item, bodyText), SUMMARY_TURN_TIMEOUT_MS, 'summary',{hubRunId:request?.hubRunId,checkActive:assertActive,backgroundKey:resolved.workbenchThreadKey});
             await resetModelHealth('summary');
             for (const key of ['change', 'usage', 'risk', 'practice']) {

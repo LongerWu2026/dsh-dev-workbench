@@ -49,7 +49,7 @@ function NetworkDebugger({value:v,patch,mode,onTransfer}:{value:any;patch:(value
         </section><section className="wb-stack wb-network-response"><strong>响应</strong>{!v.result&&!error&&<div className="wb-data-empty">发送请求后在此查看响应</div>}
         {error&&<p className="wb-tiny" role="alert" style={{whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{error}</p>}
         {mode==='http'&&v.result?.text&&<div className="wb-row wb-row--wrap"><Btn onClick={()=>onTransfer?.('json',v.result.text)}>响应 → JSON</Btn><Btn onClick={()=>onTransfer?.('diff',v.result.text)}>响应 → Diff</Btn><Btn onClick={()=>onTransfer?.('types',v.result.text)}>响应 → 类型生成</Btn></div>}
-        {v.result&&<><div className="wb-row wb-row--wrap" style={{gap:8}}><strong className="wb-tiny">{mode==='http'?'HTTP '+v.result.status:'MCP 返回'} · {v.result.durationMs} ms {v.result.result?.isError?' · 工具返回错误':''}</strong><Copy text={formatted}/></div><pre className="wb-code" aria-label="调试响应" style={{maxHeight:480,overflow:'auto',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{formatted}</pre>{v.result.truncated&&<p className="wb-tiny wb-muted">响应超过1MB，展示已截断。</p>}</>}
+        {v.result&&<><div className="wb-row wb-row--wrap" style={{gap:8}}><strong className="wb-tiny">{mode==='http'?'HTTP '+v.result.status:'MCP 返回'} · {v.result.durationMs} ms {v.result.result?.isError?' · 工具返回错误':''}</strong><Copy text={formatted}/></div><pre className="wb-code" tabIndex={0} aria-label="调试响应" style={{maxHeight:480,overflow:'auto',whiteSpace:'pre-wrap',overflowWrap:'anywhere'}}>{formatted}</pre>{v.result.truncated&&<p className="wb-tiny wb-muted">响应超过1MB，展示已截断。</p>}</>}
     </section></div>
 }
 export function HttpDebugger(props:any){return <NetworkDebugger {...props} mode="http"/>}

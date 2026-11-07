@@ -5,9 +5,10 @@ import {Badge,Btn,Modal,Spinner,WB} from '../../core/runtime.js'
 import {messageSentTime} from '../../../shared/message-display.js'
 
 /** Open at the newest unread message; upward gestures fetch history without moving the reading anchor. */
-export function ConversationReader({conversation,accountId,onClose}:{conversation:any;accountId:string;onClose:()=>void}){
+export function ConversationReader({conversation,accountId,snapshotAt,onClose}:{conversation:any;accountId:string;snapshotAt?:string;onClose:()=>void}){
  const [messages,setMessages]=React.useState<any[]>([]),[result,setResult]=React.useState<any>(null),[busy,setBusy]=React.useState(false),[error,setError]=React.useState(''),[bottomSpace,setBottomSpace]=React.useState(0)
  const [readStatus,setReadStatus]=React.useState(''),[readError,setReadError]=React.useState(''),ackView=React.useRef('')
+ const [refreshing,setRefreshing]=React.useState(false),[refreshVersion,setRefreshVersion]=React.useState(0)
  const pinnedToBottom=React.useRef(true)
  const generation=React.useRef(0),loading=React.useRef(false),cursor=React.useRef<any>(null),phase=React.useRef<'unread'|'history'>('unread'),positioned=React.useRef(false),root=React.useRef<HTMLDivElement|null>(null),scrollBody=React.useRef<HTMLElement|null>(null),anchor=React.useRef<{id:string;offset:number}|null>(null),loadRef=React.useRef<(mode:'unread'|'history')=>void>(()=>{})
  function captureAnchor(){
@@ -30,13 +31,25 @@ export function ConversationReader({conversation,accountId,onClose}:{conversatio
     cursor.current=response;setResult(response)
     setMessages(previous=>[...new Map([...(response.messages||[]),...previous].map(row=>[row.id,row])).values()])
     if(response.status==='partial'){setError(response.note||'部分消息未能读取，请重试');break}
+    if(!previous&&mode==='unread'&&response.unreadComplete&&response.unreadTotal===0&&response.hasMoreHistory){mode='history';phase.current='history';continue}
     if(mode==='unread'?response.unreadComplete:response.batchComplete)break
    }
   }catch(failure:any){if(g===generation.current)setError(failure.message||'会话读取失败，请重试')}
   finally{if(g===generation.current){loading.current=false;setBusy(false)}}
  }
  loadRef.current=load
- React.useEffect(()=>{generation.current++;cursor.current=null;loading.current=false;positioned.current=false;phase.current='unread';anchor.current=null;ackView.current='';setReadStatus('');setReadError('');setBottomSpace(0);setMessages([]);setResult(null);void load('unread');return()=>{generation.current++;loading.current=false}},[accountId,conversation.groupId])
+ React.useEffect(()=>{generation.current++;cursor.current=null;loading.current=false;positioned.current=false;phase.current='unread';anchor.current=null;ackView.current='';setReadStatus('');setReadError('');setBottomSpace(0);setMessages([]);setResult(null);void load('unread');return()=>{generation.current++;loading.current=false}},[accountId,conversation.groupId,snapshotAt,conversation.latestMsgId,refreshVersion])
+ async function refreshMessages(){
+  if(refreshing||loading.current)return
+  const g=generation.current;setRefreshing(true)
+  try{
+   const snapshot=await WB.actions.fetchMentions()
+   if(g!==generation.current)return
+   const inbox=snapshot.messageInbox,latest=inbox?.conversations?.find((row:any)=>row.groupId===conversation.groupId)
+   if(inbox?.at===snapshotAt&&latest?.latestMsgId===conversation.latestMsgId)setRefreshVersion(value=>value+1)
+  }catch(failure:any){if(g===generation.current)setError(failure.message||'消息刷新失败，请重试')}
+  finally{setRefreshing(false)}
+ }
  async function markRead(){
   const current=cursor.current,g=generation.current;if(!current||ackView.current===current.viewId)return
   ackView.current=current.viewId;setReadStatus('saving');setReadError('')
@@ -69,10 +82,11 @@ export function ConversationReader({conversation,accountId,onClose}:{conversatio
   }else if(!busy&&cursor.current?.unreadComplete&&!positioned.current){body.scrollTop=body.scrollHeight;positioned.current=true}
  },[messages,busy,bottomSpace])
  const [selecting,setSelecting]=React.useState(false),[selectedIds,setSelectedIds]=React.useState<string[]>([]),capture=useKnowledgeCapture()
- React.useEffect(()=>{setSelecting(false);setSelectedIds([])},[accountId,conversation.groupId])
+ React.useEffect(()=>{setSelecting(false);setSelectedIds([])},[accountId,conversation.groupId,snapshotAt,conversation.latestMsgId,refreshVersion])
  const firstUnreadIndex=messages.findIndex(row=>row.unread),contextCount=messages.filter(row=>!row.unread).length
  return <><Modal open title={conversation.name||'会话消息'} sub="默认显示最新消息 · 向上滚动查看历史" width={760} onClose={onClose} footer={<>
   <span className="wb-tiny wb-muted" style={{flex:1}}>{result?`未读 ${result.unreadLoaded}/${result.unreadTotal} 条 · 已查看历史 ${result.contextLoaded} 条`:'正在读取未读消息…'}</span>
+  <Btn size="sm" disabled={busy||refreshing} onClick={()=>void refreshMessages()}>{refreshing?'正在刷新…':'刷新消息'}</Btn>
   {messages.length>0&&<Btn size="sm" onClick={()=>{setSelecting(!selecting);setSelectedIds([])}}>{selecting?'取消选择':'选择消息'}</Btn>}
   {selecting&&<><span className="wb-tiny">已选 {selectedIds.length} 条</span><Btn size="sm" disabled={!selectedIds.length} onClick={()=>WB.util.copy(messages.filter(row=>selectedIds.includes(row.id)).map(row=>row.sender+' · '+row.at+'\n'+row.text).join('\n\n')).then(()=>WB.toast('已复制所选消息','ok')).catch(()=>WB.toast('复制失败','warn'))}>复制所选消息</Btn><Btn size="sm" disabled={!selectedIds.length||capture.loading} onClick={()=>capture.open({kind:'messages',accountId,groupId:conversation.groupId,viewId:cursor.current?.viewId,messageIds:selectedIds})}>保存笔记</Btn></>}
   {!busy&&error&&<Btn size="sm" onClick={()=>load(phase.current)}>重试读取</Btn>}

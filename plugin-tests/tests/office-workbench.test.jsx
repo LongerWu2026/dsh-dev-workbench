@@ -4,6 +4,7 @@ import {beforeEach,afterEach,describe,it,expect,vi} from 'vitest'
 import {render,screen,within,act,fireEvent,cleanup,waitFor} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {loadClientBundle} from './load-plugin.mjs'
+import {openKnowledgeTool} from './knowledge-ui.mjs'
 import {version} from '../../package.json'
 let WB,App,calls,fixture,deferred=[],feedSaveError
 beforeEach(()=>{
@@ -107,6 +108,23 @@ describe('办公流程与布局入口',()=>{
   expect(within(description).queryByText(/HTTP 404/)).toBeNull()
   expect(within(description).getByRole('button',{name:'重试加载图片'})).toBeTruthy()
  })
+ it('紧凑工具栏保留按钮和摘要，不展示目录使用说明',async()=>{
+  WB.store.set({data:fixture,page:'dashboard'})
+  const view=render(<WB.pages.dashboard/>)
+  const brief=screen.getByRole('banner',{name:'今日简报工具栏'})
+  expect(within(brief).getByRole('heading',{name:'今日简报'}).className).toBe('wb-page-title-a11y')
+  expect(within(brief).getByText(/北京时间 ·/)).toBeTruthy()
+  expect(within(brief).getByRole('button',{name:'复制今日简报'})).toBeTruthy()
+  expect(within(brief).getByRole('button',{name:'刷新全部内容'})).toBeTruthy()
+  view.unmount()
+  WB.store.set({data:fixture,page:'replies'})
+  render(<WB.pages.replies/>)
+  const toolbar=screen.getByRole('banner',{name:'待回复工具栏'})
+  expect(within(toolbar).getByText('共 0 条')).toBeTruthy()
+  expect(within(toolbar).getByRole('button',{name:'刷新待回复'})).toBeTruthy()
+  expect(within(toolbar).queryByText('使用说明')).toBeNull()
+  expect(toolbar.querySelector('.wb-page-help')).toBeNull()
+ })
  it('消息工作时段与资讯间隔分别展示，不把消息同步误写为60分钟',()=>{WB.store.set({data:fixture,page:'settings'});render(<WB.pages.settings/>);expect(screen.getByText('资讯等自动化间隔')).toBeTruthy();expect(screen.getAllByText(/每天北京时间09:00–21:00，每5分钟同步一次/).length).toBeGreaterThan(0)})
 
  it.each(['dashboard','replies'])('%s刷新实际同步云之家，实际答复后从待回复移出',async(page)=>{
@@ -133,10 +151,10 @@ describe('办公流程与布局入口',()=>{
  },10000)
  it('更多只展开菜单，子项保留选中状态，Escape关闭后回到触发器',async()=>{
   WB.store.set({data:fixture,page:'toolbox'});const user=userEvent.setup();render(<App/>);const nav=screen.getByRole('navigation',{name:'工作台导航'});const summary=nav.querySelector('summary')
-  expect(summary.textContent).toBe('更多');expect(summary.parentElement.className).not.toContain('is-active');await user.click(summary);expect(summary.parentElement.open).toBe(true);expect(WB.store.get().page).toBe('toolbox');
+  expect(summary.textContent).toBe('开发工具箱');expect(summary.parentElement.className).toContain('is-active');await user.click(summary);expect(summary.parentElement.open).toBe(true);expect(WB.store.get().page).toBe('toolbox');
   expect(within(summary.parentElement).getByRole('button',{name:'开发工具箱'}).getAttribute('aria-current')).toBe('page');
   expect(within(summary.parentElement).getAllByRole('button').map(button=>button.textContent)).toEqual(['开发工具箱','研发协作','连接与设置']);
-  await user.click(within(summary.parentElement).getByRole('button',{name:'研发协作'}));expect(WB.store.get().page).toBe('collab');expect(summary.textContent).toBe('更多');expect(summary.parentElement.open).toBe(false);
+  await user.click(within(summary.parentElement).getByRole('button',{name:'研发协作'}));expect(WB.store.get().page).toBe('collab');expect(summary.textContent).toBe('研发协作');expect(summary.parentElement.open).toBe(false);
   await user.click(summary);await user.keyboard('{Escape}');expect(summary.parentElement.open).toBe(false);expect(document.activeElement).toBe(summary)
  })
  it('十条待回复全部可访问，按Reply ID标记且不操作Task',async()=>{
@@ -199,7 +217,7 @@ describe('办公流程与布局入口',()=>{
    await user.click(screen.getByRole('button',{name:'全部日程'}));expect(screen.getByRole('button',{name:'参加月度质量星期四'})).toBeTruthy();expect(fixture.tasks[0].dueAt).toBeNull();
   }finally{vi.useRealTimers()}
  })
- it.each([true,false])('识别队列旧图片点击一次即可查看，原生侧栏可用 %s',async(nativeAvailable)=>{
+ it.each([[true,false],[false,false],[false,true]])('识别队列旧图片点击一次即可查看，原生侧栏可用 %s，详情入口 %s',async(nativeAvailable,fromDetail)=>{
   const accountId='org:fixture',sourceId='queue-source',entryId='image-review'
   fixture.messageInbox={accountId,conversations:[]}
   fixture.sources=[{id:sourceId,provider:'yunzhijia',excerpt:'[图片]',locator:{accountId,groupId:'g',msgId:'m'}}]
@@ -210,8 +228,10 @@ describe('办公流程与布局入口',()=>{
   const images=vi.spyOn(WB.actions,'sourceImages').mockImplementation(async request=>request.mode==='open'?{path,count:1}:{mediaType:'image/png',data:'aW1hZ2U='})
   render(<WB.pages.replies/>)
   const row=screen.getByText('仅图片消息').closest('article')
+  if(fromDetail)fireEvent.click(within(row).getByRole('button',{name:'查看消息'}))
+  const container=fromDetail?screen.getByRole('dialog',{name:'待确认消息'}):row
   expect(images).not.toHaveBeenCalled()
-  fireEvent.click(within(row).getByRole('button',{name:'查看图片'}))
+  fireEvent.click(within(container).getByRole('button',{name:'查看图片'}))
   await waitFor(()=>expect(WB.openHarnessFile).toHaveBeenCalledWith(path))
   expect(images.mock.calls[0]).toEqual([{sourceId,entryId,index:0,mode:'open'}])
   if(nativeAvailable){
@@ -220,6 +240,11 @@ describe('办公流程与布局入口',()=>{
    const dialog=await screen.findByRole('dialog',{name:'原消息图片'})
    expect(within(dialog).getByRole('img',{name:'原消息图片'}).getAttribute('src')).toBe('data:image/png;base64,aW1hZ2U=')
    expect(images.mock.calls[1]).toEqual([{sourceId,entryId,index:0,mode:'inline'}])
+   if(fromDetail){
+    fireEvent.keyDown(window,{key:'Escape'})
+    expect(screen.queryByRole('dialog',{name:'原消息图片'})).toBeNull()
+    expect(within(container).getByRole('button',{name:'标为无需处理'})).toBeTruthy()
+   }
   }
  })
  it('已完成的识别记录可以复核并只重跑选中条目',async()=>{
@@ -456,13 +481,13 @@ describe('办公入口合入助手',()=>{
 describe('知识库自动检索界面',()=>{
  it('检索测试可打开真实片段原文与版本',async()=>{
   WB.store.set({data:fixture,page:'knowledge'});const user=userEvent.setup();render(<WB.pages.knowledge/>);
-  await user.type(screen.getByRole('textbox',{name:'知识检索测试问题'}),'接口发布验收');await user.click(screen.getByRole('button',{name:'测试检索'}));await user.click(screen.getByText(/知识依据 · 1 个片段/));await user.click(screen.getByRole('button',{name:'知识验收规范 · 行1–1'}));
+  await openKnowledgeTool(user,'检索验证');await user.type(screen.getByRole('textbox',{name:'知识检索测试问题'}),'接口发布验收');await user.click(screen.getByRole('button',{name:'测试检索'}));await user.click(screen.getByText(/知识依据 · 1 个片段/));await user.click(screen.getByRole('button',{name:'知识验收规范 · 行1–1'}));
   expect(calls.find(c=>c.endpoint==='workbench/knowledgeRead').args.request.ids).toEqual(['kb-test@v1:1']);expect(screen.getByText('发布前先完成灰度验收。')).toBeTruthy();expect(screen.getByText(/知识版本 v1/)).toBeTruthy()
  })
  it('资料导入作为候选，审核可显式确认项目与有效期',async()=>{
   fixture.knowledge=[{id:'candidate-1',title:'待审核材料',body:'资料正文',reviewState:'candidate',kind:'note',tags:[]}];WB.store.set({data:fixture,page:'knowledge'});const user=userEvent.setup();render(<WB.pages.knowledge/>);
-  await user.click(screen.getByRole('button',{name:/审核待确认知识/}));await user.selectOptions(screen.getByRole('combobox',{name:'知识状态'}),'confirmed');await user.click(screen.getByRole('button',{name:'保存'}));expect(calls.at(-1).args.patch.reviewState).toBe('confirmed');
-  await user.click(screen.getByRole('button',{name:'导入文本资料'}));await user.type(screen.getByRole('textbox',{name:'资料标题'}),'导入验收');await user.type(screen.getByRole('textbox',{name:'资料正文'}),'接口发布前先灰度验收。');await user.click(screen.getByRole('button',{name:'保存为待审核资料'}));expect(calls.at(-1).args.input.reviewState).toBe('candidate')
+  await user.click(screen.getByRole('button',{name:/^待审核/}));await user.click(screen.getByRole('button',{name:'编辑条目'}));await user.selectOptions(screen.getByRole('combobox',{name:'知识状态'}),'confirmed');await user.click(screen.getByRole('button',{name:'保存'}));expect(calls.at(-1).args.patch.reviewState).toBe('confirmed');
+  await user.click(screen.getByRole('button',{name:'导入资料'}));await user.type(screen.getByRole('textbox',{name:'资料标题'}),'导入验收');await user.type(screen.getByRole('textbox',{name:'资料正文'}),'接口发布前先灰度验收。');await user.click(screen.getByRole('button',{name:'保存为待审核资料'}));expect(calls.findLast(call=>call.endpoint==='workbench/createKnowledge').args.input.reviewState).toBe('candidate')
  })
  it('助手可切换知识模式、空间和项目范围',async()=>{
   fixture.projects=[{id:'p-A',name:'项目A',knowledgeSpaceId:'company'}];fixture.knowledgeSpaces=[{id:'company',name:'公司资料'}];fixture.sources=[{id:'source-A',locator:{accountId:'account-A'}}];WB.store.set({data:fixture,assistantOpen:true});render(<App/>);const user=userEvent.setup();

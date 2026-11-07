@@ -881,32 +881,11 @@ function TaskCenterPage(): any {
             })));
         })));
     return h('div', {className:'wb-task-center'}, h(PageHead, {
-        icon: 'tasks',
         title: '任务中心',
-        sub: '共 ' +
-            counts.total +
-            ' 条 · 未完成 ' +
-            counts.open +
-            ' · 逾期 ' +
-            counts.overdue +
-            ' · 执行中 ' +
-            counts.running,
-        actions: h('div', { className: 'wb-row wb-row--wrap', style: { gap: 8 } }, h(WorkspaceRefresh,{scope:'tasks'}),h(Segmented, {
-            items: [
-                { value: 'list', label: '列表' },
-                { value: 'board', label: '看板' },
-            ],
-            value: view,
-            onChange: function (value?: any): any {
-                setView(value);
-            },
-        }), h(Btn, {
-            size: 'sm',
-            kind: 'primary',
-            icon: 'plus',
-            onClick: newTask,
-            children: '新建待办',
-        })),
+        summary: '共 '+counts.total+' 条 · 未完成 '+counts.open+' · 逾期 '+counts.overdue+' · 执行中 '+counts.running,
+        controls: h(Segmented,{items:[{value:'list',label:'列表'},{value:'board',label:'看板'}],value:view,onChange:setView}),
+        primaryAction: h(Btn,{size:'sm',kind:'primary',icon:'plus',onClick:newTask,children:'新建待办'}),
+        actions: h(WorkspaceRefresh,{scope:'tasks'}),
     }), tasks.length > 0 ? filterBar : null, content, view==='list'?h(Pagination,{page,total:visible.length,onChange:setPage}):null, h('details',{style:{marginTop:16}},h('summary',{className:'wb-tiny wb-muted'},'规则候选（备用） · '+pendingCandidates.length+' 条'),candidatesPanel));
 }
 WB.pages.tasks = TaskCenterPage;

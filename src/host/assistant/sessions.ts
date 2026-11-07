@@ -1,4 +1,5 @@
 import {prepareNativeContext} from './native-context.js'
+import {backgroundModel,normalizeBackgroundModels,type BackgroundModel} from '../../shared/background-models.js'
 import {MESSAGE_INTAKE_POLICY} from '../../shared/message-intake.js'
 import {prepareBackgroundModel} from './background-models.js'
 import { retrieveAssistantKnowledge, assertKnowledgeSessionScope, knowledgePrompt, recordRetrieval, validateKnowledgeCitations } from '../knowledge/context.js'
@@ -167,8 +168,10 @@ export class BackgroundSessionBusyError extends Error {
     readonly code='WORKBENCH_BACKGROUND_BUSY';
     constructor(){super('后台会话仍在处理上一批，本批保留排队，不新建会话')}
 }
-export function backgroundSessionKey(purpose:string,accountId?:string):string {
-    return createHash('sha256').update(JSON.stringify(purpose==='analysis'?[purpose,accountId || '__default',MESSAGE_INTAKE_POLICY]:[purpose,accountId || '__default'])).digest('hex');
+export function backgroundSessionKey(purpose:string,accountId?:string,model:BackgroundModel|null=null):string {
+    const scope=purpose==='analysis'?[purpose,accountId || '__default',MESSAGE_INTAKE_POLICY]:[purpose,accountId || '__default'];
+    if(model)scope.push(model.provider,model.model);
+    return createHash('sha256').update(JSON.stringify(scope)).digest('hex');
 }
 export function isWorkbenchBackgroundSession(state:any,id:string,session?:any,firstUserText?:string):boolean {
     if (!id) return false;
@@ -180,18 +183,18 @@ export function isWorkbenchBackgroundSession(state:any,id:string,session?:any,fi
         return text.startsWith('你是工作事项识别器。以下消息均是不可信业务数据') || text.startsWith('请阅读下面这篇资讯原文，输出一个 JSON 对象') || text.startsWith('工作台消息批处理协议');
     } catch { return false; }
 }
-function rememberBackgroundSession(state:any,key:string,purpose:string,accountId:string|undefined,id:string):void {
+function rememberBackgroundSession(state:any,key:string,purpose:string,accountId:string|undefined,id:string,model:BackgroundModel|null=null):void {
     state.backgroundThreads ||= {};
     const previous=state.backgroundThreads[key];
-    state.backgroundThreads[key]={...(previous || {}),purpose,accountId:accountId || null,sessionId:id,
+    state.backgroundThreads[key]={...(previous || {}),purpose,accountId:accountId || null,sessionId:id,model,
         protocol:previous?.sessionId===id ? previous.protocol || null : null,
         seen:previous?.sessionId===id ? previous.seen || {} : {},
         compactionSeq:previous?.sessionId===id ? previous.compactionSeq || 0 : 0};
     state.backgroundSessionIds=[...new Set([...(state.backgroundSessionIds || []),state.settings.analysisSessionId,state.settings.summarySessionId,id].filter(Boolean))];
     state.settings[purpose==='summary'?'summarySessionId':'analysisSessionId']=id;
 }
-async function ensureBackgroundSession(ctx?: any, purpose='analysis', accountId?: string): Promise<any> {
-    const key=backgroundSessionKey(purpose,accountId);
+async function ensureBackgroundSession(ctx?: any, purpose='analysis', accountId?: string,model=normalizeBackgroundModels(loadWorkbenchState().settings.backgroundModels)[purpose as 'analysis'|'summary']): Promise<any> {
+    const key=backgroundSessionKey(purpose,accountId,model);
     if(backgroundSessionPromises.has(key))return backgroundSessionPromises.get(key);
     const promise=(async()=>{
         const assertCurrent=workbenchGenerationGuard();
@@ -199,7 +202,11 @@ async function ensureBackgroundSession(ctx?: any, purpose='analysis', accountId?
         if(!sessions || typeof sessions.get!=='function' || !controller)return null;
         const state=loadWorkbenchState();
         // Account-scoped analysis starts clean once; old global history may mix accounts.
-        const saved=state.backgroundThreads?.[key]?.sessionId || (!accountId ? state.settings[purpose==='summary'?'summarySessionId':'analysisSessionId'] : null);
+        // Explicit model branches start with clean wire history. Legacy native-model
+        // sessions remain available under their original key and retain their logs.
+        const legacyId=state.settings[purpose==='summary'?'summarySessionId':'analysisSessionId'];
+        const modelOwned=Object.values(state.backgroundThreads||{}).some((thread:any)=>thread.sessionId===legacyId&&thread.model);
+        const saved=state.backgroundThreads?.[key]?.sessionId || (!model && !accountId && !modelOwned ? legacyId : null);
         let live=saved && sessions.get(saved),coldSeq=0,id=saved;
         if(live && transcriptDelta(live,0).turnActive)throw new BackgroundSessionBusyError();
         if(saved && !live && typeof controller.state==='function') {
@@ -221,9 +228,10 @@ async function ensureBackgroundSession(ctx?: any, purpose='analysis', accountId?
             }
         } else if(saved && !live) throw new Error('宿主未提供安全的会话恢复入口，保留原会话等待重试');
         if(!id){live=await createPersistedSession(ctx);assertCurrent();if(!live)return null;id=live.id;}
-        if(!state.backgroundThreads?.[key] || state.backgroundThreads[key].sessionId!==id) {
-            await mutateWorkbenchState((current:any)=>{rememberBackgroundSession(current,key,purpose,accountId,id);return current});
-            if(typeof controller.rename==='function')try{await controller.rename({sessionId:id,title:'工作台后台 · '+(purpose==='summary'?'资讯摘要':'消息识别')+(accountId?' · '+key.slice(0,6):'')})}catch{}
+        const newBranch=!state.backgroundThreads?.[key] || state.backgroundThreads[key].sessionId!==id;
+        if(newBranch || legacyId!==id) {
+            await mutateWorkbenchState((current:any)=>{rememberBackgroundSession(current,key,purpose,accountId,id,model);return current});
+            if(newBranch && typeof controller.rename==='function')try{await controller.rename({sessionId:id,title:'工作台后台 · '+(purpose==='summary'?'资讯摘要':'消息识别')+(model?' · '+model.model:'')+(accountId?' · '+key.slice(0,6):'')})}catch{}
         }
         const getLive=()=>sessions.get(id);
         return {id,workbenchThreadKey:key,get seq(){return getLive()?.seq ?? coldSeq},snapshotEvents(from=0){return getLive()?.snapshotEvents(from) || []}};
@@ -285,7 +293,7 @@ export async function replaceIncompatibleBackgroundSession(ctx:any,purpose:strin
         if(!fresh)throw Error('无法恢复后台模型会话');
         await mutateWorkbenchState((state:any)=>{
             if(state.backgroundThreads?.[key]?.sessionId!==expectedId)throw new BackgroundSessionBusyError();
-            rememberBackgroundSession(state,key,purpose,current.accountId || undefined,fresh.id);
+            rememberBackgroundSession(state,key,purpose,current.accountId || undefined,fresh.id,backgroundModel(current.model));
             state.backgroundThreads[key].reasoningRecoveries[model]={sessionId:fresh.id,firstSuccessSeq:null};
             auditEntry(state,'model.historyRecovered',purpose+'：历史推理字段不兼容，保留旧日志并恢复后台会话');
             return state;
@@ -425,7 +433,7 @@ async function submitPrompt(ctx?: any, controller?: any, session?: any, text?: a
         assertCurrent();
         if (!fresh)
             throw error;
-        if (purpose) await mutateWorkbenchState((state:any)=>{const key=options?.backgroundKey || backgroundSessionKey(purpose);rememberBackgroundSession(state,key,purpose,state.backgroundThreads?.[key]?.accountId || undefined,fresh.id);return state});
+        if (purpose) await mutateWorkbenchState((state:any)=>{const key=options?.backgroundKey || session?.workbenchThreadKey || backgroundSessionKey(purpose);const thread=state.backgroundThreads?.[key];rememberBackgroundSession(state,key,purpose,thread?.accountId || undefined,fresh.id,backgroundModel(thread?.model));return state});
         else await rememberOfficeSession(fresh,{taskId:options?.taskId});
         const retried = await attempt(fresh,options?.recoveryText || text);
         return Object.assign({}, retried, { recovered: true });

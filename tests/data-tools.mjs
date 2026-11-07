@@ -50,9 +50,9 @@ await new Promise(r=>redis.listen(0,'127.0.0.1',r));const rsave=await api.saveDa
 await api.testDataConnection(rid);assert.equal((await api.dataObjects({id:rid})).objects[0].name,'fixture:key');const rstruct=await api.dataStructure({id:rid,selected:[{name:'fixture:key'}]});assert.equal(rstruct.tables[0].ttl,60);assert.equal((await api.executeDataQuery({id:rid,query:'["GET","fixture:key"]'})).result,'hello');assert.equal((await api.executeDataQuery({id:rid,query:'["GET","missing"]'})).result,null);await assert.rejects(api.executeDataQuery({id:rid,query:'["SET","fixture:key","bad"]'}),/只读/)
 check('ioredis经真实TCP完成连接、SCAN、类型/TTL、读取；写命令被阻止',()=>assert.ok(!commands.some(c=>c[0].toLowerCase()==='set')))
 // Real mysql2 client against isolated protocol server (not a MySQL engine).
-const mysqlSockets=new Set(),sqls=[];let largeCatalog=false;const orderCatalog=[{schemaName:'fixture',name:'orders',comment:'订单主表'},{schemaName:'fixture',name:'order_items',comment:'订单明细表'}];const ms=mysql.createServer(connection=>{mysqlSockets.add(connection);connection.writeTextResult=(rows,columns)=>{connection.writeColumns(columns.map(c=>({catalog:'def',schema:'fixture',table:'',orgTable:'',orgName:c.name,columnLength:1024,flags:0,decimals:0,...c})));for(const row of rows)connection.writeTextRow(columns.map(c=>row[c.name]));connection.writeEof()};connection.on('error',err=>{if(err.code!=='PROTOCOL_CONNECTION_LOST')console.error('MySQL fixture:',err.message)});connection.serverHandshake({protocolVersion:10,serverVersion:'8.0.0-fixture',connectionId:1,statusFlags:2,characterSet:33,capabilityFlags:0x0008a20d,authCallback:(_auth,cb)=>{cb(null);connection._resetSequenceId()}});connection.on('packet',()=>connection._resetSequenceId());connection.on('query',sql=>{sqls.push(sql);if(/^START|^ROLLBACK/.test(sql))connection.writeOk();else if(sql.includes('information_schema.TABLES'))connection.writeTextResult(largeCatalog&&!sql.includes('LOCATE(')?Array.from({length:501},(_,i)=>({schemaName:'fixture',name:'archive_'+i,comment:'归档'})):orderCatalog,[{name:'schemaName',columnType:253,characterSet:33},{name:'name',columnType:253,characterSet:33},{name:'comment',columnType:253,characterSet:33}]);else if(sql.startsWith('SHOW CREATE TABLE'))connection.writeTextResult([{'Create Table':sql.endsWith('`order_items`')?'CREATE TABLE order_items(order_id BIGINT, amount DECIMAL(12,2))':'CREATE TABLE orders(id BIGINT PRIMARY KEY)'}],[{name:'Create Table',columnType:253,characterSet:33}]);else connection.writeTextResult([{value:'9007199254740993'}],[{name:'value',columnType:253,characterSet:33}])});connection.on('end',()=>mysqlSockets.delete(connection))})
+const mysqlSockets=new Set(),sqls=[];let largeCatalog=false;const orderCatalog=[{schemaName:'fixture',name:'orders',comment:'订单主表'},{schemaName:'fixture',name:'order_items',comment:'订单明细表'}];const ms=mysql.createServer(connection=>{mysqlSockets.add(connection);connection.writeTextResult=(rows,columns)=>{connection.writeColumns(columns.map(c=>({catalog:'def',schema:'fixture',table:'',orgTable:'',orgName:c.name,columnLength:1024,flags:0,decimals:0,...c})));for(const row of rows)connection.writeTextRow(columns.map(c=>row[c.name]));connection.writeEof()};connection.on('error',err=>{if(err.code!=='PROTOCOL_CONNECTION_LOST')console.error('MySQL fixture:',err.message)});connection.serverHandshake({protocolVersion:10,serverVersion:'8.0.0-fixture',connectionId:1,statusFlags:2,characterSet:33,capabilityFlags:0x0008a20d,authCallback:(_auth,cb)=>{cb(null);connection._resetSequenceId()}});connection.on('packet',()=>connection._resetSequenceId());connection.on('stmt_prepare',sql=>{sqls.push(sql);connection.writeOk()});connection.on('query',sql=>{sqls.push(sql);if(/^START|^ROLLBACK/.test(sql))connection.writeOk();else if(sql.includes('information_schema.TABLES'))connection.writeTextResult(largeCatalog&&!sql.includes('LOCATE(')?Array.from({length:501},(_,i)=>({schemaName:'fixture',name:'archive_'+i,comment:'归档'})):orderCatalog,[{name:'schemaName',columnType:253,characterSet:33},{name:'name',columnType:253,characterSet:33},{name:'comment',columnType:253,characterSet:33}]);else if(sql.startsWith('SHOW CREATE TABLE'))connection.writeTextResult([{'Create Table':sql.endsWith('`order_items`')?'CREATE TABLE order_items(order_id BIGINT, amount DECIMAL(12,2))':'CREATE TABLE orders(id BIGINT PRIMARY KEY)'}],[{name:'Create Table',columnType:253,characterSet:33}]);else connection.writeTextResult([{value:'9007199254740993'}],[{name:'value',columnType:253,characterSet:33}])});connection.on('end',()=>mysqlSockets.delete(connection))})
 await new Promise(r=>ms.listen(0,'127.0.0.1',r));const msave=await api.saveDataConnection({kind:'mysql',host:'127.0.0.1',port:ms._server.address().port,database:'fixture',name:'Fixture MySQL'}),mid=msave.config.id
-await api.testDataConnection(mid);assert.equal((await api.dataObjects({id:mid})).objects[0].name,'orders');await api.dataStructure({id:mid,selected:[{schemaName:'fixture',name:'orders'}]});const mresult=await api.executeDataQuery({id:mid,query:'SELECT 1 AS value'});assert.equal(mresult.rows[0].value,'9007199254740993');check('mysql2真实协议握手、元数据与只读事务；精确值保持字符串',()=>{assert.ok(sqls.includes('START TRANSACTION READ ONLY'));assert.ok(sqls.some(s=>s.includes('LIMIT 201')));assert.ok(sqls.includes('ROLLBACK'))})
+await api.testDataConnection(mid);assert.equal((await api.dataObjects({id:mid})).objects[0].name,'orders');await api.dataStructure({id:mid,selected:[{schemaName:'fixture',name:'orders'}]});const mresult=await api.executeDataQuery({id:mid,query:'SELECT 1 AS value'});assert.equal(mresult.rows[0].value,'9007199254740993');check('mysql2真实协议握手、元数据与只读事务；精确值保持字符串',()=>{assert.ok(sqls.includes('START TRANSACTION READ ONLY'));assert.ok(sqls.includes('SELECT 1 AS value'));assert.ok(sqls.includes('ROLLBACK'))})
 // Model fixtures prove prompt transport and no automatic query execution, not model quality.
 let nextSession=0,promptText='',choice={tableIds:[1,2],clarification:''},generationError;
 const prompts=[],promptSessions=[],sessions=new Map();
@@ -81,6 +81,15 @@ const modelController={
 const modelContext={get(key){if(key==='sessions')return {get:id=>sessions.get(id)};if(key==='sessionController')return modelController}};
 api.setShared_workbenchCtx(modelContext)
 try{const generated=await api.dataService.dataGenerate({id:mid,selected:[{schemaName:'fixture',name:'orders'}],instruction:'查询订单'});check('生成器使用即时结构和需求；只回填脚本，不执行查询',()=>{assert.match(promptText,/CREATE TABLE orders/);assert.equal(generated.query,'SELECT id FROM orders');assert.ok(!sqls.some(s=>s.includes('SELECT id FROM orders')))})}catch(err){console.error('AI fixture transport:',err.message);throw err}
+const memory=await api.dataService.dataWorkspaceLoad({id:mid});
+const persistedTurn=await api.dataService.dataGenerate({id:mid,selected:[{schemaName:'fixture',name:'orders'}],instruction:'保存这次查询',conversation:true,history:[],workspace:{key:memory.key,turnId:'fixture-completed-turn'}});
+assert.equal(persistedTurn.workspace.workspace.aiTurns[0].instruction,'保存这次查询');
+const beforeReplay=prompts.length;
+const replayed=await api.dataService.dataGenerate({id:mid,selected:[{schemaName:'fixture',name:'orders'}],instruction:'保存这次查询',conversation:true,history:[],workspace:{key:memory.key,turnId:'fixture-completed-turn'}});
+assert.equal(prompts.length,beforeReplay,'重复提交已完成编号不重新调用模型');
+assert.equal(replayed.workspace.workspace.aiTurns.length,1);
+assert.equal((await api.dataService.dataWorkspaceLoad({id:mid})).workspace.aiTurns[0].draft.query,'SELECT id FROM orders');
+check('AI完成回复按目标原子持久化，重复请求不新增历史',()=>{});
 const beforeAuto=prompts.length, beforeMetadata=sqls.length, beforeAutoSessions=nextSession;
 largeCatalog=true;
 const inferred=await api.dataService.dataGenerate({id:mid,selected:[],instruction:'统计订单金额'});
@@ -117,6 +126,23 @@ await assert.rejects(api.dataService.dataGenerate({id:mid,selected:[],instructio
 check('选表歧义和目录外序号只给提示，不读取猜测的结构或生成脚本',()=>{
  assert.equal(prompts.length-promptsBeforeClarify,2);
  assert.ok(!sqls.slice(metadataBeforeClarify).some(sql=>sql.startsWith('SHOW CREATE TABLE')));
+});
+choice={tableIds:[],clarification:'请说明需要哪个时间范围'};
+const reply=await api.dataService.dataGenerate({id:mid,conversation:true,instruction:'统计订单',history:[]});
+assert.deepEqual(reply,{clarification:'请说明需要哪个时间范围'});
+choice={tableIds:[1]};
+const continuationStart=prompts.length;
+await api.dataService.dataGenerate({id:mid,conversation:true,instruction:'最近七天',history:[
+ {instruction:'最早的内容'},
+ {instruction:'第二轮'},{instruction:'第三轮'},{instruction:'第四轮'},
+ {instruction:'统计订单',query:'SELECT id FROM orders',explanation:reply.clarification,password:'不得传给模型'},
+]});
+check('对话澄清可直接追问，选表和生成只携带受限前文',()=>{
+ for(const prompt of prompts.slice(continuationStart)){
+  assert.match(prompt,/统计订单/);assert.match(prompt,/最近七天/);
+  assert.match(prompt,/SELECT id FROM orders/);
+  assert.doesNotMatch(prompt,/最早的内容|不得传给模型/);
+ }
 });
 await assert.rejects(api.dataService.dataGenerate({id,selected:[],instruction:'搜索订单'}),/请选择索引或 Key|请先选择索引或 Key/);
 // Validate bundled production grammars through the public service, not only source imports.

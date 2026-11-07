@@ -150,7 +150,7 @@ function toolCsvPane(props?: any): any {
             props.patch({ output: '', error: 'JSON 解析失败：' + String((error && error.message) || error) });
         }
     }
-    return h('div', { className: 'wb-stack', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '输入（CSV 或 JSON 数组）' }, h(Textarea, {
+    return h('div', { className: 'wb-stack wb-tool-pair', style: { gap: 12 } }, h('div', { className: 'wb-split' }, h(Field, { label: '输入（CSV 或 JSON 数组）' }, h(Textarea, {
         value: value.input || '',
         style: toolMonoStyle(210),
         placeholder: 'name,qps\n网关,2000\n报表,800',

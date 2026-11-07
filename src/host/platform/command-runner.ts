@@ -31,7 +31,7 @@ const READ_ONLY_ARGV_PREFIXES: any = [
 ];
 /** Read-only subcommands this plugin is allowed to run. */
 const READ_ONLY_ALLOWLIST: any = {
-    git: new Set(['status', 'log', 'rev-parse', 'branch']),
+    git: new Set(['status', 'log', 'rev-parse', 'branch', 'diff']),
     docker: new Set(['ps', 'version', 'info']),
     lsof: new Set(['-i']),
 };
@@ -96,11 +96,14 @@ async function runReadOnlyCommand(ctx?: any, argv?: any, cwd?: any): Promise<any
     }
     try {
         const outcome = await handle.done;
+        let truncated = false;
         const read = function (reader?: any): any {
             if (!reader || typeof reader.readFrom !== 'function')
                 return '';
             try {
-                return String(reader.readFrom(0).text || '');
+                const chunk = reader.readFrom(0);
+                truncated ||= chunk.lossy === true;
+                return String(chunk.text || '');
             }
             catch (e) {
                 return '';
@@ -113,6 +116,7 @@ async function runReadOnlyCommand(ctx?: any, argv?: any, cwd?: any): Promise<any
             exitCode: outcome ? outcome.exitCode : null,
             stdout: stdout,
             stderr: stderr.slice(0, 2000),
+            truncated,
             reason: outcome && outcome.exitCode === 0 ? null : '退出码 ' + (outcome ? outcome.exitCode : 'unknown'),
         };
     }
