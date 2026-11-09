@@ -155,6 +155,16 @@ const WB_CSS = `
 .wb-grid { display: grid; gap: 16px; }
 .wb-row { display: flex; align-items: center; gap: 8px; }
 .wb-row--wrap { flex-wrap: wrap; }
+.wb-brief-page { container: brief / inline-size; }
+.wb-brief-flow { display: grid; gap: 16px; align-items: start; }
+.wb-brief-flow-card { display: flow-root; min-width: 0; }
+.wb-brief-flow-card > :is(.wb-inbox-summary, .wb-compact-status) { margin-bottom: 0; }
+@container brief (min-width: 876px) {
+  .wb-brief-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .wb-brief-flow.is-measured { grid-auto-rows: 1px; row-gap: 0; }
+  /* Reserve the card's content height and the gap so the next card can use the shorter column. */
+  .wb-brief-flow.is-measured > .wb-brief-flow-card { grid-row-end: span calc(var(--brief-card-height, 1) + 16); }
+}
 .wb-brief-action-panel > .wb-card-head { min-height: 56px; box-sizing: border-box; padding: 14px 16px; align-items: center; flex-wrap: nowrap; border-bottom: 1px solid var(--wb-border-soft); }
 .wb-root .wb-brief-action-panel > .wb-card-head { padding: 14px 16px; }
 .wb-brief-action-panel > .wb-card-head .wb-card-title { font-size: 14px; }
@@ -162,6 +172,8 @@ const WB_CSS = `
 .wb-brief-task-panel > .wb-card-head .wb-card-titles { flex: 0 0 auto; }
 .wb-brief-task-filters { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .wb-brief-task-filters-body { padding: 10px 16px; }
+.wb-brief-task-empty { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; padding: 6px 16px; font-size: 12px; }
+.wb-brief-task-empty > .wb-btn { margin-inline-start: auto; }
 .wb-brief-task-list > article + article { border-top: 1px solid var(--wb-border-soft); }
 .wb-brief-task-title { min-width: 0; }
 .wb-brief-task-title > button { width: 100%; }

@@ -112,8 +112,15 @@ it('会议留在日程，关联回复只在待回复区显示',()=>{
  const fixture=setup([task('会议关联回复',{eventType:'meeting',meetingStart:new Date(Date.now()+600000).toISOString()})]);fixture.WB.store.set({data:{...fixture.data,replies:[{id:'meeting-reply',stage:'待回复',snippet:'请确认参会',taskIds:['会议关联回复']}]}});render(<fixture.WB.pages.dashboard/>);expect(screen.getAllByRole('button',{name:'会议关联回复',exact:true})).toHaveLength(1);expect(panel().queryByRole('button',{name:'会议关联回复',exact:true})).toBeNull();expect(screen.getByText('请确认参会').closest('section')).toBe(screen.getByRole('heading',{name:/^待回复/}).closest('section'));
 })
 
-it('AI资讯与日程处于同一侧栏，不随左侧待办数量向下推移',()=>{
- const fixture=setup(Array.from({length:12},(_,i)=>task('任务'+i,{priority:'high'})));render(<fixture.WB.pages.dashboard/>);const news=screen.getByRole('heading',{name:/AI 动态/}).closest('#wb-brief-news');const agenda=screen.getByRole('heading',{name:'日程'}).closest('section');expect(news.parentElement).toBe(agenda.parentElement);expect(news.parentElement.contains(screen.getByRole('heading',{name:/^待办(?:\s|$)/}))).toBe(false);expect(screen.getByRole('button',{name:'AI 资讯 0'})).toBeTruthy();expect(within(news).getAllByRole('button',{name:'抓取资讯',exact:true}).length).toBeGreaterThan(0)
+it('今日关注为空时仍可查看未完成事项，资讯和云之家消息保留各自入口',async()=>{
+ vi.spyOn(Date,'now').mockReturnValue(now)
+ const fixture=setup([task('历史未完成事项')]);render(<fixture.WB.pages.dashboard/>);
+ expect(panel().getByText('当前没有今日关注事项')).toBeTruthy();
+ await userEvent.setup().click(panel().getByRole('button',{name:'显示全部未完成'}));
+ expect(panel().getByRole('button',{name:'历史未完成事项',exact:true})).toBeTruthy();
+ expect(screen.getByRole('button',{name:'AI 资讯 0'})).toBeTruthy();
+ expect(screen.getByRole('heading',{name:/AI 动态/}).closest('#wb-brief-news')).toBeTruthy();
+ expect(screen.getByRole('heading',{name:'云之家消息'})).toBeTruthy();
 })
 
 it('多对多关联不在待办内展开回复，也不重复事项或回复',()=>{

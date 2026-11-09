@@ -8,7 +8,15 @@ import {createServer} from 'node:http'
 import {build} from 'esbuild'
 const home=mkdtempSync(join(tmpdir(),'workbench-developer-'));process.env.DSH_HOME=home
 const bundle=join(home,'host.mjs')
-await build({stdin:{contents:`export {workbenchApi as api,setShared_workbenchCtx} from './src/host/application/workbench-service.ts';export {disposeDeveloperServices,activateDeveloperServices} from './src/host/application/developer-service.ts';export {normalizeState} from './src/host/domain/model.ts';`,resolveDir:resolve('.'),loader:'ts'},outfile:bundle,bundle:true,platform:'node',format:'esm',logLevel:'silent'})
+await build({stdin:{contents:`
+ export {workbenchApi as api,setShared_workbenchCtx} from './src/host/application/workbench-service.ts';
+ export {disposeDeveloperServices,activateDeveloperServices} from './src/host/application/developer-service.ts';
+ export {normalizeState} from './src/host/domain/model.ts';
+ export {resolveHttpRequest,checkHttpResponse} from './src/shared/http-workspace.ts';
+ export {setHubReinterpretGuardAvailable} from './src/host/assistant/hub-turns.ts';
+ export {knowledgeToolGuard} from './src/host/knowledge/guards.ts';
+ export {WORKBENCH_REMOTE} from './src/host/api/remote.ts';
+`,resolveDir:resolve('.'),loader:'ts'},outfile:bundle,bundle:true,platform:'node',format:'esm',logLevel:'silent'})
 const host=await import(bundle),{api}=host,children=new Set(),launches=[]
 const subprocess={spawn(spec){
  launches.push(spec)
@@ -97,6 +105,68 @@ try{
  const beforeFailed=disconnects;await assert.rejects(api.mcpConnect(request({url:url+'/bad-tools'})),/tools\/list/);check('发现工具失败也释放已创建的远端会话',()=>assert.equal(disconnects,beforeFailed+1))
  await assert.rejects(api.httpDebug(request({url:url+'/slow',timeoutMs:1000})),/停止或超时/);check('超时会终止真实HTTP等待',()=>{})
  check('调试凭据和响应不会写入业务状态',()=>assert.ok(!readFileSync(join(home,'storages/dev-workbench/state.json'),'utf8').includes('fixture-secret')))
+ const workspace=await api.httpWorkspace({action:'load'})
+ for(const method of ['httpWorkspace','httpDebugGenerate'])assert.ok(host.WORKBENCH_REMOTE.invocations.some(row=>row.namespace==='workbench'&&row.method===method&&row.parameters[0]?.wire==='request'))
+ const environment={id:'local',name:'本地环境',baseUrl:url}
+ const template={id:'echo',name:'回声请求',url:'{{baseUrl}}/echo',method:'POST',headers:{Authorization:'Bearer {{token}}'},body:'{"input":"{{code}}"}',assertions:[{kind:'status',expected:200},{kind:'json',path:'$.method',expected:'GET'},{kind:'json',path:'$.missing',expected:null}]}
+ const proposal={...workspace,environments:[environment],collections:[{...workspace.collections[0],requests:[template]}]}
+ const [firstWrite,staleWrite]=await Promise.allSettled([
+  api.httpWorkspace({action:'save',workspace:proposal}),api.httpWorkspace({action:'save',workspace:proposal}),
+ ])
+ check('Collection 与环境持久化，其他窗口的旧修订号保存被拒绝',()=>{
+  assert.equal(firstWrite.status,'fulfilled');assert.equal(staleWrite.status,'rejected');assert.match(staleWrite.reason.message,/其他窗口/)
+ })
+ const restored=await api.httpWorkspace({action:'load'})
+ assert.deepEqual(restored,firstWrite.value)
+ const illegal={...template,headers:{Authorization:'Bearer fixture-secret'}}
+ await assert.rejects(api.httpWorkspace({action:'save',workspace:{...proposal,revision:restored.revision,collections:[{...proposal.collections[0],requests:[illegal]}]}}),/凭据字段/)
+ const stored=restored.collections[0].requests[0]
+ assert.throws(()=>host.resolveHttpRequest(stored,environment),/缺少运行变量/)
+ assert.throws(()=>host.resolveHttpRequest({...stored,url:'https://outside.example/echo'},environment,'{"token":"fixture-secret","code":"x"}'),/所选环境不同/)
+ const {payload,assertions}=host.resolveHttpRequest(stored,environment,JSON.stringify({token:'fixture-secret',code:'带"引号'}))
+ const tested=host.checkHttpResponse(await api.httpDebug(request(payload)),assertions)
+ check('真实 HTTP 运行解析环境变量，期望与实际逐条核对并区分缺失和 null',()=>{
+  assert.equal(tested.state,'failed')
+  assert.deepEqual(tested.checks.map(({expected,actual,passed})=>[expected,actual,passed]),[[200,'200',true],['GET','"POST"',false],[null,'字段缺失',false]])
+  assert.deepEqual(JSON.parse(calls.at(-1).body),{input:'带"引号'})
+  assert.equal(calls.at(-1).headers.authorization,'Bearer fixture-secret')
+  assert.ok(!readFileSync(join(home,'storages/dev-workbench/http-workspace.json'),'utf8').includes('fixture-secret'))
+ })
+ let modelOutput={request:template,basis:'POST /echo'},modelPrompts=[]
+ const sessions=new Map()
+ const controller={
+  async create(){
+   const events=[]
+   const session={id:'fixture-http-'+sessions.size,get seq(){return events.length},events,snapshotEvents:(from=0)=>events.filter(event=>event.seq>from)}
+   sessions.set(session.id,session);return {session}
+  },
+  async prompt({sessionId,content}){
+   assert.ok(host.knowledgeToolGuard(sessionId))
+   modelPrompts.push(content[0].text)
+   const session=sessions.get(sessionId)
+   for(const [type,data] of [['turn/start',{}],['assistant/message',{message:{content:[{type:'text',text:JSON.stringify(modelOutput)}]}}],['turn/end',{}]]){
+    session.events.push({seq:session.seq+1,type,data})
+   }
+  },
+ }
+ const modelContext={get:name=>({subprocess,sessionController:controller,sessions})[name]}
+ host.setShared_workbenchCtx(modelContext)
+ const generation={mode:'request',instruction:'创建回声请求',source:'POST /echo'}
+ await assert.rejects(api.httpDebugGenerate(generation),/工具拦截/)
+ host.setHubReinterpretGuardAvailable(modelContext,true)
+ const priorCalls=calls.length
+ const draft=await api.httpDebugGenerate(generation)
+ modelOutput={assertions:[{kind:'status',expected:400},{kind:'json',path:'$.error',expected:'invalid'}]}
+ const rules=await api.httpDebugGenerate({mode:'assertions',instruction:'生成预期错误断言',source:'HTTP 400',method:'POST'})
+ check('AI 使用工具受限的独立会话并校验两类草稿，生成不保存、不发送 HTTP',()=>{
+  assert.equal(draft.request.url,'{{baseUrl}}/echo');assert.equal(rules.assertions[0].expected,400)
+  assert.equal(sessions.size,2);assert.equal(calls.length,priorCalls)
+  assert.ok(modelPrompts.every(prompt=>!prompt.includes('fixture-secret')))
+ })
+ assert.deepEqual(await api.httpWorkspace({action:'load'}),restored)
+ modelOutput={request:{...template,url:'file:///tmp/bad'}}
+ await assert.rejects(api.httpDebugGenerate(generation),/HTTP/)
+ host.setShared_workbenchCtx({get:name=>name==='subprocess'?subprocess:null})
  const oldDispose=host.activateDeveloperServices(),newDispose=host.activateDeveloperServices();await api.projectStart({projectId,commandId:'server'});oldDispose();check('旧挂载的清理不能停止新挂载的运行',()=>assert.equal((launches.filter(s=>s.argv[0]==='node')).length,2));assert.equal((await api.projectRuntime({projectId})).runs[0].status,'running');newDispose();await new Promise(r=>setTimeout(r,100));check('插件停用只清理由本模块持有的进程',()=>assert.equal(children.size,0))
  console.log('developer-tools: '+checks+' real integration scenarios passed')
 }finally{host.disposeDeveloperServices();for(const child of children)child.kill('SIGKILL');server.closeAllConnections();await new Promise(r=>server.close(r));rmSync(home,{recursive:true,force:true})}

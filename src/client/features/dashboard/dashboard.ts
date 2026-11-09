@@ -20,6 +20,20 @@ import { dashBriefMarkdown } from './brief-export.js'
 import { DashConnectorCard, dashConnectorIcon } from './connector-card.js'
 import { DashEmptyIllustration, DashEmptyStep } from './empty-state.js'
 
+function BriefFlowCard({id,children}:{id?:string;children:React.ReactNode}) {
+    const ref=React.useRef<HTMLDivElement>(null);
+    React.useLayoutEffect(()=>{
+        const card=ref.current;
+        if(!card||typeof ResizeObserver!=='function')return;
+        const measure=()=>card.style.setProperty('--brief-card-height',String(card.offsetHeight));
+        measure();
+        const observer=new ResizeObserver(measure);
+        observer.observe(card,{box:'border-box'});
+        return ()=>observer.disconnect();
+    },[]);
+    return h('div',{ref,id,className:'wb-brief-flow-card'},children);
+}
+
 function DashboardPage(): any {
     const state = WB.useStore();
     const data = state.data;
@@ -136,14 +150,14 @@ function DashboardPage(): any {
         headerExtra:inlineTaskFilters?taskFilters:null,
         icon: 'checkCircle',
         title: '待办',
-        // 完全没有任务时隐藏副标题，空态保持干净（与右侧一致）
-        sub: null,
         badge: taskSelection.length > 0 ? h(Badge, { tone: 'accent' }, String(taskSelection.length)) : null,
         actions: h('div',{className:'wb-row wb-row--wrap',style:{gap:6}},h(WorkspaceRefresh,{scope:'tasks'}),h(Btn, {size:'sm',kind:'subtle',onClick:()=>WB.go('tasks'),children:'任务中心'})),
         flush: true,
     }, !inlineTaskFilters&&taskFilters?h('div',{className:'wb-brief-task-filters-body'},taskFilters):null,shownTasks.length > 0
         ? h('div', { className: 'wb-list wb-brief-task-list', style: { padding: '0 16px' } }, shownTasks.map((task:any)=>h('article',{key:task.id},h(DashTaskRow,{task,data}))))
-        : tasks.length===0?h(CompactEmptyState, {empty:true,onCreate:()=>WB.openTaskForm(null),onBrowse:()=>WB.go('tasks')}):h('div',{className:'wb-stack',style:{padding:16,gap:8}},h('strong',null,taskScope==='all'?'没有未完成待办':'当前没有今日关注事项'),h('span',{className:'wb-tiny wb-muted'},'今日关注包含今日新增、逾期、今日到期和高优先级事项。'),taskScope!=='all'?h(Btn,{size:'sm',onClick:()=>{setTaskScope('all');setAllTasksShown(false)},children:'显示全部未完成'}):null), taskSelection.length > 8
+        : tasks.length===0?h(CompactEmptyState, {empty:true,onCreate:()=>WB.openTaskForm(null),onBrowse:()=>WB.go('tasks')}):h('div',{className:'wb-brief-task-empty'},
+            h('span',{className:'wb-muted',title:taskScope==='today'?'今日关注包含今日新增、逾期、今日到期和高优先级事项。':undefined},taskScope==='all'?'没有未完成待办':'当前没有今日关注事项'),
+            taskScope==='today'&&openTasks.length>0?h(Btn,{size:'sm',kind:'subtle',onClick:()=>{setTaskScope('all');setAllTasksShown(false)},children:'显示全部未完成'}):null), taskSelection.length > 8
         ? h('div', {
             style: {
                 display: 'flex',
@@ -358,7 +372,7 @@ function DashboardPage(): any {
             }))
             : h('p', { className: 'wb-tiny wb-muted', style: { margin: 0, lineHeight: 1.6 } }, data.settings?.aiExtract?.enabled ? (analysis.pending ? 'AI 已开启，待识别消息可运行分析，或在待回复页逐条处理。' : '本轮识别已完成，暂无待确认或失败条目。') : '开启「设置 → 自动化 → AI 识别」后，可处理已采集消息。'))
         : null;
-    return h('div', null, h(PageHead, {
+    return h('div', {className:'wb-brief-page'}, h(PageHead, {
         icon: 'dashboard',
         title: '今日简报',
         summary: '北京时间 · '+new Intl.DateTimeFormat('zh-CN',{timeZone:'Asia/Shanghai',month:'long',day:'numeric',weekday:'long'}).format(taskClock),
@@ -370,18 +384,20 @@ function DashboardPage(): any {
         h(Btn,{size:'sm',kind:'subtle',onClick:()=>WB.go('replies'),children:'待回复 '+replyOpen.length}),
         h(Btn,{size:'sm',kind:'subtle',icon:'radar',onClick:()=>document.getElementById('wb-brief-news')?.scrollIntoView({block:'start',behavior:'smooth'}),children:'AI 资讯 '+radarSorted.length}),
         h(Btn,{size:'sm',kind:'subtle',disabled:!analysis?.awaitingHuman,onClick:()=>document.getElementById('wb-brief-analysis')?.scrollIntoView({block:'start'}),children:'待确认 '+(analysis?.awaitingHuman||0)})),
-    h('div',{className:'wb-split',style:{gridTemplateColumns:'minmax(0,1.6fr) minmax(0,1fr)',marginBottom:16}},
-        h('div',{ref:taskColumn,className:'wb-stack',style:{gap:16,minWidth:0}},taskPanel,replyOpen.length?replyPanel:null),
-        h('div',{className:'wb-stack',style:{gap:16,minWidth:0}},h(BriefAgenda,{data:{...data,tasks},now:taskClock}),h('div',{id:'wb-brief-news'},radarPanel))),
-    h('div',{id:'wb-brief-analysis'},analysis?.awaitingHuman>0?analysisPanel:null),
-    h(FocusedInbox,{data,compact:true}),
-    h('details',{className:'wb-compact-status'},h('summary',null,
-        h('span',null,lastMentions?.status==='ok'?'消息同步正常':lastMentions?'消息尚未同步完整':'消息尚未同步'),
-        h('span',{className:'wb-tiny wb-muted'},data.messageInbox?.at?'最近同步 '+WB.fmt.relative(data.messageInbox.at):'尚无消息快照'),
-        analysis?.failed?h(Badge,{tone:'err'},'识别失败 '+analysis.failed):null,
-        stale?h(Badge,{tone:'warn'},'快照可能过期'):null),
-        mentionsStrip,analysis?.awaitingHuman>0?null:analysisPanel),
-    h('details',{className:'wb-compact-status',onToggle:(event:any)=>setReminderToolsOpen(event.currentTarget.open)},h('summary',null,'提醒与日历导出'),reminderToolsOpen?h(RemindersPanel,{revision:data.revision}):null),
+    h('div',{className:'wb-brief-flow'+(typeof ResizeObserver==='function'?' is-measured':'')},
+        h(BriefFlowCard,null,h('div',{ref:taskColumn},taskPanel)),
+        h(BriefFlowCard,null,h(BriefAgenda,{data:{...data,tasks},now:taskClock})),
+        h(BriefFlowCard,{id:'wb-brief-news'},radarPanel),
+        replyOpen.length?h(BriefFlowCard,null,replyPanel):null,
+        analysis?.awaitingHuman>0?h(BriefFlowCard,{id:'wb-brief-analysis'},analysisPanel):null,
+        h(BriefFlowCard,null,h(FocusedInbox,{data,compact:true})),
+        h(BriefFlowCard,null,h('details',{className:'wb-compact-status'},h('summary',null,
+            h('span',null,lastMentions?.status==='ok'?'消息同步正常':lastMentions?'消息尚未同步完整':'消息尚未同步'),
+            h('span',{className:'wb-tiny wb-muted'},data.messageInbox?.at?'最近同步 '+WB.fmt.relative(data.messageInbox.at):'尚无消息快照'),
+            analysis?.failed?h(Badge,{tone:'err'},'识别失败 '+analysis.failed):null,
+            stale?h(Badge,{tone:'warn'},'快照可能过期'):null),
+            mentionsStrip,analysis?.awaitingHuman>0?null:analysisPanel)),
+        h(BriefFlowCard,null,h('details',{className:'wb-compact-status',onToggle:(event:any)=>setReminderToolsOpen(event.currentTarget.open)},h('summary',null,'提醒与日历导出'),reminderToolsOpen?h(RemindersPanel,{revision:data.revision}):null))),
     reviewing?h(AnalysisMessageDialog,{
         key:reviewing.id,entryId:reviewing.id,source:(data.sources||[]).find((source:any)=>source.id===reviewing.sourceId),
         sources:data.sources||[],accountId,reason:reviewing.reviewReason||reviewing.analysis?.summary,

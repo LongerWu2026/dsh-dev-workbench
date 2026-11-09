@@ -42,6 +42,39 @@ try{
   const expandedOverflow=await page.locator('.wb-scroll').evaluate(el=>el.scrollWidth-el.clientWidth);if(expandedOverflow>2)throw Error('expanded overflow '+expandedOverflow)
   report.push({width,height,theme,...metrics,headers,expandedOverflow})
  }
+ await page.evaluate(()=>{
+  const data=window.WB.store.get().data;
+  const history=Array.from({length:6},(_,index)=>({id:'history-'+index,title:'历史待办 '+index,status:'ready',priority:'normal',createdAt:'2020-01-01T00:00:00Z'}));
+  window.WB.store.set({data:{...data,tasks:[...history,...data.tasks.filter(task=>task.eventType==='meeting')]}});
+ });
+ for(const [width,theme] of [[1280,'light'],[1280,'dark'],[360,'light']]){
+  await page.setViewportSize({width,height:700});
+  await page.evaluate(theme=>{document.documentElement.className=theme},theme);
+  await page.getByRole('button',{name:'今日关注 0',exact:true}).click();
+  await page.getByText('当前没有今日关注事项',{exact:true}).waitFor();
+  await page.locator('.wb-scroll').evaluate(el=>{el.scrollTop=0});
+  const layout=()=>page.locator('.wb-brief-flow').evaluate(async flow=>{
+   await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));
+   const cards=[...flow.children],boxes=cards.map(card=>card.getBoundingClientRect());
+   const [task,agenda,news]=boxes;
+   const inboxIndex=cards.findIndex(card=>card.querySelector('.wb-inbox-summary'));
+   const overlap=boxes.some((a,i)=>boxes.slice(i+1).some(b=>a.left<b.right-1&&a.right>b.left+1&&a.top<b.bottom-1&&a.bottom>b.top+1));
+   return {taskX:task.x,agendaX:agenda.x,newsX:news.x,taskBottom:task.bottom,newsTop:news.top,inboxTop:boxes[inboxIndex].top,
+    precedingBottom:Math.max(...boxes.slice(0,inboxIndex).map(box=>box.bottom)),overlap,
+    columns:new Set(boxes.map(box=>box.x)).size,overflow:flow.scrollWidth-flow.clientWidth};
+  });
+  const empty=await layout();
+  const emptyRow=await page.locator('.wb-brief-task-empty').boundingBox();
+  if(empty.overlap||empty.overflow>1||!emptyRow||emptyRow.height>44)throw Error('今日待办空态仍占用多行或卡片溢出 '+JSON.stringify({width,empty,emptyRow}));
+  if(width===1280&&(empty.columns!==2||empty.newsX!==empty.taskX||Math.abs(empty.newsTop-empty.taskBottom-16)>1||empty.inboxTop>=empty.precedingBottom))throw Error('资讯和消息没有利用较短的列 '+JSON.stringify(empty));
+  if(width===360&&empty.columns!==1)throw Error('窄屏未按单列显示 '+JSON.stringify(empty));
+  await page.screenshot({path:resolve(out,`flow-empty-${width}-${theme}.png`),animations:'disabled'});
+  await page.getByRole('button',{name:'显示全部未完成',exact:true}).click();
+  await page.getByRole('button',{name:'历史待办 5',exact:true}).waitFor();
+  const expanded=await layout();
+  if(expanded.overlap||expanded.overflow>1||width===1280&&expanded.newsX!==expanded.agendaX)throw Error('待办变长后资讯没有重新排布 '+JSON.stringify(expanded));
+  report.push({width,theme,stage:'brief-flow',empty,expanded});
+ }
  if(errors.length)throw Error(errors.join('\n'))
  writeFileSync(resolve(out,'report.json'),JSON.stringify({cases:report,errors},null,2));console.log(JSON.stringify({cases:report.length,errors,output:out}))
 }finally{await browser.close()}

@@ -4,7 +4,9 @@ import {sendHttpRequest,cancelDebugRequest,connectMcp,callMcp,disconnectMcp,disp
 import {disposeYunzhijiaSetup} from '../integrations/yunzhijia-setup.js'
 import {disposeDevelopment} from './development-service.js'
 import {projectFiles} from '../integrations/project-files.js'
+import {httpWorkspaceService} from './http-workspace-service.js'
 export const developerService={
+    ...httpWorkspaceService,
     async projectFiles(request:any){return projectFiles(request)},
     async projectRuntime(request:any){return projectRuntimeState(request?.projectId,request?.force===true)},
     async projectStart(request:any){return startProject(request?.projectId,request?.commandId)},

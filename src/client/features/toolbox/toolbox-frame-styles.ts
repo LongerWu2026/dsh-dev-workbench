@@ -107,7 +107,7 @@ export const TOOLBOX_FRAME_CSS=`
 .wb-data-surface{display:flex;flex-direction:column;flex:1;min-height:0;height:100%}
 .wb-data-toolbar,.wb-data-mobile-views,.wb-data-memory{flex:none}
 .wb-data-workspace{flex:1;min-height:0;height:auto}
-.wb-data-sidebar{min-height:0;max-height:100%;overflow:auto}
+.wb-data-sidebar{min-height:0;max-height:100%}
 .wb-data-main{min-height:0;gap:8px}
 .wb-data-editor{flex:0 1 34%;min-height:48px}
 .wb-data-main textarea[aria-label="数据查询编辑器"]{height:100%!important;min-height:0!important;max-height:none;resize:none}
@@ -118,15 +118,7 @@ export const TOOLBOX_FRAME_CSS=`
 .wb-data-pagination-help{flex:none;font-size:11px;color:var(--dsw-alias-label-secondary);max-height:35%;overflow:auto}
 .wb-data-pagination-help>summary{cursor:pointer}
 .wb-data-structure{flex:0 1 28%;min-height:24px;overflow:auto}
-.wb-data-ai{overflow:hidden}
-.wb-data-ai-header{flex:none}
-.wb-data-ai-log{flex:1 1 60%;min-height:0}
-.wb-data-ai-composer{flex:0 1 42%;min-height:0;max-height:48%;overflow:auto;overscroll-behavior:contain;padding:8px 12px}
-.wb-data-ai-composer .wb-data-ai-input{display:flex;flex-direction:column;min-height:0}
-.wb-data-ai-composer textarea[aria-label="数据库AI需求"]{min-height:48px!important;height:clamp(48px,11vh,96px);resize:none;max-height:none}
-.wb-data-ai-controls{flex:none}
 .wb-data-ai-log .wb-code{max-height:180px;overflow:auto}
-.wb-data-ai-empty{min-height:min-content;padding:6px}
 .wb-data-memory{min-height:22px;padding-block:3px}
 @container tools (max-width:759px){
  .wb-tool-pair>.wb-split,.wb-tool-pane>.wb-network-workspace,.wb-tool-converter{grid-template-columns:minmax(0,1fr)!important;grid-template-rows:minmax(0,1fr) minmax(0,1fr)}
@@ -140,11 +132,6 @@ export const TOOLBOX_FRAME_CSS=`
  .wb-tool-surface--data>.wb-card-body{padding:0}
  .wb-data-toolbar{min-height:36px;padding-block:4px}
  .wb-data-mobile-views{min-height:32px;padding-block:2px}
- .wb-data-ai-header{min-height:36px;padding-block:4px}
- .wb-data-ai-composer{padding:6px 8px;min-height:0}
- .wb-data-ai-composer>p{font-size:10px;line-height:1.4}
- .wb-data-ai-log{min-height:0;padding:8px}
- .wb-data-ai-composer textarea[aria-label="数据库AI需求"]{height:48px}
  .wb-data-query-head{min-height:36px;padding-block:4px}
  .wb-data-memory{min-height:18px;font-size:10px}
  .wb-tool-ai[open]{max-height:50%;flex-basis:50%}

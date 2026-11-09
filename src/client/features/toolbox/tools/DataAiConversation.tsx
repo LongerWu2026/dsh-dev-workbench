@@ -11,26 +11,59 @@ export type DataDraft = {
     selected: {name:string;schemaName?:string}[];
 };
 export type DataTurn = {instruction:string; draft?:DataDraft; clarification?:string};
+type DataSource = 'sql' | 'es' | 'redis';
 type Props = {
     turns: DataTurn[];
     pending: string;
     instruction: string;
     mode: 'query' | 'script';
-    isSql: boolean;
+    source: DataSource;
+    selected: DataDraft['selected'];
     canSend: boolean;
     busy: boolean;
     scopeHint: string;
     error: string;
     setInstruction: (value:string)=>void;
-    setMode: (value:string)=>void;
+    setMode: (value:DataDraft['mode'])=>void;
     send: ()=>void;
     apply: (draft:DataDraft)=>void;
     onClose?: ()=>void;
     databaseLabel?: string;
 };
 
+function starterQuestions(source:DataSource,selected:DataDraft['selected']){
+    const first=selected[0];
+    if(source==='es'){
+        const index=`索引“${first?.name??'完整索引名'}”`;
+        return [
+            {label:first?'统计当前索引的文档总数':'统计指定索引的文档总数',instruction:`统计${index}的文档总数`},
+            {label:'统计最近七天每天的新增文档数',instruction:`按创建时间统计${index}最近七天每天的新增文档数`},
+            {label:'按字段汇总文档数量',instruction:`按${index}中的分类字段汇总文档数量，并按数量降序排列`},
+        ];
+    }
+    if(source==='redis'){
+        const key=first?`Key「${first.name}」`:'所选 Key';
+        return [
+            {label:'查看 Key 的数据类型',instruction:`查看${key}的数据类型`},
+            {label:'查看 Key 的剩余过期时间',instruction:`查看${key}的剩余过期时间`},
+            {label:'统计 Key 的长度或元素数',instruction:`根据数据类型查询${key}的长度或元素数量`},
+        ];
+    }
+    const scope=selected.length>1?'在所选表中，':first?`在表「${[first.schemaName,first.name].filter(Boolean).join('.')}」中，`:'';
+    return ['统计最近七天每天的记录数量','按分类汇总并按数量排序','查找重复记录']
+        .map(label=>({label,instruction:scope+label}));
+}
+
 export function DataAiConversation(props:Props){
-    const {turns,pending,instruction,mode,isSql,canSend,busy,scopeHint,error}=props;
+    const {turns,pending,instruction,mode,source,selected,canSend,busy,scopeHint,error}=props;
+    const isSql=source==='sql';
+    const scriptMode=mode==='script';
+    const showIntro=!turns.length&&!pending&&!error;
+    const starters=starterQuestions(source,selected);
+    const example=isSql?'统计最近七天每天的订单金额':starters[0].label;
+    const placeholder=scriptMode
+        ?(turns.length?'继续补充要调整的数据或字段…':'例如，为订单表新增备注字段')
+        :(turns.length?'继续描述筛选条件，或修改上面的查询…':`例如，${example}`);
     const log=React.useRef<HTMLDivElement>(null),composer=React.useRef<HTMLFormElement>(null);
     React.useEffect(()=>{
         if(log.current)log.current.scrollTop=turns.length||pending||error?log.current.scrollHeight:0;
@@ -41,16 +74,19 @@ export function DataAiConversation(props:Props){
             <span className="wb-data-ai-icon"><Icon name="sparkles" size={16}/></span>
             <strong>{isSql?'AI SQL 助手':'AI 查询助手'}</strong>
             {props.databaseLabel&&<span className="wb-data-ai-context" title={props.databaseLabel}>{props.databaseLabel}</span>}
-            {props.onClose&&<IconBtn name="close" label="关闭 AI 会话" onClick={props.onClose}/>}
+            {props.onClose&&<IconBtn name="chevronRight" label="收起 AI 会话" onClick={props.onClose}/>}
         </header>
-        <div className="wb-data-ai-log" ref={log} role="log" aria-label="AI 会话记录" tabIndex={0}>
-            {!turns.length&&!pending&&!error&&<div className="wb-data-ai-empty">
-                <span className="wb-data-ai-hero-icon"><Icon name="sparkles" size={26}/></span>
-                <strong>{isSql?'描述需求，让 AI 生成 SQL':'描述需求，让 AI 生成查询'}</strong>
-                <p className="wb-muted">说明要查询的数据、筛选条件和统计方式，也可以继续追问调整。</p>
-                <div className="wb-data-ai-starters" aria-label="查询需求示例">
-                    {['统计最近七天每天的记录数量','按分类汇总并按数量排序','查找重复记录'].map(text=><button key={text} type="button" disabled={busy} onClick={()=>{props.setInstruction(text);composer.current?.querySelector('textarea')?.focus()}}>{text}<Icon name="arrowRight" size={13}/></button>)}
-                </div>
+        <div className={'wb-data-ai-log'+(showIntro?' is-empty':'')} ref={log} role="log" aria-label="AI 会话记录" tabIndex={0}>
+            {showIntro&&<div className={'wb-data-ai-empty'+(scriptMode?' is-script':'')}>
+                <strong>{scriptMode?'生成 SQL 变更脚本':isSql?'描述需求，让 AI 生成 SQL':'描述需求，让 AI 生成查询'}</strong>
+                <p className="wb-muted">{scriptMode?'描述要调整的数据或表结构，AI 会生成脚本和回滚建议。':'告诉 AI 想查什么，可以带上筛选条件和统计口径。'}</p>
+                {!scriptMode&&<div className="wb-data-ai-starters" role="group" aria-labelledby="wb-data-ai-starters-label">
+                    <p id="wb-data-ai-starters-label" className="wb-tiny wb-muted">试试这样问</p>
+                    {starters.map(({label,instruction})=><button key={label} type="button" disabled={busy}
+                        onClick={()=>{props.setInstruction(instruction);composer.current?.querySelector('textarea')?.focus()}}>
+                        <Icon name="plus" size={14}/><span>{label}</span>
+                    </button>)}
+                </div>}
             </div>}
             {turns.map(({instruction,draft,clarification},index)=><div className="wb-data-ai-turn" key={index}>
                 <p className="wb-data-ai-question">{instruction}</p>
@@ -76,7 +112,7 @@ export function DataAiConversation(props:Props){
             <p className="wb-tiny wb-muted">{scopeHint}</p>
             <div className="wb-data-ai-input">
                 <Textarea aria-label="数据库AI需求" rows={4} maxLength={2000} value={instruction} disabled={busy}
-                    placeholder={turns.length?'继续描述筛选条件，或修改上面的查询…':'描述你想查询的数据，例如：统计最近七天每天的订单金额'}
+                    placeholder={placeholder}
                     onChange={(event:React.ChangeEvent<HTMLTextAreaElement>)=>props.setInstruction(event.target.value)}
                     onKeyDown={(event:React.KeyboardEvent<HTMLTextAreaElement>)=>{
                         if(event.key==='Enter'&&(event.metaKey||event.ctrlKey)&&!event.nativeEvent.isComposing){
@@ -85,11 +121,13 @@ export function DataAiConversation(props:Props){
                         }
                     }}/>
                 <div className="wb-data-ai-controls">
-                    <select aria-label="数据库生成模式" className="wb-select" disabled={busy} value={mode} onChange={event=>props.setMode(event.target.value)}>
-                        <option value="query">只读查询</option>
-                        {isSql&&<option value="script">变更脚本（仅预览）</option>}
-                    </select>
-                    <Btn kind="primary" size="sm" disabled={!canSend} onClick={props.send}>{mode==='script'?'生成脚本':isSql?'生成 SQL':'生成查询'}</Btn>
+                    {isSql&&<div className="wb-data-ai-mode">
+                        <Btn kind="subtle" size="sm" icon={scriptMode?'reply':'edit'} disabled={busy}
+                            title={scriptMode?'返回查询':'生成变更脚本和回滚建议，仅供预览'}
+                            onClick={()=>props.setMode(scriptMode?'query':'script')}>{scriptMode?'返回查询':'变更脚本'}</Btn>
+                        {scriptMode&&<span className="wb-tiny wb-muted">仅预览，不能执行</span>}
+                    </div>}
+                    <Btn kind="primary" size="sm" disabled={!canSend} onClick={props.send}>{scriptMode?'生成脚本':isSql?'生成 SQL':'生成查询'}</Btn>
                 </div>
             </div>
         </form>

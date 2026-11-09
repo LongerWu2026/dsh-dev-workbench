@@ -32,7 +32,7 @@ dsh plugin --profile desktop add dsh-dev-workbench
 从 [Releases](https://github.com/LongerWu2026/dsh-dev-workbench/releases) 下载 `dsh-dev-workbench-<版本>.tgz`，或直接安装：
 
 ```sh
-dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.7/dsh-dev-workbench-0.4.7.tgz
+dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workbench/releases/download/v0.4.8/dsh-dev-workbench-0.4.8.tgz
 ```
 
 升级后按宿主机制重载插件组件或重启 Harness，再打开侧栏「智能工作台」。只刷新页面不会重新注册新增 Host 接口；遇到 `/api/workbench/...` 返回 404，先重载插件组件。升级前建议备份工作台数据，位置见下文。
@@ -136,7 +136,7 @@ dsh plugin --profile desktop add https://github.com/LongerWu2026/dsh-dev-workben
 
 ### 开发工具与数据查询
 
-工具箱按工具展示输入和结果，可搜索、筛选并在当前页面保留切换前的输入。JSON 支持格式化、树形查看和路径复制；Diff 支持文本和 JSON 结构对比；HTTP 调试支持导入基础 cURL，导入本身不发送请求；另有 MCP Streamable HTTP 调试、日志筛选、正则、Cron、SQL 格式化、类型生成、YAML/CSV 转换等工具。AI 辅助需显式点击，沿用宿主助手。
+工具箱按工具展示输入和结果，可搜索、筛选并在当前页面保留切换前的输入。JSON 支持格式化、树形查看和路径复制；Diff 支持文本和 JSON 结构对比；HTTP 调试支持导入基础 cURL、保存请求集合与环境、批量运行和校验响应断言。导入与 AI 生成只准备草稿，运行变量值仅在当前页面使用。另有 MCP Streamable HTTP 调试、日志筛选、正则、Cron、SQL 格式化、类型生成、YAML/CSV 转换等工具。AI 辅助需显式点击，沿用宿主助手。
 
 数据连接支持 MySQL、PostgreSQL、Elasticsearch 和单节点 Redis：读取所选结构、生成查询并在用户点击后执行。SQL 使用语法树校验和只读事务，Redis 仅开放受限读取；建议配合只读账号使用。AI 生成只传数据库类型与所选结构元数据，不传连接密码、地址或业务行数据；生成的结构变更与回滚脚本仅供预览。SQL 查询每页可选 50、100 或 200 行，每页最多 1 MB，可继续翻页读取原查询结果。
 
@@ -160,6 +160,7 @@ AI 助手的办公工具将工作记录组织为回复草稿、日报周报和�
 | 业务状态备份 | `backups/` |
 | 数据连接配置与可选密码密文 | `data-connections.json` |
 | 数据查询工作区、最近 AI 对话与结果 | `data-workspaces.json` |
+| HTTP 请求集合、环境配置与断言 | `http-workspace.json` |
 | 项目文件审阅记录 | `project-workspaces/` |
 | 研发配置、任务和适配器记录 | `development/` |
 | 助手会话索引、事项绑定、操作与轮次回执 | `assistant-*.json` |

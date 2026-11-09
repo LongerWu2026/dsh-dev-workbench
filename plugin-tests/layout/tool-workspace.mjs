@@ -55,8 +55,10 @@ try{
   else if(id==='http-debug'){await page.getByLabel('接口请求地址').fill('http://synthetic.invalid');await click('发送请求')}
   else if(id==='mcp-debug'){if(!await page.getByLabel('MCP 工具').count()){await page.getByLabel('MCP 服务地址').fill('http://synthetic.invalid/mcp');await click('连接并发现工具')}await click('调用所选工具')}
   else if(id==='data'){
-   if(!await page.getByRole('checkbox',{name:/public.orders/}).isVisible()){if(!await page.getByRole('tab',{name:'对象',exact:true}).isVisible())await click('展开连接');await page.getByRole('tab',{name:'对象',exact:true}).click()}
-   await page.getByRole('checkbox',{name:/public.orders/}).check();if(await page.getByRole('button',{name:'关闭连接面板'}).isVisible())await click('关闭连接面板')
+   const orders=page.getByRole('checkbox',{name:/public.orders/})
+   if(!await orders.isVisible())await click('展开连接')
+   await orders.check()
+   if(await page.getByRole('button',{name:'关闭连接面板'}).isVisible())await click('关闭连接面板')
    if(await page.getByRole('tab',{name:'AI 查询',exact:true}).count())await page.getByRole('tab',{name:'AI 查询',exact:true}).click()
    if(!await page.getByRole('textbox',{name:'数据库AI需求'}).isVisible())await click('展开 AI 会话')
    await page.getByRole('textbox',{name:'数据库AI需求'}).fill('查询合成订单');await click('生成 SQL');await page.getByRole('button',{name:'填入 SQL 编辑器'}).last().waitFor()

@@ -1,21 +1,49 @@
 import * as React from 'react'
 import {Btn,Icon} from '../../../core/runtime.js'
 
-export function DataWorkspaceMenu({busy,disconnecting,hasConnection,canClear,onConfig,onDisconnect,onClear}:any){
- const menu=React.useRef<HTMLDetailsElement>(null)
- React.useEffect(()=>{
-  const close=(event:Event)=>{if(menu.current&&!menu.current.contains(event.target as Node))menu.current.open=false}
-  document.addEventListener('pointerdown',close);return()=>document.removeEventListener('pointerdown',close)
- },[])
- function run(action:()=>void){if(menu.current){menu.current.open=false;menu.current.querySelector('summary')?.focus()}action()}
- return <details className="wb-data-more" ref={menu} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();event.currentTarget.open=false;event.currentTarget.querySelector('summary')?.focus()}}}>
-  <summary className="wb-iconbtn" aria-label="数据连接更多操作" title="更多操作"><Icon name="more" size={16}/></summary>
-  <div className="wb-data-menu">
-   <Btn size="sm" icon="settings" disabled={busy} onClick={()=>run(onConfig)}>连接配置</Btn>
-   {hasConnection&&<Btn size="sm" icon="plug" disabled={disconnecting} onClick={()=>run(onDisconnect)}>{busy?'停止并断开':'断开连接'}</Btn>}
-   {canClear&&<Btn size="sm" icon="trash" disabled={busy} onClick={()=>run(onClear)}>清除当前连接记忆</Btn>}
-  </div>
- </details>
+type DataMenuItem={label:string;icon:string;disabled?:boolean;danger?:boolean;title?:string;action:()=>void}
+
+export function DataWorkspaceMenu({label,items}:{label:string;items:DataMenuItem[]}){
+ const [open,setOpen]=React.useState(false)
+ const root=React.useRef<HTMLDivElement>(null),trigger=React.useRef<HTMLButtonElement>(null),menu=React.useRef<HTMLDivElement>(null)
+ const menuId=React.useId()
+ React.useLayoutEffect(()=>{
+  if(!open||!menu.current||!trigger.current)return
+  const popup=menu.current,anchor=trigger.current.getBoundingClientRect()
+  // Use the browser's top layer so a menu at the bottom of the scrolling sidebar stays visible.
+  if(typeof popup.showPopover==='function'){
+   popup.setAttribute('popover','manual')
+   popup.showPopover()
+  }
+  const {width,height}=popup.getBoundingClientRect()
+  const left=Math.max(8,Math.min(anchor.right-width,window.innerWidth-width-8))
+  const below=anchor.bottom+4,above=anchor.top-height-4
+  const top=Math.max(8,Math.min(below+height<=window.innerHeight-8?below:above,window.innerHeight-height-8))
+  Object.assign(popup.style,{left:left+'px',top:top+'px'})
+  const closeOutside=(event:Event)=>{if(!root.current?.contains(event.target as Node))setOpen(false)}
+  const closeOnScroll=(event:Event)=>{if(!popup.contains(event.target as Node))setOpen(false)}
+  const closeOnResize=()=>setOpen(false)
+  document.addEventListener('pointerdown',closeOutside)
+  document.addEventListener('scroll',closeOnScroll,true)
+  window.addEventListener('resize',closeOnResize)
+  return()=>{
+   if(popup.isConnected)popup.hidePopover?.()
+   document.removeEventListener('pointerdown',closeOutside)
+   document.removeEventListener('scroll',closeOnScroll,true)
+   window.removeEventListener('resize',closeOnResize)
+  }
+ },[open])
+ function close(){setOpen(false);trigger.current?.focus({preventScroll:true})}
+ return <div className="wb-data-more" ref={root} onKeyDown={event=>{
+  if(event.key==='Escape'&&open){event.stopPropagation();close()}
+ }}>
+  <button ref={trigger} type="button" className="wb-iconbtn" aria-label={label} aria-expanded={open} aria-controls={menuId}
+      title="更多操作" onClick={()=>setOpen(value=>!value)}><Icon name="more" size={16}/></button>
+  {open&&<div className="wb-data-menu" ref={menu} id={menuId} role="group" aria-label={label}>
+   {items.map(item=><Btn key={item.label} size="sm" icon={item.icon} kind={item.danger?'danger':undefined}
+       disabled={item.disabled} title={item.title} onClick={()=>{close();item.action()}}>{item.label}</Btn>)}
+  </div>}
+ </div>
 }
 
 export function DataSideDrawer({label,side,onClose,children}:any){

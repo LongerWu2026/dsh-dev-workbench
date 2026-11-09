@@ -4,10 +4,12 @@ import {describe,it,expect,vi,afterEach} from 'vitest'
 import {render,screen,waitFor,cleanup,within} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import {loadClientBundle} from './load-plugin.mjs'
+import {emptyHttpWorkspace} from '../../src/shared/http-workspace.ts'
 afterEach(cleanup)
 function setup(){
  const {WB}=loadClientBundle(),calls=[]
  WB.rpc=vi.fn(async(method,payload)=>{calls.push({method,request:payload?.request})
+  if(method.endsWith('/httpWorkspace'))return emptyHttpWorkspace()
   if(method.endsWith('/httpDebug'))return {status:200,headers:{'content-type':'application/json'},text:'{"ok":true}',durationMs:12}
   if(method.endsWith('/mcpConnect'))return {connectionId:'fixture-connection',tools:[{name:'echo',description:'测试工具',inputSchema:{type:'object',properties:{text:{type:'string'}}}}],version:'2025-11-25',durationMs:1}
   if(method.endsWith('/mcpCall'))return {result:{content:[{type:'text',text:'测试返回'}]},durationMs:2}
@@ -19,9 +21,10 @@ function setup(){
 describe('研发协作与联网工具的职责边界',()=>{
  it('离线工具不请求宿主；切换HTTP后才显示联网提示，点击后发送所填参数',async()=>{
   const {WB,calls}=setup(),user=userEvent.setup();render(<WB.pages.toolbox/>);await user.click(toolButton(/JSON 格式化/));calls.length=0;expect(calls).toHaveLength(0)
-  await user.click(toolButton(/接口调试 HTTP/));expect(calls).toHaveLength(0)
+  await user.click(toolButton(/接口调试 HTTP/));await screen.findByText('还没有保存的请求')
+  expect(calls).toEqual([{method:'workbench/httpWorkspace',request:{action:'load'}}])
   expect(screen.getByText('联网调试')).toBeTruthy();expect(screen.queryByText(/本地执行 · 全部计算/)).toBeNull()
-  await user.type(screen.getByRole('textbox',{name:'接口请求地址'}),'http://localhost:8080/test');await user.selectOptions(screen.getByRole('combobox',{name:'HTTP 方法'}),'POST');await user.type(screen.getByRole('textbox',{name:'接口请求正文'}),'test-body');await user.click(screen.getByRole('button',{name:'发送请求'}))
+  await user.type(screen.getByRole('textbox',{name:'接口请求地址'}),'http://localhost:8080/test');await user.selectOptions(screen.getByRole('combobox',{name:'HTTP 方法'}),'POST');await user.click(screen.getByRole('button',{name:'Body',exact:true}));await user.type(screen.getByRole('textbox',{name:'接口请求正文'}),'test-body');await user.click(screen.getByRole('button',{name:'发送请求'}))
   await screen.findByLabelText('调试响应');expect(calls.find(c=>c.method.endsWith('/httpDebug')).request).toMatchObject({url:'http://localhost:8080/test',method:'POST',body:'test-body'})
  })
  it('MCP先发现工具，再按选择和JSON参数调用，离开工具后断开连接',async()=>{

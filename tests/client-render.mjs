@@ -1131,13 +1131,12 @@ snapshotMode = 'empty'
   for (const marker of ['还没有待办', '概览', '暂无可展示的简报', '抓取资讯', '添加资讯', '新建第一条待办']) {
     if (text.indexOf(marker) < 0) problems.push('空态首页缺少「' + marker + '」')
   }
-  // 紧凑空态保留明确下一步，避免旧版插画与三步指引占用整块首屏。
-  if (!text.includes('同步消息并开启 AI 后，可从待回复页确认识别出的事项。')) {
-    problems.push('空态待办缺少消息识别入口说明')
-  }
   const createFirstTask = findButtons(tree, []).find((button) => button.text === '新建第一条待办')
   if (!createFirstTask || typeof createFirstTask.onClick !== 'function') {
     problems.push('空态待办缺少可用的新建入口')
+  }
+  if (createFirstTask?.label !== '同步消息并开启 AI 后，可从待回复页确认识别出的事项。') {
+    problems.push('空态待办缺少消息识别入口说明')
   }
   // 空态下雷达头部不应再渲染筛选 Chip（用户反馈 #2：头部信息在空态是冗余）
   if (text.indexOf('仅看关注主题') >= 0) problems.push('空态雷达头部不应出现「仅看关注主题」筛选')
