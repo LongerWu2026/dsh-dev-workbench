@@ -67,6 +67,14 @@ export async function sendHttpRequest(request:any) {
     const body=String(request.body||'')
     if(Buffer.byteLength(body)>512*1024)throw new Error('请求正文超过512KB')
     if(['GET','HEAD'].includes(method)&&body)throw new Error('GET/HEAD请求不能带正文')
+    if (/^\s*[\[{]/.test(body) && !Object.keys(headers).some(name=>name.toLowerCase()==='content-type')) {
+        try {
+            JSON.parse(body)
+            headers['Content-Type']='application/json'
+        } catch {
+            // Keep malformed bodies available for debugging server validation.
+        }
+    }
     return operation(request,async signal=>{
         const start=Date.now(),response=await fetch(url,{method,headers,body:body||undefined,signal,redirect:'manual'})
         const result=await responseBody(response)

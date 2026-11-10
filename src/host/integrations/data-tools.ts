@@ -412,6 +412,16 @@ function rowResult(rows:any[],columns:string[],extra:any){
 export async function executeDataQuery(request:any){return operation(request.id,async e=>{
     requireSqlDatabase(e.config);
     const start=Date.now(),kind=e.config.kind,client=await connect(e);
+    if(kind==='es'){
+        const metadata=JSON.parse(String(request.query));
+        if(metadata&&typeof metadata==='object'&&!Array.isArray(metadata)&&Object.hasOwn(metadata,'operation')){
+            if(Object.keys(metadata).length!==1||!['version','plugins','cluster-info'].includes(metadata.operation))throw Error('仅支持 version、plugins、cluster-info 只读集群操作');
+            const result:Record<string,unknown>={};
+            if(metadata.operation!=='plugins')result.version=await esRequest(e,'/');
+            if(metadata.operation!=='version')result.plugins=await esRequest(e,'/_nodes/plugins');
+            return {kind,result,durationMs:Date.now()-start};
+        }
+    }
     if(request.schemaHash){const current=await readStructure(e,request.selected);if(current.hash!==request.schemaHash)throw Error('结构已变化，请重新生成查询')}
     if(kind==='es'){
         const index=esIndexName(request.index);

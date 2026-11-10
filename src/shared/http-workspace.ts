@@ -8,9 +8,8 @@ export type HttpAssertion =
     | {kind:'json'; path:string; expected:AssertionValue}
 export type HttpRequest = {name:string; method:string; url:string; headers:string; body:string; timeoutMs:number; assertions:HttpAssertion[]}
 export type SavedHttpRequest = HttpRequest & {id:string}
-export type HttpCollection = {id:string; name:string; requests:SavedHttpRequest[]}
-export type HttpEnvironment = {id:string; name:string; baseUrl:string}
-export type HttpWorkspace = {revision:number; collections:HttpCollection[]; environments:HttpEnvironment[]}
+export type HttpCollection = {id:string; name:string; requests:SavedHttpRequest[]; variables?:Record<string,string>}
+export type HttpWorkspace = {revision:number; collections:HttpCollection[]}
 export type HttpResponse = {status:number; statusText?:string; durationMs:number; headers:Record<string,string>; text:string; truncated?:boolean}
 export type HttpCheck = {label:string; expected:AssertionValue; actual:string; passed:boolean}
 export type HttpOutcome = {state:'passed'|'failed'|'unchecked'; response:HttpResponse; checks:HttpCheck[]}
@@ -86,9 +85,23 @@ function inspectUrl(url:string):URL {
     return parsed
 }
 
+export function normalizeHttpVariables(input:unknown):Record<string,string> {
+    const values = httpRecord(input)
+    if (JSON.stringify(values).length > 32000) throw Error('变量超过 32000 字符')
+    return Object.fromEntries(Object.entries(values).map(([key,value])=>{
+        if (!variableName.test(key) || typeof value !== 'string') throw Error('变量须为 JSON 字符串键值对，名称以字母或下划线开头')
+        if (key === 'baseUrl' && value) {
+            const base = new URL(debugUrl(value.trim()))
+            if (base.search || base.hash || /[{}]/.test(base.href)) throw Error('baseUrl 只支持固定的 HTTP/HTTPS 地址，可包含路径')
+            return [key,base.href.replace(/\/+$/,'')]
+        }
+        return [key,value]
+    }))
+}
+
 function validateCredential(key:string, value:unknown) {
     if (credentialKey.test(key) && value !== '' && value !== null && (typeof value !== 'string' || !credentialVariable.test(value))) {
-        throw Error('请将凭据字段 ' + key + ' 改为变量，例如 {{token}}，并在环境中输入实际值')
+        throw Error('请将凭据字段 ' + key + ' 改为变量，例如 {{token}}，并在集合变量中输入实际值')
     }
 }
 
@@ -136,26 +149,21 @@ export function normalizeHttpRequest(value:unknown, persist=false):HttpRequest {
 }
 
 export function emptyHttpWorkspace():HttpWorkspace {
-    return {revision:0,collections:[{id:'default',name:'默认 Collection',requests:[]}],environments:[]}
+    return {revision:0,collections:[{id:'default',name:'默认集合',requests:[],variables:{}}]}
 }
 
 export function normalizeHttpWorkspace(value:unknown):HttpWorkspace {
-    const {revision,collections,environments} = httpRecord(value)
+    const {revision,collections} = httpRecord(value)
     if (typeof revision !== 'number' || !Number.isSafeInteger(revision) || revision < 0) throw Error('工作区修订号无效')
     const groups = entries(collections,20,value=>{
         const row = httpRecord(value)
-        return {id:id(row.id),name:boundedText(row.name,'Collection 名称',100).trim(),requests:entries(row.requests,100,value=>{
+        return {id:id(row.id),name:boundedText(row.name,'集合名称',100).trim(),variables:normalizeHttpVariables(row.variables ?? {}),requests:entries(row.requests,100,value=>{
             const request = httpRecord(value)
             return {...normalizeHttpRequest(request,true),id:id(request.id)}
         })}
     })
-    if (!groups.length) throw Error('至少保留一个 Collection')
-    return {revision,collections:groups,environments:entries(environments,20,value=>{
-        const row = httpRecord(value)
-        const base = new URL(debugUrl(boundedText(row.baseUrl,'环境基础地址',2000).trim()))
-        if (base.search || base.hash || /[{}]/.test(base.href)) throw Error('环境基础地址只支持固定的 HTTP/HTTPS 地址，可包含路径')
-        return {id:id(row.id),name:boundedText(row.name,'环境名称',100).trim(),baseUrl:base.href.replace(/\/+$/,'')}
-    })}
+    if (!groups.length) throw Error('至少保留一个集合')
+    return {revision,collections:groups}
 }
 
 function replaceVariables(text:string, values:Record<string,string>, encode=false):string {
@@ -179,18 +187,16 @@ function resolveBody(body:string, headers:Record<string,string>, values:Record<s
     return replaceVariables(body,values)
 }
 
-export function resolveHttpRequest(request:HttpRequest, environment?:HttpEnvironment, input='{}') {
-    if (input.length > 32000) throw Error('运行变量超过 32000 字符')
-    const values = Object.fromEntries(Object.entries(httpRecord(JSON.parse(input || '{}'))).map(([key,value])=>{
-        if (!variableName.test(key) || key === 'baseUrl' || typeof value !== 'string') throw Error('运行变量须为 JSON 字符串键值对，baseUrl 由环境配置')
-        return [key,value]
-    }))
+export function resolveHttpRequest(request:HttpRequest, input='{}') {
+    if (input.length > 32000) throw Error('变量超过 32000 字符')
+    const values = normalizeHttpVariables(JSON.parse(input || '{}'))
+    const {baseUrl} = values
     const url = request.url
     const relative = url.startsWith('/') || url.startsWith(basePlaceholder)
-    if (relative && !environment) throw Error('使用相对路径或 {{baseUrl}} 时，请先选择环境')
-    const target = debugUrl((relative ? environment!.baseUrl : '') + replaceVariables(url.replace(/^\{\{baseUrl\}\}/,''),values,true))
-    if (environment && new URL(target).origin !== new URL(environment.baseUrl).origin) {
-        throw Error('请求地址与所选环境不同，请改用相对路径或选择匹配的环境')
+    if (relative && !baseUrl) throw Error('使用相对路径或 {{baseUrl}} 时，请先在集合变量中保存 baseUrl')
+    const target = debugUrl((relative ? baseUrl! : '') + replaceVariables(url.replace(/^\{\{baseUrl\}\}/,''),values,true))
+    if (baseUrl && new URL(target).origin !== new URL(baseUrl).origin) {
+        throw Error('请求地址与集合 baseUrl 不同，请改用相对路径或修改 baseUrl')
     }
     const headers = debugHeaders(Object.fromEntries(Object.entries(debugHeaders(request.headers)).map(([key,item])=>[key,replaceVariables(item,values)])))
     const body = resolveBody(request.body,headers,values)

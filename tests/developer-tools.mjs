@@ -80,6 +80,14 @@ try{
  check('停止本插件运行后保留日志和真实退出结果',()=>{assert.equal(runtime.runs[0].status,'stopped');assert.equal(runtime.runs[0].exitCode,0);assert.match(runtime.runs[0].stdout,/ready/)})
  let response=await api.httpDebug(request({url:url+'/echo',method:'POST',headers:'{"Content-Type":"application/json","Authorization":"Bearer fixture-secret"}',body:'{"test":true}'}))
  check('真实HTTP请求返回状态、头、正文和耗时',()=>{assert.equal(response.status,200);assert.equal(JSON.parse(response.text).body,'{"test":true}');assert.ok(response.durationMs>=0)})
+ const jsonBody='{"request":{"method":"queryModelList","params":{}}}'
+ await api.httpDebug(request({url:url+'/echo',method:'POST',body:jsonBody}))
+ check('无 Content-Type 的 JSON 正文按 application/json 发送',()=>{
+  assert.equal(calls.at(-1).headers['content-type'],'application/json')
+  assert.equal(calls.at(-1).body,jsonBody)
+ })
+ await api.httpDebug(request({url:url+'/echo',method:'POST',headers:{'content-type':'text/plain'},body:jsonBody}))
+ check('保留手动指定的正文类型',()=>assert.equal(calls.at(-1).headers['content-type'],'text/plain'))
  response=await api.httpDebug(request({url:url+'/missing'}));check('HTTP错误保留响应内容，不冒充网络异常',()=>assert.equal(response.status,404))
  response=await api.httpDebug(request({url:url+'/redirect'}));check('重定向不自动转发鉴权和请求',()=>assert.equal(response.status,302))
  response=await api.httpDebug(request({url:url+'/large'}));check('响应有1MB上限并显式标注截断',()=>{assert.equal(response.truncated,true);assert.ok(response.text.length<=1024*1024)})
@@ -107,13 +115,13 @@ try{
  check('调试凭据和响应不会写入业务状态',()=>assert.ok(!readFileSync(join(home,'storages/dev-workbench/state.json'),'utf8').includes('fixture-secret')))
  const workspace=await api.httpWorkspace({action:'load'})
  for(const method of ['httpWorkspace','httpDebugGenerate'])assert.ok(host.WORKBENCH_REMOTE.invocations.some(row=>row.namespace==='workbench'&&row.method===method&&row.parameters[0]?.wire==='request'))
- const environment={id:'local',name:'本地环境',baseUrl:url}
+ const legacyEnvironment={id:'local',name:'旧环境',baseUrl:'https://legacy.example'}
  const template={id:'echo',name:'回声请求',url:'{{baseUrl}}/echo',method:'POST',headers:{Authorization:'Bearer {{token}}'},body:'{"input":"{{code}}"}',assertions:[{kind:'status',expected:200},{kind:'json',path:'$.method',expected:'GET'},{kind:'json',path:'$.missing',expected:null}]}
- const proposal={...workspace,environments:[environment],collections:[{...workspace.collections[0],requests:[template]}]}
+ const proposal={...workspace,environments:[legacyEnvironment],collections:[{...workspace.collections[0],requests:[template]}]}
  const [firstWrite,staleWrite]=await Promise.allSettled([
   api.httpWorkspace({action:'save',workspace:proposal}),api.httpWorkspace({action:'save',workspace:proposal}),
  ])
- check('Collection 与环境持久化，其他窗口的旧修订号保存被拒绝',()=>{
+ check('Collection 持久化，其他窗口的旧修订号保存被拒绝',()=>{
   assert.equal(firstWrite.status,'fulfilled');assert.equal(staleWrite.status,'rejected');assert.match(staleWrite.reason.message,/其他窗口/)
  })
  const restored=await api.httpWorkspace({action:'load'})
@@ -121,17 +129,42 @@ try{
  const illegal={...template,headers:{Authorization:'Bearer fixture-secret'}}
  await assert.rejects(api.httpWorkspace({action:'save',workspace:{...proposal,revision:restored.revision,collections:[{...proposal.collections[0],requests:[illegal]}]}}),/凭据字段/)
  const stored=restored.collections[0].requests[0]
- assert.throws(()=>host.resolveHttpRequest(stored,environment),/缺少运行变量/)
- assert.throws(()=>host.resolveHttpRequest({...stored,url:'https://outside.example/echo'},environment,'{"token":"fixture-secret","code":"x"}'),/所选环境不同/)
- const {payload,assertions}=host.resolveHttpRequest(stored,environment,JSON.stringify({token:'fixture-secret',code:'带"引号'}))
+ assert.throws(()=>host.resolveHttpRequest(stored,JSON.stringify({baseUrl:url})),/缺少运行变量/)
+ assert.throws(()=>host.resolveHttpRequest({...stored,url:'https://outside.example/echo'},JSON.stringify({baseUrl:url,token:'fixture-secret',code:'x'})),/集合 baseUrl 不同/)
+ const {payload,assertions}=host.resolveHttpRequest(stored,JSON.stringify({baseUrl:url,token:'fixture-secret',code:'带"引号'}))
  const tested=host.checkHttpResponse(await api.httpDebug(request(payload)),assertions)
- check('真实 HTTP 运行解析环境变量，期望与实际逐条核对并区分缺失和 null',()=>{
+ check('真实 HTTP 运行解析集合变量，期望与实际逐条核对并区分缺失和 null',()=>{
   assert.equal(tested.state,'failed')
   assert.deepEqual(tested.checks.map(({expected,actual,passed})=>[expected,actual,passed]),[[200,'200',true],['GET','"POST"',false],[null,'字段缺失',false]])
   assert.deepEqual(JSON.parse(calls.at(-1).body),{input:'带"引号'})
   assert.equal(calls.at(-1).headers.authorization,'Bearer fixture-secret')
   assert.ok(!readFileSync(join(home,'storages/dev-workbench/http-workspace.json'),'utf8').includes('fixture-secret'))
  })
+ const withVariables={...restored,collections:[
+  {...restored.collections[0],variables:{baseUrl:url,token:'fixture-persisted-token',code:'带"引号'}},
+  {id:'other',name:'第二集合',requests:[],variables:{baseUrl:'https://other.example',token:'other-token'}},
+ ]}
+ await api.httpWorkspace({action:'save',workspace:withVariables})
+ const persistent=await api.httpWorkspace({action:'load'})
+ check('各 Collection 变量包括 baseUrl 和凭据均独立持久化，忽略旧环境',()=>{
+  assert.deepEqual(persistent.collections.map(item=>item.variables),withVariables.collections.map(item=>item.variables))
+  assert.equal(persistent.environments,undefined)
+  assert.equal(JSON.parse(readFileSync(join(home,'storages/dev-workbench/http-workspace.json'),'utf8')).collections[0].variables.token,'fixture-persisted-token')
+ })
+ const persistedRequest=host.resolveHttpRequest(stored,JSON.stringify(persistent.collections[0].variables))
+ await api.httpDebug(request(persistedRequest.payload))
+ check('从存储恢复变量后可实际发送请求并解析正文、路径和请求头',()=>{
+  assert.equal(calls.at(-1).headers.authorization,'Bearer fixture-persisted-token')
+  assert.deepEqual(JSON.parse(calls.at(-1).body),{input:'带"引号'})
+  const expanded=host.resolveHttpRequest({...stored,url:'{{baseUrl}}/echo?code={{code}}',headers:'{"X-Base":"{{baseUrl}}"}'},JSON.stringify(persistent.collections[0].variables))
+  assert.equal(expanded.payload.headers['X-Base'],url)
+  assert.equal(new URL(expanded.payload.url).searchParams.get('code'),'带"引号')
+ })
+ for(const variables of [{token:123},{baseUrl:'https://example.test/?a=1'},{baseUrl:'{{host}}'}, {'bad key':'value'}]){
+  await assert.rejects(api.httpWorkspace({action:'save',workspace:{...persistent,collections:[{...persistent.collections[0],variables}]}}))
+ }
+ assert.deepEqual(await api.httpWorkspace({action:'load'}),persistent)
+ assert.throws(()=>host.resolveHttpRequest(stored,'{}'),/保存 baseUrl/)
  let modelOutput={request:template,basis:'POST /echo'},modelPrompts=[]
  const sessions=new Map()
  const controller={
@@ -161,9 +194,9 @@ try{
  check('AI 使用工具受限的独立会话并校验两类草稿，生成不保存、不发送 HTTP',()=>{
   assert.equal(draft.request.url,'{{baseUrl}}/echo');assert.equal(rules.assertions[0].expected,400)
   assert.equal(sessions.size,2);assert.equal(calls.length,priorCalls)
-  assert.ok(modelPrompts.every(prompt=>!prompt.includes('fixture-secret')))
+  assert.ok(modelPrompts.every(prompt=>!prompt.includes('fixture-secret')&&!prompt.includes('fixture-persisted-token')))
  })
- assert.deepEqual(await api.httpWorkspace({action:'load'}),restored)
+ assert.deepEqual(await api.httpWorkspace({action:'load'}),persistent)
  modelOutput={request:{...template,url:'file:///tmp/bad'}}
  await assert.rejects(api.httpDebugGenerate(generation),/HTTP/)
  host.setShared_workbenchCtx({get:name=>name==='subprocess'?subprocess:null})

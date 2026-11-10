@@ -138,14 +138,13 @@ export const TOOLBOX_CSS = `
 .wb-data-ai-input:focus-within { border-color:var(--wb-accent); }
 .wb-data-ai-composer textarea[aria-label="数据库AI需求"] { height:clamp(42px,15cqh,72px);min-height:0!important;border:0;box-shadow:none;background:transparent;resize:none; }
 .wb-data-ai-controls { display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:4px 6px 6px; }
-.wb-data-ai-mode { display:flex;align-items:center;flex-wrap:wrap;gap:2px 6px;min-width:0;margin-right:auto; }
 .wb-data-ai-controls > .wb-btn { flex:none; }
 @container data-ai (max-height:340px) {
     .wb-data-ai-header { min-height:36px;padding-block:4px; }
     .wb-data-ai-log { padding-block:8px; }
     .wb-data-ai-empty { gap:4px; }
     .wb-data-ai-empty>strong { font-size:15px; }
-    .wb-data-ai-empty:not(.is-script)>p { display:none; }
+    .wb-data-ai-empty>p { display:none; }
     .wb-data-ai-starters { margin-top:0; }
     .wb-data-ai-starters>p { padding:0; }
     .wb-data-ai-starters>button { min-height:26px;padding-block:4px; }
@@ -153,7 +152,7 @@ export const TOOLBOX_CSS = `
     .wb-data-ai-controls { padding-block:2px 4px; }
 }
 @container data-ai (max-height:300px) {
-    .wb-data-ai-empty:not(.is-script)>strong { display:none; }
+    .wb-data-ai-empty>strong { display:none; }
     .wb-data-ai-log { padding-block:6px; }
 }
 @container data-ai (max-height:260px) {

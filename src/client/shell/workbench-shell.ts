@@ -628,7 +628,7 @@ function WorkbenchApp(): any {
     const failed = state.status === 'error' && !state.data;
     const WebAIPage = WB.pages['web-ai'];
     React.useEffect(()=>{if(page==='web-ai')setWebAIVisited(true)},[page]);
-    return h('div', {className:'wb-root'+(page==='web-ai'?' is-web-ai':'')+(page==='agents'?' is-development':'')+(page==='toolbox'?' is-toolbox':'')},
+    return h('div', {className:'wb-root'+(page==='dashboard'?' is-dashboard':'')+(page==='web-ai'?' is-web-ai':'')+(page==='agents'?' is-development':'')+(page==='toolbox'?' is-toolbox':'')},
       h('style',null,WB_CSS+WB_LAYOUT_CSS+PROJECT_FILE_PREVIEW_CSS),
       h('header',{className:'wb-head'},h(Toolbar,{data:state.data,page}),h(TopNavigation,{page,data:state.data})),
       h('div',{className:'wb-workarea'+(page==='assistant'?' wb-assistant-page':'')+(filePreviewOpen?' is-file-preview-open':state.assistantOpen||state.taskForm&&state.taskForm.presentation!=='modal'&&!state.contextHidden?' is-context-open':'')},

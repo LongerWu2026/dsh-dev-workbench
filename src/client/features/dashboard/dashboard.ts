@@ -1,6 +1,5 @@
 import {NewsBrief} from '../news/NewsBrief.js'
 import {WorkspaceRefresh} from '../../components/WorkspaceRefresh.js'
-import {RemindersPanel} from '../operations/RemindersPanel.js'
 import {BriefAgenda} from './BriefAgenda.js'
 import {FocusedInbox} from '../inbox/FocusedInbox.js'
 import { NewsFetchStatus } from '../news/NewsFetchStatus.js'
@@ -44,7 +43,6 @@ function DashboardPage(): any {
     const [radarEditItem, setRadarEditItem] = React.useState<any>(null);
     const [radarFetching, setRadarFetching] = React.useState<any>(false);
     const [mentionsBusy, setMentionsBusy] = React.useState<any>(false);
-    const [reminderToolsOpen,setReminderToolsOpen]=React.useState(false);
     const [taskScope,setTaskScope]=React.useState('today');
     const [allTasksShown,setAllTasksShown]=React.useState(false);
     const [taskClock,setTaskClock]=React.useState(Date.now);
@@ -396,8 +394,7 @@ function DashboardPage(): any {
             h('span',{className:'wb-tiny wb-muted'},data.messageInbox?.at?'最近同步 '+WB.fmt.relative(data.messageInbox.at):'尚无消息快照'),
             analysis?.failed?h(Badge,{tone:'err'},'识别失败 '+analysis.failed):null,
             stale?h(Badge,{tone:'warn'},'快照可能过期'):null),
-            mentionsStrip,analysis?.awaitingHuman>0?null:analysisPanel)),
-        h(BriefFlowCard,null,h('details',{className:'wb-compact-status',onToggle:(event:any)=>setReminderToolsOpen(event.currentTarget.open)},h('summary',null,'提醒与日历导出'),reminderToolsOpen?h(RemindersPanel,{revision:data.revision}):null))),
+            mentionsStrip,analysis?.awaitingHuman>0?null:analysisPanel))),
     reviewing?h(AnalysisMessageDialog,{
         key:reviewing.id,entryId:reviewing.id,source:(data.sources||[]).find((source:any)=>source.id===reviewing.sourceId),
         sources:data.sources||[],accountId,reason:reviewing.reviewReason||reviewing.analysis?.summary,

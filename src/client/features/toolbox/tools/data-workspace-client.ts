@@ -1,7 +1,7 @@
 // Data-only host adapter. Its queues outlive React mounts; connection forms never enter it.
 type Envelope = {id:string;key:string;revision:number;workspace:any;updatedAt?:string};
 type Entry = {envelope:Envelope;pending:Record<string,any>;working?:Promise<void>;error:string;listeners:Set<()=>void>};
-const fields=['query','instruction','mode','generated','selected','pattern','connectionsOpen','aiOpen','pageSize','pageOffsets','pageIndex','result','queriedAt'];
+const fields=['query','instruction','generated','selected','pattern','connectionsOpen','aiOpen','pageSize','pageOffsets','pageIndex','result','queriedAt'];
 export const dataWorkspacePatch=(patch:any)=>Object.fromEntries(fields.filter(field=>Object.prototype.hasOwnProperty.call(patch,field)).map(field=>[field,patch[field]]));
 const clients=new WeakMap<Function,ReturnType<typeof createClient>>();
 export function dataWorkspaceClient(rpc:Function){

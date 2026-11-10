@@ -153,7 +153,7 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
     };
     function resetWorkspace(id:string,items:any[],workspace:any={}){
         const c=items.find(c=>c.id===id);
-        const next={id,aiTurns:[],instruction:'',mode:'query',form:c?{...c,password:''}:{...defaults},selected:[],objects:null,objectsTruncated:false,cursor:null,structure:null,result:null,generated:null,query:initialQuery[c?.kind||'mysql'],pattern:'*',connectionsOpen:true,aiOpen:true,pageSize:50,pageOffsets:[0],pageIndex:0,queriedAt:null,...workspace};
+        const next={id,aiTurns:[],instruction:'',form:c?{...c,password:''}:{...defaults},selected:[],objects:null,objectsTruncated:false,cursor:null,structure:null,result:null,generated:null,query:initialQuery[c?.kind||'mysql'],pattern:'*',connectionsOpen:true,aiOpen:true,pageSize:50,pageOffsets:[0],pageIndex:0,queriedAt:null,...workspace};
         current.current=next;patchValue(next);
         setHistorical(!!workspace.result);
         return c;
@@ -198,7 +198,6 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
     const isSql=form.kind==='mysql'||form.kind==='postgres';
     const configIsSql=configForm.kind==='mysql'||configForm.kind==='postgres';
     const databaseRequired=configIsSql&&!optionalSqlDatabase;
-    const generationMode=isSql&&v.mode==='script'?'script':'query';
     const [configOpen,setConfigOpen]=React.useState(false),[objectFilter,setObjectFilter]=React.useState('');
     const surface=React.useRef<HTMLDivElement>(null),output=React.useRef<HTMLDivElement>(null),revealEditor=React.useRef(false);
     const [layout,setLayout]=React.useState({connections:false,compact:false}),[drawer,setDrawer]=React.useState('');
@@ -282,7 +281,7 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
         if(scopeChanged)setAiError('');
         setCollapsedConnection('');
         if(memoryEnabled.current)await choose(config.id,items);
-        else patch({id:config.id,...(scopeChanged?{aiTurns:[],instruction:'',mode:'query'}:{}),form:{...config,password:''},objects:null,objectsTruncated:false,cursor:null,selected:[],structure:null,generated:null,result:null,query:v.query||initialQuery[form.kind]});
+        else patch({id:config.id,...(scopeChanged?{aiTurns:[],instruction:''}:{}),form:{...config,password:''},objects:null,objectsTruncated:false,cursor:null,selected:[],structure:null,generated:null,result:null,query:v.query||initialQuery[form.kind]});
         setObjectFilter('');
         setNote(savedNote);
         if(response.unlocked===false)return null;
@@ -386,7 +385,7 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
     const objects=searchTables?(tableMatches?.objects||[]):(v.objects||[]).filter((o:any)=>
         [o.schemaName,o.name,o.comment,o.schemaName&&`${o.schemaName}.${o.name}`].join(' ').toLowerCase().includes(objectKeyword));
     const generationScopeHint=memoryError?'连接记忆恢复失败，请重试后再使用 AI。':!v.id?'请先选择连接。':needsConnection?'请先在连接配置中解锁当前连接。':needsDatabase?'请从连接的更多操作中选择数据库。':selected.length?`基于所选 ${selected.length} 个对象生成`
-        :form.kind==='es'&&autoIndexSelection?'可在问题中写完整索引名，系统会自动定位。'
+        :form.kind==='es'&&autoIndexSelection?'文档查询可填写完整索引名；查询版本或插件无需勾选索引。'
         :!isSql?'请勾选需要的索引或 Key。'
         :autoTableSelection===null?'正在检查自动选表支持…'
         :!autoTableSelection?'当前宿主尚未加载自动选表，请退出并重新打开 DeepSeek Harness。'
@@ -404,7 +403,8 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
     const pageIndex=v.pageIndex||0,pageOffsets=v.pageOffsets||[0];
     const generatedIndex=form.kind==='es'?v.generated?.selected[0]?.name:undefined;
     const queryIndex=generatedIndex??selected[0]?.name;
-    const canExecuteQuery=!!v.id&&!!v.query&&!busy&&memorySupport!==null&&!needsDatabase&&v.generated?.mode!=='script';
+    const isScriptPreview=v.generated?.mode==='script';
+    const canExecuteQuery=!!v.id&&!!v.query&&!busy&&memorySupport!==null&&!needsDatabase&&!isScriptPreview;
     const executeQuery=(index=0)=>run('查询',async()=>{
         const target=targetVersion.current,version=++queryVersion.current;
         const offset=index===0?0:pageOffsets[index]??result?.nextOffset;
@@ -423,7 +423,7 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
     });
     function sendInstruction(){
         if(!canSend||lock.current)return;
-        const version=catalogVersion.current;
+        const version=catalogVersion.current,editorVersion=queryVersion.current;
         const question=instruction.trim();
         const history=turns.slice(-4).map(turn=>({instruction:turn.instruction,query:turn.draft?.query,explanation:turn.clarification||turn.draft?.explanation}));
         const isCurrent=()=>live.current&&version===catalogVersion.current;
@@ -432,21 +432,32 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
         void run('AI生成',async()=>{
             try{
                 const key=keyRef.current;
-                const request={id:v.id,selected,instruction:question,mode:generationMode,conversation:true,history};
-                let accepted:any=null;
+                const request={id:v.id,selected,instruction:question,mode:isSql?'auto':'query',conversation:true,history};
+                let accepted:any=null,editorChangedElsewhere=false;
                 const response=memoryEnabled.current&&key?await client.perform(key,async(envelope)=>{
                     const response=await rpc('dataGenerate',{...request,workspace:{key,baseRevision:envelope.revision,turnId:globalThis.crypto?.randomUUID?.()||Date.now()+'-'+Math.random()}});
-                    if(response.workspace)accepted=client.accept(response.workspace);
+                    if(response.workspace){
+                        accepted=client.accept(response.workspace);
+                        editorChangedElsewhere=accepted.workspace.query!==envelope.workspace.query||
+                            JSON.stringify(accepted.workspace.generated)!==JSON.stringify(envelope.workspace.generated);
+                    }
                     return response;
                 }):await rpc('dataGenerate',request);
                 if(!isCurrent())return null;
-                const turn:DataTurn=response.clarification?{instruction:question,clarification:response.clarification}:
-                    {instruction:question,draft:{...response,mode:generationMode,selected:response.selected||selected}};
+                const {workspace,...generated}=response;
+                const mode=generated.mode==='script'||(isSql&&generated.mode!=='query')?'script':'query';
+                const turn:DataTurn=generated.clarification?{instruction:question,clarification:generated.clarification}:
+                    {instruction:question,draft:{...generated,mode,selected:generated.selected||selected}};
                 // Only consume the instruction this request started from; keep a newer local or cross-window draft.
                 const localInstruction=String(current.current.instruction??'');
-                const hostInstruction=String(accepted?.workspace?.instruction??response.workspace?.workspace?.instruction??'');
+                const hostInstruction=String(accepted?.workspace?.instruction??workspace?.workspace?.instruction??'');
                 const nextInstruction=localInstruction!==question?localInstruction:hostInstruction&&hostInstruction!==question?hostInstruction:'';
-                patch({aiTurns:response.workspace?.workspace?.aiTurns||[...turns,turn].slice(-20),instruction:nextInstruction});
+                const changes={aiTurns:workspace?.workspace?.aiTurns||[...turns,turn].slice(-20),instruction:nextInstruction};
+                if(isSql&&turn.draft&&editorVersion===queryVersion.current&&!editorChangedElsewhere)fillEditor(turn.draft,changes);
+                else{
+                    patch(changes);
+                    if(isSql&&turn.draft)setNote('SQL 已生成，已保留较新的草稿');
+                }
             }catch(error){
                 if(isCurrent())setAiError((error as Error).message);
             }finally{
@@ -455,12 +466,14 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
             return null;
         });
     }
-    function applyDraft(draft:DataDraft){
+    function fillEditor(draft:DataDraft,changes:Record<string,unknown>={}){
         revealEditor.current=true;
-        if(lock.current||disconnecting)return;
         clearFeedback();
-        queryVersion.current++;patch({query:draft.query,generated:draft,result:null,pageIndex:0,pageOffsets:[0],queriedAt:null});
-        setNote(draft.mode==='script'?'已填入脚本预览':'已填入编辑器，可检查后执行');setMobileView('sql');
+        queryVersion.current++;patch({...changes,query:draft.query,generated:draft,result:null,pageIndex:0,pageOffsets:[0],queriedAt:null});
+        setNote(draft.mode==='script'?'SQL 已填入编辑器，仅供预览':'SQL 已填入编辑器，可检查后执行');setMobileView('sql');
+    }
+    function applyDraft(draft:DataDraft){
+        if(!lock.current&&!disconnecting)fillEditor(draft);
     }
     async function clearMemory(){
         const target=targetVersion.current;
@@ -562,12 +575,13 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
     </aside>;
 
     const conversation=<DataAiConversation turns={turns} pending={pendingInstruction} instruction={instruction}
-            mode={generationMode} source={isSql?'sql':form.kind==='redis'?'redis':'es'} selected={selected}
+            source={isSql?'sql':form.kind==='redis'?'redis':'es'} selected={selected}
+            editorDraft={isSql&&v.generated?.query===v.query?v.generated:undefined}
             canSend={canSend} busy={!!busy||memorySupport===null} scopeHint={generationScopeHint}
-            error={aiError} setInstruction={value=>patch({instruction:value})} setMode={mode=>patch({mode})}
+            error={aiError} setInstruction={value=>patch({instruction:value})}
             send={sendInstruction} apply={applyDraft} databaseLabel={form.database||form.name} onClose={()=>setAiVisible(false)}/>;
     const memoryText=memorySupport===null?'正在检查连接记忆支持…':hydrating?'正在恢复连接记忆…':memoryError?'连接记忆恢复失败：'+memoryError:memoryStatus.error?'连接记忆保存失败：'+memoryStatus.error:memorySupport===false?'当前宿主不支持持久记忆，仅保留本页输入':!memoryKey?'连接记忆仅适用于已保存连接':memoryStatus.saving?'连接记忆保存中…':'连接记忆已保存到本机';
-    const queryTitle=form.kind==='es'?'DSL 查询':form.kind==='redis'?'Redis 命令':'SQL 查询';
+    const queryTitle=form.kind==='es'?'DSL 查询':form.kind==='redis'?'Redis 命令':isScriptPreview?'SQL 脚本':'SQL 查询';
     const queryTarget=(form.kind==='es'?queryIndex:undefined)||form.database||form.name||'未选择连接';
     return <div className="wb-data-surface" ref={surface}>
         <header className="wb-data-toolbar" aria-label="开发工具箱">
@@ -590,7 +604,7 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
                 <div className="wb-data-query-context">
                     <div className="wb-data-query-title">
                         <h2>{queryTitle}</h2>
-                        <span className="wb-data-readonly">{v.generated?.mode==='script'?'仅预览':'只读'}</span>
+                        <span className="wb-data-readonly">{isScriptPreview?'仅预览':'只读'}</span>
                     </div>
                     <div className="wb-data-query-meta">
                         <span className="wb-data-query-target" title={queryTarget}>
@@ -607,7 +621,7 @@ export function DataWorkbench({value:v,patch:patchValue,toolPicker}:any){
             </header>
         {!v.id&&<div className="wb-data-empty"><strong>选择或新建一个连接</strong><Btn onClick={newConnection}>配置数据库</Btn></div>}
         {v.generated?.explanation&&<details className="wb-data-draft-info">
-            <summary><Icon name="info" size={13}/>查询说明</summary>
+            <summary><Icon name="info" size={13}/>{isScriptPreview?'脚本说明':'查询说明'}</summary>
             <p>{v.generated.explanation}</p>
         </details>}
         <div className="wb-data-editor" style={{flexBasis:editorShare+'%'}}><Textarea aria-label="数据查询编辑器" placeholder={form.kind==='es'?'粘贴 DSL，或从 AI 会话填入':form.kind==='redis'?'粘贴 Redis 命令，或从 AI 会话填入':'粘贴 SQL，或从 AI 会话填入'} onKeyDown={(e:any)=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'){e.preventDefault();if(canExecuteQuery)void executeQuery()}}} rows={8} spellCheck={false} style={{fontFamily:'monospace',height:'100%'}} value={v.query||''} disabled={!!busy||memorySupport===null} onChange={(e:any)=>patch({query:e.target.value,result:null})}/></div>

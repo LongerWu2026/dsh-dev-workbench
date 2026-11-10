@@ -52,9 +52,23 @@ const toolPanes: any = {
     sqlexplain: toolSqlExplainPane,
 };
 
+const lastToolKey = 'dsh-dev-workbench:toolbox:last-tool';
+let lastSelectedTool: string | null = null;
+
+function restoreToolState() {
+    const initial = toolInitialState();
+    let id = lastSelectedTool;
+    try {
+        id = window.localStorage.getItem(lastToolKey) ?? id;
+    } catch {
+        // Keep the in-memory selection if the host disables storage.
+    }
+    return toolDefs.some((tool: {id:string}) => tool.id === id) ? {...initial, selected:id} : initial;
+}
+
 /* --------------------------------------------------------------------- page */
 function toolPage(): any {
-    const [state, setState] = React.useState<any>(toolInitialState);
+    const [state, setState] = React.useState<any>(restoreToolState);
     const [paste,setPaste]=React.useState<any>(null);
     const [query,setQuery]=React.useState('');
     const [category,setCategory]=React.useState('常用');
@@ -73,6 +87,14 @@ function toolPage(): any {
     const categories:any={数据:['json','yaml','csv','types'],文本:['diff','markdown','regex'],网络:['data','http-debug','mcp-debug','url','status'],时间编码:['timestamp','cron','base64','jwt'],开发:['sql','sqlexplain','shell','uuid']};
     const visible=toolDefs.filter((item:any)=>item.group!=='focus'&&(!query?category==='全部'||(category==='常用'?common:categories[category]||[]).includes(item.id):[item.name,item.desc,item.id].join(' ').toLowerCase().includes(query.toLowerCase())));
     const selected = state.selected || 'data';
+    React.useEffect(()=>{
+        lastSelectedTool = selected;
+        try {
+            window.localStorage.setItem(lastToolKey,selected);
+        } catch {
+            // Tool selection still works in the current view.
+        }
+    },[selected]);
     const def = toolDefs.filter(function (item?: any): any {
         return item.id === selected;
     })[0] || toolDefs[0];
@@ -127,7 +149,7 @@ function toolPage(): any {
         sub: null,
         icon: def.icon,
         actions: null,
-    }, selected!=='pomodoro'&&h('div',{className:'wb-tool-pane', 'data-tool':selected},h(Pane, {key:selected, toolPicker:selected==='data'?toolPicker:undefined, value: state[selected] || {}, patch: patchFor(selected),onTransfer:(target:string,input:string)=>{setState((old:any)=>({...old,[target]:{...old[target],...(target==='diff'?{left:input,right:'',rows:[],stats:null}:{input})},selected:target}));setRecent(old=>[target,...old.filter(id=>id!==target)].slice(0,5))} })), selected!=='http-debug'&&h(ToolAI,{key:'ai-'+selected,id:selected,value:state[selected]||{},patch:patchFor(selected),onApply:patchFor(selected)}), h('div',{className:'wb-tool-timer',hidden:selected!=='pomodoro'},h(ToolPomodoro)))), selected!=='data'&&h('p', { className: 'wb-tiny wb-muted', style: { marginTop: 14, lineHeight: 1.7 } }, selected==='http-debug'?'Collection 和环境保存在本机宿主。运行变量、响应及未保存的输入刷新后清空。':'工具箱不读取 Host 数据；本地转换不联网。接口、MCP 与 AI 辅助仅在点击操作后访问对应服务；AI 问答会进入宿主助手历史。支持连接记忆的宿主会将数据连接会话保存在本机；以页面保存状态为准。其他工具输入刷新后清空。'));
+    }, selected!=='pomodoro'&&h('div',{className:'wb-tool-pane', 'data-tool':selected},h(Pane, {key:selected, toolPicker:selected==='data'?toolPicker:undefined, value: state[selected] || {}, patch: patchFor(selected),onTransfer:(target:string,input:string)=>{setState((old:any)=>({...old,[target]:{...old[target],...(target==='diff'?{left:input,right:'',rows:[],stats:null}:{input})},selected:target}));setRecent(old=>[target,...old.filter(id=>id!==target)].slice(0,5))} })), selected!=='http-debug'&&h(ToolAI,{key:'ai-'+selected,id:selected,value:state[selected]||{},patch:patchFor(selected),onApply:patchFor(selected)}), h('div',{className:'wb-tool-timer',hidden:selected!=='pomodoro'},h(ToolPomodoro)))), selected!=='data'&&h('p', { className: 'wb-tiny wb-muted', style: { marginTop: 14, lineHeight: 1.7 } }, selected==='http-debug'?'集合、请求和已保存的变量保存在本机宿主。响应及未保存的输入刷新后清空。':'工具箱不读取 Host 数据；本地转换不联网。接口、MCP 与 AI 辅助仅在点击操作后访问对应服务；AI 问答会进入宿主助手历史。支持连接记忆的宿主会将数据连接会话保存在本机；以页面保存状态为准。其他工具输入刷新后清空。'));
 }
 
 WB.pages.toolbox = toolPage;

@@ -16,15 +16,14 @@ type Props = {
     turns: DataTurn[];
     pending: string;
     instruction: string;
-    mode: 'query' | 'script';
     source: DataSource;
     selected: DataDraft['selected'];
+    editorDraft?: DataDraft;
     canSend: boolean;
     busy: boolean;
     scopeHint: string;
     error: string;
     setInstruction: (value:string)=>void;
-    setMode: (value:DataDraft['mode'])=>void;
     send: ()=>void;
     apply: (draft:DataDraft)=>void;
     onClose?: ()=>void;
@@ -55,15 +54,12 @@ function starterQuestions(source:DataSource,selected:DataDraft['selected']){
 }
 
 export function DataAiConversation(props:Props){
-    const {turns,pending,instruction,mode,source,selected,canSend,busy,scopeHint,error}=props;
+    const {turns,pending,instruction,source,selected,editorDraft,canSend,busy,scopeHint,error}=props;
     const isSql=source==='sql';
-    const scriptMode=mode==='script';
     const showIntro=!turns.length&&!pending&&!error;
     const starters=starterQuestions(source,selected);
-    const example=isSql?'统计最近七天每天的订单金额':starters[0].label;
-    const placeholder=scriptMode
-        ?(turns.length?'继续补充要调整的数据或字段…':'例如，为订单表新增备注字段')
-        :(turns.length?'继续描述筛选条件，或修改上面的查询…':`例如，${example}`);
+    const example=isSql?'统计订单金额，或给订单表新增备注字段':starters[0].label;
+    const placeholder=turns.length?(isSql?'继续补充需求，或调整上面的 SQL…':'继续描述筛选条件，或修改上面的查询…'):`例如，${example}`;
     const log=React.useRef<HTMLDivElement>(null),composer=React.useRef<HTMLFormElement>(null);
     React.useEffect(()=>{
         if(log.current)log.current.scrollTop=turns.length||pending||error?log.current.scrollHeight:0;
@@ -77,34 +73,38 @@ export function DataAiConversation(props:Props){
             {props.onClose&&<IconBtn name="chevronRight" label="收起 AI 会话" onClick={props.onClose}/>}
         </header>
         <div className={'wb-data-ai-log'+(showIntro?' is-empty':'')} ref={log} role="log" aria-label="AI 会话记录" tabIndex={0}>
-            {showIntro&&<div className={'wb-data-ai-empty'+(scriptMode?' is-script':'')}>
-                <strong>{scriptMode?'生成 SQL 变更脚本':isSql?'描述需求，让 AI 生成 SQL':'描述需求，让 AI 生成查询'}</strong>
-                <p className="wb-muted">{scriptMode?'描述要调整的数据或表结构，AI 会生成脚本和回滚建议。':'告诉 AI 想查什么，可以带上筛选条件和统计口径。'}</p>
-                {!scriptMode&&<div className="wb-data-ai-starters" role="group" aria-labelledby="wb-data-ai-starters-label">
+            {showIntro&&<div className="wb-data-ai-empty">
+                <strong>{isSql?'描述需求，让 AI 生成 SQL':'描述需求，让 AI 生成查询'}</strong>
+                <p className="wb-muted">{isSql?'告诉 AI 想查什么，或需要怎样修改数据和表结构。':'告诉 AI 想查什么，可以带上筛选条件和统计口径。'}</p>
+                <div className="wb-data-ai-starters" role="group" aria-labelledby="wb-data-ai-starters-label">
                     <p id="wb-data-ai-starters-label" className="wb-tiny wb-muted">试试这样问</p>
                     {starters.map(({label,instruction})=><button key={label} type="button" disabled={busy}
                         onClick={()=>{props.setInstruction(instruction);composer.current?.querySelector('textarea')?.focus()}}>
                         <Icon name="plus" size={14}/><span>{label}</span>
                     </button>)}
-                </div>}
-            </div>}
-            {turns.map(({instruction,draft,clarification},index)=><div className="wb-data-ai-turn" key={index}>
-                <p className="wb-data-ai-question">{instruction}</p>
-                <div className="wb-data-ai-answer">
-                    <strong className="wb-tiny">{draft?(draft.mode==='script'?'变更脚本 · 仅预览':'查询建议'):'需要补充'}</strong>
-                    {clarification&&<p>{clarification}</p>}
-                    {draft?.explanation&&<p>{draft.explanation}</p>}
-                    {draft&&<>
-                        <pre className="wb-code">{draft.query}</pre>
-                        {draft.selected.length>0&&<p className="wb-tiny wb-muted wb-data-used-objects" title={draft.selected.map(item=>[item.schemaName,item.name].filter(Boolean).join('.')).join('、')}>使用对象 · {draft.selected.map(item=>[item.schemaName,item.name].filter(Boolean).join('.')).join('、')}</p>}
-                        {draft.rollback&&<details><summary>回滚建议（仅预览）</summary><pre className="wb-code">{draft.rollback}</pre></details>}
-                        <div className="wb-row wb-row--wrap">
-                            <Btn kind="primary" size="sm" disabled={busy} onClick={()=>props.apply(draft)}>{draft.mode==='script'?'在编辑器预览脚本':isSql?'填入 SQL 编辑器':'填入查询编辑器'}</Btn>
-                            <Copy text={draft.query} label="复制建议"/>
-                        </div>
-                    </>}
                 </div>
-            </div>)}
+            </div>}
+            {turns.map(({instruction,draft,clarification},index)=>{
+                const inEditor=draft&&editorDraft&&draft.query===editorDraft.query&&draft.mode===editorDraft.mode&&draft.schemaHash===editorDraft.schemaHash;
+                return <div className="wb-data-ai-turn" key={index}>
+                    <p className="wb-data-ai-question">{instruction}</p>
+                    <div className="wb-data-ai-answer">
+                        <strong className="wb-tiny">{draft?(draft.mode==='script'?'SQL 脚本 · 仅预览':isSql?'只读 SQL':'查询建议'):'需要补充'}</strong>
+                        {clarification&&<p>{clarification}</p>}
+                        {draft?.explanation&&<p>{draft.explanation}</p>}
+                        {draft&&<>
+                            <pre className="wb-code">{draft.query}</pre>
+                            {draft.selected.length>0&&<p className="wb-tiny wb-muted wb-data-used-objects" title={draft.selected.map(item=>[item.schemaName,item.name].filter(Boolean).join('.')).join('、')}>使用对象 · {draft.selected.map(item=>[item.schemaName,item.name].filter(Boolean).join('.')).join('、')}</p>}
+                            {draft.rollback&&<details><summary>回滚建议（仅预览）</summary><pre className="wb-code">{draft.rollback}</pre></details>}
+                            <div className="wb-row wb-row--wrap">
+                                {inEditor?<span className="wb-tiny wb-muted">已填入编辑器</span>:
+                                    <Btn kind="primary" size="sm" disabled={busy} onClick={()=>props.apply(draft)}>{isSql?'填入 SQL 编辑器':'填入查询编辑器'}</Btn>}
+                                <Copy text={draft.query} label="复制建议"/>
+                            </div>
+                        </>}
+                    </div>
+                </div>
+            })}
             {pending&&<div className="wb-data-ai-turn"><p className="wb-data-ai-question">{pending}</p><p role="status" className="wb-tiny wb-muted">正在生成…</p></div>}
             {error&&<p role="alert" className="wb-data-ai-error">{error}</p>}
         </div>
@@ -121,13 +121,7 @@ export function DataAiConversation(props:Props){
                         }
                     }}/>
                 <div className="wb-data-ai-controls">
-                    {isSql&&<div className="wb-data-ai-mode">
-                        <Btn kind="subtle" size="sm" icon={scriptMode?'reply':'edit'} disabled={busy}
-                            title={scriptMode?'返回查询':'生成变更脚本和回滚建议，仅供预览'}
-                            onClick={()=>props.setMode(scriptMode?'query':'script')}>{scriptMode?'返回查询':'变更脚本'}</Btn>
-                        {scriptMode&&<span className="wb-tiny wb-muted">仅预览，不能执行</span>}
-                    </div>}
-                    <Btn kind="primary" size="sm" disabled={!canSend} onClick={props.send}>{scriptMode?'生成脚本':isSql?'生成 SQL':'生成查询'}</Btn>
+                    <Btn kind="primary" size="sm" disabled={!canSend} onClick={props.send}>{isSql?'生成 SQL':'生成查询'}</Btn>
                 </div>
             </div>
         </form>

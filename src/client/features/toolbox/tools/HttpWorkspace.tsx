@@ -1,7 +1,7 @@
 import * as React from 'react'
 import {Btn,Field,Input,Textarea,WB} from '../../../core/runtime.js'
 import {toolCopyButton as Copy,toolErrorBlock as ErrorBlock} from '../shared-controls.js'
-import {checkHttpResponse,emptyHttpWorkspace,HTTP_METHODS,normalizeHttpAssertions,normalizeHttpRequest,resolveHttpRequest,type HttpEnvironment,type HttpOutcome,type HttpRequest,type HttpResponse,type HttpWorkspace as Workspace,type SavedHttpRequest} from '../../../../shared/http-workspace.js'
+import {checkHttpResponse,emptyHttpWorkspace,HTTP_METHODS,normalizeHttpAssertions,normalizeHttpRequest,normalizeHttpVariables,resolveHttpRequest,type HttpOutcome,type HttpRequest,type HttpResponse,type HttpWorkspace as Workspace,type SavedHttpRequest} from '../../../../shared/http-workspace.js'
 import {exportCurl,importCurl} from './developer-utils.js'
 import {ToolAI} from './DeveloperExtras.js'
 import {assertionFields,HttpAiPanel,HttpAssertionEditor,HttpChecks,type AssertionField} from './HttpWorkspacePanels.js'
@@ -9,6 +9,7 @@ import {assertionFields,HttpAiPanel,HttpAssertionEditor,HttpChecks,type Assertio
 type Editor = Omit<HttpRequest,'assertions'|'timeoutMs'> & {
     timeoutMs:number|string; rules?:AssertionField[]; savedId?:string; curl?:string; result?:HttpResponse|null; outcome?:HttpOutcome|null;
 }
+type VariableRow = {id:string; name:string; value:string}
 type Execution = {cancelled:boolean; requestId?:string}
 type RunState = HttpOutcome['state']|'waiting'|'running'|'error'|'skipped'
 type RunRow = {id:string; name:string; state:RunState; checks?:HttpOutcome['checks']; status?:number; durationMs?:number; error?:string}
@@ -40,14 +41,13 @@ export function HttpDebugger({value,patch,onTransfer}:{
     const [storageError,setStorageError] = React.useState('')
     const [collectionId,setCollectionId] = React.useState('default')
     const [collectionName,setCollectionName] = React.useState<string|null>(null)
-    const [envId,setEnvId] = React.useState('')
-    const [envDraft,setEnvDraft] = React.useState<HttpEnvironment|null>(null)
-    const [variables,setVariables] = React.useState<Record<string,string>>({})
+    const [variablesOpen,setVariablesOpen] = React.useState(false)
+    const [variableDrafts,setVariableDrafts] = React.useState<Record<string,VariableRow[]>>({})
+    const [variableError,setVariableError] = React.useState('')
     const [section,setSection] = React.useState<Section>('params')
     const [ai,setAi] = React.useState<'request'|'assertions'|null>(null)
     const [error,setError] = React.useState('')
     const [runner,setRunner] = React.useState(false)
-    const [selected,setSelected] = React.useState<string[]>([])
     const [latestReport,setReport] = React.useState<{collectionId:string;environment:string;rows:RunRow[]}|null>(null)
     const [detailId,setDetailId] = React.useState('')
     const [operation,setOperation] = React.useState<'single'|'batch'|null>(null)
@@ -56,10 +56,16 @@ export function HttpDebugger({value,patch,onTransfer}:{
     const active = React.useRef<Execution|null>(null)
     const savingRef = React.useRef(false)
     const collection = workspace.collections.find(item=>item.id === collectionId) ?? workspace.collections[0]
-    const environment = workspace.environments.find(item=>item.id === envId)
-    const runtimeValues = environment ? variables[environment.id] ?? '{}' : '{}'
+    const runtimeValues = JSON.stringify(collection.variables ?? {})
+    const variableRows = variableDrafts[collection.id] ?? Object.entries(collection.variables ?? {}).map(([name,value])=>({id:'saved-'+name,name,value}))
+
+    function editVariables(rows:VariableRow[]) {
+        setVariableError('')
+        setVariableDrafts(previous=>({...previous,[collection.id]:rows}))
+    }
     const locked = !!operation || saving
     const {outcome,result:response} = value
+    const allowedMethods = response && Object.entries(response.headers).find(([key])=>key.toLowerCase() === 'allow')?.[1]
     const report = latestReport?.collectionId === collection.id ? latestReport : null
 
     React.useEffect(()=>{
@@ -77,8 +83,8 @@ export function HttpDebugger({value,patch,onTransfer}:{
         let current = true
         rpc('httpWorkspace',{action:'load'}).then((data:Workspace)=>{
             if (!current) return
-            if (!data?.collections?.length || !Array.isArray(data.environments)) throw Error('宿主尚未加载接口工作区，请重新加载工作台')
-            setWorkspace(data);setLoaded(true);setStorageError('')
+            if (!data?.collections?.length) throw Error('宿主尚未加载接口工作区，请重新加载工作台')
+            setWorkspace({...data,collections:data.collections.map(item=>item.id === 'default' && item.name === '默认 Collection' ? {...item,name:'默认集合'} : item)});setLoaded(true);setStorageError('')
         }).catch((error:Error)=>{if(current)setStorageError(error.message)})
         return ()=>{current=false}
     },[loadAttempt])
@@ -91,7 +97,18 @@ export function HttpDebugger({value,patch,onTransfer}:{
         if (!loaded || savingRef.current || active.current) return
         savingRef.current=true;setSaving(true);setStorageError('')
         try {
-            const saved = await rpc('httpWorkspace',{action:'save',workspace:next})
+            const saved:Workspace = await rpc('httpWorkspace',{action:'save',workspace:next})
+            if (!Array.isArray(saved?.collections) || saved.revision !== next.revision+1) {
+                throw Error('未收到有效的保存确认，请重新加载集合后重试。')
+            }
+            for (const item of next.collections) {
+                const stored = saved.collections.find(row=>row.id === item.id)
+                const expected = Object.entries(item.variables ?? {})
+                const actual = stored?.variables ?? {}
+                if (!stored || Object.keys(actual).length !== expected.length || expected.some(([name,value])=>!Object.hasOwn(actual,name) || actual[name] !== value)) {
+                    throw Error('宿主未确认保存集合变量。请重载插件或重启 Harness，再重新加载集合后保存。')
+                }
+            }
             if (live.current) {setWorkspace(saved);done()}
         } catch (error) {
             if (live.current) setStorageError(error.message)
@@ -127,7 +144,7 @@ export function HttpDebugger({value,patch,onTransfer}:{
     }
 
     async function execute(job:Execution,request:HttpRequest):Promise<HttpOutcome> {
-        const {payload,assertions} = resolveHttpRequest(request,environment,runtimeValues)
+        const {payload,assertions} = resolveHttpRequest(request,runtimeValues)
         const requestId = nextId('http')
         job.requestId=requestId
         try {
@@ -169,16 +186,15 @@ export function HttpDebugger({value,patch,onTransfer}:{
 
     function openRunner() {
         setRunner(true);setAi(null);setError('')
-        setSelected(collection.requests.map(item=>item.id))
     }
 
     async function run() {
-        const requests = collection.requests.filter(item=>selected.includes(item.id))
-        if (!environment || !requests.length) return
+        const requests = collection.requests
+        if (!requests.length) return
         const job = startOperation('batch')
         if (!job) return
         setError('');setDetailId('')
-        const target = environment.name+' · '+environment.baseUrl
+        const target = collection.name+(collection.variables?.baseUrl ? ' · '+collection.variables.baseUrl : '')
         const rows:RunRow[] = requests.map(item=>({id:item.id,name:item.name,state:'waiting'}))
         const publish = ()=>{if(live.current)setReport({collectionId:collection.id,environment:target,rows:rows.slice()})}
         publish()
@@ -208,62 +224,71 @@ export function HttpDebugger({value,patch,onTransfer}:{
     const savedHere = collection.requests.some(item=>item.id === value.savedId)
     const [address,query=''] = (value.url || '').split(/\?(.*)/s,2)
     return <div className="wb-http-workspace">
-        <div className="wb-http-toolbar wb-row wb-row--wrap">
-            <strong>接口调试</strong><span className="wb-spacer"/>
-            <label className="wb-row">环境 <select className="wb-select" aria-label="运行环境" value={environment?.id ?? ''} disabled={locked} onChange={event=>{setEnvId(event.target.value);setEnvDraft(null);resetResponse()}}>
-                <option value="">直接使用请求地址</option>
-                {workspace.environments.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
-            </select></label>
-            <Btn size="sm" disabled={!loaded || locked} onClick={()=>setEnvDraft(envDraft ? null : environment ?? {id:'',name:'',baseUrl:''})}>环境配置</Btn>
-            <Btn size="sm" disabled={!collection.requests.length || locked || runner} onClick={openRunner}>批量运行</Btn>
-            <Btn kind="primary" size="sm" disabled={locked} onClick={()=>{setRunner(false);setAi(ai === 'request' ? null : 'request')}}>AI 生成请求</Btn>
-            {operation && <Btn size="sm" disabled={stopping} onClick={stop}>{stopping ? '停止中…' : operation === 'batch' ? '停止批量运行' : '停止请求'}</Btn>}
-        </div>
-        {envDraft && <section className="wb-http-environment wb-stack" aria-label="环境配置">
-            <div className="wb-row wb-row--wrap"><strong>{envDraft.id ? '编辑环境' : '新建环境'}</strong><span className="wb-spacer"/>
-                {envDraft.id && <Btn size="sm" disabled={locked} onClick={()=>setEnvDraft({id:'',name:'',baseUrl:''})}>新建环境</Btn>}
+        {variablesOpen && <section className="wb-http-variables wb-stack" aria-label="变量配置">
+            <div className="wb-row wb-row--wrap"><strong>{collection.name} · 变量</strong></div>
+            {variableRows.length === 0 && <p className="wb-tiny wb-muted">暂无变量。可添加 baseUrl、token 或其他变量。</p>}
+            {variableRows.map((row,index)=><div className="wb-http-variable-row" key={row.id}>
+                <Field label="名称"><Input aria-label={'变量名称 '+(index+1)} value={row.name} placeholder="如 baseUrl" disabled={locked}
+                    onChange={(event:React.ChangeEvent<HTMLInputElement>)=>editVariables(variableRows.map(item=>item.id === row.id ? {...item,name:fieldValue(event)} : item))}/></Field>
+                <Field label="值"><Textarea aria-label={'变量值 '+(index+1)} rows={1} value={row.value} placeholder={row.name === 'baseUrl' ? 'https://api.example.com' : '输入变量值'} disabled={locked}
+                    onChange={(event:React.ChangeEvent<HTMLTextAreaElement>)=>editVariables(variableRows.map(item=>item.id === row.id ? {...item,value:fieldValue(event)} : item))}/></Field>
+                <Btn size="sm" aria-label={'删除变量 '+(index+1)} disabled={locked} onClick={()=>editVariables(variableRows.filter(item=>item.id !== row.id))}>删除</Btn>
+            </div>)}
+            <ErrorBlock text={variableError}/>
+            <div className="wb-row wb-row--wrap wb-http-variable-actions">
+                <Btn size="sm" disabled={locked} onClick={()=>editVariables([...variableRows,{id:nextId('variable'),name:'',value:''}])}>添加</Btn>
+                <Btn size="sm" kind="primary" disabled={!loaded || locked} onClick={()=>{
+                    try {
+                        const entries = new Map<string,string>()
+                        for (const [index,row] of variableRows.entries()) {
+                            const name = row.name.trim()
+                            if (!name) throw Error('请填写第 '+(index+1)+' 行的变量名称')
+                            if (entries.has(name)) throw Error('变量名称重复：'+name)
+                            entries.set(name,row.value)
+                        }
+                        const variables = normalizeHttpVariables(Object.fromEntries(entries))
+                        setVariableError('')
+                        void saveWorkspace({...workspace,collections:workspace.collections.map(item=>item.id === collection.id ? {...item,variables} : item)},()=>{
+                            setVariableDrafts(previous=>{const next={...previous};delete next[collection.id];return next})
+                            resetResponse()
+                        })
+                    } catch(error) {setVariableError(error.message)}
+                }}>{saving ? '保存中…' : '保存'}</Btn>
+                <span className="wb-tiny wb-muted" role="status">{Object.hasOwn(variableDrafts,collection.id) ? '有未保存的修改，请保存后发送请求' : '使用已保存的变量'}</span>
             </div>
-            <Field label="环境名称"><Input aria-label="环境名称" value={envDraft.name} maxLength={100} disabled={locked} onChange={(event:React.ChangeEvent<HTMLInputElement>)=>setEnvDraft({...envDraft,name:fieldValue(event)})}/></Field>
-            <Field label="基础地址"><Input aria-label="环境基础地址" value={envDraft.baseUrl} placeholder="http://localhost:8080" disabled={locked} onChange={(event:React.ChangeEvent<HTMLInputElement>)=>setEnvDraft({...envDraft,baseUrl:fieldValue(event)})}/></Field>
-            <div><Btn size="sm" kind="primary" disabled={locked || !envDraft.name.trim() || !envDraft.baseUrl.trim()} onClick={()=>{
-                const item = {...envDraft,id:envDraft.id || nextId('env')}
-                const environments = envDraft.id ? workspace.environments.map(row=>row.id === item.id ? item : row) : [...workspace.environments,item]
-                void saveWorkspace({...workspace,environments},()=>{setEnvId(item.id);setEnvDraft(null);resetResponse()})
-            }}>保存环境</Btn></div>
         </section>}
-        {environment && <details className="wb-http-variables"><summary>运行变量 · {environment.name}</summary>
-            <Field label="变量（JSON 字符串键值对，仅当前页面）"><Textarea aria-label="运行变量" rows={3} maxLength={32000} value={runtimeValues} disabled={locked}
-                placeholder={'{"token":"…","code":"REC-001"}'} onChange={(event:React.ChangeEvent<HTMLTextAreaElement>)=>{resetResponse();setVariables({...variables,[environment.id]:fieldValue(event)})}}/></Field>
-        </details>}
-        {storageError && <div className="wb-row wb-row--wrap"><ErrorBlock text={storageError}/><Btn size="sm" disabled={locked} onClick={()=>{setLoaded(false);setLoadAttempt(value=>value+1)}}>重新加载 Collection</Btn></div>}
+        {storageError && <div className="wb-row wb-row--wrap"><ErrorBlock text={storageError}/><Btn size="sm" disabled={locked} onClick={()=>{setLoaded(false);setLoadAttempt(value=>value+1)}}>重新加载集合</Btn></div>}
         <div className={'wb-http-layout'+(ai ? ' has-ai' : '')}>
-            <aside className="wb-http-collections wb-stack" aria-label="Collections">
-                <div className="wb-row wb-row--wrap"><strong>Collections</strong><span className="wb-spacer"/><Btn size="sm" aria-label="新建 Collection" disabled={!loaded || locked} onClick={()=>setCollectionName(collectionName === null ? '' : null)}>＋</Btn></div>
+            <aside className="wb-http-collections wb-stack" aria-label="集合">
+                <div className="wb-row wb-row--wrap"><strong>集合</strong><span className="wb-spacer"/><Btn size="sm" aria-label="新建集合" disabled={!loaded || locked} onClick={()=>setCollectionName(collectionName === null ? '' : null)}>＋</Btn></div>
                 {collectionName !== null && <div className="wb-stack">
-                    <Input aria-label="Collection 名称" value={collectionName} maxLength={100} disabled={locked} onChange={(event:React.ChangeEvent<HTMLInputElement>)=>setCollectionName(fieldValue(event))}/>
+                    <Input aria-label="集合名称" value={collectionName} maxLength={100} disabled={locked} onChange={(event:React.ChangeEvent<HTMLInputElement>)=>setCollectionName(fieldValue(event))}/>
                     <div><Btn size="sm" disabled={locked || !collectionName.trim()} onClick={()=>{
-                        const item={id:nextId('collection'),name:collectionName.trim(),requests:[]}
-                        void saveWorkspace({...workspace,collections:[...workspace.collections,item]},()=>{setCollectionId(item.id);setCollectionName(null);setRunner(false)})
-                    }}>创建 Collection</Btn></div>
+                        const item={id:nextId('collection'),name:collectionName.trim(),requests:[],variables:{}}
+                        void saveWorkspace({...workspace,collections:[...workspace.collections,item]},()=>{setCollectionId(item.id);setCollectionName(null);setVariableError('');openRequest()})
+                    }}>创建集合</Btn></div>
                 </div>}
-                <select className="wb-select" aria-label="选择 Collection" value={collection.id} disabled={locked} onChange={event=>{setCollectionId(event.target.value);setRunner(false)}}>
+                <select className="wb-select" aria-label="选择集合" value={collection.id} disabled={locked} onChange={event=>{setCollectionId(event.target.value);setVariableError('');openRequest()}}>
                     {workspace.collections.map(item=><option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
+                <div className="wb-http-collection-actions" role="group" aria-label="当前集合操作">
+                    <Btn size="sm" disabled={!loaded || locked} aria-expanded={variablesOpen} onClick={()=>setVariablesOpen(!variablesOpen)}>变量</Btn>
+                    <Btn size="sm" disabled={!collection.requests.length || locked || runner} onClick={openRunner}>运行</Btn>
+                    <Btn kind="primary" size="sm" disabled={locked} onClick={()=>{setRunner(false);setAi(ai === 'request' ? null : 'request')}}>AI 生成请求</Btn>
+                    {operation && <Btn size="sm" disabled={stopping} onClick={stop}>{stopping ? '停止中…' : operation === 'batch' ? '停止运行' : '停止请求'}</Btn>}
+                </div>
                 <Btn size="sm" disabled={locked} onClick={()=>openRequest()}>新建请求</Btn>
-                {!collection.requests.length && <p className="wb-tiny wb-muted">{loaded ? '还没有保存的请求' : 'Collection 尚未加载'}</p>}
+                {!collection.requests.length && <p className="wb-tiny wb-muted">{loaded ? '还没有保存的请求' : '集合尚未加载'}</p>}
                 {collection.requests.map(item=><button key={item.id} type="button" className="wb-http-request-item" disabled={locked} aria-current={!runner && item.id === value.savedId}
                     onClick={()=>openRequest(item)}><code>{item.method}</code><span>{item.name}</span></button>)}
             </aside>
-            {runner ? <section className="wb-http-main wb-stack" aria-label="批量运行配置">
+            {runner ? <section className="wb-http-main wb-stack" aria-label="集合运行">
                 <div className="wb-row wb-row--wrap"><strong>运行 {collection.name}</strong><span className="wb-spacer"/><Btn size="sm" disabled={locked} onClick={()=>{setRunner(false);setError('')}}>返回请求</Btn></div>
-                <p className="wb-tiny wb-muted">{environment ? '按列表顺序执行 · '+environment.name+' · '+environment.baseUrl : '请先选择运行环境，可通过「环境配置」创建。'}</p>
-                <div className="wb-http-run-plan">
-                    {collection.requests.map((item,index)=><label key={item.id}>
-                        <input type="checkbox" checked={selected.includes(item.id)} disabled={locked} onChange={event=>setSelected(event.target.checked ? [...selected,item.id] : selected.filter(id=>id !== item.id))}/>
-                        <span>{index+1}. {item.name} <code>{item.method} {item.url}</code></span>
-                    </label>)}
-                </div>
-                <div><Btn kind="primary" disabled={locked || !environment || !selected.length} onClick={run}>运行所选请求</Btn></div>
+                <p className="wb-tiny wb-muted">{'按列表顺序运行全部 '+collection.requests.length+' 个已保存请求，使用 '+collection.name+' 已保存的变量'+(collection.variables?.baseUrl ? ' · '+collection.variables.baseUrl : '')}</p>
+                <ol className="wb-http-run-plan">
+                    {collection.requests.map(item=><li key={item.id}>{item.name} <code>{item.method} {item.url}</code></li>)}
+                </ol>
+                <div><Btn kind="primary" disabled={locked || !collection.requests.length} onClick={run}>运行全部请求</Btn></div>
                 <ErrorBlock text={error}/>
                 {report && <section className="wb-http-response wb-stack" aria-label="批跑结果">
                     <div className="wb-row wb-row--wrap"><strong>运行结果</strong><span className="wb-tiny wb-muted">{report.environment}</span></div>
@@ -279,7 +304,7 @@ export function HttpDebugger({value,patch,onTransfer}:{
             </section> : <section className="wb-http-main wb-stack" aria-label="请求编辑">
                 <div className="wb-row wb-row--wrap">
                     <Input className="wb-http-name wb-input" aria-label="请求名称" value={value.name || ''} maxLength={100} placeholder="未命名请求" disabled={locked} onChange={(event:React.ChangeEvent<HTMLInputElement>)=>patch({name:fieldValue(event)})}/>
-                    <Btn size="sm" disabled={!loaded || locked || !value.url} onClick={saveRequest}>{savedHere ? '保存请求' : '加入 Collection'}</Btn>
+                    <Btn size="sm" disabled={!loaded || locked || !value.url} onClick={saveRequest}>{savedHere ? '保存请求' : '加入集合'}</Btn>
                 </div>
                 <div className="wb-http-request-bar">
                     <select className="wb-select" aria-label="HTTP 方法" value={value.method || 'GET'} disabled={locked} onChange={event=>{resetResponse();patch({method:event.target.value})}}>
@@ -312,16 +337,22 @@ export function HttpDebugger({value,patch,onTransfer}:{
                 </div>
                 <section className="wb-http-response wb-stack" aria-label="响应">
                     <div className="wb-row wb-row--wrap"><strong>响应</strong><span className="wb-spacer"/>
-                        {response && <span className="wb-tiny" role="status">HTTP {response.status} · {response.durationMs} ms{outcome && ' · '+stateLabels[outcome.state]}</span>}
+                        {response && <span className="wb-tiny" role="status">HTTP {response.status}{response.statusText ? ' '+response.statusText : ''} · {response.durationMs} ms{outcome && ' · '+stateLabels[outcome.state]}</span>}
                     </div>
                     <ErrorBlock text={error}/>
                     {!response && !error && <div className="wb-data-empty"><span className="wb-http-empty-mark" aria-hidden="true">⌁</span><strong>等待发送请求</strong><span className="wb-tiny wb-muted">发送请求后查看响应和断言结果</span></div>}
                     {response && <>
+                        {response.status >= 400 && <p className="wb-tiny" role="alert" style={{color:'var(--wb-err)',margin:0}}>
+                            {response.status === 405
+                                ? 'HTTP 405：服务端不允许当前请求方法，请核对接口文档中的方法和路径。'+(allowedMethods ? ' 服务端允许的方法：'+allowedMethods+'。' : ' 服务端未提供 Allow 响应头，无法自动确定应使用的方法。')
+                                : '服务端返回 HTTP '+response.status+'，请结合响应正文、响应头或服务端日志排查。'}
+                        </p>}
                         <div className="wb-row wb-row--wrap">
                             <Copy text={response.text}/>
                             {response.text && [['json','JSON'],['diff','Diff'],['types','类型生成']].map(([id,label])=><Btn key={id} size="sm" onClick={()=>onTransfer?.(id,response.text)}>响应 → {label}</Btn>)}
                         </div>
-                        <pre className="wb-code" tabIndex={0} aria-label="调试响应">{response.text}</pre>
+                        {response.text ? <pre className="wb-code" tabIndex={0} aria-label="调试响应">{response.text}</pre>
+                            : <div className="wb-data-empty" role="status"><strong>已收到响应，但响应正文为空</strong><span className="wb-tiny wb-muted">{value.method === 'HEAD' ? 'HEAD 请求只返回响应头，不包含正文。' : response.status === 204 ? 'HTTP 204 表示请求成功，无响应正文。' : '服务端没有返回正文，请查看 HTTP 状态和下方响应头。'}</span></div>}
                         {response.truncated && <p className="wb-tiny wb-muted">响应超过 1 MB，已截断。</p>}
                         <details><summary>响应头</summary><pre className="wb-code">{JSON.stringify(response.headers,null,2)}</pre></details>
                         {outcome && <HttpChecks checks={outcome.checks}/>}

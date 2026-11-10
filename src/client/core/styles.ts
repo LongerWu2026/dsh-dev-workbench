@@ -114,6 +114,7 @@ const WB_CSS = `
 .wb-toolbar-search:hover { border-color: var(--dsw-alias-border-l2); }
 .wb-toolbar-search kbd { margin-left: auto; }
 .wb-scroll { flex: 1 1 auto; overflow: auto; scrollbar-width: thin; }
+.wb-root.is-dashboard .wb-page { padding-bottom:12px; }
 .wb-page { padding: 24px 24px 44px; max-width: 1340px; }
 .wb-page-head { position:relative;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;min-height:30px;margin-bottom:12px; }
 .wb-page-title-a11y { position:absolute!important;width:1px!important;height:1px!important;padding:0!important;margin:-1px!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important;border:0!important; }
@@ -161,7 +162,7 @@ const WB_CSS = `
 .wb-brief-flow-card > :is(.wb-inbox-summary, .wb-compact-status) { margin-bottom: 0; }
 @container brief (min-width: 876px) {
   .wb-brief-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .wb-brief-flow.is-measured { grid-auto-rows: 1px; row-gap: 0; }
+  .wb-brief-flow.is-measured { grid-auto-rows: 1px; row-gap: 0; margin-bottom:-16px; }
   /* Reserve the card's content height and the gap so the next card can use the shorter column. */
   .wb-brief-flow.is-measured > .wb-brief-flow-card { grid-row-end: span calc(var(--brief-card-height, 1) + 16); }
 }

@@ -137,11 +137,12 @@ try{
   await object.check();await measure('structure');
   if(await page.getByRole('button',{name:'关闭连接面板'}).isVisible())await page.getByRole('button',{name:'关闭连接面板'}).click();
   if(compact)await page.getByRole('tab',{name:'AI 查询',exact:true}).click();else if(!await conversation.isVisible())await page.getByRole('button',{name:'展开 AI 会话',exact:true}).click();
-  const previous=await editor.inputValue();await conversation.getByRole('textbox',{name:'数据库AI需求'}).fill('查询订单编号');await measure('ai-generate');
-  await conversation.getByRole('button',{name:/^生成(?: SQL|查询|脚本)$/,exact:true}).click();await conversation.getByText('已按所选结构生成',{exact:true}).waitFor();
-  if(await editor.inputValue()!==previous)throw Error('会话回复覆盖了编辑器');if(await page.locator('.wb-modal').count())throw Error('会话生成使用了弹窗');
-  await conversation.getByRole('button',{name:'填入 SQL 编辑器'}).click();if(await editor.inputValue()!=='SELECT id FROM orders ORDER BY id')throw Error('生成结果没有填入编辑器');
-  if(compact&&!await editor.isVisible())throw Error('采用生成SQL后应切到SQL工作区');
+  const beforeGenerate=await page.evaluate(()=>window.fixtureQueries.length);
+  await conversation.getByRole('textbox',{name:'数据库AI需求'}).fill('查询订单编号');await measure('ai-generate');
+  await conversation.getByRole('button',{name:'生成 SQL',exact:true}).click();
+  await page.getByText('SQL 已填入编辑器，可检查后执行',{exact:true}).waitFor();
+  if(await editor.inputValue()!=='SELECT id FROM orders ORDER BY id'||!await editor.isVisible())throw Error('生成结果没有自动显示在编辑器');
+  if(await page.locator('.wb-modal').count()||await page.evaluate(()=>window.fixtureQueries.length)!==beforeGenerate)throw Error('会话生成打开了弹窗或触发执行');
   const queryHead=page.locator('.wb-data-query-head');
   const explanation=page.locator('.wb-data-draft-info');
   const explanationToggle=explanation.locator('summary');
@@ -166,7 +167,14 @@ try{
   await page.getByRole('combobox',{name:'每页行数'}).selectOption('100');await measure('page-size-reset');
   if(!await page.getByRole('button',{name:'下一页',exact:true}).isDisabled())throw Error('修改页大小后不能继续旧分页');
   await page.evaluate(()=>{window.fixtureEmpty=true});await page.getByRole('button',{name:'执行只读查询'}).click();await page.getByText('查询成功，无返回记录').waitFor();await measure('zero-rows');
-  const beforeAdopt=await page.evaluate(()=>window.fixtureQueries.length);if(compact)await page.getByRole('tab',{name:'AI 查询',exact:true}).click();await conversation.getByRole('button',{name:'填入 SQL 编辑器'}).click();if(!await editor.isVisible()||await page.locator('.wb-data-main').evaluate(el=>el.scrollTop)!==0)throw Error('采用SQL后没有回到编辑器 '+JSON.stringify({width,theme,visible:await editor.isVisible(),position:await page.locator('.wb-data-main').evaluate(el=>({top:el.scrollTop,height:el.clientHeight,scroll:el.scrollHeight}))}));if(await page.evaluate(()=>window.fixtureQueries.length)!==beforeAdopt)throw Error('采用SQL触发了执行');report.push({width,theme,stage:'adopt-after-results',passed:true});
+  const beforeRegenerate=await page.evaluate(()=>window.fixtureQueries.length);
+  if(compact)await page.getByRole('tab',{name:'AI 查询',exact:true}).click();
+  await conversation.getByRole('textbox',{name:'数据库AI需求'}).fill('重新查询订单编号');
+  await conversation.getByRole('button',{name:'生成 SQL',exact:true}).click();
+  await page.getByText('SQL 已填入编辑器，可检查后执行',{exact:true}).waitFor();
+  if(!await editor.isVisible()||await page.locator('.wb-data-main').evaluate(el=>el.scrollTop)!==0)throw Error('重新生成 SQL 后没有回到编辑器');
+  if(await page.evaluate(()=>window.fixtureQueries.length)!==beforeRegenerate)throw Error('重新生成 SQL 触发了执行');
+  report.push({width,theme,stage:'regenerate-after-results',passed:true});
   if(width===980&&theme==='dark'){await page.evaluate(()=>{document.documentElement.style.zoom='1.25'});await measure('zoom125')}
  }
  await page.evaluate(()=>window.lockDataFixture());

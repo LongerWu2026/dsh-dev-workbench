@@ -1,6 +1,6 @@
 {
   "name": "dsh-dev-workbench",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "description": "智能工作台 — DeepSeek Harness 原生插件：AI 助手、待办与待回复、研发任务、AI 资讯、知识空间、多 AI 对话和开发工具。",
   "repository": {
     "type": "git",

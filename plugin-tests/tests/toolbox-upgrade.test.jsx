@@ -15,9 +15,19 @@ describe('开发工具箱纯计算',()=>{
  it('筛选错误保留堆栈，JSON日志展开',()=>{const rows=analyzeLog('INFO start\nERROR broken\n    at foo (x:1)\nCaused by: fail\nINFO end','error');expect(rows.map(r=>r.line)).toEqual([2,3,4]);expect(analyzeLog('{"level":"error","message":"bad"}')[0].text).toContain('\n')})
 })
 describe('开发工具箱实际页面',()=>{
- const setup=()=>{const {WB}=loadClientBundle();render(<WB.pages.toolbox/>);tool(/JSON 格式化/);return WB}
+ const setup=(options)=>{const {WB}=loadClientBundle(options);render(<WB.pages.toolbox/>);tool(/JSON 格式化/);return WB}
  const tool=name=>{if(name instanceof RegExp||['全部','常用'].includes(name))openTools();fireEvent.click(screen.getByRole('button',{name}))};
  it('搜索工具和分类可用，切换保留输入并显示最近使用',()=>{setup();fireEvent.change(screen.getByPlaceholderText('粘贴 JSON 文本'),{target:{value:'{"keep":42}'}});tool(/日志分析 日志筛选/);tool(/JSON 格式化/);expect(screen.getByPlaceholderText('粘贴 JSON 文本').value).toBe('{"keep":42}');expect(screen.getByText('最近：')).toBeTruthy();openTools();fireEvent.change(screen.getByRole('textbox',{name:'搜索工具'}),{target:{value:'TypeScript'}});expect(toolButton(/类型生成 JSON/)).toBeTruthy();expect(screen.queryByRole('button',{name:/接口调试 HTTP/})).toBeNull();tool('常用');expect(toolButton(/日志分析 日志/)).toBeTruthy()})
+ it('重新打开工具箱时恢复上次选中的工具',()=>{
+  const values=new Map();
+  const options={localStorage:{getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value)}};
+  setup(options);
+  tool(/文本 Diff/);
+  cleanup();
+  const {WB}=loadClientBundle(options);
+  render(<WB.pages.toolbox/>);
+  expect(screen.getByRole('button',{name:'切换工具'}).textContent).toContain('文本 Diff');
+ });
  it('粘贴cURL仅推荐工具，打开后仍不发送请求',async()=>{const WB=setup();WB.rpc=vi.fn(async()=>emptyHttpWorkspace());const input=screen.getByPlaceholderText('粘贴 JSON 文本');fireEvent.paste(input,{clipboardData:{getData:()=>"curl https://example.com/pasted"}});expect(screen.getByText('检测到 接口调试 内容')).toBeTruthy();expect(WB.rpc).not.toHaveBeenCalled();tool('用对应工具打开');expect(screen.getByRole('textbox',{name:'接口请求地址'}).value).toBe('https://example.com/pasted');await screen.findByText('还没有保存的请求');expect(WB.rpc.mock.calls).toEqual([['workbench/httpWorkspace',{request:{action:'load'}}]])})
  it('类型生成与树形查看可运行',()=>{setup();tool('转 TypeScript');expect(screen.getByText(/export type Root/)).toBeTruthy();tool('树形查看');expect(screen.getByText(/\$ · 对象/)).toBeTruthy();expect(screen.getAllByRole('button',{name:'复制路径'}).length).toBeGreaterThan(1)})
  it('JSON结构对比识别相同键序和字段变化',()=>{setup();tool(/文本 Diff/);const inputs=screen.getAllByRole('textbox').filter(e=>e.tagName==='TEXTAREA');fireEvent.change(inputs[0],{target:{value:'{"a":1,"b":2}'}});fireEvent.change(inputs[1],{target:{value:'{"b":2,"a":1}'}});fireEvent.click(screen.getByRole('checkbox',{name:/JSON 结构对比/}));tool('对比');expect(screen.getByText('两段文本没有差异')).toBeTruthy();fireEvent.change(inputs[1],{target:{value:'{"a":3,"b":2}'}});tool('对比');const cells=screen.getByRole('region',{name:'左右逐行对比结果，可滚动'}).querySelectorAll('.wb-diff-cell');expect(cells[0].textContent).toContain('$["a"]: 1');expect(cells[1].textContent).toContain('$["a"]: 3');expect(screen.getByText('修改 1')).toBeTruthy()})

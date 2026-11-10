@@ -14,7 +14,9 @@ function setup(initialConnections=[],supportsAutoSelection=true){const {WB}=load
  case 'dataSave':saved=true;return {config:{id:'fixture',name:'开发库',kind:'postgres',host:'127.0.0.1',port:5432,database:'fixture',username:'user',rememberPassword:payload.request.rememberPassword}};
  case 'dataObjects':return {objects:[{schemaName:'public',name:'orders'}]};
  case 'dataStructure':return {tables:[{name:'orders',columns:[{name:'id',type:'bigint'}]}],hash:'schema-v1',at:'2026-10-31T00:00:00Z'};
- case 'dataGenerate':return {query:payload.request.mode==='script'?'ALTER TABLE orders ADD COLUMN code text':'SELECT id FROM public.orders',explanation:'根据订单结构生成',rollback:payload.request.mode==='script'?'ALTER TABLE orders DROP COLUMN code':'',mode:payload.request.mode,schemaHash:'schema-v1'};
+ case 'dataGenerate':return payload.request.instruction==='增加code字段'
+  ?{query:'ALTER TABLE orders ADD COLUMN code text',mode:'script',rollback:'ALTER TABLE orders DROP COLUMN code',schemaHash:'schema-v1'}
+  :{query:'SELECT id FROM public.orders',mode:'query',explanation:'根据订单结构生成',schemaHash:'schema-v1'};
  case 'dataQuery':return {columns:['id'],rows:[{id:'9007199254740993'}],durationMs:2,truncated:false};
  case 'dataTest':return {note:'连接成功'};default:return {status:'ok'}
  }});render(<WB.pages.toolbox/>);fireEvent.click(toolButton(/数据连接 SQL/));return {WB,calls}}
@@ -59,7 +61,7 @@ function memoryHost(WB,calls,{loadDelay,saveDelay,generateDelay,queryResponse}={
 }
 
 describe('数据连接工具',()=>{
- it('AI 为主入口，示例只预填需求；生成后仍需主动采用且不执行 SQL',async()=>{
+ it('AI 为主入口，示例只预填需求；生成完成自动填入 SQL 且不执行',async()=>{
   const {calls}=setup([{id:'fixture',name:'开发库',kind:'postgres',unlocked:true}]);await screen.findByRole('checkbox',{name:'public.orders'})
   expect(screen.getByText('描述需求，让 AI 生成 SQL')).toBeTruthy()
   const ai=screen.getByRole('complementary',{name:'数据库 AI 会话'}),sql=document.querySelector('.wb-data-main')
@@ -69,10 +71,11 @@ describe('数据连接工具',()=>{
   fireEvent.click(within(examples).getByRole('button',{name:'查找重复记录'}))
   expect(screen.getByRole('textbox',{name:'数据库AI需求'}).value).toBe('查找重复记录');expect(document.activeElement).toBe(screen.getByRole('textbox',{name:'数据库AI需求'}))
   expect(calls.some(call=>call.method.endsWith('dataGenerate')||call.method.endsWith('dataQuery'))).toBe(false)
-  fireEvent.click(screen.getByRole('button',{name:'生成 SQL',exact:true}));await screen.findByRole('button',{name:'填入 SQL 编辑器'})
-  expect(calls.find(call=>call.method.endsWith('dataGenerate')).request.mode).toBe('query')
-  expect(editor.value).toBe('SELECT 42 AS manual');expect(calls.some(call=>call.method.endsWith('dataQuery'))).toBe(false)
-  sql.scrollTop=245;fireEvent.click(screen.getByRole('button',{name:'填入 SQL 编辑器'}));expect(sql.scrollTop).toBe(0);expect(editor.value).toBe('SELECT id FROM public.orders');expect(calls.some(call=>call.method.endsWith('dataQuery'))).toBe(false)
+  sql.scrollTop=245;
+  fireEvent.click(screen.getByRole('button',{name:'生成 SQL',exact:true}));await screen.findByText('只读 SQL',{exact:true});
+  expect(calls.find(call=>call.method.endsWith('dataGenerate')).request.mode).toBe('auto')
+  expect(within(ai).queryByRole('button',{name:'填入 SQL 编辑器'})).toBeNull();
+  expect(sql.scrollTop).toBe(0);expect(editor.value).toBe('SELECT id FROM public.orders');expect(calls.some(call=>call.method.endsWith('dataQuery'))).toBe(false)
  })
  it.each([
   ['postgres','查找重复记录','在表「public.orders」中，查找重复记录'],
@@ -158,7 +161,7 @@ describe('数据连接工具',()=>{
    return response;
   };
   cleanup();render(<WB.pages.toolbox/>);
-  await screen.findByText('可在问题中写完整索引名，系统会自动定位。');
+  await screen.findByText('文档查询可填写完整索引名；查询版本或插件无需勾选索引。');
   fireEvent.click(screen.getByRole('button',{name:'统计指定索引的文档总数'}));
   const input=screen.getByRole('textbox',{name:'数据库AI需求'});
   expect(input.value).toBe('统计索引“完整索引名”的文档总数');
@@ -214,7 +217,7 @@ describe('数据连接工具',()=>{
   expect(screen.getByRole('textbox',{name:'数据查询编辑器'}).value).toBe('SELECT 31 AS manual');
   expect(calls.some(call=>call.method.endsWith('dataQuery'))).toBe(false);
  });
- it('AI完成保留另一窗口在生成期间保存的新需求，不清空当前输入',async()=>{
+ it('AI 完成时保留另一窗口在生成期间保存的新需求和编辑器内容',async()=>{
   let finish,host;const {WB,calls}=setup();
   host=memoryHost(WB,calls,{generateDelay:()=>new Promise(resolve=>{finish=resolve})});
   cleanup();render(<WB.pages.toolbox/>);await screen.findByRole('checkbox',{name:'public.orders'});
@@ -222,11 +225,13 @@ describe('数据连接工具',()=>{
   fireEvent.change(screen.getByRole('textbox',{name:'数据库AI需求'}),{target:{value:'窗口A正在生成的需求'}});
   fireEvent.click(screen.getByRole('button',{name:/^生成(?: SQL|查询|脚本)$/}));await waitFor(()=>expect(finish).toBeTypeOf('function'));
   const previous=host.records.get('orders')||{revision:0,workspace:{}};
-  host.records.set('orders',{revision:previous.revision+1,workspace:{...previous.workspace,instruction:'窗口B刚保存的新需求'}});
+  host.records.set('orders',{revision:previous.revision+1,workspace:{...previous.workspace,instruction:'窗口B刚保存的新需求',query:'SELECT 77 AS newer'}});
   await act(async()=>finish());
   await screen.findByText('服务端保存的建议');
   expect(screen.getByRole('textbox',{name:'数据库AI需求'}).value).toBe('窗口B刚保存的新需求');
   await waitFor(()=>expect(host.records.get('orders').workspace.instruction).toBe('窗口B刚保存的新需求'));
+  expect(host.records.get('orders').workspace.query).toBe('SELECT 77 AS newer');
+  expect(screen.getByRole('button',{name:'填入 SQL 编辑器'})).toBeTruthy();
   expect(calls.filter(call=>call.method.endsWith('dataWorkspaceSave')).at(-1).request.patch.instruction).not.toBe('');
  });
  it('内容截断不假装有下一页，完整当前页复制保留长单元格，零行保留列',async()=>{
@@ -387,7 +392,7 @@ describe('数据连接工具',()=>{
   fireEvent.click(screen.getByRole('checkbox',{name:'public.orders'}));
   fireEvent.change(screen.getByRole('textbox',{name:'数据库AI需求'}),{target:{value:'统计订单'}});
   fireEvent.click(screen.getByRole('button',{name:/^生成(?: SQL|查询|脚本)$/}));
-  await screen.findByText('服务端保存的建议');
+  await within(screen.getByRole('complementary',{name:'数据库 AI 会话'})).findByText('服务端保存的建议');
   fireEvent.change(screen.getByRole('textbox',{name:'数据库AI需求'}),{target:{value:'尚未发送的需求'}});
   fireEvent.change(screen.getByRole('textbox',{name:'数据查询编辑器'}),{target:{value:'SELECT 42 AS manual'}});
   fireEvent.click(screen.getByRole('button',{name:'执行只读查询'}));await screen.findByText('9007199254740993');
@@ -398,7 +403,7 @@ describe('数据连接工具',()=>{
   await waitFor(()=>expect(screen.getByRole('textbox',{name:'数据查询编辑器'}).value).toBe('SELECT 42 AS manual'));
   expect(screen.getByRole('textbox',{name:'数据库AI需求'}).value).toBe('尚未发送的需求');
   expect(screen.getByRole('checkbox',{name:'public.orders'}).checked).toBe(true);
-  expect(screen.getByText('服务端保存的建议')).toBeTruthy();
+  expect(within(screen.getByRole('complementary',{name:'数据库 AI 会话'})).getByText('服务端保存的建议')).toBeTruthy();
   expect(screen.getByText(/上次查询结果/)).toBeTruthy();
   mounted.unmount();render(<WB.pages.toolbox/>);
   await waitFor(()=>expect(screen.getByRole('textbox',{name:'数据查询编辑器'}).value).toBe('SELECT 42 AS manual'));
@@ -736,7 +741,7 @@ describe('数据连接工具',()=>{
   expect(screen.getByRole('checkbox',{name:'记住密码'}).checked).toBe(true);
   expect(screen.getByLabelText('数据库密码').value).toBe('');
  })
- it('会话生成保留原 SQL，选择填入后才更新编辑器，执行携带结构版本',async()=>{
+ it('会话生成自动填入 SQL，手动执行携带结构版本',async()=>{
   const {WB,calls}=setup();
   const copy=vi.spyOn(WB.util,'copy').mockResolvedValue();
   await save();await selectTable();
@@ -744,38 +749,38 @@ describe('数据连接工具',()=>{
   fireEvent.change(editor,{target:{value:'SELECT 42'}});
   fireEvent.change(screen.getByRole('textbox',{name:'数据库AI需求'}),{target:{value:'查询订单'}});
   fireEvent.click(screen.getByRole('button',{name:/^生成(?: SQL|查询|脚本)$/}));
-  await screen.findByText('根据订单结构生成');
+  await screen.findByText('只读 SQL',{exact:true});
   expect(screen.queryByRole('dialog')).toBeNull();
-  expect(editor.value).toBe('SELECT 42');
+  expect(editor.value).toBe('SELECT id FROM public.orders');
   expect(calls.some(c=>c.method.endsWith('dataQuery'))).toBe(false);
   const generation=calls.find(c=>c.method.endsWith('dataGenerate')).request;
   expect(generation).toMatchObject({selected:[{schemaName:'public',name:'orders'}],conversation:true,history:[]});
   expect(JSON.stringify(generation)).not.toContain('fixture-secret');
-  fireEvent.click(screen.getByRole('button',{name:'填入 SQL 编辑器'}));
-  expect(editor.value).toBe('SELECT id FROM public.orders');
   fireEvent.click(screen.getByRole('button',{name:'复制 SQL'}));
   expect(copy).toHaveBeenCalledWith('SELECT id FROM public.orders');
   fireEvent.click(screen.getByRole('button',{name:'执行只读查询'}));
   await screen.findByText('9007199254740993');
   expect(calls.find(c=>c.method.endsWith('dataQuery')).request).toMatchObject({schemaHash:'schema-v1',query:'SELECT id FROM public.orders',id:'fixture'});
  })
- it('变更脚本在会话中保留回滚预览，填入编辑器后禁止执行',async()=>{
+ it('统一生成入口按返回的 SQL 类型控制预览和执行',async()=>{
   const {calls}=setup();await save();await selectTable();
   const input=screen.getByRole('textbox',{name:'数据库AI需求'});
+  const generate=screen.getByRole('button',{name:'生成 SQL',exact:true});
   fireEvent.change(input,{target:{value:'增加code字段'}});
-  fireEvent.click(screen.getByRole('button',{name:'变更脚本',exact:true}));
-  expect(input.value).toBe('增加code字段');
-  expect(screen.getByText('仅预览，不能执行')).toBeTruthy();
-  expect(screen.queryByRole('group',{name:'试试这样问'})).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:'返回查询',exact:true}));
-  expect(screen.getByRole('group',{name:'试试这样问'})).toBeTruthy();
-  expect(calls.some(call=>call.method.endsWith('dataGenerate'))).toBe(false);
-  fireEvent.click(screen.getByRole('button',{name:'变更脚本',exact:true}));
-  fireEvent.click(screen.getByRole('button',{name:'生成脚本',exact:true}));
-  await screen.findByText('回滚建议（仅预览）');
-  expect(calls.find(call=>call.method.endsWith('dataGenerate')).request.mode).toBe('script');
-  fireEvent.click(screen.getByRole('button',{name:'在编辑器预览脚本'}));
-  expect(screen.getByRole('button',{name:'执行只读查询'}).disabled).toBe(true);
+  expect(screen.queryByRole('button',{name:'变更脚本',exact:true})).toBeNull();
+  fireEvent.click(generate);
+  await screen.findByText('SQL 脚本 · 仅预览');
+  expect(screen.getAllByText('回滚建议（仅预览）')).toHaveLength(2);
+  expect(screen.getByRole('textbox',{name:'数据查询编辑器'}).value).toBe('ALTER TABLE orders ADD COLUMN code text');
+  const execute=screen.getByRole('button',{name:'执行只读查询'});
+  expect(execute.disabled).toBe(true);
+  fireEvent.keyDown(screen.getByRole('textbox',{name:'数据查询编辑器'}),{key:'Enter',ctrlKey:true});
+  fireEvent.change(input,{target:{value:'查询订单'}});
+  fireEvent.click(generate);
+  await screen.findByText('只读 SQL',{exact:true});
+  expect(execute.disabled).toBe(false);
+  expect(calls.filter(call=>call.method.endsWith('dataGenerate')).map(call=>call.request.mode)).toEqual(['auto','auto']);
+  expect(calls.some(call=>call.method.endsWith('dataQuery'))).toBe(false);
  })
  it('SQL 留空选表时可生成，执行时按实际选中的表校验结构',async()=>{
   const {WB,calls}=setup();await save();
@@ -787,7 +792,7 @@ describe('数据连接工具',()=>{
   };
   fireEvent.change(screen.getByRole('textbox',{name:'数据库AI需求'}),{target:{value:'统计订单金额'}});
   fireEvent.click(screen.getByRole('button',{name:/^生成(?: SQL|查询|脚本)$/}));
-  fireEvent.click(await screen.findByRole('button',{name:'填入 SQL 编辑器'}));
+  await screen.findByText('只读 SQL',{exact:true});
   expect(within(screen.getByRole('region',{name:'表列表'})).queryByText(/本次使用的表/)).toBeNull();
   expect(within(screen.getByRole('complementary',{name:'数据库 AI 会话'})).getByText(/使用对象 · public.orders、public.order_items/)).toBeTruthy();
   expect(calls.find(call=>call.method.endsWith('dataGenerate')).request.selected).toEqual([]);
@@ -842,11 +847,11 @@ describe('数据连接工具',()=>{
   await screen.findByText('需要哪段时间？');
   fireEvent.change(input,{target:{value:'最近七天'}});
   fireEvent.click(screen.getByRole('button',{name:/^生成(?: SQL|查询|脚本)$/}));
-  await screen.findByRole('button',{name:'填入 SQL 编辑器'});
+  await screen.findByText('只读 SQL',{exact:true});
   expect(calls.filter(call=>call.method.endsWith('dataGenerate')).at(-1).request.history).toEqual([{instruction:'统计订单',explanation:'需要哪段时间？'}]);
   fireEvent.click(savedConnections().getByRole('button',{name:/库存库 PostgreSQL/}));
   await waitFor(()=>expect(screen.queryByText('需要哪段时间？')).toBeNull());
-  expect(screen.queryByRole('button',{name:'填入 SQL 编辑器'})).toBeNull();
+  expect(screen.queryByText('只读 SQL',{exact:true})).toBeNull();
  })
  it('结构错误不冒充成功且保留编辑内容',async()=>{const {WB}=setup();await save();const original=WB.rpc;WB.rpc=vi.fn((method,payload)=>method.endsWith('dataQuery')?Promise.reject(Error('结构已变化，请重新生成查询')):original(method,payload));fireEvent.change(screen.getByRole('textbox',{name:'数据查询编辑器'}),{target:{value:'SELECT 42'}});fireEvent.click(screen.getByRole('button',{name:'执行只读查询'}));await screen.findByRole('alert');expect(screen.getByRole('textbox',{name:'数据查询编辑器'}).value).toBe('SELECT 42');expect(screen.queryByText('查询完成')).toBeNull()})
  it('查询中阻止重复提交，停止只发送当前连接ID',async()=>{const {WB,calls}=setup();await save();let reject;const original=WB.rpc;WB.rpc=vi.fn((method,payload)=>method.endsWith('dataQuery')?new Promise((_,r)=>reject=r):original(method,payload));fireEvent.click(screen.getByRole('button',{name:'执行只读查询'}));expect(screen.getByRole('button',{name:'执行只读查询'}).disabled).toBe(true);fireEvent.click(dataAction('停止并断开'));await waitFor(()=>expect(calls.some(c=>c.method.endsWith('dataDisconnect'))).toBe(true));reject(Error('操作已停止'));await screen.findByRole('alert');expect(calls.find(c=>c.method.endsWith('dataDisconnect')).request).toEqual({id:'fixture'})})

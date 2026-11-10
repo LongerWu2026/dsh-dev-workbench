@@ -3,12 +3,7 @@ export const HTTP_WORKSPACE_CSS = `
 .wb-http-workspace :is(p,pre,ul){margin:0}
 .wb-http-workspace summary{cursor:pointer;font-size:12px}
 .wb-http-workspace :is(section,aside,div,label,select,input,textarea){min-width:0}
-.wb-http-toolbar{padding:0 0 10px;border-bottom:1px solid var(--wb-border-soft)}
-.wb-http-toolbar{flex:none;gap:8px 10px}
-.wb-http-toolbar>.wb-row{font-size:12px;white-space:nowrap;gap:8px;flex:none}
-.wb-http-toolbar .wb-select{width:auto;max-width:220px}
 .wb-http-workspace .wb-select{appearance:auto;padding-right:8px}
-.wb-http-toolbar>.wb-btn{flex:none}
 .wb-http-workspace> :not(.wb-http-layout){flex-shrink:0}
 .wb-http-layout{display:grid;grid-template-columns:minmax(148px,190px) minmax(0,1fr);gap:16px;align-items:stretch;flex:1;min-height:360px}
 .wb-http-main{min-width:0;overflow-wrap:anywhere;gap:12px}
@@ -17,9 +12,15 @@ export const HTTP_WORKSPACE_CSS = `
   background:var(--wb-hover-bg);border:1px solid var(--wb-border-soft);border-radius:8px;padding:10px
 }
 .wb-http-environment{max-width:540px}
-.wb-http-variables[open]>.wb-field{padding-top:8px}
-.wb-http-variables textarea{font-family:ui-monospace,monospace}
+.wb-http-variable-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;align-items:end;gap:8px}
+.wb-http-variable-row>.wb-btn{margin-bottom:3px}
+.wb-http-variable-actions>.wb-btn{width:52px;height:26px;justify-content:center}
+.wb-tool-pane[data-tool=http-debug] .wb-http-variable-row textarea{min-height:32px!important;resize:vertical}
+.wb-http-variable-row :is(input,textarea){font-family:ui-monospace,monospace}
 .wb-http-collections{gap:12px}
+.wb-http-collection-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.wb-http-collection-actions>.wb-btn{justify-content:center}
+.wb-http-collection-actions>.wb-btn:nth-child(n+3){grid-column:1 / -1}
 .wb-http-collections>.wb-btn{width:100%;justify-content:center}
 .wb-http-collections>.wb-tiny{padding:16px 4px;text-align:center;line-height:1.7}
 .wb-http-ai{align-self:start}
@@ -59,8 +60,7 @@ export const HTTP_WORKSPACE_CSS = `
 .wb-http-checks>.is-failed>strong,.wb-http-result-item:is(.is-error,.is-failed)>strong{color:var(--dsw-alias-state-error-primary,var(--wb-text-1))}
 .wb-http-checks>.is-passed>strong,.wb-http-result-item.is-passed>strong{color:var(--dsw-alias-state-success-primary,var(--wb-text-1))}
 .wb-http-draft,.wb-http-detail{border-top:1px solid var(--wb-border-soft);padding-top:9px;font-size:12px;overflow-wrap:anywhere}
-.wb-http-run-plan{display:grid;gap:5px}
-.wb-http-run-plan>label{display:flex;gap:7px;align-items:baseline;font-size:12px}
+.wb-http-run-plan{display:grid;gap:5px;margin:0;padding-inline-start:24px;font-size:12px}
 .wb-http-run-plan code,.wb-http-result-item small{color:var(--dsw-alias-label-secondary)}
 .wb-http-result-item{justify-content:space-between;flex-wrap:wrap;border-color:var(--wb-border-soft)}
 @container http-workspace (min-width:860px){
@@ -74,8 +74,6 @@ export const HTTP_WORKSPACE_CSS = `
   .wb-http-checks>li{grid-template-columns:minmax(0,1fr)}
   .wb-http-request-bar{grid-template-columns:86px minmax(0,1fr)}
   .wb-http-request-bar>.wb-btn{grid-column:1 / -1}
-  .wb-http-toolbar>.wb-spacer{display:none}
-  .wb-http-toolbar>strong{flex-basis:100%}
   .wb-http-collections>.wb-tiny{padding:4px}
   .wb-http-layout{flex:none}
 }

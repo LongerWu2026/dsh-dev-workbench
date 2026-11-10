@@ -8,9 +8,10 @@ import { fileURLToPath } from 'node:url'
 
 const BUNDLE = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'client.js')
 
-export function loadClientBundle() {
+export function loadClientBundle({localStorage} = {}) {
   let factory = null
   const window = {
+    localStorage,
     __ModuleLoader__: {
       load(entry) {
         factory = entry.factory

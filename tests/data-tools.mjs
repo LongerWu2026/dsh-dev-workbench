@@ -25,6 +25,7 @@ const es=httpServer((req,res)=>{
  requests.push({url:req.url,method:req.method,auth:req.headers.authorization});
  res.setHeader('content-type','application/json');
  if(req.url==='/'){res.end('{"version":{"number":"8.0"}}');return}
+ if(req.url==='/_nodes/plugins'){res.end(JSON.stringify({nodes:{fixture:{plugins:[{name:'analysis-ik',version:'8.0'}]}}}));return}
  if(req.url.startsWith('/_cat')){
   res.end(JSON.stringify(esNames.map(index=>({index,'docs.count':'2',health:'green'}))));
   return;
@@ -103,7 +104,8 @@ assert.equal((await api.dataService.dataSwitchDatabase({id:mysqlAccount.id,datab
 assert.equal(mysqlHandshakeDatabases.at(-1),'fixture');
 check('MySQL 无库名可登录并读取可见数据库，查询只在选库后发送',()=>{});
 // Model fixtures prove prompt transport and no automatic query execution, not model quality.
-let nextSession=0,promptText='',choice={tableIds:[1,2],clarification:''},generationError;
+let nextSession=0,promptText='',choice={tableIds:[1,2],clarification:''},generationError,generationReply;
+let esPlan={scope:'index'};
 const prompts=[],promptSessions=[],sessions=new Map();
 const modelController={
  create:async()=>{
@@ -120,9 +122,9 @@ const modelController={
   const expanding=promptText.includes('关键词只用于查询数据库目录');
   if(!selecting&&generationError)throw generationError;
   const session=sessions.get(request.sessionId);
-  const output=expanding?{searchTerms:['order','unrelated_name']}:selecting?choice:
+  const output=promptText.includes('判断 Elasticsearch 查询范围')?esPlan:expanding?{searchTerms:['order','unrelated_name']}:selecting?choice:
    promptText.includes('Elasticsearch 的 query 字段')?{query:JSON.stringify({size:0,track_total_hits:true,query:{match_all:{}}}),explanation:'读取 hits.total.value'}:
-   {query:'SELECT id FROM orders',explanation:'fixture result',rollback:''};
+   generationReply??{query:'SELECT id FROM orders',explanation:'fixture result',rollback:''};
   session.events.push(
    {seq:++session.seq,type:'turn/start',data:{}},
    {seq:++session.seq,type:'assistant/message',data:{message:{role:'assistant',content:[{type:'text',text:JSON.stringify(output)}]}}},
@@ -142,6 +144,21 @@ assert.equal(prompts.length,beforeReplay,'重复提交已完成编号不重新�
 assert.equal(replayed.workspace.workspace.aiTurns.length,1);
 assert.equal((await api.dataService.dataWorkspaceLoad({id:mid})).workspace.aiTurns[0].draft.query,'SELECT id FROM orders');
 check('AI完成回复按目标原子持久化，重复请求不新增历史',()=>{});
+const autoSqlRequest={id:mid,selected:[{schemaName:'fixture',name:'orders'}],mode:'auto',conversation:true};
+const statementsBeforeUnified=sqls.length;
+const autoQuery=await api.dataService.dataGenerate({...autoSqlRequest,instruction:'查询订单编号'});
+generationReply={query:'ALTER TABLE orders ADD COLUMN note TEXT',rollback:'ALTER TABLE orders DROP COLUMN note',mode:'query'};
+const autoScript=await api.dataService.dataGenerate({...autoSqlRequest,instruction:'为订单新增备注列',workspace:{key:memory.key,turnId:'fixture-unified-script'}});
+generationReply=undefined;
+await assert.rejects(api.dataService.dataQuery({id:mid,query:autoScript.query}),/只读|无法解析/);
+check('统一生成 SQL 按只读校验区分结果，模型标注不能让变更获得执行资格',()=>{
+ assert.equal(autoQuery.mode,'query');
+ assert.match(promptText,/单条只读查询.*变更脚本/);
+ assert.equal(autoScript.mode,'script');
+ assert.equal(autoScript.workspace.workspace.aiTurns.at(-1).draft.mode,'script');
+ assert.equal(autoScript.rollback,'ALTER TABLE orders DROP COLUMN note');
+ assert.ok(!sqls.slice(statementsBeforeUnified).some(sql=>/^(SELECT id FROM orders|ALTER TABLE)/i.test(sql)));
+});
 const beforeAuto=prompts.length, beforeMetadata=sqls.length, beforeAutoSessions=nextSession;
 largeCatalog=true;
 const inferred=await api.dataService.dataGenerate({id:mid,selected:[],instruction:'统计订单金额'});
@@ -214,11 +231,37 @@ const beforeEsPrompts=prompts.length;
 await assert.rejects(api.dataService.dataGenerate({id,selected:[],instruction:'搜索订单',conversation:true,history:[{instruction:'查询 orders'}]}),/当前连接未找到指定索引/);
 await assert.rejects(api.dataService.dataGenerate({id,selected:[],instruction:`比较 orders 和 ${esIndex} 的数据量`}),/匹配到多个索引/);
 await assert.rejects(api.dataService.dataGenerate({id,selected:[],instruction:`查询 ${esIndex}* 的数据量`}),/当前连接未找到指定索引/);
-assert.equal(prompts.length,beforeEsPrompts);
-const beforeEsGeneration=requests.length;
+assert.equal(prompts.length,beforeEsPrompts+3);
+for(const [instruction,operation] of [['帮我看看这个 ES 是哪一版，顺便列一下装了哪些扩展','cluster-info'],['What release is this cluster running?','version'],['有哪些分析器扩展已经安装好了','plugins']]){
+ const before=requests.length,modelBefore=prompts.length;
+ esPlan={scope:'cluster',operation,explanation:'模型生成的说明'};
+ const draft=await api.dataService.dataGenerate({id,selected:[],instruction,conversation:true});
+ assert.equal(prompts.length,modelBefore+1);
+ assert.equal(draft.explanation,'模型生成的说明');
+ assert.deepEqual(draft.selected,[]);
+ assert.deepEqual(JSON.parse(draft.query),{operation});
+ assert.equal(requests.length,before);
+ const metadata=await api.dataService.dataQuery({id,...draft});
+ if(operation!=='plugins')assert.equal(metadata.result.version.version.number,'8.0');
+ if(operation!=='version')assert.equal(metadata.result.plugins.nodes.fixture.plugins[0].name,'analysis-ik');
+ assert.deepEqual(requests.slice(before).map(r=>r.url),operation==='cluster-info'?['/','/_nodes/plugins']:operation==='version'?['/']:['/_nodes/plugins']);
+ assert.ok(requests.slice(before).every(r=>r.method==='GET'));
+}
+await assert.rejects(api.dataService.dataQuery({id,query:JSON.stringify({operation:'delete'})}),/仅支持/);
+check('ES 集群需求由 AI 识别，不依赖关键词或索引，执行仅访问只读接口',()=>{});
+const beforeUnsupported=requests.length;
+esPlan={scope:'cluster',operation:'delete'};
+assert.match((await api.dataService.dataGenerate({id,instruction:'删除这个集群',conversation:true})).clarification,/暂不支持/);
+esPlan={scope:'clarify',clarification:'暂不支持集群健康查询'};
+assert.match((await api.dataService.dataGenerate({id,instruction:'检查集群健康',conversation:true})).clarification,/暂不支持/);
+esPlan={scope:'unknown'};
+assert.match((await api.dataService.dataGenerate({id,instruction:'看看这个',conversation:true})).clarification,/未能确定查询范围/);
+assert.equal(requests.length,beforeUnsupported);
+esPlan={scope:'index'};
+const beforeEsGeneration=requests.length,beforeDocumentPrompts=prompts.length;
 const esDraft=await api.dataService.dataGenerate({id,selected:[],instruction:`查询索引${esIndex}下的数据量`});
 assert.deepEqual(esDraft.selected,[{name:esIndex}]);
-assert.equal(prompts.length,beforeEsPrompts+1);
+assert.equal(prompts.length,beforeDocumentPrompts+2);
 assert.match(promptText,/size 为 0、track_total_hits 为 true/);
 assert.deepEqual(requests.slice(beforeEsGeneration).map(r=>r.url),['/_cat/indices?format=json&h=index,docs.count,health',`/${esIndex}/_mapping`]);
 await assert.rejects(api.dataService.dataQuery({id,index:'orders',...esDraft}),/查询的索引已变更/);

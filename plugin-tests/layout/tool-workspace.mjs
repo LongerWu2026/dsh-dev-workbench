@@ -21,7 +21,8 @@ try{
    if(method.endsWith('dataConnections')){const result=await previous(method,payload);return {...result,capabilities:{autoTableSelection:true}}}
    if(method.endsWith('dataGenerate'))return {query:'SELECT id FROM public.orders',mode:'query',selected:[],explanation:'合成查询说明。'.repeat(120)}
    if(method.endsWith('dataQuery'))return {columns:['id','details'],rows:Array.from({length:160},(_,id)=>({id,details:'合成结果 '.repeat(100)})),durationMs:1}
-   if(method.endsWith('httpDebug'))return {status:200,durationMs:1,text:'synthetic response\n'.repeat(300)}
+   if(method.endsWith('httpWorkspace'))return {revision:0,collections:[{id:'default',name:'默认集合',requests:[],variables:{}}]}
+   if(method.endsWith('httpDebug'))return {status:200,durationMs:1,headers:{'content-type':'text/plain'},text:'synthetic response\n'.repeat(300)}
    if(method.endsWith('mcpConnect'))return {connectionId:'mock',durationMs:1,tools:[{name:'echo',description:'合成工具',inputSchema:{type:'object'}}]}
    if(method.endsWith('mcpCall'))return {durationMs:1,result:{content:[{type:'text',text:'合成 MCP 结果\n'.repeat(300)}]}}
    return previous(method,payload)
@@ -61,7 +62,7 @@ try{
    if(await page.getByRole('button',{name:'关闭连接面板'}).isVisible())await click('关闭连接面板')
    if(await page.getByRole('tab',{name:'AI 查询',exact:true}).count())await page.getByRole('tab',{name:'AI 查询',exact:true}).click()
    if(!await page.getByRole('textbox',{name:'数据库AI需求'}).isVisible())await click('展开 AI 会话')
-   await page.getByRole('textbox',{name:'数据库AI需求'}).fill('查询合成订单');await click('生成 SQL');await page.getByRole('button',{name:'填入 SQL 编辑器'}).last().waitFor()
+   await page.getByRole('textbox',{name:'数据库AI需求'}).fill('查询合成订单');await click('生成 SQL');await page.getByText('SQL 已填入编辑器，可检查后执行',{exact:true}).waitFor()
   }
  }
  async function measure(id,name,width,height,theme,stage){
