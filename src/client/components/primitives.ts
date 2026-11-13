@@ -120,6 +120,7 @@ function Chip(props?: any): any {
         return h('button', {
             type: 'button',
             className: 'wb-chip' + (props.active ? ' is-active' : ''),
+            disabled: props.disabled,
             onClick: props.onClick,
             title: props.title,
         }, props.icon ? h(Icon, { name: props.icon, size: 12 }) : null, props.children, props.onRemove

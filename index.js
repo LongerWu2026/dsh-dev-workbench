@@ -15325,7 +15325,8 @@ function debugUrl(value) {
 var collections = ["tasks", "replies", "knowledge", "radar"];
 var equal = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 function appendChangeHistory(previous, next) {
-  const events = (next.audit || []).filter((event) => !(previous.audit || []).some((old) => old.id === event.id));
+  const previousAuditIds = new Set((previous.audit || []).map((event) => event.id));
+  const events = (next.audit || []).filter((event) => !previousAuditIds.has(event.id));
   if (events.some((event) => event.event === "migration.applied"))
     return;
   const automated = events.some((event) => /^analysis\.|^radar.summarized/.test(event.event || event.type || ""));
@@ -17823,6 +17824,7 @@ function createLinkedMessageImages(deps) {
 import { platform as platform2 } from "node:os";
 var YZJ_TIMEOUT_MS = 15e3;
 var YZJ_MAX_BYTES = 512 * 1024;
+var YZJ_MESSAGE_LIST_MAX_BYTES = 4 * 1024 * 1024;
 var YZJ_READ_ONLY = [
   "whoami",
   "im group recent",
@@ -17959,6 +17961,7 @@ async function executeYzj(ctx, args, outputMode = "json") {
   } catch (e) {
     signal = void 0;
   }
+  const isMessageList = args[0] === "im" && args[1] === "message" && args[2] === "list";
   let handle;
   try {
     handle = subprocess.spawn({
@@ -17966,7 +17969,7 @@ async function executeYzj(ctx, args, outputMode = "json") {
       cwd: homedir(),
       stdio: {
         stdin: "ignore",
-        stdout: { maxBytes: YZJ_MAX_BYTES },
+        stdout: { maxBytes: isMessageList ? YZJ_MESSAGE_LIST_MAX_BYTES : YZJ_MAX_BYTES },
         stderr: { maxBytes: 16 * 1024 }
       },
       graceMs: 2500,
@@ -17977,17 +17980,16 @@ async function executeYzj(ctx, args, outputMode = "json") {
   }
   try {
     const outcome = await handle.done;
-    const read4 = function(reader) {
-      if (!reader || typeof reader.readFrom !== "function")
-        return "";
+    const read4 = (reader) => {
       try {
-        return String(reader.readFrom(0).text || "");
-      } catch (e) {
-        return "";
+        return reader?.readFrom?.(0);
+      } catch {
+        return void 0;
       }
     };
-    const stdout = read4(handle.collected && handle.collected.stdout);
-    const stderr = read4(handle.collected && handle.collected.stderr);
+    const stdoutChunk = read4(handle.collected?.stdout);
+    const stdout = String(stdoutChunk?.text || "");
+    const stderr = String(read4(handle.collected?.stderr)?.text || "");
     if (outcome && outcome.exitCode !== 0) {
       if (/10000429|请求过于频繁|too many requests/i.test(stderr + stdout)) return { status: "rate_limited", note: "云之家请求过于频繁（10000429），暂停采集 2 分钟后续采" };
       return {
@@ -17998,6 +18000,9 @@ async function executeYzj(ctx, args, outputMode = "json") {
       };
     }
     if (outputMode === "file") return { status: outcome?.exitCode === 0 ? "ok" : "error" };
+    if (stdoutChunk?.lossy) {
+      return { status: "error", exitCode: 0, uncertain: true, note: "云之家返回内容超过读取上限，输出已截断。" };
+    }
     let json2 = null;
     try {
       json2 = JSON.parse(stdout);
@@ -18005,7 +18010,7 @@ async function executeYzj(ctx, args, outputMode = "json") {
       json2 = null;
     }
     if (!json2 || typeof json2 !== "object") {
-      return { status: "error", exitCode: 0, uncertain: true, note: "yzj-cli 输出不是 JSON（可能要求重新登录）" };
+      return { status: "error", exitCode: 0, uncertain: true, note: "yzj-cli 未返回有效的 JSON，请检查云之家连接状态后重试" };
     }
     if (json2.success !== true) {
       const errorCode = json2.errorCode || json2.error && (json2.error.errorCode || json2.error.code);

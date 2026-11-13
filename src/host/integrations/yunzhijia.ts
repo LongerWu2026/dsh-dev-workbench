@@ -41,6 +41,7 @@ import {platform} from 'node:os'
  * ========================================================================== */
 const YZJ_TIMEOUT_MS = 15000;
 const YZJ_MAX_BYTES = 512 * 1024;
+const YZJ_MESSAGE_LIST_MAX_BYTES = 4 * 1024 * 1024;
 const MENTIONS_FETCH_LIMIT = 80;
 /** Read-only command prefixes; anything else is refused before spawn. */
 const YZJ_READ_ONLY: any = [
@@ -199,6 +200,7 @@ async function executeYzj(ctx: any, args: string[], outputMode: 'json' | 'file' 
     catch (e) {
         signal = undefined;
     }
+    const isMessageList = args[0] === 'im' && args[1] === 'message' && args[2] === 'list';
     let handle;
     try {
         handle = subprocess.spawn({
@@ -206,7 +208,7 @@ async function executeYzj(ctx: any, args: string[], outputMode: 'json' | 'file' 
             cwd: homedir(),
             stdio: {
                 stdin: 'ignore',
-                stdout: { maxBytes: YZJ_MAX_BYTES },
+                stdout: { maxBytes: isMessageList ? YZJ_MESSAGE_LIST_MAX_BYTES : YZJ_MAX_BYTES },
                 stderr: { maxBytes: 16 * 1024 },
             },
             graceMs: 2500,
@@ -218,18 +220,13 @@ async function executeYzj(ctx: any, args: string[], outputMode: 'json' | 'file' 
     }
     try {
         const outcome = await handle.done;
-        const read = function (reader?: any): any {
-            if (!reader || typeof reader.readFrom !== 'function')
-                return '';
-            try {
-                return String(reader.readFrom(0).text || '');
-            }
-            catch (e) {
-                return '';
-            }
+        const read = (reader?: {readFrom?: (offset: number) => {text?: string; lossy?: boolean}}) => {
+            try { return reader?.readFrom?.(0); }
+            catch { return undefined; }
         };
-        const stdout = read(handle.collected && handle.collected.stdout);
-        const stderr = read(handle.collected && handle.collected.stderr);
+        const stdoutChunk = read(handle.collected?.stdout);
+        const stdout = String(stdoutChunk?.text || '');
+        const stderr = String(read(handle.collected?.stderr)?.text || '');
         if (outcome && outcome.exitCode !== 0) {
             if (/10000429|请求过于频繁|too many requests/i.test(stderr + stdout)) return {status:'rate_limited',note:'云之家请求过于频繁（10000429），暂停采集 2 分钟后续采'};
             return {
@@ -240,6 +237,9 @@ async function executeYzj(ctx: any, args: string[], outputMode: 'json' | 'file' 
             };
         }
         if (outputMode === 'file') return { status: outcome?.exitCode === 0 ? 'ok' : 'error' };
+        if (stdoutChunk?.lossy) {
+            return { status:'error', exitCode:0, uncertain:true, note:'云之家返回内容超过读取上限，输出已截断。' };
+        }
         let json: any = null;
         try {
             json = JSON.parse(stdout);
@@ -248,7 +248,7 @@ async function executeYzj(ctx: any, args: string[], outputMode: 'json' | 'file' 
             json = null;
         }
         if (!json || typeof json !== 'object') {
-            return { status: 'error', exitCode: 0, uncertain: true, note: 'yzj-cli 输出不是 JSON（可能要求重新登录）' };
+            return { status: 'error', exitCode: 0, uncertain: true, note: 'yzj-cli 未返回有效的 JSON，请检查云之家连接状态后重试' };
         }
         if (json.success !== true) {
             const errorCode = json.errorCode || (json.error && (json.error.errorCode || json.error.code));

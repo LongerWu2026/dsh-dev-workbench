@@ -7,10 +7,11 @@ import {build} from 'esbuild'
 const home = mkdtempSync(join(tmpdir(), 'workbench-yzj-setup-'))
 process.env.DSH_HOME = home
 const bundle = join(home, 'host.mjs')
-await build({stdin:{contents:`export {workbenchApi as api,setShared_workbenchCtx} from './src/host/application/workbench-service.ts'; export {disposeYunzhijiaSetup,yunzhijiaSetupStatus} from './src/host/integrations/yunzhijia-setup.ts'; export {resolveYzjPath,invalidateYzjPathCache,yzjCommandAllowed} from './src/host/integrations/yunzhijia.ts'; export {yunzhijiaManagedBinary,yunzhijiaInstallDir} from './src/host/integrations/yunzhijia-paths.ts'; export {loadWorkbenchState,mutateWorkbenchState} from './src/host/storage/state-store.ts'; export {WORKBENCH_REMOTE_SIGNATURES} from './src/host/api/remote.ts';`,resolveDir:resolve('.'),loader:'ts'},outfile:bundle,bundle:true,platform:'node',format:'esm',logLevel:'silent'})
+await build({stdin:{contents:`export {workbenchApi as api,setShared_workbenchCtx} from './src/host/application/workbench-service.ts'; export {disposeYunzhijiaSetup,yunzhijiaSetupStatus} from './src/host/integrations/yunzhijia-setup.ts'; export {runYzj,resolveYzjPath,invalidateYzjPathCache,yzjCommandAllowed} from './src/host/integrations/yunzhijia.ts'; export {yunzhijiaManagedBinary,yunzhijiaInstallDir} from './src/host/integrations/yunzhijia-paths.ts'; export {loadWorkbenchState,mutateWorkbenchState} from './src/host/storage/state-store.ts'; export {WORKBENCH_REMOTE_SIGNATURES} from './src/host/api/remote.ts';`,resolveDir:resolve('.'),loader:'ts'},outfile:bundle,bundle:true,platform:'node',format:'esm',logLevel:'silent'})
 const host = await import(bundle), {api} = host
 let installed = false, loggedIn = false, failed = false, missingBinary = false, invalidBinary = false, explicitOnly = false, blocked = null, checks = 0, downloads = 0
 const launches = []
+let messageListBytes = 0
 const fixturePath = join(home, 'external', 'yzj-cli')
 const provider = {
     async resolveExecutable(command) {
@@ -37,11 +38,14 @@ const provider = {
             if(invalidBinary)exitCode=1
         } else if (args.includes('whoami')) {
             output = JSON.stringify(loggedIn ? {success:true,data:{name:'测试账号',openId:'fixture',orgId:'test'}} : {success:false,errorCode:401})
+        } else if (args[1] === 'im' && args[2] === 'message' && args[3] === 'list') {
+            output = JSON.stringify({success:true,data:{list:[{msgId:'fixture',content:'x'.repeat(messageListBytes)}]}})
         } else if (args.includes('auth')) {
             if (!blocked) loggedIn = true
         } else throw Error('Unexpected spawn '+args)
         const done = blocked && args.includes('auth') ? blocked.promise : Promise.resolve({exitCode})
-        return {done,collected:{stdout:{readFrom:()=>({text:output})},stderr:{readFrom:()=>({text:'secret-output-must-not-escape'})}},terminate(){blocked?.resolve({exitCode:null});return Promise.resolve()}}
+        const stdoutLimit = spec.stdio?.stdout?.maxBytes ?? Infinity
+        return {done,collected:{stdout:{readFrom:()=>({text:output.slice(0,stdoutLimit),lossy:output.length>stdoutLimit})},stderr:{readFrom:()=>({text:'secret-output-must-not-escape'})}},terminate(){blocked?.resolve({exitCode:null});return Promise.resolve()}}
     },
 }
 const ctx = {get:name=>name === 'subprocess' ? provider : null}
@@ -61,6 +65,18 @@ try {
     installed = true
     result = await api.yunzhijiaStatus({force:true})
     check('启动后外部安装可立即发现且区分未授权',()=>{assert.equal(result.connector.installed,true);assert.equal(result.connector.authState,'unauthorized')})
+    const listArgs=['im','message','list','--group-id','fixture','--type','newest','--limit','20']
+    messageListBytes=887141
+    const large=await host.runYzj(ctx,listArgs)
+    check('会话读取保留超过旧 512 KiB 上限的完整 JSON',()=>{
+        assert.equal(large.status,'ok');assert.equal(large.json.data.list[0].content.length,messageListBytes)
+    })
+    messageListBytes=4*1024*1024
+    const clipped=await host.runYzj(ctx,listArgs)
+    check('超出会话读取上限时明确提示截断',()=>{
+        assert.equal(clipped.status,'error');assert.match(clipped.note,/输出已截断/)
+    })
+
     loggedIn = true
     const count = launches.length
     result = await api.yunzhijiaStatus()

@@ -26,6 +26,7 @@ const wbStore = (function (): any {
         error: null,
         data: null,
         busy: false,
+        pendingStatuses: new Map(),
         toasts: [],
         page: 'dashboard',
         focusTaskId: null,
@@ -76,8 +77,35 @@ const wbStore = (function (): any {
     };
 })();
 
+type PendingStatus = {
+    collection: 'tasks' | 'replies';
+    id: string;
+    patch: {status:string} | {stage:string};
+};
+const statusRequests = new Map<string, Promise<any>>();
+const statusViews = new WeakMap<object, any>();
+
+function getVisibleState(): any {
+    const state = wbStore.get();
+    if (!state.data || !state.pendingStatuses?.size) return state;
+    const cached = statusViews.get(state);
+    if (cached) return cached;
+    // Keep pending edits out of the authoritative snapshot and its revision.
+    const data = {...state.data};
+    for (const collection of ['tasks','replies'] as const) {
+        if (![...state.pendingStatuses.values()].some((change:PendingStatus)=>change.collection === collection)) continue;
+        data[collection] = (data[collection] || []).map((row: {id:string})=>{
+            const pending = state.pendingStatuses.get(collection+':'+row.id) as PendingStatus | undefined;
+            return pending ? {...row,...pending.patch} : row;
+        });
+    }
+    const visible = {...state,data};
+    statusViews.set(state,visible);
+    return visible;
+}
+
 function useStore(): any {
-    return React.useSyncExternalStore(wbStore.subscribe, wbStore.get);
+    return React.useSyncExternalStore(wbStore.subscribe, getVisibleState);
 }
 
 /* --------------------------------------------------------------------- i18n */
@@ -326,6 +354,31 @@ function settle(promise?: any, okText?: any): any {
     }).finally(function (): any { wbPendingRequests -= 1; wbStore.set({ busy: wbPendingRequests > 0 }); });
 }
 
+function saveStatus(change: PendingStatus, send:()=>Promise<any>, okText?:string): Promise<any> {
+    const key = change.collection+':'+change.id;
+    const pendingRequest = statusRequests.get(key);
+    if (pendingRequest) return pendingRequest;
+
+    const request = Promise.resolve().then(send).then(snapshot=>{
+        acceptSnapshot(snapshot);
+        if (okText) toast(okText,'ok');
+        return snapshot;
+    }).catch(error=>{
+        toast(String(error?.message || error),'err');
+        throw error;
+    }).finally(()=>{
+        statusRequests.delete(key);
+        wbStore.set((state:any)=>{
+            const pendingStatuses = new Map(state.pendingStatuses);
+            pendingStatuses.delete(key);
+            return {pendingStatuses};
+        });
+    });
+    statusRequests.set(key,request);
+    wbStore.set((state:any)=>({pendingStatuses:new Map(state.pendingStatuses).set(key,change)}));
+    return request;
+}
+
 const wbActions: any = {
     backgroundModelCatalog(){return wbRpc('workbench/backgroundModels',{request:{action:'catalog'}})},
     backgroundModelConfigure(purpose:string,model:any){return settle(wbRpc('workbench/backgroundModels',{request:{action:'configure',purpose,model}}),'模型设置已保存，下一轮生效')},
@@ -349,7 +402,11 @@ const wbActions: any = {
         return settle(wbRpc('workbench/createTask', { input: input }), '待办已创建');
     },
     updateTask(id?: any, patch?: any): any {
-        return settle(wbRpc('workbench/updateTask', { id: id, patch: patch }));
+        const send = ()=>wbRpc('workbench/updateTask',{id,patch});
+        if (patch && Object.keys(patch).length === 1 && Object.hasOwn(WB.TASK_STATUS,patch.status)) {
+            return saveStatus({collection:'tasks',id,patch:{status:patch.status}},send);
+        }
+        return settle(send());
     },
     deleteTask(id?: any): any {
         return settle(wbRpc('workbench/deleteTask', { id: id }), '待办已删除');
@@ -620,7 +677,7 @@ const wbActions: any = {
     },
     /** TODO 16：人工推进回复阶段（AI 不得覆盖人工设置）。 */
     setReplyStage(id?: any, stage?: any): any {
-        return settle(wbRpc('workbench/setReplyStage', { id: id, stage: stage }), '回复阶段：' + stage);
+        return saveStatus({collection:'replies',id,patch:{stage}},()=>wbRpc('workbench/setReplyStage',{id,stage}),'回复阶段：'+stage);
     },
     taskMarkHuman(id?: any, mark?: any): any {
         return settle(wbRpc('workbench/taskMarkHuman', { id: id, mark: mark || {} }), '已记录人工处置');

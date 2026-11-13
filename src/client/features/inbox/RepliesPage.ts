@@ -70,7 +70,7 @@ function RepliesPage(): any {
                 const statusActions = h('div', { className: 'wb-inbox-stage-actions', role: 'group', 'aria-label': '修改回复阶段' },
                     h('span', { className: 'wb-tiny wb-muted' }, '标记为'),
                     ['待回复', '已确认收到', '已回复', '不需回复'].filter(stage => stage !== reply.stage).map(stage =>
-                        h(Btn, { key: stage, size: 'sm', disabled: state.busy, title:stage==='不需回复'?'已查阅且无需本人回复：仅结束本条提醒，不发送消息，不改变云之家未读状态':undefined, onClick: () => WB.actions.setReplyStage(reply.id, stage).catch(() => {}), children: actionLabels[stage]||stage })),
+                        h(Btn, { key: stage, size: 'sm', disabled: state.busy || state.pendingStatuses?.has('replies:'+reply.id), title:stage==='不需回复'?'已查阅且无需本人回复：仅结束本条提醒，不发送消息，不改变云之家未读状态':undefined, onClick: () => WB.actions.setReplyStage(reply.id, stage).catch(() => {}), children: actionLabels[stage]||stage })),
                     h(Btn, { icon: 'sparkles', size: 'sm', onClick: () => WB.assistant.add({ kind: 'source', id: reply.sourceId || reply.id, title: reply.contact || '待回复消息', body: reply.snippet, meta: '回复 ID：' + reply.id + '；阶段：' + reply.stage }), children: 'AI 协助' }));
                 return h('article', { key: reply.id, 'data-reply-id':reply.id, tabIndex:-1, 'aria-current':selectedReply===reply.id?'true':undefined, className: 'wb-reply-item wb-inbox-card'+(selectedReply===reply.id?' is-selected':''),style:selectedReply===reply.id?{outline:'2px solid var(--wb-accent)',outlineOffset:2,scrollMarginTop:12}:undefined },
                     h('header', { className: 'wb-inbox-card-head' },

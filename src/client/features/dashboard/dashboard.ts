@@ -294,6 +294,7 @@ function DashboardPage(): any {
                 return h(Chip, {
                     key: chip.id,
                     title: chip.hint,
+                    disabled: state.pendingStatuses?.has('replies:'+reply.id),
                     onClick: function (): any {
                         WB.actions.setReplyStage(reply.id, chip.id).catch(function (): any { });
                     },

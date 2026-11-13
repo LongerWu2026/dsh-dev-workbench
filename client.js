@@ -345,6 +345,7 @@ function Chip(props) {
     return h("button", {
       type: "button",
       className: "wb-chip" + (props.active ? " is-active" : ""),
+      disabled: props.disabled,
       onClick: props.onClick,
       title: props.title
     }, props.icon ? h(Icon, { name: props.icon, size: 12 }) : null, props.children, props.onRemove ? h("span", {
@@ -1403,6 +1404,7 @@ var wbStore = /* @__PURE__ */ (function() {
     error: null,
     data: null,
     busy: false,
+    pendingStatuses: /* @__PURE__ */ new Map(),
     toasts: [],
     page: "dashboard",
     focusTaskId: null,
@@ -1448,8 +1450,27 @@ var wbStore = /* @__PURE__ */ (function() {
     }
   };
 })();
+var statusRequests = /* @__PURE__ */ new Map();
+var statusViews = /* @__PURE__ */ new WeakMap();
+function getVisibleState() {
+  const state = wbStore.get();
+  if (!state.data || !state.pendingStatuses?.size) return state;
+  const cached = statusViews.get(state);
+  if (cached) return cached;
+  const data = { ...state.data };
+  for (const collection of ["tasks", "replies"]) {
+    if (![...state.pendingStatuses.values()].some((change) => change.collection === collection)) continue;
+    data[collection] = (data[collection] || []).map((row) => {
+      const pending = state.pendingStatuses.get(collection + ":" + row.id);
+      return pending ? { ...row, ...pending.patch } : row;
+    });
+  }
+  const visible = { ...state, data };
+  statusViews.set(state, visible);
+  return visible;
+}
 function useStore() {
-  return React3.useSyncExternalStore(wbStore.subscribe, wbStore.get);
+  return React3.useSyncExternalStore(wbStore.subscribe, getVisibleState);
 }
 var WB_DICT = {
   zh: {
@@ -1662,6 +1683,29 @@ function settle(promise, okText) {
     wbStore.set({ busy: wbPendingRequests > 0 });
   });
 }
+function saveStatus(change, send, okText) {
+  const key2 = change.collection + ":" + change.id;
+  const pendingRequest = statusRequests.get(key2);
+  if (pendingRequest) return pendingRequest;
+  const request = Promise.resolve().then(send).then((snapshot2) => {
+    acceptSnapshot(snapshot2);
+    if (okText) toast(okText, "ok");
+    return snapshot2;
+  }).catch((error2) => {
+    toast(String(error2?.message || error2), "err");
+    throw error2;
+  }).finally(() => {
+    statusRequests.delete(key2);
+    wbStore.set((state) => {
+      const pendingStatuses = new Map(state.pendingStatuses);
+      pendingStatuses.delete(key2);
+      return { pendingStatuses };
+    });
+  });
+  statusRequests.set(key2, request);
+  wbStore.set((state) => ({ pendingStatuses: new Map(state.pendingStatuses).set(key2, change) }));
+  return request;
+}
 var wbActions = {
   backgroundModelCatalog() {
     return wbRpc("workbench/backgroundModels", { request: { action: "catalog" } });
@@ -1711,7 +1755,11 @@ var wbActions = {
     return settle(wbRpc("workbench/createTask", { input }), "待办已创建");
   },
   updateTask(id, patch2) {
-    return settle(wbRpc("workbench/updateTask", { id, patch: patch2 }));
+    const send = () => wbRpc("workbench/updateTask", { id, patch: patch2 });
+    if (patch2 && Object.keys(patch2).length === 1 && Object.hasOwn(WB.TASK_STATUS, patch2.status)) {
+      return saveStatus({ collection: "tasks", id, patch: { status: patch2.status } }, send);
+    }
+    return settle(send());
   },
   deleteTask(id) {
     return settle(wbRpc("workbench/deleteTask", { id }), "待办已删除");
@@ -2008,7 +2056,7 @@ var wbActions = {
   },
   /** TODO 16：人工推进回复阶段（AI 不得覆盖人工设置）。 */
   setReplyStage(id, stage) {
-    return settle(wbRpc("workbench/setReplyStage", { id, stage }), "回复阶段：" + stage);
+    return saveStatus({ collection: "replies", id, patch: { stage } }, () => wbRpc("workbench/setReplyStage", { id, stage }), "回复阶段：" + stage);
   },
   taskMarkHuman(id, mark) {
     return settle(wbRpc("workbench/taskMarkHuman", { id, mark: mark || {} }), "已记录人工处置");
@@ -8522,7 +8570,7 @@ function installAssistantNative(WB2, ctx) {
             return identity;
           }
         }
-        const result = await account.getProfile({ version: "0.4.9", locale: "zh-CN", timezoneOffsetSeconds: -(/* @__PURE__ */ new Date()).getTimezoneOffset() * 60 });
+        const result = await account.getProfile({ version: "0.4.10", locale: "zh-CN", timezoneOffsetSeconds: -(/* @__PURE__ */ new Date()).getTimezoneOffset() * 60 });
         if (disposed || current !== revision) return identity;
         const profile = result?.ok === true && result.value?.status === "ready" ? result.value.value : null;
         const name2 = typeof profile?.name === "string" ? profile.name.replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 40) : "";
@@ -18915,7 +18963,7 @@ function RepliesPage() {
           "div",
           { className: "wb-inbox-stage-actions", role: "group", "aria-label": "修改回复阶段" },
           h("span", { className: "wb-tiny wb-muted" }, "标记为"),
-          ["待回复", "已确认收到", "已回复", "不需回复"].filter((stage) => stage !== reply.stage).map((stage) => h(Btn, { key: stage, size: "sm", disabled: state.busy, title: stage === "不需回复" ? "已查阅且无需本人回复：仅结束本条提醒，不发送消息，不改变云之家未读状态" : void 0, onClick: () => WB.actions.setReplyStage(reply.id, stage).catch(() => {
+          ["待回复", "已确认收到", "已回复", "不需回复"].filter((stage) => stage !== reply.stage).map((stage) => h(Btn, { key: stage, size: "sm", disabled: state.busy || state.pendingStatuses?.has("replies:" + reply.id), title: stage === "不需回复" ? "已查阅且无需本人回复：仅结束本条提醒，不发送消息，不改变云之家未读状态" : void 0, onClick: () => WB.actions.setReplyStage(reply.id, stage).catch(() => {
           }), children: actionLabels[stage] || stage })),
           h(Btn, { icon: "sparkles", size: "sm", onClick: () => WB.assistant.add({ kind: "source", id: reply.sourceId || reply.id, title: reply.contact || "待回复消息", body: reply.snippet, meta: "回复 ID：" + reply.id + "；阶段：" + reply.stage }), children: "AI 协助" })
         );
@@ -20486,6 +20534,7 @@ function DashboardPage() {
       return h(Chip, {
         key: chip.id,
         title: chip.hint,
+        disabled: state.pendingStatuses?.has("replies:" + reply.id),
         onClick: function() {
           WB.actions.setReplyStage(reply.id, chip.id).catch(function() {
           });
@@ -20880,7 +20929,7 @@ function TaskCenterRow(props) {
   const source = tcFindSource(data, task);
   const tags2 = (Array.isArray(task.tags) ? task.tags : []).filter((tag) => !task.aiExtracted || !/^AI\s*(识别|提取)$/i.test(tag));
   function updateStatus(status2) {
-    if (busy || status2 === task.status)
+    if (busy || props.statusPending || status2 === task.status)
       return;
     setBusy(true);
     WB.actions.updateTask(task.id, { status: status2 }).finally(() => setBusy(false)).catch(() => {
@@ -20951,13 +21000,13 @@ function TaskCenterRow(props) {
     ),
     task.description ? h("div", { className: "wb-tiny wb-muted wb-task-preview" }, task.description) : null,
     h(TaskMessageMetadata, { task, data, showTime: false })
-  ), h("td", { "data-label": "优先级" }, h(Badge, { tone: priority.tone }, priority.label)), h("td", { "data-label": "状态" }, h(TaskCenterStatusSelect, { task, busy, onChange: updateStatus })), h("td", { "data-label": "完成", style: { width: 56, textAlign: "center", verticalAlign: "middle" } }, h("button", {
+  ), h("td", { "data-label": "优先级" }, h(Badge, { tone: priority.tone }, priority.label)), h("td", { "data-label": "状态" }, h(TaskCenterStatusSelect, { task, busy: busy || props.statusPending, onChange: updateStatus })), h("td", { "data-label": "完成", style: { width: 56, textAlign: "center", verticalAlign: "middle" } }, h("button", {
     type: "button",
     className: "wb-check" + (done ? " is-on" : ""),
     style: { margin: "0 auto" },
     title: done ? "重开（标记为待处理）" : "标记完成",
     "aria-label": (done ? "重开 " : "完成 ") + task.title,
-    disabled: busy,
+    disabled: busy || props.statusPending,
     onClick: toggleDone
   }, h(Icon, { name: "check", size: 11 }))), h("td", { "data-label": "消息时间", className: "wb-tiny", style: { whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }, title: taskMessageTime(task, data.sources || []) === null ? "无原消息时间" : messageSentTime(source) }, taskMessageTime(task, data.sources || []) === null ? h("span", { className: "wb-muted" }, "—") : h("time", { dateTime: source.locator.sentAt }, messageSentTime(source).replace("（北京时间）", ""))), h("td", { "data-label": "截止 / 会议" }, task.dueAt ? h("span", { style: { color: tcToneColor(due.tone), fontSize: 11.5, fontWeight: 600 } }, due.text) : task.meetingStart ? h("span", { className: "wb-tiny", title: "会议开始" }, WB.fmt.datetime(task.meetingStart)) : h("span", { className: "wb-tiny wb-muted" }, "—")), h("td", { "data-label": "项目" }, projectName ? h("div", { className: "wb-row", style: { gap: 5, minWidth: 0 } }, h("span", {
     style: {
@@ -20999,7 +21048,7 @@ function TaskCenterBoardCard(props) {
     WB.openTaskForm(task);
   }
   function updateStatus(status2) {
-    if (busy || status2 === task.status)
+    if (busy || props.statusPending || status2 === task.status)
       return;
     setBusy(true);
     WB.actions.updateTask(task.id, { status: status2 }).finally(() => setBusy(false)).catch(() => {
@@ -21041,13 +21090,13 @@ function TaskCenterBoardCard(props) {
     className: "wb-row",
     style: { gap: 8, marginTop: 3 },
     onClick: (event) => event.stopPropagation()
-  }, h(TaskCenterStatusSelect, { task, busy, onChange: updateStatus }), h("button", {
+  }, h(TaskCenterStatusSelect, { task, busy: busy || props.statusPending, onChange: updateStatus }), h("button", {
     type: "button",
     className: "wb-check" + (done ? " is-on" : ""),
     style: { width: 14, height: 14, marginTop: 2 },
     title: done ? "重开" : "标记完成",
     "aria-label": (done ? "重开 " : "完成 ") + task.title,
-    disabled: busy,
+    disabled: busy || props.statusPending,
     onClick: toggleDone
   }, h(Icon, { name: "check", size: 10 }))), h(TaskReplyPanel, { task, data }));
 }
@@ -21309,7 +21358,7 @@ function TaskCenterPage() {
           const target = visible.find(function(item) {
             return item.id === taskId;
           });
-          if (!target || target.status === key2)
+          if (!target || target.status === key2 || state.pendingStatuses?.has("tasks:" + taskId))
             return;
           WB.actions.updateTask(taskId, { status: key2 }).then(function() {
             WB.toast("已移动到「" + meta.label + "」", "ok");
@@ -21348,7 +21397,7 @@ function TaskCenterPage() {
           onDragEnd: function() {
             setDragStatus(null);
           }
-        }, h(TaskCenterBoardCard, { task, data, editing: editingId === task.id }));
+        }, h(TaskCenterBoardCard, { task, data, statusPending: state.pendingStatuses?.has("tasks:" + task.id), editing: editingId === task.id }));
       }) : h("div", { className: "wb-tiny wb-muted", style: { textAlign: "center", padding: "12px 0" } }, "暂无任务")));
     })), outside.length > 0 ? h("div", {
       className: "wb-row wb-tiny wb-muted wb-row--wrap",
@@ -21375,6 +21424,7 @@ function TaskCenterPage() {
         key: task.id,
         task,
         data,
+        statusPending: state.pendingStatuses?.has("tasks:" + task.id),
         expanded: expandedId === task.id,
         highlighted: isPending || expandedId === task.id,
         editing: editingId === task.id,
@@ -28712,7 +28762,7 @@ function SettingsPage() {
         }
       })
     }))), h(DataManagement, { onExportJson: exportJson, onReset: () => setConfirmReset(true) })),
-    h("footer", { className: "wb-settings-version" }, "版本 v0.4.9"),
+    h("footer", { className: "wb-settings-version" }, "版本 v0.4.10"),
     addFeedOpen ? h(NewsFeedDialog, { feeds, onClose: () => {
       setAddFeedOpen(false);
       addFeedTrigger.current?.focus();

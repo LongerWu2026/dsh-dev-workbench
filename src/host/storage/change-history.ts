@@ -15,7 +15,8 @@ const collections = ['tasks', 'replies', 'knowledge', 'radar'];
 const equal = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 /** Persist with the business commit; no independent write can report a change that failed to save. */
 export function appendChangeHistory(previous: any, next: any): void {
-    const events = (next.audit || []).filter((event: any) => !(previous.audit || []).some((old: any) => old.id === event.id));
+    const previousAuditIds = new Set((previous.audit || []).map((event: any) => event.id));
+    const events = (next.audit || []).filter((event: any) => !previousAuditIds.has(event.id));
     if (events.some((event: any) => event.event === 'migration.applied'))
         return;
     const automated = events.some((event: any) => /^analysis\.|^radar.summarized/.test(event.event || event.type || ''));

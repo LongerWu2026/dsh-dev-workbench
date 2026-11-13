@@ -271,7 +271,7 @@ function TaskCenterRow(props?: any): any {
     const source = tcFindSource(data, task);
     const tags = (Array.isArray(task.tags) ? task.tags : []).filter((tag:string)=>!task.aiExtracted||!/^AI\s*(识别|提取)$/i.test(tag));
     function updateStatus(status: string): any {
-        if (busy || status === task.status)
+        if (busy || props.statusPending || status === task.status)
             return;
         setBusy(true);
         WB.actions.updateTask(task.id, { status }).finally(() => setBusy(false)).catch(() => {});
@@ -332,13 +332,13 @@ function TaskCenterRow(props?: any): any {
         tags.map((tag:string,index:number)=>h('span',{key:tag+':'+index,className:'wb-task-tag'},'#'+tag)),
         h(MessageSelectionBadges,{source:(data.sources||[]).find((s:any)=>s.id===task.sourceRefId),inbox:data.messageInbox})),
     task.description?h('div',{className:'wb-tiny wb-muted wb-task-preview'},task.description):null,
-    h(TaskMessageMetadata,{task,data,showTime:false})), h('td', {'data-label':'优先级'}, h(Badge, { tone: priority.tone }, priority.label)), h('td', {'data-label':'状态'}, h(TaskCenterStatusSelect, { task, busy, onChange: updateStatus })), h('td', {'data-label':'完成', style: { width: 56, textAlign: 'center', verticalAlign: 'middle' } }, h('button', {
+    h(TaskMessageMetadata,{task,data,showTime:false})), h('td', {'data-label':'优先级'}, h(Badge, { tone: priority.tone }, priority.label)), h('td', {'data-label':'状态'}, h(TaskCenterStatusSelect, { task, busy:busy || props.statusPending, onChange: updateStatus })), h('td', {'data-label':'完成', style: { width: 56, textAlign: 'center', verticalAlign: 'middle' } }, h('button', {
         type: 'button',
         className: 'wb-check' + (done ? ' is-on' : ''),
         style: { margin: '0 auto' },
         title: done ? '重开（标记为待处理）' : '标记完成',
         'aria-label': (done ? '重开 ' : '完成 ') + task.title,
-        disabled: busy,
+        disabled: busy || props.statusPending,
         onClick: toggleDone,
     }, h(Icon, { name: 'check', size: 11 }))), h('td', {'data-label':'消息时间',className:'wb-tiny',style:{whiteSpace:'nowrap',fontVariantNumeric:'tabular-nums'},title:taskMessageTime(task,data.sources||[])===null?'无原消息时间':messageSentTime(source)},taskMessageTime(task,data.sources||[])===null?h('span',{className:'wb-muted'},'—'):h('time',{dateTime:source.locator.sentAt},messageSentTime(source).replace('（北京时间）',''))), h('td', {'data-label':'截止 / 会议'}, task.dueAt
         ? h('span', { style: { color: tcToneColor(due.tone), fontSize: 11.5, fontWeight: 600 } }, due.text)
@@ -386,7 +386,7 @@ function TaskCenterBoardCard(props?: any): any {
         WB.openTaskForm(task);
     }
     function updateStatus(status: string): any {
-        if (busy || status === task.status)
+        if (busy || props.statusPending || status === task.status)
             return;
         setBusy(true);
         WB.actions.updateTask(task.id, { status }).finally(() => setBusy(false)).catch(() => {});
@@ -430,13 +430,13 @@ function TaskCenterBoardCard(props?: any): any {
             className: 'wb-row',
             style: { gap: 8, marginTop: 3 },
             onClick: (event: any) => event.stopPropagation(),
-        }, h(TaskCenterStatusSelect, { task, busy, onChange: updateStatus }), h('button', {
+        }, h(TaskCenterStatusSelect, { task, busy:busy || props.statusPending, onChange: updateStatus }), h('button', {
         type: 'button',
         className: 'wb-check' + (done ? ' is-on' : ''),
         style: { width: 14, height: 14, marginTop: 2 },
         title: done ? '重开' : '标记完成',
         'aria-label': (done ? '重开 ' : '完成 ') + task.title,
-        disabled: busy,
+        disabled: busy || props.statusPending,
         onClick: toggleDone,
     }, h(Icon, { name: 'check', size: 10 }))),h(TaskReplyPanel,{task,data}));
 }
@@ -692,7 +692,7 @@ function TaskCenterPage(): any {
                     const target = visible.find(function (item?: any): any {
                         return item.id === taskId;
                     });
-                    if (!target || target.status === key)
+                    if (!target || target.status === key || state.pendingStatuses?.has('tasks:'+taskId))
                         return;
                     WB.actions
                         .updateTask(taskId, { status: key })
@@ -736,7 +736,7 @@ function TaskCenterPage(): any {
                         onDragEnd: function (): any {
                             setDragStatus(null);
                         },
-                    }, h(TaskCenterBoardCard, { task: task, data: data, editing:editingId===task.id }));
+                    }, h(TaskCenterBoardCard, { task: task, data: data, statusPending:state.pendingStatuses?.has('tasks:'+task.id), editing:editingId===task.id }));
                 })
                 : h('div', { className: 'wb-tiny wb-muted', style: { textAlign: 'center', padding: '12px 0' } }, '暂无任务')));
         })), outside.length > 0
@@ -767,6 +767,7 @@ function TaskCenterPage(): any {
                 key: task.id,
                 task: task,
                 data: data,
+                statusPending:state.pendingStatuses?.has('tasks:'+task.id),
                 expanded: expandedId === task.id,
                 highlighted: isPending || expandedId === task.id,
                 editing:editingId===task.id,

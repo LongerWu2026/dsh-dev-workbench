@@ -4,10 +4,10 @@ import {render,screen,within,fireEvent,act,cleanup,waitFor} from '@testing-libra
 import userEvent from '@testing-library/user-event'
 import {loadClientBundle} from './load-plugin.mjs'
 afterEach(cleanup)
-function setup(count=2,linked=false){
+function setup(count=2,linked=false,replySave){
  const {WB}=loadClientBundle();let App;const at=new Date().toISOString();
  const data={version:2,revision:1,updatedAt:at,settings:{aiExtract:{enabled:false},automation:{enabled:false},topics:[],feeds:[]},projects:[],tasks:linked?[{id:'linked-task',title:'关联待办',createdAt:at,status:'ready',priority:'high',tags:[]}]:[],replies:Array.from({length:count},(_,i)=>({id:'reply-'+i,sourceId:'source-'+i,msgId:'message-'+i,accountId:'org:me',groupId:'private-'+i,stage:i===0?'已自动回复':'待回复',contact:'同名同事',snippet:linked?'相同内容':'待回复消息'+i,updatedAt:at,taskIds:linked&&i===42?['linked-task']:[]})),sources:Array.from({length:count},(_,i)=>({id:'source-'+i,provider:'yunzhijia',sender:'同名同事',excerpt:linked?'相同内容':'待回复消息'+i,locator:{accountId:'org:me',msgId:'message-'+i,groupId:'private-'+i,groupType:1,direction:'inbound',sentAt:at}})),runs:[],jobs:[],analysisQueue:[],knowledge:[],radar:[],connectors:[],candidates:[]};
- const calls=[];WB.store.set({data,status:'ready',page:'dashboard'});WB.apply({effect:fn=>fn(),get:()=>undefined,connection:{rpc:{call:async(_channel,endpoint)=>{calls.push(endpoint);return {ok:true,value:endpoint.endsWith('analysisStatus')?{entries:[],pending:0,jobs:[]}:endpoint.endsWith('operationsStatus')?{queue:{},policy:{},reminders:[]}:data}}}},slots:{inject:(_name,fn)=>{fn();return()=>{}},register(d,c){if(d.name==='main')App=c;return()=>{}}},locale:{register:()=>()=>{},bind:()=>()=>''}});return {WB,App,data,calls}
+ const calls=[];WB.store.set({data,status:'ready',page:'dashboard'});WB.apply({effect:fn=>fn(),get:()=>undefined,connection:{rpc:{call:async(_channel,endpoint)=>{calls.push(endpoint);if(endpoint==='workbench/setReplyStage'&&replySave)return replySave();return {ok:true,value:endpoint.endsWith('analysisStatus')?{entries:[],pending:0,jobs:[]}:endpoint.endsWith('operationsStatus')?{queue:{},policy:{},reminders:[]}:data}}}},slots:{inject:(_name,fn)=>{fn();return()=>{}},register(d,c){if(d.name==='main')App=c;return()=>{}}},locale:{register:()=>()=>{},bind:()=>()=>''}});return {WB,App,data,calls}
 }
 describe('首页到待回复的精确定位',()=>{
  it('点击独立消息进入待回复并选中、展开原消息，不发送或改状态',async()=>{const {WB,App,data,calls}=setup();const stage=vi.spyOn(WB.actions,'setReplyStage');render(<App/>);expect(screen.queryByText(/查看并处理/)).toBeNull();await userEvent.setup().click(screen.getByText('待回复消息0',{exact:true}));await screen.findByText('当前选中');const card=screen.getByText('当前选中').closest('article');expect(card.dataset.replyId).toBe('reply-0');expect(within(card).getByRole('textbox',{name:'回复草稿'})).toBeTruthy();expect(document.activeElement).toBe(card);expect(WB.store.get().focusReplyId).toBeNull();expect(data.replies[0].stage).toBe('已自动回复');expect(stage).not.toHaveBeenCalled();expect(calls).not.toContain('workbench/sendReply')})
@@ -31,3 +31,20 @@ it('编辑事项有唯一且同步的选中标记，侧栏直接显示标题并�
  await user.click(within(row('edit-b')).getByText('第二个待办的描述'));pane=screen.getByRole('complementary',{name:'编辑待办'});expect(row('edit-a').hasAttribute('aria-selected')).toBe(false);expect(row('edit-b').getAttribute('aria-selected')).toBe('true');expect(pane.querySelector('.wb-context-header strong').textContent).toBe('第二个待办');await user.click(within(pane).getByRole('button',{name:'关闭编辑'}));expect(document.querySelector('.wb-context-pane')).toBeNull();expect(document.querySelectorAll('.wb-task-row.is-editing')).toHaveLength(0);expect(calls).not.toContain('workbench/updateTask');
  await user.click(screen.getByRole('button',{name:'看板',exact:true}));await user.click(document.querySelector('.wb-task-board-card[data-task-id="edit-a"]'));expect(document.querySelector('.wb-task-board-card.is-editing').getAttribute('data-task-id')).toBe('edit-a');expect(document.querySelector('.wb-task-board-card.is-editing').getAttribute('aria-current')).toBe('true');await user.keyboard('{Escape}');expect(document.querySelector('.wb-task-board-card.is-editing')).toBeNull()
 })
+
+
+it('标记已回复立即更新待回复列表，保存失败时恢复且其他回复仍可操作',async()=>{
+ let finish;
+ const pending=new Promise(resolve=>{finish=resolve});
+ const {WB}=setup(2,false,()=>pending);
+ render(<WB.pages.replies/>);
+ const first=()=>document.querySelector('[data-reply-id="reply-0"]');
+ fireEvent.click(within(first()).getByRole('button',{name:'标记已回复'}));
+ expect(first()).toBeNull();
+ const other=document.querySelector('[data-reply-id="reply-1"]');
+ expect(within(other).getByRole('button',{name:'标记已回复'}).disabled).toBe(false);
+ expect(WB.store.get().data.replies[0].stage).toBe('已自动回复');
+ await act(async()=>finish({ok:false,error:'回复阶段保存失败'}));
+ expect(first()).toBeTruthy();
+ expect(WB.store.get().toasts.at(-1)).toMatchObject({text:'回复阶段保存失败',kind:'err'});
+});
